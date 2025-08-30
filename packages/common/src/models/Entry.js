@@ -21,7 +21,7 @@ const entrySchema = new Schema({
   relations: {
     media: [{ type: Schema.Types.ObjectId, ref: 'Media' }],
     categories: [{ type: Schema.Types.ObjectId, ref: 'Term' }],
-    tags: [{ type: Schema.Types.ObjectId, ref: 'Term' }]
+    tags: [{ type: Schema.Types.ObjectId, ref: 'Tag' }]
   },
   meta: { type: Schema.Types.Mixed },
   site: {
