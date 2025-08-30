@@ -1,12 +1,12 @@
 {
-  "name": "contextHub",
+  "name": "contexthub",
   "version": "0.1.0",
   "private": true,
   "description": "Multi‑tenant headless CMS and content services platform.",
   "license": "MIT",
   "scripts": {
-    "dev:api": "pnpm --filter @contextHub/api run dev",
-    "dev:admin": "pnpm --filter @contextHub/admin run dev",
+    "dev:api": "pnpm --filter @contexthub/api run dev",
+    "dev:admin": "pnpm --filter @contexthub/admin run dev",
     "dev": "pnpm run dev:api",
     "build": "pnpm --recursive run build",
     "test": "pnpm --recursive run test",
