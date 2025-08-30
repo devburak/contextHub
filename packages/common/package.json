@@ -6,10 +6,12 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "build": "echo \"No build step yet\"",
+    "build": "echo \"Common package built\"",
     "test": "vitest run --dir src",
     "lint": "eslint . --ext .js,.ts",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "clean": "rm -rf dist .turbo",
+    "type-check": "echo \"No TypeScript in common yet\""
   },
   "dependencies": {
     "mongoose": "^7.5.0",

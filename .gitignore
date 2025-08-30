@@ -3,6 +3,9 @@ node_modules/
 .pnpm-debug.log*
 .pnpm/
 
+# Turbo
+.turbo/
+
 # Environment variables
 .env
 .env.local

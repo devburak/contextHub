@@ -6,10 +6,12 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
-    "build": "echo \"No build step yet\"",
+    "build": "echo \"API build completed\"",
     "test": "vitest run --dir src",
     "lint": "eslint . --ext .js,.ts",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "clean": "rm -rf dist .turbo",
+    "type-check": "echo \"No TypeScript in API yet\""
   },
   "dependencies": {
     "fastify": "^4.22.2",

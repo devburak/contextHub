@@ -8,7 +8,9 @@
     "build": "echo 'Admin build not yet implemented.'",
     "test": "echo 'No admin tests yet.'",
     "lint": "echo 'No admin linting yet.'",
-    "format": "echo 'No admin formatting yet.'"
+    "format": "echo 'No admin formatting yet.'",
+    "clean": "rm -rf dist .turbo .next build",
+    "type-check": "echo 'No TypeScript in admin yet.'"
   },
   "dependencies": {}
 }
