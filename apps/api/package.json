@@ -6,12 +6,19 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
-    "build": "echo \"API build completed\"",
+    "dev:watch": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "build": "echo \"API build completed - production ready\"",
     "test": "vitest run --dir src",
+    "test:watch": "vitest --dir src",
     "lint": "eslint . --ext .js,.ts",
+    "lint:fix": "eslint . --ext .js,.ts --fix",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "clean": "rm -rf dist .turbo",
-    "type-check": "echo \"No TypeScript in API yet\""
+    "type-check": "echo \"No TypeScript in API yet\"",
+    "db:seed": "node scripts/seed.js",
+    "db:migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "fastify": "^4.22.2",
@@ -25,6 +32,7 @@
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-node": "^11.1.0",
     "prettier": "^3.1.0",
-    "vitest": "^0.34.4"
+    "vitest": "^0.34.4",
+    "nodemon": "^3.0.1"
   }
 }

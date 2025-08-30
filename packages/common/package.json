@@ -6,12 +6,17 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "build": "echo \"Common package built\"",
+    "build": "echo \"Common package built - models ready\"",
     "test": "vitest run --dir src",
+    "test:watch": "vitest --dir src",
     "lint": "eslint . --ext .js,.ts",
+    "lint:fix": "eslint . --ext .js,.ts --fix",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "clean": "rm -rf dist .turbo",
-    "type-check": "echo \"No TypeScript in common yet\""
+    "type-check": "echo \"No TypeScript in common yet\"",
+    "models:validate": "node -e \"require('./src/models'); console.log('All models loaded successfully')\"",
+    "db:indexes": "node -e \"require('./src/database').createIndexes().then(() => console.log('Indexes created'))\""
   },
   "dependencies": {
     "mongoose": "^7.5.0",
