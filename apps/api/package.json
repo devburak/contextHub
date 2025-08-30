@@ -1,0 +1,27 @@
+{
+  "name": "@contextHub/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fastify back‑end service for contextHub",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node src/server.js",
+    "build": "echo \"No build step yet\"",
+    "test": "vitest run --dir src",
+    "lint": "eslint . --ext .js,.ts",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "fastify": "^4.22.2",
+    "@fastify/jwt": "^7.2.0",
+    "dotenv": "^16.3.1",
+    "fastify-plugin": "^4.5.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.49.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-node": "^11.1.0",
+    "prettier": "^3.1.0",
+    "vitest": "^0.34.4"
+  }
+}
