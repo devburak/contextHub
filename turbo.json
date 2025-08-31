@@ -1,0 +1,46 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**", ".next/**", "!.next/cache/**"],
+      "inputs": ["src/**", "package.json"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
+    "start": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["build"]
+    },
+    "lint": {
+      "dependsOn": ["^lint"],
+      "inputs": ["src/**/*.{js,ts,jsx,tsx}", "*.{js,ts}", ".eslintrc.*"]
+    },
+    "test": {
+      "dependsOn": ["^test"],
+      "inputs": ["src/**/*.{js,ts,jsx,tsx}", "test/**/*", "spec/**/*", "**/*.test.*", "**/*.spec.*"]
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "format": {
+      "dependsOn": ["^format"],
+      "inputs": ["src/**/*.{js,ts,jsx,tsx}", "*.{js,ts,json}"],
+      "outputs": ["src/**/*.{js,ts,jsx,tsx}", "*.{js,ts,json}"]
+    },
+    "type-check": {
+      "dependsOn": ["^type-check"],
+      "inputs": ["src/**/*.{ts,tsx}", "tsconfig.json"]
+    },
+    "clean": {
+      "cache": false
+    }
+  },
+  "globalDependencies": [".env", ".env.local", ".env.development", ".env.production"],
+  "globalEnv": ["NODE_ENV", "PORT", "MONGODB_URI", "JWT_SECRET", "MONGO_USER", "MONGO_PASSWORD"]
+}

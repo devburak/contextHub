@@ -1,17 +1,28 @@
 {
-  "name": "contextHub",
+  "name": "contexthub",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.13.1",
   "description": "Multi‑tenant headless CMS and content services platform.",
   "license": "MIT",
   "scripts": {
-    "dev:api": "pnpm --filter @contextHub/api run dev",
-    "dev:admin": "pnpm --filter @contextHub/admin run dev",
-    "dev": "pnpm run dev:api",
-    "build": "pnpm --recursive run build",
-    "test": "pnpm --recursive run test",
-    "lint": "pnpm --recursive run lint",
-    "format": "pnpm --recursive run format"
+    "dev": "turbo dev",
+    "dev:api": "turbo dev --filter=@contexthub/api",
+    "dev:admin": "turbo dev --filter=@contexthub/admin",
+    "dev:parallel": "turbo dev --parallel",
+    "build": "turbo build",
+    "build:api": "turbo build --filter=@contexthub/api",
+    "build:admin": "turbo build --filter=@contexthub/admin",
+    "test": "turbo test",
+    "test:watch": "turbo test:watch",
+    "lint": "turbo lint",
+    "lint:fix": "turbo lint -- --fix",
+    "format": "turbo format",
+    "format:check": "turbo format -- --check",
+    "type-check": "turbo type-check",
+    "clean": "turbo clean",
+    "db:seed": "turbo dev --filter=@contexthub/api -- --seed",
+    "db:migrate": "turbo dev --filter=@contexthub/api -- --migrate"
   },
   "workspaces": [
     "apps/*",
@@ -19,5 +30,8 @@
   ],
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.6"
   }
 }

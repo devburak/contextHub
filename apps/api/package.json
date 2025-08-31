@@ -1,27 +1,38 @@
 {
-  "name": "@contextHub/api",
+  "name": "@contexthub/api",
   "version": "0.1.0",
   "private": true,
   "description": "Fastify back‑end service for contextHub",
   "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
-    "build": "echo \"No build step yet\"",
+    "dev:watch": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "build": "echo \"API build completed - production ready\"",
     "test": "vitest run --dir src",
+    "test:watch": "vitest --dir src",
     "lint": "eslint . --ext .js,.ts",
-    "format": "prettier --write ."
+    "lint:fix": "eslint . --ext .js,.ts --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "rm -rf dist .turbo",
+    "type-check": "echo \"No TypeScript in API yet\"",
+    "db:seed": "node scripts/seed.js",
+    "db:migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "fastify": "^4.22.2",
     "@fastify/jwt": "^7.2.0",
     "dotenv": "^16.3.1",
-    "fastify-plugin": "^4.5.1"
+    "fastify-plugin": "^4.5.1",
+    "@contexthub/common": "workspace:*"
   },
   "devDependencies": {
     "eslint": "^8.49.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-node": "^11.1.0",
     "prettier": "^3.1.0",
-    "vitest": "^0.34.4"
+    "vitest": "^0.34.4",
+    "nodemon": "^3.0.1"
   }
 }

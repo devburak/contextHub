@@ -2,9 +2,11 @@ const fastify = require('fastify');
 const fp = require('fastify-plugin');
 const jwt = require('@fastify/jwt');
 const dotenv = require('dotenv');
+const path = require('path');
+const { database } = require('@contexthub/common');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 // Simple RBAC roles definition.  In later phases this will be replaced by a more robust implementation.
 const ROLES = {
@@ -62,6 +64,9 @@ async function buildServer() {
 
 // Start the server if this file is run directly.  This allows `pnpm dev:api` to run the service.
 async function start() {
+  // Connect to MongoDB first
+  await database.connectDB();
+  
   const app = await buildServer();
   const port = process.env.PORT || 3000;
   try {

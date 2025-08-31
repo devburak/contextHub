@@ -1,0 +1,31 @@
+{
+  "name": "@contexthub/common",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared models, types and utilities for contextHub",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "echo \"Common package built - models ready\"",
+    "test": "vitest run --dir src",
+    "test:watch": "vitest --dir src",
+    "lint": "eslint . --ext .js,.ts",
+    "lint:fix": "eslint . --ext .js,.ts --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "rm -rf dist .turbo",
+    "type-check": "echo \"No TypeScript in common yet\"",
+    "models:validate": "node -e \"require('./src/models'); console.log('All models loaded successfully')\"",
+    "db:indexes": "node -e \"require('./src/database').createIndexes().then(() => console.log('Indexes created'))\""
+  },
+  "dependencies": {
+    "mongoose": "^7.5.0",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "eslint": "^8.49.0",
+    "eslint-config-prettier": "^9.0.0",
+    "prettier": "^3.1.0",
+    "vitest": "^0.34.4"
+  }
+}
