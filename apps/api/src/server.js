@@ -38,25 +38,13 @@ async function buildServer() {
   // Register plugins
   await app.register(jwtPlugin);
 
+  // Register routes
+  await app.register(require('./routes/auth'));
+  await app.register(require('./routes/users'));
+
   // Health check
   app.get('/health', async () => {
     return { status: 'ok', timestamp: Date.now() };
-  });
-
-  // Example protected route
-  app.get('/protected', { preHandler: [app.authenticate] }, async (request) => {
-    return { message: `Hello ${request.user?.sub || 'anonymous'}` };
-  });
-
-  // Example login route (stub).  In later phases this will validate against stored users.
-  app.post('/login', async (request, reply) => {
-    const { username } = request.body || {};
-    if (!username) {
-      return reply.code(400).send({ message: 'Username required' });
-    }
-    // Issue a token with a very simple payload.  Expiration and roles should be added later.
-    const token = app.jwt.sign({ sub: username, role: ROLES.ADMIN }, { expiresIn: '1h' });
-    return { token };
   });
 
   return app;
