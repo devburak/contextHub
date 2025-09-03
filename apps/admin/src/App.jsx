@@ -2,6 +2,7 @@ import { Routes, Route, BrowserRouter } from 'react-router-dom'
 import { useState } from 'react'
 import Layout from './components/Layout.jsx'
 import Login from './pages/auth/Login.jsx'
+import SignUp from './pages/auth/SignUp.jsx'
 import ForgotPassword from './pages/auth/ForgotPassword.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import UserList from './pages/users/UserList.jsx'
@@ -41,6 +42,7 @@ function App() {
         {!token ? (
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<SignUp />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="*" element={<Login />} />
           </Routes>

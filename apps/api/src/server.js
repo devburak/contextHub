@@ -38,9 +38,9 @@ async function buildServer() {
   // Register plugins
   await app.register(jwtPlugin);
 
-  // Register routes
-  await app.register(require('./routes/auth'));
-  await app.register(require('./routes/users'));
+  // Register routes with /api prefix
+  await app.register(require('./routes/auth'), { prefix: '/api' });
+  await app.register(require('./routes/users'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {
@@ -52,13 +52,15 @@ async function buildServer() {
 
 // Start the server if this file is run directly.  This allows `pnpm dev:api` to run the service.
 async function start() {
-  // Connect to MongoDB first
-  await database.connectDB();
+  // Connect to MongoDB first - temporarily commented out for testing
+  // await database.connectDB();
   
   const app = await buildServer();
   const port = process.env.PORT || 3000;
   try {
+    console.log(`Starting server on port ${port}...`);
     await app.listen({ port: Number(port), host: '0.0.0.0' });
+    console.log(`Server listening on port ${port}`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

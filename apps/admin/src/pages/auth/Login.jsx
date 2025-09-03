@@ -104,6 +104,18 @@ export default function Login() {
                 {loginMutation.isPending ? 'Giriş yapılıyor...' : 'Giriş Yap'}
               </button>
             </div>
+
+            <div className="text-center">
+              <span className="text-sm text-gray-600">
+                Hesabınız yok mu?{' '}
+                <Link
+                  to="/signup"
+                  className="font-medium text-blue-600 hover:text-blue-500"
+                >
+                  Yeni Hesap Oluştur
+                </Link>
+              </span>
+            </div>
             
             {loginMutation.isError && (
               <div className="text-red-600 text-sm text-center">

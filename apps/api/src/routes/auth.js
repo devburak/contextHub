@@ -1,8 +1,8 @@
-const AuthService = require('../services/authService');
-const { tenantContext } = require('../middleware/auth');
+const MockAuthService = require('../services/mockAuthService');
+const { tenantContext } = require('../middleware/mockAuth');
 
 async function authRoutes(fastify, options) {
-  const authService = new AuthService(fastify);
+  const authService = new MockAuthService(fastify);
 
   // POST /auth/login - Giriş yap
   fastify.post('/auth/login', {
