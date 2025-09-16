@@ -8,9 +8,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "format": "prettier --write \"src/**/*.{js,jsx}\"",
+    "test": "node ../../scripts/run-tool.mjs vitest",
+    "lint": "node ../../scripts/run-tool.mjs eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "format": "node ../../scripts/run-tool.mjs prettier --write \"src/**/*.{js,jsx}\"",
     "clean": "rm -rf dist .turbo node_modules"
   },
   "dependencies": {
@@ -28,12 +28,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.4",
     "autoprefixer": "^10.4.15",
-    "eslint": "^8.49.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.3",
     "postcss": "^8.4.29",
-    "prettier": "^3.0.3",
-    "vite": "^4.4.9",
-    "vitest": "^0.34.4"
+    "vite": "^4.4.9"
   }
 }

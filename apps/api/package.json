@@ -2,19 +2,19 @@
   "name": "@contexthub/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Fastify back‑end service for contextHub",
+  "description": "Fastify back\u2011end service for contextHub",
   "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
     "dev:watch": "nodemon src/server.js",
     "start": "node src/server.js",
     "build": "echo \"API build completed - production ready\"",
-    "test": "vitest run --dir src",
-    "test:watch": "vitest --dir src",
-    "lint": "eslint . --ext .js,.ts",
-    "lint:fix": "eslint . --ext .js,.ts --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "test": "node ../../scripts/run-tool.mjs vitest run --dir src",
+    "test:watch": "node ../../scripts/run-tool.mjs vitest --dir src",
+    "lint": "node ../../scripts/run-tool.mjs eslint . --ext .js,.ts",
+    "lint:fix": "node ../../scripts/run-tool.mjs eslint . --ext .js,.ts --fix",
+    "format": "node ../../scripts/run-tool.mjs prettier --write .",
+    "format:check": "node ../../scripts/run-tool.mjs prettier --check .",
     "clean": "rm -rf dist .turbo",
     "type-check": "echo \"No TypeScript in API yet\"",
     "db:seed": "node scripts/seed.js",
@@ -30,11 +30,6 @@
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
-    "eslint": "^8.49.0",
-    "eslint-config-prettier": "^9.0.0",
-    "eslint-plugin-node": "^11.1.0",
-    "nodemon": "^3.0.1",
-    "prettier": "^3.1.0",
-    "vitest": "^0.34.4"
+    "nodemon": "^3.0.1"
   }
 }
