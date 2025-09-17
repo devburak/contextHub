@@ -3,12 +3,19 @@ import { useAuth } from '../contexts/AuthContext.jsx'
 export default function Dashboard() {
   const { user } = useAuth()
 
+  console.log('User:', user)
+  console.log('HMR TEST', Date.now())
+
   return (
     <div>
+      {/* DEBUG BADGE (temporary) */}
+      <div className="fixed top-2 right-2 z-50 bg-indigo-600 text-white text-xs px-2 py-1 rounded shadow">
+        DASHBOARD RENDER @ {new Date().toLocaleTimeString()}
+      </div>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Kontrol Paneli</h1>
         <p className="mt-2 text-gray-600">
-          Hoş geldiniz, {user?.name}!
+          Hoş geldiniz, {user?.name}! Burada varlık performansınızın genel bir görünümünü bulabilirsiniz.
         </p>
       </div>
 

@@ -167,6 +167,7 @@ function App() {
     updateMemberships
   ])
 
+ 
   return (
     <BrowserRouter>
       <AuthContext.Provider value={authValue}>
@@ -183,17 +184,19 @@ function App() {
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         ) : (
-          <Layout>
-            <Routes>
+          <Routes>
+            {/* Layout wrapper with nested routes; Layout renders <Outlet /> */}
+            <Route element={<Layout />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/users" element={<UserList />} />
               <Route path="/users/new" element={<CreateUser />} />
               <Route path="/users/:id/edit" element={<EditUser />} />
               <Route path="/varliklar" element={<Tenants />} />
               <Route path="/varliklar/yeni" element={<CreateTenant />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Layout>
+            </Route>
+            {/* Fallback catch-all when authenticated */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         )}
       </AuthContext.Provider>
     </BrowserRouter>
