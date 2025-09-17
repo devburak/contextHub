@@ -7,9 +7,9 @@ class AuthService {
   }
 
   async login(email, password, tenantId) {
-    // Kullanıcıyı bul
-    const user = await User.findOne({ email, tenantId });
-    
+    // Kullanıcıyı email'e göre bul
+    const user = await User.findOne({ email });
+
     if (!user) {
       throw new Error('Invalid credentials');
     }
@@ -20,41 +20,102 @@ class AuthService {
       throw new Error('Invalid credentials');
     }
 
-    // Aktif membership kontrolü
-    const membership = await Membership.findOne({ 
-      userId: user._id, 
-      tenantId, 
-      status: 'active' 
-    });
+    // Aktif membership'leri getir
+    const memberships = await Membership.find({
+      userId: user._id,
+      status: 'active'
+    }).populate('tenantId', 'name slug');
 
-    if (!membership) {
-      throw new Error('User does not have access to this tenant');
+    if (!memberships.length) {
+      throw new Error('User does not have any active tenant access');
     }
 
-    // JWT token oluştur
-    const token = this.fastify.jwt.sign(
-      { 
+    // Tenant seçili ise tek token üret
+    const createToken = (membership) => this.fastify.jwt.sign(
+      {
         sub: user._id.toString(),
         email: user.email,
         role: membership.role,
-        tenantId: tenantId.toString()
+        tenantId: membership.tenantId._id.toString()
       },
       { expiresIn: '24h' }
     );
 
-    // Son giriş zamanını güncelle
+    const mapMembershipPayload = (membership) => ({
+      id: membership._id.toString(),
+      tenantId: membership.tenantId._id.toString(),
+      tenant: {
+        id: membership.tenantId._id.toString(),
+        name: membership.tenantId.name,
+        slug: membership.tenantId.slug
+      },
+      role: membership.role,
+      status: membership.status
+    });
+
+    const resolveMembershipLogin = async (membership) => {
+      const token = createToken(membership);
+      const membershipResponses = memberships.map((item) => ({
+        ...mapMembershipPayload(item),
+        token: createToken(item)
+      }));
+
+      user.lastLoginAt = new Date();
+      await user.save();
+
+      return {
+        token,
+        user: {
+          id: user._id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: membership.role
+        },
+        memberships: membershipResponses,
+        activeMembership: {
+          ...mapMembershipPayload(membership),
+          token
+        },
+        requiresTenantSelection: false
+      };
+    };
+
+    if (tenantId) {
+      const membership = memberships.find((item) =>
+        item.tenantId && item.tenantId._id.toString() === tenantId.toString()
+      );
+
+      if (!membership) {
+        throw new Error('User does not have access to this tenant');
+      }
+
+      return resolveMembershipLogin(membership);
+    }
+
+    // Tek tenant varsa otomatik giriş
+    if (memberships.length === 1) {
+      return resolveMembershipLogin(memberships[0]);
+    }
+
+    // Tenant seçilmediyse, seçim için membership listesini döndür
     user.lastLoginAt = new Date();
     await user.save();
 
+    const membershipPayloads = memberships.map((membership) => ({
+      ...mapMembershipPayload(membership),
+      token: createToken(membership)
+    }));
+
     return {
-      token,
+      requiresTenantSelection: true,
       user: {
         id: user._id,
         email: user.email,
         firstName: user.firstName,
-        lastName: user.lastName,
-        role: membership.role
-      }
+        lastName: user.lastName
+      },
+      memberships: membershipPayloads
     };
   }
 

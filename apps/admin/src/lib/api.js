@@ -15,6 +15,19 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+
+  const isAuthRequest = config.url?.startsWith('/auth')
+  const tenantId = localStorage.getItem('tenantId')
+
+  if (tenantId && !isAuthRequest) {
+    config.headers['X-Tenant-ID'] = tenantId
+    if (!config.params || typeof config.params !== 'object') {
+      config.params = {}
+    }
+    if (!('tenantId' in config.params)) {
+      config.params.tenantId = tenantId
+    }
+  }
   return config
 })
 

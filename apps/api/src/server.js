@@ -1,6 +1,7 @@
 const fastify = require('fastify');
 const fp = require('fastify-plugin');
 const jwt = require('@fastify/jwt');
+const cors = require('@fastify/cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const { database } = require('@contexthub/common');
@@ -36,11 +37,23 @@ async function buildServer() {
   const app = fastify({ logger: true });
 
   // Register plugins
+  const allowedOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
+  await app.register(cors, {
+    origin: allowedOrigins.length ? allowedOrigins : true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+    credentials: true
+  });
   await app.register(jwtPlugin);
 
   // Register routes with /api prefix
   await app.register(require('./routes/auth'), { prefix: '/api' });
   await app.register(require('./routes/users'), { prefix: '/api' });
+  await app.register(require('./routes/tenants'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {
@@ -52,8 +65,8 @@ async function buildServer() {
 
 // Start the server if this file is run directly.  This allows `pnpm dev:api` to run the service.
 async function start() {
-  // Connect to MongoDB first - temporarily commented out for testing
-  // await database.connectDB();
+  // Connect to MongoDB before starting the server
+  await database.connectDB();
   
   const app = await buildServer();
   const port = process.env.PORT || 3000;

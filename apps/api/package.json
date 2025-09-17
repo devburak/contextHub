@@ -2,7 +2,7 @@
   "name": "@contexthub/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Fastify back\u2011end service for contextHub",
+  "description": "Fastify back‑end service for contextHub",
   "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@contexthub/common": "workspace:*",
+    "@fastify/cors": "^8.5.0",
     "@fastify/jwt": "^7.2.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.3.1",

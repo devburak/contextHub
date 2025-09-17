@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
@@ -11,12 +11,19 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const { login } = useAuth()
+  const navigate = useNavigate()
 
   const loginMutation = useMutation({
     mutationFn: () => authAPI.login(email, password),
     onSuccess: (response) => {
-      const { user, token } = response.data
-      login(user, token)
+      const data = response.data
+      login(data)
+
+      if (data.requiresTenantSelection) {
+        navigate('/select-tenant')
+      } else {
+        navigate('/')
+      }
     },
     onError: (error) => {
       console.error('Login failed:', error.response?.data?.message || error.message)

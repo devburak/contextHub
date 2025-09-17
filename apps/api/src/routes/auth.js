@@ -1,33 +1,24 @@
-const MockAuthService = require('../services/mockAuthService');
-const { tenantContext } = require('../middleware/mockAuth');
+const AuthService = require('../services/authService');
 
 async function authRoutes(fastify, options) {
-  const authService = new MockAuthService(fastify);
+  const authService = new AuthService(fastify);
 
   // POST /auth/login - Giriş yap
   fastify.post('/auth/login', {
-    preHandler: [tenantContext],
     schema: {
       body: {
         type: 'object',
         properties: {
           email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 1 }
-        },
-        required: ['email', 'password']
-      },
-      querystring: {
-        type: 'object',
-        properties: {
+          password: { type: 'string', minLength: 1 },
           tenantId: { type: 'string' }
         },
-        required: ['tenantId']
+        required: ['email', 'password']
       },
       response: {
         200: {
           type: 'object',
           properties: {
-            token: { type: 'string' },
             user: {
               type: 'object',
               properties: {
@@ -37,6 +28,47 @@ async function authRoutes(fastify, options) {
                 lastName: { type: 'string' },
                 role: { type: 'string' }
               }
+            },
+            token: { type: 'string' },
+            memberships: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  tenantId: { type: 'string' },
+                  tenant: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string' },
+                      slug: { type: 'string' }
+                    }
+                  },
+                  role: { type: 'string' },
+                  status: { type: 'string' },
+                  token: { type: 'string' }
+                }
+              }
+            },
+            requiresTenantSelection: { type: 'boolean' },
+            activeMembership: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                tenantId: { type: 'string' },
+                tenant: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    slug: { type: 'string' }
+                  }
+                },
+                role: { type: 'string' },
+                status: { type: 'string' },
+                token: { type: 'string' }
+              }
             }
           }
         }
@@ -44,8 +76,9 @@ async function authRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
-      const { email, password } = request.body;
-      const result = await authService.login(email, password, request.tenantId);
+      const { email, password, tenantId: tenantFromBody } = request.body;
+      const tenantId = tenantFromBody || request.query.tenantId;
+      const result = await authService.login(email, password, tenantId);
       
       return reply.send(result);
     } catch (error) {

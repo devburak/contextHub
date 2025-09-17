@@ -1,18 +1,19 @@
 import { Fragment, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon } from '@heroicons/react/24/outline'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { user, logout } = useAuth()
+  const { user, memberships, activeMembership, selectTenant, logout } = useAuth()
   const location = useLocation()
 
   const navigation = [
     { name: 'Kontrol Paneli', href: '/', icon: CogIcon },
     { name: 'Kullanıcılar', href: '/users', icon: UserIcon },
+    { name: 'Varlıklar', href: '/varliklar', icon: BuildingOfficeIcon }
   ]
 
   function classNames(...classes) {
@@ -163,10 +164,49 @@ export default function Layout() {
             <div className="h-6 w-px bg-gray-200 lg:hidden" aria-hidden="true" />
 
             <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
-              <div className="flex flex-1"></div>
+              <div className="flex flex-1 items-center">
+                {memberships.length > 0 && (
+                  <div className="relative">
+                    <label htmlFor="tenant-select" className="sr-only">
+                      Varlık seç
+                    </label>
+                    <select
+                      id="tenant-select"
+                      value={activeMembership?.tenantId || ''}
+                      onChange={(event) => {
+                        const membership = memberships.find((item) => item.tenantId === event.target.value)
+                        if (membership) {
+                          selectTenant(membership)
+                        }
+                      }}
+                      className="block w-full rounded-md border-gray-300 py-1.5 pl-3 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                    >
+                      {memberships.map((membership) => (
+                        <option key={membership.tenantId} value={membership.tenantId}>
+                          {membership.tenant?.name || 'Varlık'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-x-4 lg:gap-x-6">
+                <Link
+                  to="/varliklar/yeni"
+                  className="hidden md:inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  <PlusIcon className="h-4 w-4" aria-hidden="true" />
+                  Yeni Varlık Oluştur
+                </Link>
+                <Link
+                  to="/varliklar/yeni"
+                  className="md:hidden inline-flex items-center rounded-full border border-blue-600 p-2 text-blue-600 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  aria-label="Yeni varlık oluştur"
+                >
+                  <PlusIcon className="h-4 w-4" aria-hidden="true" />
+                </Link>
                 <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200" aria-hidden="true" />
-                
+
                 {/* Profile dropdown */}
                 <div className="relative">
                   <button
@@ -189,7 +229,7 @@ export default function Layout() {
             </div>
           </div>
 
-          <main className="py-10">
+          <main className="py-10 bg-gray-50 min-h-screen">
             <div className="px-4 sm:px-6 lg:px-8">
               <Outlet />
             </div>
