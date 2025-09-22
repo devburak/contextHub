@@ -44,9 +44,9 @@ async function authenticate(request, reply) {
     }
 
     // User'ı veritabanından getir
-    const user = await User.findOne({ _id: userId, tenantId }).select('-password');
+    const user = await User.findOne({ _id: userId }).select('-password');
     if (!user) {
-      return reply.code(401).send({ error: 'User not found', message: 'User does not exist or not in this tenant' });
+      return reply.code(401).send({ error: 'User not found', message: 'User does not exist' });
     }
 
     // User'ın bu tenant'taki membership'ini kontrol et
