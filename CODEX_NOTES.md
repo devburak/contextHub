@@ -13,17 +13,22 @@
 ## Change Log
 - Adjusted `apps/api/src/middleware/auth.js:47` so user lookup during auth only requires the `_id`; this keeps multi-tenant members authenticated when they switch tenants with a freshly issued membership token.
 - Updated root `.env` with `R2_PUBLIC_DOMAIN`, upload limit, and default image variants to prepare Cloudflare R2 as the public media CDN (now exposes tenant files under `https://contextstore.ikon-x.com.tr/{slug}/...`).
+- Expanded media schema (`packages/common/src/models/Media.js`) with tenant slug snapshots, file naming metadata, variant details, and status fields; introduced R2-backed media service plus `/api/media` routes supporting presigned uploads, automatic variant generation (including WebP thumbnails), and listing with filters.
+- Added admin-side media API client and a Media Library page featuring drag & drop uploads, presigned PUT flow, filtering, and listing; linked it into routing/navigation so tenants can manage assets from the UI.
+- Tenant picker now fetches memberships with fresh tenant-scoped JWTs so switching assets keeps the correct token in localStorage (`apps/admin/src/pages/tenants/Tenants.jsx`).
+- Normalised R2 endpoint handling and forced path-style S3 requests so presigned URLs use `https://<account>.r2.cloudflarestorage.com/<bucket>/...` regardless of env formatting (`apps/api/src/services/mediaService.js`).
 
 ## Maintenance Notes
 - Update this file after every code or config change handled by Codex so we keep a running history and high-level context for the project.
 
 ## Media Roadmap
 - Backend
-  - [ ] Create an S3 client wrapper (likely via `@aws-sdk/client-s3`) that reads R2 credentials, bucket, and image variant sizes from environment variables and resolves public URLs using `R2_PUBLIC_DOMAIN` and tenant slug.
-  - [ ] Introduce `/media` routes (list, upload, update metadata, delete) guarded by tenant auth; enforce a 100 MB payload limit and accept multipart uploads with variant generation (Sharp) for `thumbnail`, `medium`, `large`, plus original.
-  - [ ] Persist file metadata to `Media` model (size, mime, variants, tags, alt text, uploader) and allow filtering by tag, type, and text search.
+  - [x] Create an S3 client wrapper (via `@aws-sdk/client-s3`) that reads R2 credentials, bucket, and image variant sizes from environment variables and resolves public URLs using `R2_PUBLIC_DOMAIN` and tenant slug.
+  - [x] Introduce `/media` routes (list, presign/upload registration) guarded by tenant auth; enforce a 100 MB payload limit and generate variants with Sharp (`thumbnail`, `medium`, `large` in WebP) alongside the original.
+  - [x] Persist file metadata to `Media` model (size, mime, variants, tags, alt text, uploader) and allow filtering by tag, type, and text search.
 - Admin UI
-  - [ ] Build a “Media / Ortam” section with a grid/list view, client-side filters (type, tags, text), and forms to edit alt text and tags.
-  - [ ] Implement an upload dialog supporting drag & drop, per-tenant slug-based foldering, and progress feedback; ensure errors respect server limits.
+  - [x] Build a “Media / Ortam” section with a grid/list view, client-side filters (type, tags, text), and basic drag & drop uploads.
+  - [ ] Add forms to edit alt text, caption, tags, and other metadata inline.
+  - [ ] Enhance upload flow with richer progress tracking and error surfacing (e.g., per-file state, variant previews).
 - Integration
   - [ ] Expose a reusable picker component so other forms (e.g., content editors) can select existing assets, and propagate selected file metadata (URL, alt, variants) through the app.

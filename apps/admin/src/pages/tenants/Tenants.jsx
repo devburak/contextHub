@@ -9,7 +9,7 @@ export default function Tenants() {
   const tenantsQuery = useQuery({
     queryKey: ['tenants', 'list'],
     queryFn: async () => {
-      const { tenants } = await tenantAPI.getTenants()
+      const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
       updateMemberships(tenants)
       return tenants
     }

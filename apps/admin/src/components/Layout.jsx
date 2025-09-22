@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
@@ -13,6 +13,7 @@ export default function Layout() {
   const navigation = [
     { name: 'Kontrol Paneli', href: '/', icon: CogIcon },
     { name: 'Kullanıcılar', href: '/users', icon: UserIcon },
+    { name: 'Medya', href: '/media', icon: PhotoIcon },
     { name: 'Varlıklar', href: '/varliklar', icon: BuildingOfficeIcon }
   ]
 
