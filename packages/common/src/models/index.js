@@ -13,6 +13,7 @@ const Term = require('./Term');
 const Tag = require('./Tag');
 const Navigation = require('./Navigation');
 const Media = require('./Media');
+const Category = require('./Category');
 const FormDefinition = require('./FormDefinition');
 const FormResponse = require('./FormResponse');
 const Event = require('./Event');
@@ -36,6 +37,7 @@ module.exports = {
   Tag,
   Navigation,
   Media,
+  Category,
   FormDefinition,
   FormResponse,
   Event,

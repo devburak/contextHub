@@ -24,4 +24,24 @@ export const mediaAPI = {
     })
     return response.data.media
   },
+
+  update: async (id, payload) => {
+    const response = await apiClient.patch(`/media/${id}`, payload)
+    return response.data.media
+  },
+
+  remove: async (id) => {
+    await apiClient.delete(`/media/${id}`)
+    return true
+  },
+
+  bulkDelete: async (ids) => {
+    const response = await apiClient.post('/media/bulk/delete', { ids })
+    return response.data
+  },
+
+  bulkTag: async ({ ids, tags, mode = 'add' }) => {
+    const response = await apiClient.post('/media/bulk/tags', { ids, tags, mode })
+    return response.data
+  },
 }

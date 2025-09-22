@@ -1,9 +1,10 @@
 const { Media, Tenant } = require('@contexthub/common')
-const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3')
+const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner')
 const sharp = require('sharp')
 const crypto = require('crypto')
 const path = require('path')
+const mongoose = require('mongoose')
 
 const MAX_UPLOAD_BYTES = Number(process.env.R2_UPLOAD_MAX_MB || 100) * 1024 * 1024
 const PUBLIC_DOMAIN = (process.env.R2_PUBLIC_DOMAIN || '').replace(/\/$/, '')
@@ -44,6 +45,8 @@ const s3Client = new S3Client({
     secretAccessKey: SECRET_KEY,
   },
 })
+
+const ObjectId = mongoose.Types.ObjectId
 
 const DEFAULT_VARIANTS = [
   { name: 'thumbnail', width: 150, height: 150, fit: 'cover' },
@@ -107,6 +110,32 @@ function buildPublicUrl(key) {
 function ensureKeyMatchesTenant(key, tenantSlug) {
   if (!key.startsWith(`${tenantSlug}/`)) {
     throw new Error('Provided key does not match tenant slug')
+  }
+}
+
+function toObjectIdList(ids = []) {
+  if (!Array.isArray(ids)) return []
+  return ids
+    .map((id) => (ObjectId.isValid(id) ? new ObjectId(id) : null))
+    .filter(Boolean)
+}
+
+function toObjectId(id) {
+  if (!id || !ObjectId.isValid(id)) return null
+  return new ObjectId(id)
+}
+
+async function deleteObjectsFromStorage(keys = []) {
+  const uniqueKeys = Array.from(new Set(keys.filter(Boolean)))
+  for (const key of uniqueKeys) {
+    try {
+      await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
+    } catch (error) {
+      if (error?.$metadata?.httpStatusCode === 404) {
+        continue
+      }
+      throw error
+    }
   }
 }
 
@@ -369,8 +398,135 @@ async function listMedia({ tenantId, filters = {}, pagination = {} }) {
   }
 }
 
+function sanitiseTextInput(value) {
+  if (value === null || value === undefined) return ''
+  return String(value).trim()
+}
+
+async function updateMediaMetadata({ tenantId, mediaId, payload = {}, userId }) {
+  if (!ObjectId.isValid(mediaId)) {
+    throw new Error('Invalid media identifier')
+  }
+
+  const updateSet = {}
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'originalName')) {
+    updateSet.originalName = sanitiseTextInput(payload.originalName)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'altText')) {
+    updateSet.altText = sanitiseTextInput(payload.altText)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'caption')) {
+    updateSet.caption = sanitiseTextInput(payload.caption)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'description')) {
+    updateSet.description = sanitiseTextInput(payload.description)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'tags')) {
+    if (Array.isArray(payload.tags)) {
+      updateSet.tags = normaliseTags(payload.tags)
+    } else if (typeof payload.tags === 'string') {
+      updateSet.tags = normaliseTags(payload.tags.split(','))
+    } else {
+      updateSet.tags = []
+    }
+  }
+
+  if (!Object.keys(updateSet).length) {
+    throw new Error('No metadata fields provided for update')
+  }
+
+  const updaterId = toObjectId(userId)
+  if (updaterId) {
+    updateSet.updatedBy = updaterId
+  }
+
+  const updated = await Media.findOneAndUpdate(
+    { _id: new ObjectId(mediaId), tenantId },
+    { $set: updateSet },
+    { new: true }
+  )
+
+  if (!updated) {
+    throw new Error('Media not found')
+  }
+
+  return updated.toObject()
+}
+
+async function deleteMedia({ tenantId, mediaId }) {
+  if (!ObjectId.isValid(mediaId)) {
+    throw new Error('Invalid media identifier')
+  }
+
+  const media = await Media.findOne({ _id: new ObjectId(mediaId), tenantId })
+  if (!media) {
+    return { deleted: 0 }
+  }
+
+  const keysToRemove = [media.key, ...(media.variants || []).map((variant) => variant.key)]
+  await deleteObjectsFromStorage(keysToRemove)
+  await Media.deleteOne({ _id: media._id, tenantId })
+
+  return { deleted: 1 }
+}
+
+async function bulkDeleteMedia({ tenantId, mediaIds = [] }) {
+  const objectIds = toObjectIdList(mediaIds)
+  if (!objectIds.length) {
+    return { deleted: 0 }
+  }
+
+  const mediaList = await Media.find({ tenantId, _id: { $in: objectIds } })
+  if (!mediaList.length) {
+    return { deleted: 0 }
+  }
+
+  const keys = mediaList.flatMap((item) => [item.key, ...(item.variants || []).map((variant) => variant.key)])
+  await deleteObjectsFromStorage(keys)
+  const result = await Media.deleteMany({ tenantId, _id: { $in: objectIds } })
+
+  return { deleted: result.deletedCount || mediaList.length }
+}
+
+async function bulkTagMedia({ tenantId, mediaIds = [], tags = [], mode = 'add', userId }) {
+  const objectIds = toObjectIdList(mediaIds)
+  if (!objectIds.length) {
+    return { modified: 0 }
+  }
+
+  const normalisedTags = normaliseTags(tags)
+  if (!normalisedTags.length) {
+    return { modified: 0 }
+  }
+
+  const filter = { tenantId, _id: { $in: objectIds } }
+  const update = { $set: { updatedAt: new Date() } }
+  const updaterId = toObjectId(userId)
+  if (updaterId) {
+    update.$set.updatedBy = updaterId
+  }
+
+  if (mode === 'replace') {
+    update.$set.tags = normalisedTags
+  } else {
+    update.$addToSet = { tags: { $each: normalisedTags } }
+  }
+
+  const result = await Media.updateMany(filter, update)
+  return { modified: result.modifiedCount || 0 }
+}
+
 module.exports = {
   generatePresignedUpload,
   completeUpload,
   listMedia,
+  updateMediaMetadata,
+  deleteMedia,
+  bulkDeleteMedia,
+  bulkTagMedia,
 }

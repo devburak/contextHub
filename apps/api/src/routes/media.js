@@ -152,6 +152,154 @@ async function mediaRoutes(fastify) {
       })
     }
   })
+
+  fastify.patch('/media/:id', {
+    preHandler: [authenticate, requireAuthor],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+        },
+        required: ['id'],
+      },
+      body: {
+        type: 'object',
+        properties: {
+          originalName: { type: 'string' },
+          altText: { type: 'string' },
+          caption: { type: 'string' },
+          description: { type: 'string' },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async function updateHandler(request, reply) {
+    try {
+      const media = await mediaService.updateMediaMetadata({
+        tenantId: request.tenantId,
+        mediaId: request.params.id,
+        payload: request.body || {},
+        userId: request.user?._id?.toString(),
+      })
+
+      return reply.send({ media })
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to update media metadata')
+      return reply.code(400).send({
+        error: 'MediaUpdateFailed',
+        message: error.message,
+      })
+    }
+  })
+
+  fastify.delete('/media/:id', {
+    preHandler: [authenticate, requireAuthor],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+        },
+        required: ['id'],
+      },
+    },
+  }, async function deleteHandler(request, reply) {
+    try {
+      const result = await mediaService.deleteMedia({
+        tenantId: request.tenantId,
+        mediaId: request.params.id,
+      })
+
+      if (!result.deleted) {
+        return reply.code(404).send({ error: 'MediaNotFound', message: 'Media not found' })
+      }
+
+      return reply.send({ success: true })
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to delete media item')
+      return reply.code(400).send({
+        error: 'MediaDeleteFailed',
+        message: error.message,
+      })
+    }
+  })
+
+  fastify.post('/media/bulk/tags', {
+    preHandler: [authenticate, requireAuthor],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          ids: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+          },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+          },
+          mode: { type: 'string', enum: ['add', 'replace'] },
+        },
+        required: ['ids', 'tags'],
+      },
+    },
+  }, async function bulkTagHandler(request, reply) {
+    try {
+      const result = await mediaService.bulkTagMedia({
+        tenantId: request.tenantId,
+        mediaIds: request.body.ids,
+        tags: request.body.tags,
+        mode: request.body.mode || 'add',
+        userId: request.user?._id?.toString(),
+      })
+
+      return reply.send(result)
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to apply bulk tags')
+      return reply.code(400).send({
+        error: 'MediaBulkTagFailed',
+        message: error.message,
+      })
+    }
+  })
+
+  fastify.post('/media/bulk/delete', {
+    preHandler: [authenticate, requireAuthor],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          ids: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+          },
+        },
+        required: ['ids'],
+      },
+    },
+  }, async function bulkDeleteHandler(request, reply) {
+    try {
+      const result = await mediaService.bulkDeleteMedia({
+        tenantId: request.tenantId,
+        mediaIds: request.body.ids,
+      })
+
+      return reply.send(result)
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to delete media items in bulk')
+      return reply.code(400).send({
+        error: 'MediaBulkDeleteFailed',
+        message: error.message,
+      })
+    }
+  })
 }
 
 module.exports = mediaRoutes

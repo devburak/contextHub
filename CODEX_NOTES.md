@@ -17,6 +17,9 @@
 - Added admin-side media API client and a Media Library page featuring drag & drop uploads, presigned PUT flow, filtering, and listing; linked it into routing/navigation so tenants can manage assets from the UI.
 - Tenant picker now fetches memberships with fresh tenant-scoped JWTs so switching assets keeps the correct token in localStorage (`apps/admin/src/pages/tenants/Tenants.jsx`).
 - Normalised R2 endpoint handling and forced path-style S3 requests so presigned URLs use `https://<account>.r2.cloudflarestorage.com/<bucket>/...` regardless of env formatting (`apps/api/src/services/mediaService.js`).
+- Media API now supports metadata editing, per-item deletion, and bulk tag/delete operations; the admin media page gained a modal inspector with edit form, multi-select tooling, and tag assignment workflows.
+- Updated Media UI actions to copy the public CDN URL directly from cards or the detail modal, replacing the old open-in-new-tab link.
+- Introduced hierarchical tenant categories with slug enforcement, default ordering attributes, and REST CRUD endpoints; admin console now has a “Kategoriler” section for tree management.
 
 ## Maintenance Notes
 - Update this file after every code or config change handled by Codex so we keep a running history and high-level context for the project.
@@ -28,7 +31,11 @@
   - [x] Persist file metadata to `Media` model (size, mime, variants, tags, alt text, uploader) and allow filtering by tag, type, and text search.
 - Admin UI
   - [x] Build a “Media / Ortam” section with a grid/list view, client-side filters (type, tags, text), and basic drag & drop uploads.
-  - [ ] Add forms to edit alt text, caption, tags, and other metadata inline.
+  - [x] Add forms to edit alt text, caption, tags, and other metadata inline (modal inspector with per-item delete).
   - [ ] Enhance upload flow with richer progress tracking and error surfacing (e.g., per-file state, variant previews).
+- Categories
+  - [x] Implement hierarchical category CRUD with default sort attributes.
+  - [ ] Surface per-category overrides for additional settings (e.g., featured flags, filter presets).
+  - [ ] Provide drag-and-drop reordering for sibling categories in the admin UI.
 - Integration
   - [ ] Expose a reusable picker component so other forms (e.g., content editors) can select existing assets, and propagate selected file metadata (URL, alt, variants) through the app.

@@ -1,10 +1,15 @@
-import { useState, useMemo, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Dialog, Transition } from '@headlessui/react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowPathIcon,
   CloudArrowUpIcon,
+  DocumentDuplicateIcon,
   DocumentIcon,
   PhotoIcon,
+  TagIcon,
+  TrashIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 import { mediaAPI } from '../../lib/mediaAPI.js'
@@ -20,6 +25,21 @@ export default function MediaLibrary() {
   const [search, setSearch] = useState('')
   const [mimeFilter, setMimeFilter] = useState('')
   const [lastUploadedNames, setLastUploadedNames] = useState([])
+  const [selectedIds, setSelectedIds] = useState([])
+  const [showBulkTagPanel, setShowBulkTagPanel] = useState(false)
+  const [bulkTagInput, setBulkTagInput] = useState('')
+  const [bulkTagMode, setBulkTagMode] = useState('add')
+  const [activeItem, setActiveItem] = useState(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [formState, setFormState] = useState({
+    originalName: '',
+    altText: '',
+    caption: '',
+    description: '',
+    tags: '',
+  })
+  const [copiedId, setCopiedId] = useState(null)
+
   const queryClient = useQueryClient()
 
   const queryParams = useMemo(() => ({
@@ -30,10 +50,7 @@ export default function MediaLibrary() {
 
   const mediaQuery = useQuery({
     queryKey: ['media', queryParams],
-    queryFn: async () => {
-      const data = await mediaAPI.list(queryParams)
-      return data
-    },
+    queryFn: async () => mediaAPI.list(queryParams),
     keepPreviousData: true,
   })
 
@@ -55,6 +72,7 @@ export default function MediaLibrary() {
           },
           body: file,
         })
+
         if (!uploadResponse.ok) {
           const errorText = await uploadResponse.text()
           throw new Error(`Dosya yüklenemedi: ${file.name}. Sunucu yanıtı: ${uploadResponse.status} ${errorText}`)
@@ -76,6 +94,55 @@ export default function MediaLibrary() {
     },
   })
 
+  const updateMetadataMutation = useMutation({
+    mutationFn: ({ id, payload }) => mediaAPI.update(id, payload),
+    onSuccess: (media) => {
+      setActiveItem(media)
+      setLastUploadedNames([])
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => mediaAPI.remove(id),
+    onSuccess: () => {
+      closeModal()
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+    },
+  })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids) => mediaAPI.bulkDelete(ids),
+    onSuccess: () => {
+      clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+    },
+  })
+
+  const bulkTagMutation = useMutation({
+    mutationFn: ({ ids, tags, mode }) => mediaAPI.bulkTag({ ids, tags, mode }),
+    onSuccess: () => {
+      setShowBulkTagPanel(false)
+      setBulkTagInput('')
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+    },
+  })
+
+  useEffect(() => {
+    if (!activeItem) {
+      setFormState({ originalName: '', altText: '', caption: '', description: '', tags: '' })
+      return
+    }
+
+    setFormState({
+      originalName: activeItem.originalName || '',
+      altText: activeItem.altText || '',
+      caption: activeItem.caption || '',
+      description: activeItem.description || '',
+      tags: Array.isArray(activeItem.tags) && activeItem.tags.length ? activeItem.tags.join(', ') : '',
+    })
+  }, [activeItem])
+
   const handleFiles = useCallback((fileList) => {
     const files = Array.from(fileList || [])
     if (!files.length) return
@@ -93,7 +160,95 @@ export default function MediaLibrary() {
     event.preventDefault()
   }, [])
 
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+  }, [])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds([])
+    setShowBulkTagPanel(false)
+    setBulkTagInput('')
+  }, [])
+
+  const openModal = useCallback((item) => {
+    setActiveItem(item)
+    setIsModalOpen(true)
+  }, [])
+
+  const closeModal = useCallback(() => {
+    setIsModalOpen(false)
+    setActiveItem(null)
+  }, [])
+
+  const handleModalSave = useCallback(() => {
+    if (!activeItem) return
+
+    const payload = {
+      originalName: formState.originalName,
+      altText: formState.altText,
+      caption: formState.caption,
+      description: formState.description,
+      tags: formState.tags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    }
+
+    updateMetadataMutation.mutate({ id: activeItem._id, payload })
+  }, [activeItem, formState, updateMetadataMutation])
+
+  const handleModalDelete = useCallback(() => {
+    if (!activeItem) return
+    const confirmed = window.confirm('Bu medya öğesini silmek istediğine emin misin? Bu işlem geri alınamaz.')
+    if (!confirmed) return
+    deleteMutation.mutate(activeItem._id)
+  }, [activeItem, deleteMutation])
+
+  const handleBulkDelete = useCallback(() => {
+    if (!selectedIds.length) return
+    const confirmed = window.confirm('Seçili tüm medya öğeleri silinecek. Onaylıyor musun?')
+    if (!confirmed) return
+    bulkDeleteMutation.mutate(selectedIds)
+  }, [bulkDeleteMutation, selectedIds])
+
+  const handleBulkTagSubmit = useCallback(() => {
+    if (!selectedIds.length) return
+    const tags = bulkTagInput
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+
+    if (!tags.length) {
+      alert('En az bir etiket girmelisin.')
+      return
+    }
+
+    bulkTagMutation.mutate({ ids: selectedIds, tags, mode: bulkTagMode })
+  }, [bulkTagInput, bulkTagMode, bulkTagMutation, selectedIds])
+
+  const handleFormChange = useCallback((event) => {
+    const { name, value } = event.target
+    setFormState((prev) => ({ ...prev, [name]: value }))
+  }, [])
+
   const items = mediaQuery.data?.items ?? []
+  const selectedCount = selectedIds.length
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+
+  const copyUrl = useCallback(async (url, id) => {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedId(id)
+      window.setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 2000)
+    } catch (error) {
+      const fallback = window.prompt("URL'yi kopyalamak için seçip kopyalayın:", url)
+      if (fallback !== null) {
+        setCopiedId(id)
+        window.setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 2000)
+      }
+    }
+  }, [])
 
   return (
     <div className="space-y-8">
@@ -171,6 +326,84 @@ export default function MediaLibrary() {
         )}
       </div>
 
+      {selectedCount > 0 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm font-medium text-blue-800">
+            {selectedCount} medya seçildi
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={() => setShowBulkTagPanel((prev) => !prev)}
+              className="inline-flex items-center gap-x-2 rounded-md border border-blue-400 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+              disabled={bulkTagMutation.isPending}
+            >
+              <TagIcon className="h-4 w-4" />
+              Etiket Ata
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="inline-flex items-center gap-x-2 rounded-md border border-red-500 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+              disabled={bulkDeleteMutation.isPending}
+            >
+              <TrashIcon className="h-4 w-4" />
+              Seçiliyi Sil
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="inline-flex items-center gap-x-2 rounded-md border border-transparent px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              Seçimi Temizle
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showBulkTagPanel && selectedCount > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+          <div className="text-sm font-semibold text-gray-800">Seçili öğelere etiket ata</div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input
+              type="text"
+              value={bulkTagInput}
+              onChange={(event) => setBulkTagInput(event.target.value)}
+              placeholder="Örn. kampanya, banner"
+              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+            />
+            <select
+              value={bulkTagMode}
+              onChange={(event) => setBulkTagMode(event.target.value)}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+            >
+              <option value="add">Var olanlara ekle</option>
+              <option value="replace">Var olanları değiştir</option>
+            </select>
+            <button
+              type="button"
+              onClick={handleBulkTagSubmit}
+              className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={bulkTagMutation.isPending}
+            >
+              Uygula
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowBulkTagPanel(false)}
+              className="inline-flex items-center gap-x-2 rounded-md border border-transparent px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+            >
+              Kapat
+            </button>
+          </div>
+          {bulkTagMutation.isError && (
+            <div className="text-sm text-red-600">
+              {(bulkTagMutation.error instanceof Error ? bulkTagMutation.error.message : 'Etiket atama sırasında hata oluştu')}
+            </div>
+          )}
+        </div>
+      )}
+
       <div
         className={clsx(
           'rounded-xl border-2 border-dashed p-6 transition-colors',
@@ -212,65 +445,318 @@ export default function MediaLibrary() {
             <div className="text-sm text-gray-500">Henüz yüklenmiş medya bulunmuyor.</div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {items.map((item) => (
-                <article
-                  key={item._id}
-                  className="flex flex-col rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden"
-                >
-                  <div className="aspect-video bg-gray-100 flex items-center justify-center overflow-hidden">
-                    {item.mimeType?.startsWith('image/') ? (
-                      <img
-                        src={item.variants?.find((variant) => variant.name === 'thumbnail')?.url || item.url}
-                        alt={item.altText || item.originalName || item.fileName}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <DocumentIcon className="h-12 w-12 text-gray-400" aria-hidden="true" />
+              {items.map((item) => {
+                const isSelected = selectedSet.has(item._id)
+                const thumbnailUrl = item.variants?.find((variant) => variant.name === 'thumbnail')?.url || item.url
+
+                return (
+                  <article
+                    key={item._id}
+                    className={clsx(
+                      'flex flex-col rounded-lg border bg-white shadow-sm overflow-hidden transition ring-2 ring-offset-1',
+                      isSelected ? 'border-blue-500 ring-blue-400 bg-blue-50/40' : 'border-gray-200 ring-transparent'
                     )}
-                  </div>
-                  <div className="flex flex-1 flex-col p-4 gap-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-gray-900 line-clamp-2">{item.originalName || item.fileName}</h3>
+                  >
+                    <div className="relative aspect-video bg-gray-100 flex items-center justify-center overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelect(item._id)}
+                        className={clsx(
+                          'absolute left-3 top-3 inline-flex h-5 w-5 items-center justify-center rounded border text-sm font-medium',
+                          isSelected ? 'border-blue-500 bg-blue-600 text-white' : 'border-gray-300 bg-white text-gray-600'
+                        )}
+                        aria-pressed={isSelected}
+                      >
+                        {isSelected ? '✓' : ''}
+                      </button>
                       {item.mimeType?.startsWith('image/') ? (
-                        <PhotoIcon className="h-5 w-5 text-blue-500" />
+                        <img
+                          src={thumbnailUrl}
+                          alt={item.altText || item.originalName || item.fileName}
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
-                        <DocumentIcon className="h-5 w-5 text-gray-400" />
+                        <DocumentIcon className="h-12 w-12 text-gray-400" aria-hidden="true" />
                       )}
                     </div>
-                    <dl className="text-xs text-gray-500 space-y-1">
-                      <div className="flex justify-between gap-2">
-                        <dt>Boyut</dt>
-                        <dd>{formatFileSize(item.size)}</dd>
+                    <div className="flex flex-1 flex-col p-4 gap-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-sm font-semibold text-gray-900 line-clamp-2">{item.originalName || item.fileName}</h3>
+                        {item.mimeType?.startsWith('image/') ? (
+                          <PhotoIcon className="h-5 w-5 text-blue-500" />
+                        ) : (
+                          <DocumentIcon className="h-5 w-5 text-gray-400" />
+                        )}
                       </div>
-                      <div className="flex justify-between gap-2">
-                        <dt>Tür</dt>
-                        <dd>{item.mimeType || 'Bilinmiyor'}</dd>
-                      </div>
-                      {item.width && item.height && (
+                      <dl className="text-xs text-gray-500 space-y-1">
                         <div className="flex justify-between gap-2">
-                          <dt>Ölçüler</dt>
-                          <dd>
-                            {item.width} × {item.height}
-                          </dd>
+                          <dt>Boyut</dt>
+                          <dd>{formatFileSize(item.size)}</dd>
                         </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>Tür</dt>
+                          <dd>{item.mimeType || 'Bilinmiyor'}</dd>
+                        </div>
+                        {item.width && item.height && (
+                          <div className="flex justify-between gap-2">
+                            <dt>Ölçüler</dt>
+                            <dd>
+                              {item.width} × {item.height}
+                            </dd>
+                          </div>
+                        )}
+                      </dl>
+                      {Array.isArray(item.tags) && item.tags.length > 0 && (
+                        <ul className="flex flex-wrap gap-1 pt-1">
+                          {item.tags.map((tag) => (
+                            <li key={tag} className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                              {tag}
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                    </dl>
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-auto inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      İncele
-                    </a>
-                  </div>
-                </article>
-              ))}
+                      <div className="mt-auto flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openModal(item)}
+                          className="inline-flex flex-1 justify-center rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+                        >
+                          İncele
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => copyUrl(item.url, item._id)}
+                          title="URL'yi kopyala"
+                          className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          <DocumentDuplicateIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                      {copiedId === item._id && (
+                        <span className="text-xs text-green-600">URL kopyalandı</span>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
             </div>
           )}
         </div>
       </div>
+
+      <MediaDetailModal
+        open={isModalOpen}
+        onClose={closeModal}
+        item={activeItem}
+        formState={formState}
+        onChange={handleFormChange}
+        onSave={handleModalSave}
+        onDelete={handleModalDelete}
+        saving={updateMetadataMutation.isPending}
+        deleting={deleteMutation.isPending}
+        error={updateMetadataMutation.isError ? updateMetadataMutation.error : null}
+      />
     </div>
+  )
+}
+
+function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, onDelete, saving, deleting, error }) {
+  return (
+    <Transition.Root show={open} as={Fragment}>
+      <Dialog as="div" className="relative z-50" onClose={onClose}>
+        <Transition.Child
+          as={Fragment}
+          enter="ease-out duration-200"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div className="fixed inset-0 bg-black/40" />
+        </Transition.Child>
+
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-200"
+              enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+              enterTo="opacity-100 translate-y-0 sm:scale-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100 translate-y-0 sm:scale-100"
+              leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            >
+              <Dialog.Panel className="relative w-full max-w-3xl transform overflow-hidden rounded-2xl bg-white px-4 pb-6 pt-5 text-left shadow-xl transition-all sm:p-8">
+                <button
+                  type="button"
+                  className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                  onClick={onClose}
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+                <Dialog.Title className="text-lg font-semibold leading-6 text-gray-900">
+                  Medya Ayrıntıları
+                </Dialog.Title>
+                {!item ? (
+                  <p className="mt-6 text-sm text-gray-600">Yükleniyor...</p>
+                ) : (
+                  <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        {item.mimeType?.startsWith('image/') ? (
+                          <img
+                            src={item.url}
+                            alt={item.altText || item.originalName || item.fileName}
+                            className="max-h-80 w-full rounded object-contain"
+                          />
+                        ) : (
+                          <div className="flex h-48 items-center justify-center text-gray-500">
+                            <DocumentIcon className="h-12 w-12" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="rounded-lg border border-gray-200 p-4 text-sm text-gray-600 space-y-2">
+                        <div className="flex justify-between gap-2">
+                          <span className="font-medium text-gray-700">Dosya Adı</span>
+                          <span className="text-gray-900">{item.fileName}</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="font-medium text-gray-700">Tür</span>
+                          <span className="text-gray-900">{item.mimeType || 'Bilinmiyor'}</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="font-medium text-gray-700">Boyut</span>
+                          <span className="text-gray-900">{formatFileSize(item.size)}</span>
+                        </div>
+                        {item.width && item.height && (
+                          <div className="flex justify-between gap-2">
+                            <span className="font-medium text-gray-700">Ölçüler</span>
+                            <span className="text-gray-900">{item.width} × {item.height}</span>
+                          </div>
+                        )}
+                        <div className="truncate text-blue-600">
+                          <button
+                            type="button"
+                            onClick={() => copyUrl(item.url, item._id)}
+                            title="URL'yi kopyala"
+                            className="inline-flex items-center gap-x-1 text-blue-600 hover:text-blue-700"
+                          >
+                            <DocumentDuplicateIcon className="h-4 w-4" />
+                            <span>URL'yi kopyala</span>
+                          </button>
+                          {copiedId === item._id && (
+                            <span className="ml-2 text-xs text-green-600">Kopyalandı</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <form className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700" htmlFor="media-originalName">
+                          Görünen İsim
+                        </label>
+                        <input
+                          id="media-originalName"
+                          name="originalName"
+                          value={formState.originalName}
+                          onChange={onChange}
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Sistemdeki dosya adı değişmez, bu alan listelerde görünecek ismi temsil eder.</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700" htmlFor="media-altText">
+                          Alternatif Metin
+                        </label>
+                        <input
+                          id="media-altText"
+                          name="altText"
+                          value={formState.altText}
+                          onChange={onChange}
+                          placeholder="Erişilebilirlik için görsel açıklaması"
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700" htmlFor="media-caption">
+                          Başlık / Caption
+                        </label>
+                        <input
+                          id="media-caption"
+                          name="caption"
+                          value={formState.caption}
+                          onChange={onChange}
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700" htmlFor="media-description">
+                          Açıklama
+                        </label>
+                        <textarea
+                          id="media-description"
+                          name="description"
+                          rows={4}
+                          value={formState.description}
+                          onChange={onChange}
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700" htmlFor="media-tags">
+                          Etiketler
+                        </label>
+                        <input
+                          id="media-tags"
+                          name="tags"
+                          value={formState.tags}
+                          onChange={onChange}
+                          placeholder="Virgülle ayrılmış etiketler"
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Örnek: kampanya, hero, blog</p>
+                      </div>
+
+                      {error && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                          {(error instanceof Error ? error.message : 'Güncelleme sırasında bir hata oluştu')}
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <button
+                          type="button"
+                          onClick={onSave}
+                          disabled={saving}
+                          className="inline-flex flex-1 justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
+                        >
+                          {saving ? 'Kaydediliyor…' : 'Kaydet'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onDelete}
+                          disabled={deleting}
+                          className="inline-flex items-center justify-center gap-x-2 rounded-md border border-red-500 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                          {deleting ? 'Siliniyor…' : 'Sil'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+              </Dialog.Panel>
+            </Transition.Child>
+          </div>
+        </div>
+      </Dialog>
+    </Transition.Root>
   )
 }
 
