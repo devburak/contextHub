@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon } from '@heroicons/react/24/outline'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
@@ -14,7 +14,8 @@ export default function Layout() {
     { name: 'Kontrol Paneli', href: '/', icon: CogIcon },
     { name: 'Kullanıcılar', href: '/users', icon: UserIcon },
     { name: 'Medya', href: '/media', icon: PhotoIcon },
-    { name: 'Kategoriler', href: '/kategoriler', icon: Squares2X2Icon },
+    { name: 'Kategoriler', href: '/categories', icon: Squares2X2Icon },
+    { name: 'İçerikler', href: '/contents', icon: DocumentTextIcon },
     { name: 'Varlıklar', href: '/varliklar', icon: BuildingOfficeIcon }
   ]
 
@@ -79,28 +80,31 @@ export default function Layout() {
                       <ul role="list" className="flex flex-1 flex-col gap-y-7">
                         <li>
                           <ul role="list" className="-mx-2 space-y-1">
-                            {navigation.map((item) => (
-                              <li key={item.name}>
-                                <Link
-                                  to={item.href}
-                                  className={classNames(
-                                    location.pathname === item.href
-                                      ? 'bg-gray-50 text-blue-600'
-                                      : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50',
-                                    'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
-                                  )}
-                                >
-                                  <item.icon
+                            {navigation.map((item) => {
+                              const isActive = location.pathname === item.href || (item.href !== '/' && location.pathname.startsWith(`${item.href}/`))
+                              return (
+                                <li key={item.name}>
+                                  <Link
+                                    to={item.href}
                                     className={classNames(
-                                      location.pathname === item.href ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600',
-                                      'h-6 w-6 shrink-0'
+                                      isActive
+                                        ? 'bg-gray-50 text-blue-600'
+                                        : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50',
+                                      'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
                                     )}
-                                    aria-hidden="true"
-                                  />
-                                  {item.name}
-                                </Link>
-                              </li>
-                            ))}
+                                  >
+                                    <item.icon
+                                      className={classNames(
+                                        isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600',
+                                        'h-6 w-6 shrink-0'
+                                      )}
+                                      aria-hidden="true"
+                                    />
+                                    {item.name}
+                                  </Link>
+                                </li>
+                              )
+                            })}
                           </ul>
                         </li>
                       </ul>
@@ -127,28 +131,31 @@ export default function Layout() {
               <ul role="list" className="flex flex-1 flex-col gap-y-7">
                 <li>
                   <ul role="list" className="-mx-2 space-y-1">
-                    {navigation.map((item) => (
-                      <li key={item.name}>
-                        <Link
-                          to={item.href}
-                          className={classNames(
-                            location.pathname === item.href
-                              ? 'bg-gray-50 text-blue-600'
-                              : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50',
-                            'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
-                          )}
-                        >
-                          <item.icon
+                    {navigation.map((item) => {
+                      const isActive = location.pathname === item.href || (item.href !== '/' && location.pathname.startsWith(`${item.href}/`))
+                      return (
+                        <li key={item.name}>
+                          <Link
+                            to={item.href}
                             className={classNames(
-                              location.pathname === item.href ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600',
-                              'h-6 w-6 shrink-0'
+                              isActive
+                                ? 'bg-gray-50 text-blue-600'
+                                : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50',
+                              'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
                             )}
-                            aria-hidden="true"
-                          />
-                          {item.name}
-                        </Link>
-                      </li>
-                    ))}
+                          >
+                            <item.icon
+                              className={classNames(
+                                isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600',
+                                'h-6 w-6 shrink-0'
+                              )}
+                              aria-hidden="true"
+                            />
+                            {item.name}
+                          </Link>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </li>
               </ul>

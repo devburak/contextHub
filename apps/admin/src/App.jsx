@@ -13,6 +13,8 @@ import Tenants from './pages/tenants/Tenants.jsx'
 import CreateTenant from './pages/tenants/CreateTenant.jsx'
 import MediaLibrary from './pages/media/Media.jsx'
 import Categories from './pages/categories/Categories.jsx'
+import ContentList from './pages/contents/ContentList.jsx'
+import ContentEditor from './pages/contents/ContentEditor.jsx'
 import { AuthContext } from './contexts/AuthContext.jsx'
 
 const parseStoredJSON = (key, fallback) => {
@@ -194,7 +196,11 @@ function App() {
               <Route path="/users/new" element={<CreateUser />} />
               <Route path="/users/:id/edit" element={<EditUser />} />
               <Route path="/media" element={<MediaLibrary />} />
-              <Route path="/kategoriler" element={<Categories />} />
+              <Route path="/categories" element={<Categories />} />
+              <Route path="/contents" element={<ContentList />} />
+              <Route path="/contents/:id" element={<ContentEditor />} />
+              <Route path="/icerikler/*" element={<Navigate to="/contents" replace />} />
+              <Route path="/kategoriler/*" element={<Navigate to="/categories" replace />} />
               <Route path="/varliklar" element={<Tenants />} />
               <Route path="/varliklar/yeni" element={<CreateTenant />} />
             </Route>

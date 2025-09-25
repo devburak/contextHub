@@ -23,6 +23,8 @@ const Product = require('./Product');
 const CollectionDef = require('./CollectionDef');
 const CollectionItem = require('./CollectionItem');
 const Template = require('./Template');
+const Content = require('./Content');
+const ContentVersion = require('./ContentVersion');
 
 module.exports = {
   Tenant,
@@ -47,5 +49,7 @@ module.exports = {
   CollectionDef,
   CollectionItem,
   Template,
+  Content,
+  ContentVersion,
   mongoose
 };
