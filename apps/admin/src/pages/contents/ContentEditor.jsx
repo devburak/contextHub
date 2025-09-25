@@ -791,14 +791,6 @@ export default function ContentEditor() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700">Etiketler</label>
-              <TagSelector
-                selectedTags={selectedTagRecords}
-                onAdd={handleTagAdd}
-                onRemove={handleTagRemove}
-              />
-            </div>
           </div>
         </section>
 
@@ -980,6 +972,11 @@ export default function ContentEditor() {
               <span>Öne çıkan görsel seçin veya yükleyin</span>
             </button>
           )}
+        </section>
+
+        <section className={`${cardClass} space-y-3 p-5`}>
+          <h3 className="text-sm font-semibold text-gray-900">Etiketler</h3>
+          <TagSelector selectedTags={selectedTagRecords} onAdd={handleTagAdd} onRemove={handleTagRemove} />
         </section>
 
         <section className={`${cardClass} space-y-3 p-5`}>

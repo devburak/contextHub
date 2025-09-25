@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { listContents } from '../../lib/api/contents'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { Link } from 'react-router-dom'
+import { searchTags } from '../../lib/api/tags'
+import clsx from 'clsx'
 
 export default function ContentList() {
   const { token, activeTenantId } = useAuth()
@@ -10,21 +12,56 @@ export default function ContentList() {
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [tagInput, setTagInput] = useState('')
+  const [selectedTag, setSelectedTag] = useState(null)
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false)
+  const tagContainerRef = useRef(null)
+
+  const debouncedTagSearch = useDebouncedValue(tagInput, 800)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 2000)
     return () => clearTimeout(timer)
   }, [search])
 
+  useEffect(() => {
+    if (!isTagDropdownOpen) return
+    const handleClickOutside = (event) => {
+      if (!tagContainerRef.current?.contains(event.target)) {
+        setIsTagDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isTagDropdownOpen])
+
   const { data, isLoading, isError, refetch } = useQuery([
-    'contents', { tenant: activeTenantId, page, status, search: debouncedSearch }
-  ], () => listContents({ page, filters: { status, search: debouncedSearch } }), {
+    'contents', { tenant: activeTenantId, page, status, search: debouncedSearch, tag: selectedTag?._id || null }
+  ], () => listContents({
+    page,
+    filters: {
+      status,
+      search: debouncedSearch,
+      tag: selectedTag?._id || undefined,
+    },
+  }), {
     keepPreviousData: true,
     enabled: !!token && !!activeTenantId
   })
 
   const items = data?.items || []
   const pagination = data?.pagination || { page: 1, pages: 1 }
+
+  const tagQuery = useQuery(
+    ['tag-filter', debouncedTagSearch],
+    () => searchTags({ search: debouncedTagSearch || undefined, limit: 15 }),
+    {
+      enabled: isTagDropdownOpen,
+      keepPreviousData: true,
+    }
+  )
+
+  const tagOptions = useMemo(() => tagQuery.data?.tags ?? [], [tagQuery.data])
 
   return (
     <div className="space-y-6">
@@ -52,6 +89,84 @@ export default function ContentList() {
               placeholder="Başlık veya özet..."
               className="mt-1 block w-72 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Etiket</label>
+          <div className="relative w-64" ref={tagContainerRef}>
+            <input
+              type="search"
+              value={tagInput}
+              onChange={(event) => {
+                setTagInput(event.target.value)
+                if (!isTagDropdownOpen) {
+                  setIsTagDropdownOpen(true)
+                }
+              }}
+              onFocus={() => setIsTagDropdownOpen(true)}
+              placeholder={selectedTag ? selectedTag.title || selectedTag.slug : 'Etiket ara'}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+            />
+            {selectedTag && (
+              <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
+                {selectedTag.title || selectedTag.slug}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTag(null)
+                    setTagInput('')
+                    setPage(1)
+                  }}
+                  className="text-green-500 hover:text-green-700"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            {isTagDropdownOpen && (
+              <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+                <div className="max-h-56 overflow-y-auto text-sm">
+                  {tagQuery.isLoading ? (
+                    <div className="px-4 py-3 text-gray-500">Etiketler yükleniyor…</div>
+                  ) : tagOptions.length === 0 ? (
+                    <div className="px-4 py-3 text-gray-500">Sonuç bulunamadı.</div>
+                  ) : (
+                    tagOptions.map((tag) => {
+                      const isActive = selectedTag && String(selectedTag._id) === String(tag._id)
+                      return (
+                        <button
+                          key={tag._id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTag(tag)
+                            setTagInput(tag.title || tag.slug || '')
+                            setIsTagDropdownOpen(false)
+                            setPage(1)
+                          }}
+                          className={clsx(
+                            'flex w-full items-start gap-2 px-4 py-2 text-left transition',
+                            isActive
+                              ? 'bg-blue-50 text-blue-700'
+                              : 'hover:bg-gray-100 text-gray-700'
+                          )}
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium">{tag.title || tag.slug}</div>
+                            <div className="text-xs text-gray-500">/{tag.slug}</div>
+                          </div>
+                          {isActive && <span className="text-xs font-semibold text-blue-600">Seçili</span>}
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+                {tagQuery.isFetching && !tagQuery.isLoading && (
+                  <div className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+                    Güncelleniyor…
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <div className="ml-auto flex gap-2">
           <Link
@@ -136,4 +251,15 @@ function StatusBadge({ status }) {
   }
   const meta = map[status] || { label: status || 'Bilinmiyor', class: 'bg-gray-100 text-gray-700' }
   return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${meta.class}`}>{meta.label}</span>
+}
+
+function useDebouncedValue(value, delay = 300) {
+  const [debounced, setDebounced] = useState(value)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+
+  return debounced
 }

@@ -1,4 +1,4 @@
-import { apiClient } from './api.js'
+import { apiClient } from '../api.js'
 
 export async function searchTags({ search, limit, page, ids } = {}) {
   const params = {}
