@@ -3,11 +3,23 @@ const mongoose = require('mongoose')
 
 const ObjectId = mongoose.Types.ObjectId
 
+const TURKISH_CHAR_MAP = {
+  ç: 'c', Ç: 'c', ğ: 'g', Ğ: 'g', ı: 'i', I: 'i', İ: 'i', ö: 'o', Ö: 'o', ş: 's', Ş: 's', ü: 'u', Ü: 'u', â: 'a', Â: 'a'
+}
+
+function transliterate(value = '') {
+  return value
+    .split('')
+    .map((char) => TURKISH_CHAR_MAP[char] ?? char)
+    .join('')
+}
+
 function slugify(input = '') {
-  return input
-    .toString()
-    .trim()
+  return transliterate(input)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .trim()
     .replace(/[\s_]+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-{2,}/g, '-')
@@ -268,16 +280,64 @@ function buildTree(documents) {
   return roots
 }
 
-async function listCategories({ tenantId, flat = false }) {
-  const docs = await Category.find({ tenantId })
-    .sort({ position: 1, name: 1 })
-    .lean()
+function escapeRegExp(value = '') {
+  return value.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
+}
 
-  if (flat) {
-    return docs
+async function listCategories({ tenantId, flat = false, search, page, limit, ids }) {
+  const query = { tenantId }
+
+  if (Array.isArray(ids) && ids.length) {
+    const validIds = ids
+      .map((value) => (ObjectId.isValid(value) ? new ObjectId(value) : null))
+      .filter(Boolean)
+    if (validIds.length) {
+      query._id = { $in: validIds }
+    }
   }
 
-  return buildTree(docs)
+  if (search) {
+    const escaped = escapeRegExp(search)
+    const regex = new RegExp(escaped, 'i')
+    query.$or = [{ name: regex }, { slug: regex }]
+  }
+
+  const sort = { position: 1, name: 1 }
+  let cursor = Category.find(query).sort(sort)
+
+  let pagination = null
+  const limitValue = Number(limit)
+  const shouldPaginate = Number.isFinite(limitValue) && limitValue > 0 && !query._id
+
+  if (shouldPaginate) {
+    const pageValue = Number(page)
+    const currentPage = Number.isFinite(pageValue) && pageValue > 0 ? Math.floor(pageValue) : 1
+    const finalLimit = Math.min(Math.floor(limitValue), 100)
+    const skip = (currentPage - 1) * finalLimit
+    const total = await Category.countDocuments(query)
+    cursor = cursor.skip(skip).limit(finalLimit)
+    pagination = {
+      page: currentPage,
+      limit: finalLimit,
+      total,
+      pages: Math.max(1, Math.ceil(total / finalLimit)),
+    }
+  }
+
+  const docs = await cursor.lean()
+
+  if (!pagination && (!ids || !ids.length)) {
+    pagination = {
+      page: 1,
+      limit: docs.length,
+      total: docs.length,
+      pages: 1,
+    }
+  }
+
+  const categories = flat ? docs : buildTree(docs)
+
+  return { categories, pagination }
 }
 
 module.exports = {

@@ -1,0 +1,288 @@
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d7dce5;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.editor-toolbar__button {
+  position: relative;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  cursor: pointer;
+}
+
+.editor-toolbar__button::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 18px 18px;
+  filter: saturate(0) brightness(0.3);
+  transition: filter 0.12s ease;
+}
+
+.editor-toolbar__button:hover {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.editor-toolbar__button:hover::before {
+  filter: saturate(0.4) brightness(0.2);
+}
+
+.editor-toolbar__button:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.4);
+  outline-offset: 1px;
+}
+
+.editor-toolbar__button.is-active {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.18) inset;
+}
+
+.editor-toolbar__button.is-active::before {
+  filter: saturate(1) brightness(0.1);
+}
+
+.editor-toolbar__button.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.editor-toolbar__button.is-disabled::before {
+  filter: saturate(0) brightness(0.55);
+}
+
+.editor-toolbar__select {
+  height: 32px;
+  min-width: 140px;
+  border-radius: 8px;
+  border: 1px solid #d7dce5;
+  background: #ffffff;
+  padding: 0 32px 0 12px;
+  font-size: 13px;
+  color: #1f2937;
+  font-weight: 500;
+  line-height: 32px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.editor-toolbar__select:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.45);
+  outline-offset: 2px;
+}
+
+.editor-toolbar__font-input {
+  width: 60px;
+  height: 32px;
+  border: 1px solid #d7dce5;
+  border-radius: 8px;
+  background: #ffffff;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  padding: 0 8px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.editor-toolbar__font-input:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+.editor-toolbar__font-input::-webkit-outer-spin-button,
+.editor-toolbar__font-input::-webkit-inner-spin-button {
+  margin: 0;
+}
+
+.editor-toolbar__font-input[type=number] {
+  -moz-appearance: textfield;
+}
+
+.editor-toolbar__divider {
+  width: 1px;
+  height: 24px;
+  background: #e2e8f0;
+  margin: 0 4px;
+}
+
+.editor-toolbar__color-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #475569;
+  font-weight: 500;
+  padding: 0 4px;
+}
+
+.editor-toolbar__color-input {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #d7dce5;
+  background: #ffffff;
+  padding: 0;
+  cursor: pointer;
+}
+
+.editor-toolbar__color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.editor-toolbar__color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+.editor-toolbar__color-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.editor-toolbar__button[title='Geri al']::before {
+  background-image: url('./assets/icons/arrow-counterclockwise.svg');
+}
+
+.editor-toolbar__button[title='İleri al']::before {
+  background-image: url('./assets/icons/arrow-clockwise.svg');
+}
+
+.editor-toolbar__button[title='Madde işaretli liste']::before {
+  background-image: url('./assets/icons/list-ul.svg');
+}
+
+.editor-toolbar__button[title='Numaralı liste']::before {
+  background-image: url('./assets/icons/list-ol.svg');
+}
+
+.editor-toolbar__button[title='Kalın']::before {
+  background-image: url('./assets/icons/type-bold.svg');
+}
+
+.editor-toolbar__button[title='İtalik']::before {
+  background-image: url('./assets/icons/type-italic.svg');
+}
+
+.editor-toolbar__button[title='Altı çizili']::before {
+  background-image: url('./assets/icons/type-underline.svg');
+}
+
+.editor-toolbar__button[title='Üzeri çizili']::before {
+  background-image: url('./assets/icons/type-strikethrough.svg');
+}
+
+.editor-toolbar__button[title='Kod']::before {
+  background-image: url('./assets/icons/code.svg');
+}
+
+.editor-toolbar__button[title='Bağlantı']::before {
+  background-image: url('./assets/icons/link.svg');
+}
+
+.editor-toolbar__button[title='Yazı boyutunu küçült']::before {
+  background-image: url('./assets/icons/type-lowercase.svg');
+}
+
+.editor-toolbar__button[title='Yazı boyutunu büyüt']::before {
+  background-image: url('./assets/icons/type-uppercase.svg');
+}
+
+.editor-toolbar__button[title='Stili temizle']::before {
+  background-image: url('./assets/icons/text-paragraph.svg');
+}
+
+.editor-toolbar__button[title='Sola hizala']::before {
+  background-image: url('./assets/icons/text-left.svg');
+}
+
+.editor-toolbar__button[title='Ortala']::before {
+  background-image: url('./assets/icons/text-center.svg');
+}
+
+.editor-toolbar__button[title='Sağa hizala']::before {
+  background-image: url('./assets/icons/text-right.svg');
+}
+
+
+.editor-dev-button {
+  position: relative;
+  display: block;
+  width: 40px;
+  height: 40px;
+  font-size: 12px;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0px 1px 10px rgba(0, 0, 0, 0.3);
+  background-color: #444;
+}
+
+.editor-dev-button::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  display: block;
+  background-size: contain;
+  filter: invert(1);
+}
+
+.editor-dev-button:hover {
+  background-color: #555;
+}
+
+.editor-dev-button.active {
+  background-color: rgb(233, 35, 35);
+}
+
+.editor-shell .editor-image img.focused.draggable {
+  cursor: grab;
+}
+
+.editor-shell .editor-image img.focused.draggable:active {
+  cursor: grabbing;
+}
+
+@media (max-width: 768px) {
+  .editor-toolbar {
+    border-radius: 10px;
+    padding: 8px;
+  }
+
+  .editor-toolbar__select {
+    min-width: 120px;
+  }
+}

@@ -1,8 +1,19 @@
 import { apiClient } from '../api.js'
 
-export async function listCategories({ flat = true } = {}) {
+export async function listCategories(params = {}) {
+  const queryParams = { flat: true, ...params }
+  if (queryParams.ids && !queryParams.ids.length) {
+    delete queryParams.ids
+  }
+  if (!('limit' in queryParams) && !queryParams.ids) {
+    queryParams.limit = 20
+  }
+
   const response = await apiClient.get('/categories', {
-    params: { flat }
+    params: queryParams,
   })
-  return response.data.categories ?? []
+  return {
+    categories: response.data.categories ?? [],
+    pagination: response.data.pagination ?? null,
+  }
 }

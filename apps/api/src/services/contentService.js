@@ -3,11 +3,23 @@ const mongoose = require('mongoose')
 
 const ObjectId = mongoose.Types.ObjectId
 
-function slugify(value) {
+const TURKISH_CHAR_MAP = {
+  ç: 'c', Ç: 'c', ğ: 'g', Ğ: 'g', ı: 'i', I: 'i', İ: 'i', ö: 'o', Ö: 'o', ş: 's', Ş: 's', ü: 'u', Ü: 'u', â: 'a', Â: 'a'
+}
+
+function transliterate(value = '') {
   return value
-    .toString()
-    .trim()
+    .split('')
+    .map((char) => TURKISH_CHAR_MAP[char] ?? char)
+    .join('')
+}
+
+function slugify(value) {
+  return transliterate(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .trim()
     .replace(/[\s_]+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-{2,}/g, '-')

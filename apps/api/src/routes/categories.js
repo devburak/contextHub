@@ -15,14 +15,40 @@ async function categoryRoutes(fastify) {
         type: 'object',
         properties: {
           flat: { type: ['boolean', 'string'] },
+          search: { type: 'string' },
+          page: { type: ['number', 'string'] },
+          limit: { type: ['number', 'string'] },
+          ids: {
+            anyOf: [
+              { type: 'array', items: { type: 'string' } },
+              { type: 'string' },
+            ],
+          },
         },
       },
     },
   }, async (request, reply) => {
     try {
       const flat = request.query.flat === true || request.query.flat === 'true'
-      const data = await categoryService.listCategories({ tenantId: request.tenantId, flat })
-      return reply.send({ categories: data })
+      const search = request.query.search ? String(request.query.search) : undefined
+      const limit = request.query.limit !== undefined ? Number(request.query.limit) : undefined
+      const page = request.query.page !== undefined ? Number(request.query.page) : undefined
+      const idsValue = request.query.ids
+      const ids = Array.isArray(idsValue)
+        ? idsValue
+        : typeof idsValue === 'string'
+          ? idsValue.split(',').map((item) => item.trim()).filter(Boolean)
+          : undefined
+
+      const result = await categoryService.listCategories({
+        tenantId: request.tenantId,
+        flat,
+        search,
+        limit,
+        page,
+        ids,
+      })
+      return reply.send(result)
     } catch (error) {
       request.log.error({ err: error }, 'Failed to list categories')
       return reply.code(400).send({ error: 'CategoryListFailed', message: error.message })

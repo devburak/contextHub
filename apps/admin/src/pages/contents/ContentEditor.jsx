@@ -1,9 +1,10 @@
 import clsx from 'clsx'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { Fragment, useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getContent, createContent, updateContent, listVersions } from '../../lib/api/contents'
 import { listCategories } from '../../lib/api/categories'
+import { searchTags, createTag } from '../../lib/api/tags'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
@@ -43,6 +44,12 @@ import { AutoLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { mergeRegister } from '@lexical/utils'
 import { registerCodeHighlighting, CodeNode, CodeHighlightNode, $createCodeNode } from '@lexical/code'
+import './ContentEditor.css'
+import FloatingTextFormatToolbarPlugin from './plugins/FloatingTextFormatToolbarPlugin'
+import DraggableBlockPlugin from './plugins/DraggableBlockPlugin'
+import { mediaAPI } from '../../lib/mediaAPI.js'
+import { Dialog, Transition } from '@headlessui/react'
+import { PhotoIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 
 const DEFAULT_FONT_SIZE = 16
 const FONT_MIN = 10
@@ -150,7 +157,9 @@ export default function ContentEditor() {
   const [summary, setSummary] = useState('')
   const [publishAt, setPublishAt] = useState('')
   const [categories, setCategories] = useState([])
-  const [allCategories, setAllCategories] = useState([])
+  const [selectedCategoryRecords, setSelectedCategoryRecords] = useState([])
+  const [tags, setTags] = useState([])
+  const [selectedTagRecords, setSelectedTagRecords] = useState([])
   const [slugError, setSlugError] = useState('')
   const [initialEditorState, setInitialEditorState] = useState(INITIAL_EDITOR_STATE)
   const [latestEditorState, setLatestEditorState] = useState(INITIAL_EDITOR_STATE)
@@ -159,6 +168,14 @@ export default function ContentEditor() {
   const [saveError, setSaveError] = useState('')
   const [selectedVersionId, setSelectedVersionId] = useState(null)
   const [previewVersion, setPreviewVersion] = useState(null)
+  const [featuredMedia, setFeaturedMedia] = useState(null)
+  const [featuredMediaId, setFeaturedMediaId] = useState(null)
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false)
+  const [mediaSearch, setMediaSearch] = useState('')
+  const [mediaPage, setMediaPage] = useState(1)
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false)
+  const [mediaUploadError, setMediaUploadError] = useState('')
+  const [editorAnchorElem, setEditorAnchorElem] = useState(null)
   const skipNextOnChangeRef = useRef(false)
   const skipNextContentSyncRef = useRef(false)
   const cardClass = 'rounded-xl border border-gray-200 bg-white shadow-sm'
@@ -184,6 +201,128 @@ export default function ContentEditor() {
       : []
   ), [])
 
+  const mediaQueryParams = useMemo(
+    () => ({
+      search: mediaSearch.trim() || undefined,
+      mimeType: 'image/',
+      page: mediaPage,
+      limit: 12,
+    }),
+    [mediaSearch, mediaPage]
+  )
+
+  const mediaQuery = useQuery(
+    ['media-picker', mediaQueryParams],
+    () => mediaAPI.list(mediaQueryParams),
+    { enabled: isMediaPickerOpen }
+  )
+
+  useEffect(() => {
+    if (!categories.length) {
+      if (selectedCategoryRecords.length) {
+        setSelectedCategoryRecords([])
+      }
+      return
+    }
+
+    const missingIds = categories.filter(
+      (id) => !selectedCategoryRecords.some((item) => String(item._id) === String(id))
+    )
+
+    if (!missingIds.length) {
+      const ordered = categories
+        .map((id) => selectedCategoryRecords.find((item) => String(item._id) === String(id)))
+        .filter(Boolean)
+      const isSameOrder =
+        ordered.length === selectedCategoryRecords.length &&
+        ordered.every((item, index) => item === selectedCategoryRecords[index])
+      if (!isSameOrder) {
+        setSelectedCategoryRecords(ordered)
+      }
+      return
+    }
+
+    let active = true
+    listCategories({ flat: true, ids: missingIds })
+      .then((res) => {
+        if (!active) return
+        const fetched = res?.categories ?? []
+        if (!fetched.length) {
+          return
+        }
+        setSelectedCategoryRecords((prev) => {
+          const cache = new Map(prev.map((item) => [String(item._id), item]))
+          fetched.forEach((item) => {
+            if (item && item._id) {
+              cache.set(String(item._id), item)
+            }
+          })
+          return categories.map((id) => cache.get(String(id))).filter(Boolean)
+        })
+      })
+      .catch((error) => {
+        if (!active) return
+        console.error('Kategori bilgisi alınamadı', error)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [categories, selectedCategoryRecords])
+
+  useEffect(() => {
+    if (!tags.length) {
+      if (selectedTagRecords.length) {
+        setSelectedTagRecords([])
+      }
+      return
+    }
+
+    const missingIds = tags.filter(
+      (id) => !selectedTagRecords.some((item) => String(item._id) === String(id))
+    )
+
+    if (!missingIds.length) {
+      const ordered = tags
+        .map((id) => selectedTagRecords.find((item) => String(item._id) === String(id)))
+        .filter(Boolean)
+      const isSameOrder =
+        ordered.length === selectedTagRecords.length &&
+        ordered.every((item, index) => item === selectedTagRecords[index])
+      if (!isSameOrder) {
+        setSelectedTagRecords(ordered)
+      }
+      return
+    }
+
+    let active = true
+    searchTags({ ids: missingIds })
+      .then((res) => {
+        if (!active) return
+        const fetched = res?.tags ?? []
+        if (!fetched.length) {
+          return
+        }
+        setSelectedTagRecords((prev) => {
+          const cache = new Map(prev.map((item) => [String(item._id), item]))
+          fetched.forEach((item) => {
+            if (item && item._id) {
+              cache.set(String(item._id), item)
+            }
+          })
+          return tags.map((id) => cache.get(String(id))).filter(Boolean)
+        })
+      })
+      .catch((error) => {
+        if (!active) return
+        console.error('Etiket bilgisi alınamadı', error)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [tags, selectedTagRecords])
+
   const applyContentPayload = useCallback((source, { markDirty = false } = {}) => {
     if (!source) return
     const lexicalStateString = typeof source.lexical === 'string'
@@ -201,7 +340,25 @@ export default function ContentEditor() {
     setSummary(source.summary || '')
     setPublishAt(source.publishAt ? new Date(source.publishAt).toISOString().slice(0, 16) : '')
     setHtml(source.html || '')
-    setCategories(normaliseIdList(source.categories))
+    const nextCategories = normaliseIdList(source.categories)
+    setSelectedCategoryRecords([])
+    setCategories(nextCategories)
+    const nextTags = normaliseIdList(source.tags)
+    setSelectedTagRecords([])
+    setTags(nextTags)
+    const mediaValue = source.featuredMediaId
+    if (mediaValue && typeof mediaValue === 'object') {
+      setFeaturedMedia(mediaValue)
+      setFeaturedMediaId(mediaValue._id || null)
+    } else {
+      setFeaturedMedia((prev) => {
+        if (mediaValue && prev && prev._id === mediaValue) {
+          return prev
+        }
+        return null
+      })
+      setFeaturedMediaId(mediaValue || null)
+    }
     setSlugError('')
     setSaveError('')
     setDirty(Boolean(markDirty))
@@ -254,16 +411,6 @@ export default function ContentEditor() {
     applyContentPayload(contentData, { markDirty: false })
     setSelectedVersionId(contentData.lastVersionId ? String(contentData.lastVersionId) : null)
   }, [contentData, applyContentPayload])
-
-  useEffect(() => {
-    let active = true
-    if (token && activeTenantId) {
-      listCategories({ flat: true })
-        .then(cats => { if (active) setAllCategories(cats) })
-        .catch(err => console.error('Kategori listesi alınamadı', err))
-    }
-    return () => { active = false }
-  }, [token, activeTenantId])
 
   const createMut = useMutation((payload) => createContent({ payload }), {
     onSuccess: (content) => {
@@ -325,6 +472,8 @@ export default function ContentEditor() {
       lexical: parsedLexical,
       html,
       categories,
+      tags,
+      featuredMediaId: featuredMediaId || null,
     }
 
     try {
@@ -343,7 +492,7 @@ export default function ContentEditor() {
       console.error('Save failed', err)
       throw err
     }
-  }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, isNew, createMut, updateMut, id])
+  }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, tags, featuredMediaId, isNew, createMut, updateMut, id])
 
   const onLexicalChange = useCallback((editorState) => {
     editorState.read(() => {
@@ -389,7 +538,15 @@ export default function ContentEditor() {
   }
 
   function computeSlug(base) {
+    const map = {
+      ç: 'c', Ç: 'c', ğ: 'g', Ğ: 'g', ı: 'i', I: 'i', İ: 'i', ö: 'o', Ö: 'o', ş: 's', Ş: 's', ü: 'u', Ü: 'u', â: 'a', Â: 'a'
+    }
     return base
+      .split('')
+      .map((char) => map[char] ?? char)
+      .join('')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9\s-]/g, '')
@@ -398,8 +555,136 @@ export default function ContentEditor() {
       .replace(/^-+|-+$/g, '')
   }
 
+  const handleCategoryAdd = useCallback((category) => {
+    if (!category || !category._id) return
+    setCategories((prev) => {
+      if (prev.includes(category._id)) {
+        return prev
+      }
+      return [...prev, category._id]
+    })
+    setSelectedCategoryRecords((prev) => {
+      if (prev.some((item) => String(item._id) === String(category._id))) {
+        return prev
+      }
+      return [...prev, category]
+    })
+    setDirty(true)
+    setSaveError('')
+  }, [])
+
+  const handleCategoryRemove = useCallback((id) => {
+    setCategories((prev) => prev.filter((item) => item !== id))
+    setSelectedCategoryRecords((prev) => prev.filter((item) => String(item._id) !== String(id)))
+    setDirty(true)
+    setSaveError('')
+  }, [])
+
+  const handleTagAdd = useCallback((tag) => {
+    if (!tag || !tag._id) return
+    setTags((prev) => {
+      if (prev.includes(tag._id)) {
+        return prev
+      }
+      return [...prev, tag._id]
+    })
+    setSelectedTagRecords((prev) => {
+      if (prev.some((item) => String(item._id) === String(tag._id))) {
+        return prev
+      }
+      return [...prev, tag]
+    })
+    setDirty(true)
+    setSaveError('')
+  }, [])
+
+  const handleTagRemove = useCallback((id) => {
+    setTags((prev) => prev.filter((item) => item !== id))
+    setSelectedTagRecords((prev) => prev.filter((item) => String(item._id) !== String(id)))
+    setDirty(true)
+    setSaveError('')
+  }, [])
+
+  const openMediaPicker = () => {
+    setMediaUploadError('')
+    setIsMediaPickerOpen(true)
+  }
+
+  const handleFeaturedMediaSelect = (media) => {
+    setFeaturedMedia(media)
+    setFeaturedMediaId(media?._id || null)
+    setIsMediaPickerOpen(false)
+    setDirty(true)
+    setSaveError('')
+  }
+
+  const handleFeaturedMediaRemove = () => {
+    setFeaturedMedia(null)
+    setFeaturedMediaId(null)
+    setDirty(true)
+    setSaveError('')
+  }
+
+  const handleMediaFileUpload = useCallback(
+    async (file) => {
+      if (!file) return
+      if (!file.type?.startsWith('image/')) {
+        setMediaUploadError('Sadece görsel dosyaları yükleyebilirsin.')
+        return
+      }
+
+      setMediaUploadError('')
+      setIsUploadingMedia(true)
+      try {
+        const presign = await mediaAPI.createPresignedUpload({
+          fileName: file.name,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size,
+        })
+
+        await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+          },
+          body: file,
+        })
+
+        const mediaRecord = await mediaAPI.completeUpload({
+          key: presign.key,
+          originalName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          size: file.size,
+        })
+
+        handleFeaturedMediaSelect(mediaRecord)
+        queryClient.invalidateQueries({ queryKey: ['media-picker'] })
+      } catch (error) {
+        console.error('Media upload failed', error)
+        setMediaUploadError(
+          error instanceof Error ? error.message : 'Görsel yükleme sırasında bir hata oluştu.'
+        )
+      } finally {
+        setIsUploadingMedia(false)
+      }
+    },
+    [handleFeaturedMediaSelect, queryClient]
+  )
+
+  const currentFeaturedMediaId = featuredMediaId
+  const featuredMediaThumbnail =
+    featuredMedia?.variants?.find((variant) => variant.name === 'thumbnail')?.url || featuredMedia?.url
+  const featuredMediaAlt =
+    featuredMedia?.altText || featuredMedia?.originalName || featuredMedia?.fileName || 'Seçili görsel'
+  const featuredMediaSizeKb = featuredMedia?.size ? Math.max(1, Math.round(featuredMedia.size / 1024)) : null
+
+  const editorContainerRef = useCallback((element) => {
+    setEditorAnchorElem(element)
+  }, [])
+
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
+    <>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
       <div className="xl:col-span-3 space-y-6">
         <section className={`${cardClass} p-6 space-y-5`}>
           <div className="flex items-center justify-between">
@@ -500,13 +785,18 @@ export default function ContentEditor() {
             <div>
               <label className="block text-sm font-semibold text-gray-700">Kategoriler</label>
               <CategoryMultiSelect
-                allCategories={allCategories}
-                value={categories}
-                onChange={(next) => {
-                  setCategories(next)
-                  setDirty(true)
-                  setSaveError('')
-                }}
+                selectedCategories={selectedCategoryRecords}
+                onAdd={handleCategoryAdd}
+                onRemove={handleCategoryRemove}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700">Etiketler</label>
+              <TagSelector
+                selectedTags={selectedTagRecords}
+                onAdd={handleTagAdd}
+                onRemove={handleTagRemove}
               />
             </div>
           </div>
@@ -522,7 +812,7 @@ export default function ContentEditor() {
           <div className="rounded-lg border border-gray-200 bg-white">
             <LexicalComposer initialConfig={{ ...initialConfig, editorState: initialEditorState }}>
               <Toolbar />
-              <div className="relative">
+              <div className="relative" ref={editorContainerRef}>
                 <RichTextPlugin
                   contentEditable={<ContentEditable className="min-h-[260px] px-4 py-3 outline-none prose max-w-none" />}
                   placeholder={<Placeholder />}
@@ -535,6 +825,8 @@ export default function ContentEditor() {
                 <CodeHighlightingPlugin />
                 <EditorStateHydrator stateJSON={initialEditorState} skipNextOnChangeRef={skipNextOnChangeRef} />
                 <OnChangePlugin onChange={onLexicalChange} />
+                {editorAnchorElem && <DraggableBlockPlugin anchorElem={editorAnchorElem} />}
+                <FloatingTextFormatToolbarPlugin />
               </div>
             </LexicalComposer>
           </div>
@@ -633,16 +925,274 @@ export default function ContentEditor() {
         </section>
 
         <section className={`${cardClass} space-y-3 p-5`}>
+          <h3 className="text-sm font-semibold text-gray-900">Öne çıkan görsel</h3>
+          {featuredMedia ? (
+            <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="h-24 w-24 flex-none overflow-hidden rounded-md bg-gray-100">
+                {featuredMediaThumbnail ? (
+                  <img
+                    src={featuredMediaThumbnail}
+                    alt={featuredMediaAlt}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-gray-300">
+                    <PhotoIcon className="h-8 w-8" />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <p className="truncate text-sm font-medium text-gray-900">
+                    {featuredMedia.originalName || featuredMedia.fileName || 'Seçili görsel'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {[featuredMedia.mimeType || 'Görsel', featuredMediaSizeKb ? `${featuredMediaSizeKb} KB` : null]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={openMediaPicker}
+                    className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                  >
+                    Değiştir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFeaturedMediaRemove}
+                    className="inline-flex items-center rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                  >
+                    Kaldır
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={openMediaPicker}
+              className="flex w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600"
+            >
+              <PhotoIcon className="h-8 w-8" />
+              <span>Öne çıkan görsel seçin veya yükleyin</span>
+            </button>
+          )}
+        </section>
+
+        <section className={`${cardClass} space-y-3 p-5`}>
           <h3 className="text-sm font-semibold text-gray-900">Yakındaki İyileştirmeler</h3>
           <ul className="list-disc space-y-1 pl-4 text-xs text-gray-500">
             <li>Etiket seçimi ve yönetimi</li>
-            <li>Öne çıkan görsel seçimi (medya kütüphanesi)</li>
             <li>Sürüm karşılaştırma & geri yükleme</li>
             <li>Medya yerleştirme ve özel bloklar</li>
+            <li>İçerik çeviri ve lokalizasyon</li>
           </ul>
         </section>
       </aside>
-    </div>
+      </div>
+
+      <Transition.Root show={isMediaPickerOpen} as={Fragment}>
+        <Dialog
+          as="div"
+          className="relative z-40"
+          onClose={() => {
+            setIsMediaPickerOpen(false)
+            setMediaUploadError('')
+          }}
+        >
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-200"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-150"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-gray-900/40" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 sm:p-6">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-200"
+                enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                enterTo="opacity-100 translate-y-0 sm:scale-100"
+                leave="ease-in duration-150"
+                leaveFrom="opacity-100 translate-y-0 sm:scale-100"
+                leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5">
+                  <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                    <div>
+                      <Dialog.Title className="text-lg font-semibold text-gray-900">
+                        Öne çıkan görsel seç
+                      </Dialog.Title>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Medya kütüphanesinden bir görsel seçebilir veya yeni bir görsel yükleyebilirsin.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMediaPickerOpen(false)
+                        setMediaUploadError('')
+                      }}
+                      className="rounded-full p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                    >
+                      <span className="sr-only">Kapat</span>
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4 px-6 py-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="flex-1">
+                        <label htmlFor="media-picker-search" className="block text-sm font-medium text-gray-700">
+                          Arama
+                        </label>
+                        <input
+                          id="media-picker-search"
+                          type="search"
+                          value={mediaSearch}
+                          onChange={(event) => {
+                            setMediaSearch(event.target.value)
+                            setMediaPage(1)
+                          }}
+                          placeholder="Dosya adı veya etiket"
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0]
+                              if (file) {
+                                handleMediaFileUpload(file)
+                              }
+                              event.target.value = ''
+                            }}
+                          />
+                          Görsel yükle
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => mediaQuery.refetch()}
+                          className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          <ArrowPathIcon
+                            className={clsx('h-4 w-4', mediaQuery.isFetching ? 'animate-spin' : '')}
+                          />
+                          Yenile
+                        </button>
+                      </div>
+                    </div>
+
+                    {mediaUploadError && (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                        {mediaUploadError}
+                      </div>
+                    )}
+
+                    <div className="min-h-[220px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+                      {mediaQuery.isLoading ? (
+                        <p className="text-sm text-gray-500">Görseller yükleniyor...</p>
+                      ) : mediaQuery.isError ? (
+                        <p className="text-sm text-red-600">Görseller alınamadı. Lütfen tekrar deneyin.</p>
+                      ) : (mediaQuery.data?.items?.length ?? 0) === 0 ? (
+                        <p className="text-sm text-gray-500">Henüz görsel yüklenmemiş.</p>
+                      ) : (
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {(mediaQuery.data?.items ?? []).map((item) => {
+                            const thumbnail =
+                              item.variants?.find((variant) => variant.name === 'thumbnail')?.url || item.url
+                            const isActive = item._id === currentFeaturedMediaId
+
+                            return (
+                              <button
+                                key={item._id}
+                                type="button"
+                                onClick={() => handleFeaturedMediaSelect(item)}
+                                className={clsx(
+                                  'flex flex-col overflow-hidden rounded-lg border bg-white text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500',
+                                  isActive ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'
+                                )}
+                              >
+                                <div className="relative aspect-video bg-gray-100">
+                                  {thumbnail ? (
+                                    <img src={thumbnail} alt={item.altText || item.originalName || 'Görsel'} className="h-full w-full object-cover" />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center text-gray-300">
+                                      <PhotoIcon className="h-8 w-8" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="space-y-1 px-3 py-2">
+                                  <p className="truncate text-sm font-medium text-gray-900">
+                                    {item.originalName || item.fileName || 'Görsel'}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {item.mimeType || 'image'}
+                                  </p>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-500">
+                        {(mediaQuery.data?.pagination?.total ?? 0)} kayıt bulundu
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setMediaPage((prev) => Math.max(1, prev - 1))}
+                          disabled={mediaPage <= 1 || mediaQuery.isFetching}
+                          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Önceki
+                        </button>
+                        <span className="text-xs text-gray-500">
+                          Sayfa {mediaPage} / {mediaQuery.data?.pagination?.pages ?? 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setMediaPage((prev) => prev + 1)}
+                          disabled={
+                            mediaQuery.isFetching ||
+                            mediaPage >= (mediaQuery.data?.pagination?.pages ?? 1)
+                          }
+                          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Sonraki
+                        </button>
+                      </div>
+                    </div>
+
+                    {isUploadingMedia && (
+                      <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                        Görsel yükleniyor...
+                      </div>
+                    )}
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition.Root>
+    </>
   )
 }
 
@@ -654,33 +1204,122 @@ function CodeHighlightingPlugin() {
   return null
 }
 
-function CategoryMultiSelect({ allCategories, value, onChange }) {
-  const toggle = (id) => {
-    const exists = value.includes(id)
-    const next = exists ? value.filter((item) => item !== id) : [...value, id]
-    onChange(next)
-  }
+function CategoryMultiSelect({ selectedCategories, onAdd, onRemove }) {
+  const containerRef = useRef(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+  const debouncedSearch = useDebouncedValue(searchTerm, 250)
 
-  const selectedMap = new Map(allCategories.map((cat) => [String(cat._id), cat]))
-  const selectedList = value.map((id) => selectedMap.get(id)).filter(Boolean)
+  const categoryQuery = useQuery(
+    ['category-search', debouncedSearch],
+    () =>
+      listCategories({
+        flat: true,
+        search: debouncedSearch || undefined,
+        limit: 20,
+      }),
+    {
+      enabled: isOpen,
+      keepPreviousData: true,
+    }
+  )
+
+  const options = categoryQuery.data?.categories ?? []
+  const selectedIds = useMemo(
+    () => new Set((selectedCategories || []).map((item) => String(item._id))),
+    [selectedCategories]
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClick = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [isOpen])
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-      {selectedList.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {selectedList.map((cat) => {
-            const id = String(cat._id)
+    <div className="space-y-3">
+      <div className="relative" ref={containerRef}>
+        <input
+          type="search"
+          value={searchTerm}
+          onChange={(event) => {
+            setSearchTerm(event.target.value)
+            if (!isOpen) {
+              setIsOpen(true)
+            }
+          }}
+          onFocus={() => setIsOpen(true)}
+          placeholder="Kategori ara ve seç"
+          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+        />
+
+        {isOpen && (
+          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+            <div className="max-h-60 divide-y divide-gray-100 overflow-y-auto text-sm">
+              {categoryQuery.isLoading ? (
+                <div className="px-4 py-3 text-gray-500">Kategoriler yükleniyor…</div>
+              ) : options.length === 0 ? (
+                <div className="px-4 py-3 text-gray-500">Sonuç bulunamadı.</div>
+              ) : (
+                options.map((category) => {
+                  const id = String(category._id)
+                  const isSelected = selectedIds.has(id)
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) return
+                        onAdd(category)
+                        setSearchTerm('')
+                      }}
+                      disabled={isSelected}
+                      className={clsx(
+                        'flex w-full items-start gap-2 px-4 py-2 text-left transition',
+                        isSelected
+                          ? 'cursor-default bg-blue-50 text-blue-700'
+                          : 'hover:bg-gray-100'
+                      )}
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{category.name}</div>
+                        <div className="text-xs text-gray-500">{category.slug}</div>
+                      </div>
+                      {isSelected && <span className="text-xs font-semibold text-blue-600">Seçildi</span>}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+            {categoryQuery.isFetching && !categoryQuery.isLoading && (
+              <div className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+                Güncelleniyor…
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {selectedCategories.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedCategories.map((category) => {
+            const id = String(category._id)
             return (
               <span
                 key={id}
                 className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700"
               >
-                {cat.name}
+                {category.name}
                 <button
                   type="button"
-                  onClick={() => toggle(id)}
+                  onClick={() => onRemove(id)}
                   className="text-blue-500 hover:text-blue-700"
-                  aria-label={`${cat.name} kategorisini kaldır`}
+                  aria-label={`${category.name} kategorisini kaldır`}
                 >
                   ×
                 </button>
@@ -689,36 +1328,220 @@ function CategoryMultiSelect({ allCategories, value, onChange }) {
           })}
         </div>
       )}
-
-      <div className="max-h-48 space-y-1 overflow-y-auto">
-        {allCategories.map((cat) => {
-          const id = String(cat._id)
-          const depth = Array.isArray(cat.ancestors) ? cat.ancestors.length : 0
-          const active = value.includes(id)
-          const labelPrefix = depth ? `${'— '.repeat(depth)} ` : ''
-          return (
-            <button
-              type="button"
-              key={id}
-              onClick={() => toggle(id)}
-              className={clsx(
-                'w-full flex items-center justify-between rounded border px-3 py-1.5 text-left text-sm transition',
-                active
-                  ? 'border-blue-200 bg-blue-50 text-blue-700'
-                  : 'border-transparent text-gray-700 hover:border-gray-200 hover:bg-white'
-              )}
-            >
-              <span className="truncate">{labelPrefix}{cat.name}</span>
-              {active && <span className="text-xs font-semibold">✓</span>}
-            </button>
-          )
-        })}
-        {!allCategories.length && (
-          <div className="text-xs text-gray-500">Kategori yok.</div>
-        )}
-      </div>
     </div>
   )
+}
+
+function TagSelector({ selectedTags, onAdd, onRemove }) {
+  const containerRef = useRef(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [creationError, setCreationError] = useState('')
+  const debouncedSearch = useDebouncedValue(searchTerm, 1000)
+
+  const tagQuery = useQuery(
+    ['tag-search', debouncedSearch],
+    () =>
+      searchTags({
+        search: debouncedSearch || undefined,
+        limit: 20,
+      }),
+    {
+      enabled: isOpen,
+      keepPreviousData: true,
+    }
+  )
+
+  const options = tagQuery.data?.tags ?? []
+  const selectedIds = useMemo(
+    () => new Set((selectedTags || []).map((item) => String(item._id))),
+    [selectedTags]
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
+
+  const handleSelect = useCallback(
+    (tag) => {
+      if (!tag || selectedIds.has(String(tag._id))) {
+        return
+      }
+      onAdd(tag)
+      setSearchTerm('')
+      setCreationError('')
+      tagQuery.refetch()
+    },
+    [onAdd, selectedIds, tagQuery]
+  )
+
+  const handleCreate = useCallback(async () => {
+    const trimmed = searchTerm.trim()
+    if (!trimmed) return
+
+    const existing = options.find((tag) => {
+      const title = typeof tag.title === 'string' ? tag.title : ''
+      return title.toLowerCase() === trimmed.toLowerCase() || tag.slug?.toLowerCase() === trimmed.toLowerCase()
+    })
+
+    if (existing) {
+      handleSelect(existing)
+      setIsOpen(false)
+      return
+    }
+
+    if (selectedIds.size && [...selectedIds].some((id) => {
+      const tag = selectedTags.find((item) => String(item._id) === id)
+      if (!tag) return false
+      const title = typeof tag.title === 'string' ? tag.title : ''
+      return title.toLowerCase() === trimmed.toLowerCase() || tag.slug?.toLowerCase() === trimmed.toLowerCase()
+    })) {
+      setSearchTerm('')
+      setCreationError('')
+      return
+    }
+
+    setCreationError('')
+    setIsCreating(true)
+    try {
+      const tag = await createTag({ title: trimmed })
+      handleSelect(tag)
+      setIsOpen(false)
+    } catch (error) {
+      console.error('Tag creation failed', error)
+      setCreationError(error instanceof Error ? error.message : 'Etiket oluşturulamadı.')
+    } finally {
+      setIsCreating(false)
+    }
+  }, [createTag, handleSelect, options, searchTerm, selectedIds, selectedTags])
+
+  const handleKeyDown = useCallback(
+    (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        handleCreate()
+      } else if (event.key === 'Escape') {
+        setIsOpen(false)
+      }
+    },
+    [handleCreate]
+  )
+
+  return (
+    <div className="space-y-3">
+      <div className="relative" ref={containerRef}>
+        <input
+          type="search"
+          value={searchTerm}
+          onChange={(event) => {
+            setSearchTerm(event.target.value)
+            if (!isOpen) {
+              setIsOpen(true)
+            }
+          }}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setIsOpen(true)}
+          placeholder="Etiket ara veya oluştur"
+          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+        />
+        {(creationError || isCreating) && (
+          <p className={clsx('mt-1 text-xs', creationError ? 'text-red-600' : 'text-blue-600')}>
+            {isCreating ? 'Yeni etiket oluşturuluyor…' : creationError}
+          </p>
+        )}
+
+        {isOpen && (
+          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+            <div className="max-h-60 divide-y divide-gray-100 overflow-y-auto text-sm">
+              {tagQuery.isLoading ? (
+                <div className="px-4 py-3 text-gray-500">Etiketler yükleniyor…</div>
+              ) : options.length === 0 ? (
+                <div className="px-4 py-3 text-gray-500">Sonuç bulunamadı.</div>
+              ) : (
+                options.map((tag) => {
+                  const id = String(tag._id)
+                  const title = typeof tag.title === 'string' ? tag.title : tag.slug
+                  const isSelected = selectedIds.has(id)
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => handleSelect(tag)}
+                      disabled={isSelected}
+                      className={clsx(
+                        'flex w-full items-start gap-2 px-4 py-2 text-left transition',
+                        isSelected
+                          ? 'cursor-default bg-blue-50 text-blue-700'
+                          : 'hover:bg-gray-100'
+                      )}
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{title}</div>
+                        <div className="text-xs text-gray-500">{tag.slug}</div>
+                      </div>
+                      {isSelected && <span className="text-xs font-semibold text-blue-600">Seçildi</span>}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+            {tagQuery.isFetching && !tagQuery.isLoading && (
+              <div className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+                Güncelleniyor…
+              </div>
+            )}
+            <div className="border-t border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-500">
+              Enter tuşu ile yeni etiket oluşturabilirsiniz.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {selectedTags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedTags.map((tag) => {
+            const id = String(tag._id)
+            const title = typeof tag.title === 'string' ? tag.title : tag.slug
+            return (
+              <span
+                key={id}
+                className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700"
+              >
+                {title}
+                <button
+                  type="button"
+                  onClick={() => onRemove(id)}
+                  className="text-green-500 hover:text-green-700"
+                  aria-label={`${title} etiketini kaldır`}
+                >
+                  ×
+                </button>
+              </span>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function useDebouncedValue(value, delay = 250) {
+  const [debounced, setDebounced] = useState(value)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+
+  return debounced
 }
 
 const BLOCK_OPTIONS = [
@@ -1006,7 +1829,7 @@ function Toolbar() {
   }
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+    <div className="editor-toolbar mb-4">
       <ToolbarButton
         title="Geri al"
         onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
@@ -1025,7 +1848,7 @@ function Toolbar() {
       <select
         value={blockType}
         onChange={handleBlockChange}
-        className="h-9 rounded-md border border-gray-200 bg-white px-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+        className="editor-toolbar__select"
       >
         {BLOCK_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>
@@ -1107,7 +1930,7 @@ function Toolbar() {
           max={FONT_MAX}
           value={fontSize}
           onChange={handleFontSizeInput}
-          className="w-14 rounded-md border border-gray-200 bg-white px-2 py-1 text-center text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+          className="editor-toolbar__font-input"
         />
         <ToolbarButton
           title="Yazı boyutunu büyüt"
@@ -1164,14 +1987,9 @@ function ToolbarButton({ children, onClick, active = false, disabled = false, ti
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={title}
       aria-pressed={active}
-      className={clsx(
-        'inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border px-2.5 text-xs font-medium transition',
-        active
-          ? 'border-blue-300 bg-blue-100 text-blue-700'
-          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-100',
-        disabled && 'cursor-not-allowed opacity-40'
-      )}
+      className={clsx('editor-toolbar__button', active && 'is-active', disabled && 'is-disabled')}
     >
       {children}
     </button>
@@ -1179,18 +1997,18 @@ function ToolbarButton({ children, onClick, active = false, disabled = false, ti
 }
 
 function Divider() {
-  return <span className="mx-1 h-6 w-px bg-gray-200" aria-hidden="true" />
+  return <span className="editor-toolbar__divider" aria-hidden="true" />
 }
 
 function ColorPicker({ label, value, onChange }) {
   return (
-    <label className="flex items-center gap-2 text-xs text-gray-600">
-      <span>{label}</span>
+    <label className="editor-toolbar__color-picker">
+      <span className="editor-toolbar__color-label">{label}</span>
       <input
         type="color"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-7 w-7 cursor-pointer border border-gray-200 bg-white p-0"
+        className="editor-toolbar__color-input"
       />
     </label>
   )
