@@ -65,6 +65,50 @@ export class ImageNode extends DecoratorNode {
     return span
   }
 
+  exportDOM() {
+    const element = document.createElement('div')
+    element.className = `editor-image-container flex ${this.getAlignmentClassName()}`
+
+    const wrapper = document.createElement('div')
+    wrapper.className = 'relative inline-block max-w-full'
+
+    const img = document.createElement('img')
+    img.src = this.__src
+    img.alt = this.__altText
+    img.className = 'editor-image'
+
+    if (this.__width) {
+      img.style.width = `${this.__width}px`
+    }
+    if (this.__height) {
+      img.style.height = `${this.__height}px`
+    }
+
+    wrapper.appendChild(img)
+
+    if (this.__showCaption && this.__caption) {
+      const caption = document.createElement('div')
+      caption.className = 'mt-2 text-sm text-gray-600 text-center italic'
+      caption.textContent = this.__caption
+      wrapper.appendChild(caption)
+    }
+
+    element.appendChild(wrapper)
+    return { element }
+  }
+
+  getAlignmentClassName() {
+    switch (this.__alignment) {
+      case 'left':
+        return 'justify-start'
+      case 'right':
+        return 'justify-end'
+      case 'center':
+      default:
+        return 'justify-center'
+    }
+  }
+
   updateDOM() {
     return false
   }

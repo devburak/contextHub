@@ -18,6 +18,7 @@ import {
   $getSelection,
   $isRangeSelection,
   $isTextNode,
+  $insertNodes,
   INDENT_CONTENT_COMMAND,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
@@ -28,6 +29,7 @@ import {
   SELECTION_CHANGE_COMMAND,
   UNDO_COMMAND,
 } from 'lexical'
+import { $generateHtmlFromNodes } from '@lexical/html'
 import { $setBlocksType } from '@lexical/selection'
 import { HeadingNode, QuoteNode, $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
 import { ListPlugin } from '@lexical/react/LexicalListPlugin'
@@ -50,8 +52,10 @@ import FloatingTextFormatToolbarPlugin from './plugins/FloatingTextFormatToolbar
 import DraggableBlockPlugin from './plugins/DraggableBlockPlugin'
 import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
 import { ImageNode } from './nodes/ImageNode.jsx'
+import { TableNode, TableRowNode, TableCellNode, $createTableWithDimensions } from './nodes/TableNode.jsx'
 import { PhotoIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
+import TableDimensionSelector from './components/TableDimensionSelector.jsx'
 
 const DEFAULT_FONT_SIZE = 12
 const FONT_MIN = 10
@@ -153,7 +157,7 @@ const theme = {
 const initialConfig = {
   namespace: 'content-editor',
   theme,
-  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode],
+  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, TableNode, TableRowNode, TableCellNode],
   onError(error) {
     console.error(error)
   },
@@ -190,6 +194,7 @@ export default function ContentEditor() {
   const [featuredMedia, setFeaturedMedia] = useState(null)
   const [featuredMediaId, setFeaturedMediaId] = useState(null)
   const [mediaPickerState, setMediaPickerState] = useState({ open: false, mode: 'image', onSelect: null })
+  const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false)
   const [editorAnchorElem, setEditorAnchorElem] = useState(null)
   const skipNextOnChangeRef = useRef(false)
   const skipNextContentSyncRef = useRef(false)
@@ -494,11 +499,11 @@ export default function ContentEditor() {
     }
   }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, tags, featuredMediaId, isNew, createMut, updateMut, id])
 
-  const onLexicalChange = useCallback((editorState) => {
+  const onLexicalChange = useCallback((editorState, editor) => {
     editorState.read(() => {
       const root = $getRoot()
-      const textContent = root.getTextContent()
-      setHtml(`<p>${textContent.replace(/\n/g, '</p><p>')}</p>`)
+      const htmlString = $generateHtmlFromNodes(editor, null)
+      setHtml(htmlString)
       setLatestEditorState(JSON.stringify(editorState.toJSON()))
       if (skipNextOnChangeRef.current) {
         skipNextOnChangeRef.current = false
@@ -765,7 +770,11 @@ export default function ContentEditor() {
           </div>
           <div className="rounded-lg border border-gray-200 bg-white">
             <LexicalComposer initialConfig={initialConfig}>
-              <Toolbar openMediaPicker={openMediaPicker} />
+              <Toolbar
+                openMediaPicker={openMediaPicker}
+                isTableSelectorOpen={isTableSelectorOpen}
+                setIsTableSelectorOpen={setIsTableSelectorOpen}
+              />
               <ImagePlugin />
               <div className="relative" ref={editorContainerRef}>
                 <RichTextPlugin
@@ -1325,7 +1334,7 @@ const BLOCK_OPTIONS = [
   { value: 'code', label: 'Kod Bloğu' },
 ]
 
-function Toolbar({ openMediaPicker = null }) {
+function Toolbar({ openMediaPicker = null, isTableSelectorOpen = false, setIsTableSelectorOpen = null }) {
   const [editor] = useLexicalComposerContext()
   const [formatState, setFormatState] = useState({
     bold: false,
@@ -1342,6 +1351,7 @@ function Toolbar({ openMediaPicker = null }) {
   const [textColor, setTextColor] = useState(DEFAULT_TEXT_COLOR)
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
   const [isLinkActive, setIsLinkActive] = useState(false)
+  const tableSelectorRef = useRef(null)
 
   const handleInsertImage = useCallback(() => {
     if (typeof openMediaPicker !== 'function') {
@@ -1374,6 +1384,19 @@ function Toolbar({ openMediaPicker = null }) {
       },
     })
   }, [editor, openMediaPicker])
+
+  const handleCreateTable = useCallback((rows, columns) => {
+    editor.update(() => {
+      const table = $createTableWithDimensions(rows, columns, true)
+      $insertNodes([table])
+    })
+  }, [editor])
+
+  const handleToggleTableSelector = useCallback(() => {
+    if (setIsTableSelectorOpen) {
+      setIsTableSelectorOpen(!isTableSelectorOpen)
+    }
+  }, [isTableSelectorOpen, setIsTableSelectorOpen])
 
   const applyTextStyle = useCallback(
     (styleUpdates) => {
@@ -1679,6 +1702,25 @@ function Toolbar({ openMediaPicker = null }) {
       <Divider />
       <ToolbarButton title="Görsel ekle" onClick={handleInsertImage}>
       </ToolbarButton>
+      <div className="relative">
+        <ToolbarButton
+          title="Tablo ekle"
+          onClick={handleToggleTableSelector}
+          active={isTableSelectorOpen}
+        >
+        </ToolbarButton>
+        {isTableSelectorOpen && (
+          <div
+            ref={tableSelectorRef}
+            className="absolute top-full left-0 z-50 mt-1"
+          >
+            <TableDimensionSelector
+              onCreateTable={handleCreateTable}
+              onClose={() => setIsTableSelectorOpen && setIsTableSelectorOpen(false)}
+            />
+          </div>
+        )}
+      </div>
       <Divider />
       <ToolbarButton
         title="Kalın"
