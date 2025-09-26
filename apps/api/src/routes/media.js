@@ -101,6 +101,56 @@ async function mediaRoutes(fastify) {
     }
   })
 
+  fastify.post('/media/external', {
+    preHandler: [authenticate, requireAuthor],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          url: { type: 'string' },
+          title: { type: 'string', nullable: true },
+          description: { type: 'string', nullable: true },
+          tags: {
+            anyOf: [
+              { type: 'array', items: { type: 'string' } },
+              { type: 'string' },
+            ],
+          },
+          provider: { type: 'string', nullable: true },
+          providerId: { type: 'string', nullable: true },
+          thumbnailUrl: { type: 'string', nullable: true },
+          altText: { type: 'string', nullable: true },
+          duration: { type: 'number', nullable: true },
+        },
+        required: ['url'],
+      },
+    },
+  }, async function externalCreateHandler(request, reply) {
+    try {
+      const media = await mediaService.createExternalMedia({
+        tenantId: request.tenantId,
+        userId: request.user?._id?.toString(),
+        url: request.body.url,
+        title: request.body.title,
+        description: request.body.description,
+        tags: request.body.tags,
+        provider: request.body.provider,
+        providerId: request.body.providerId,
+        thumbnailUrl: request.body.thumbnailUrl,
+        altText: request.body.altText,
+        duration: request.body.duration,
+      })
+
+      return reply.code(201).send({ media })
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to register external media')
+      return reply.code(400).send({
+        error: 'ExternalMediaPersistFailed',
+        message: error.message,
+      })
+    }
+  })
+
   fastify.get('/media', {
     preHandler: [authenticate, requireAuthor],
     schema: {

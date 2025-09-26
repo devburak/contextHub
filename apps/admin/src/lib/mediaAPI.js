@@ -48,6 +48,31 @@ export const mediaAPI = {
     return response.data.media
   },
 
+  createExternal: async ({
+    url,
+    title,
+    description,
+    tags,
+    provider,
+    providerId,
+    thumbnailUrl,
+    altText,
+    duration,
+  }) => {
+    const response = await apiClient.post('/media/external', {
+      url,
+      title,
+      description,
+      tags,
+      provider,
+      providerId,
+      thumbnailUrl,
+      altText,
+      duration,
+    })
+    return response.data.media
+  },
+
   update: async (id, payload) => {
     const response = await apiClient.patch(`/media/${id}`, payload)
     return response.data.media

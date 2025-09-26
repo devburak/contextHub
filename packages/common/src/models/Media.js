@@ -17,10 +17,31 @@ const mediaVariantSchema = new Schema({
 const mediaSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
   tenantSlug: { type: String, required: true },
-  key: { type: String, required: true },
-  bucket: { type: String, required: true },
+  sourceType: { type: String, enum: ['upload', 'external'], default: 'upload' },
+  provider: { type: String },
+  providerId: { type: String },
+  externalUrl: { type: String },
+  thumbnailUrl: { type: String },
+  duration: { type: Number },
+  key: {
+    type: String,
+    required: function requiredKey() {
+      return this.sourceType !== 'external'
+    },
+  },
+  bucket: {
+    type: String,
+    required: function requiredBucket() {
+      return this.sourceType !== 'external'
+    },
+  },
   url: { type: String, required: true },
-  folder: { type: String, required: true },
+  folder: {
+    type: String,
+    required: function requiredFolder() {
+      return this.sourceType !== 'external'
+    },
+  },
   fileName: { type: String, required: true },
   originalName: { type: String, required: true },
   extension: { type: String },

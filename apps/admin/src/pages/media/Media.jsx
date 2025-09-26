@@ -7,9 +7,11 @@ import {
   DocumentDuplicateIcon,
   DocumentIcon,
   PhotoIcon,
+  PlayIcon,
   TagIcon,
   TrashIcon,
   XMarkIcon,
+  VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 import { mediaAPI } from '../../lib/mediaAPI.js'
@@ -42,6 +44,19 @@ export default function MediaLibrary() {
     tags: '',
   })
   const [copiedId, setCopiedId] = useState(null)
+  const [isExternalModalOpen, setIsExternalModalOpen] = useState(false)
+  const [externalError, setExternalError] = useState(null)
+  const [externalForm, setExternalForm] = useState({
+    url: '',
+    title: '',
+    provider: '',
+    providerId: '',
+    thumbnailUrl: '',
+    altText: '',
+    description: '',
+    tags: '',
+    duration: '',
+  })
 
   const queryClient = useQueryClient()
   const searchTimeoutRef = useRef(null)
@@ -173,6 +188,34 @@ export default function MediaLibrary() {
     },
   })
 
+  const resetExternalForm = useCallback(() => {
+    setExternalForm({
+      url: '',
+      title: '',
+      provider: '',
+      providerId: '',
+      thumbnailUrl: '',
+      altText: '',
+      description: '',
+      tags: '',
+      duration: '',
+    })
+  }, [])
+
+  const createExternalMutation = useMutation({
+    mutationFn: (payload) => mediaAPI.createExternal(payload),
+    onSuccess: (media) => {
+      setExternalError(null)
+      resetExternalForm()
+      setIsExternalModalOpen(false)
+      setLastUploadedNames([media.originalName || media.fileName])
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+    },
+    onError: (error) => {
+      setExternalError(error)
+    },
+  })
+
   useEffect(() => {
     if (!activeItem) {
       setFormState({ originalName: '', altText: '', caption: '', description: '', tags: '' })
@@ -299,6 +342,55 @@ export default function MediaLibrary() {
     }
   }, [])
 
+  const openExternalModal = useCallback(() => {
+    setExternalError(null)
+    setIsExternalModalOpen(true)
+  }, [])
+
+  const closeExternalModal = useCallback(() => {
+    setIsExternalModalOpen(false)
+    setExternalError(null)
+    resetExternalForm()
+  }, [resetExternalForm])
+
+  const handleExternalChange = useCallback((event) => {
+    const { name, value } = event.target
+    setExternalForm((prev) => ({ ...prev, [name]: value }))
+  }, [])
+
+  const handleExternalSubmit = useCallback(() => {
+    const trimmedUrl = externalForm.url.trim()
+    if (!trimmedUrl) {
+      setExternalError(new Error('Lütfen geçerli bir URL girin.'))
+      return
+    }
+
+    const tagList = externalForm.tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+
+    const payload = {
+      url: trimmedUrl,
+      title: externalForm.title.trim() || undefined,
+      description: externalForm.description.trim() || undefined,
+      provider: externalForm.provider.trim() || undefined,
+      providerId: externalForm.providerId.trim() || undefined,
+      thumbnailUrl: externalForm.thumbnailUrl.trim() || undefined,
+      altText: externalForm.altText.trim() || undefined,
+      duration: externalForm.duration.trim() ? Number(externalForm.duration) : undefined,
+      tags: tagList.length ? tagList : undefined,
+    }
+
+    if (Number.isNaN(payload.duration)) {
+      setExternalError(new Error('Süre alanı sayı olmalıdır.'))
+      return
+    }
+
+    setExternalError(null)
+    createExternalMutation.mutate(payload)
+  }, [createExternalMutation, externalForm])
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -313,19 +405,29 @@ export default function MediaLibrary() {
             Varlık bazlı dosyalarını yönet, yeni dosyalar yükle ve mevcut içerikleri filtreleyerek bul.
           </p>
         </div>
-        <label className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer">
-          <CloudArrowUpIcon className="h-5 w-5" aria-hidden="true" />
-          <span>Dosya Yükle</span>
-          <input
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              handleFiles(event.target.files)
-              event.target.value = ''
-            }}
-          />
-        </label>
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row">
+          <label className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer">
+            <CloudArrowUpIcon className="h-5 w-5" aria-hidden="true" />
+            <span>Dosya Yükle</span>
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                handleFiles(event.target.files)
+                event.target.value = ''
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={openExternalModal}
+            className="inline-flex items-center justify-center gap-x-2 rounded-md border border-blue-400 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <VideoCameraIcon className="h-5 w-5" aria-hidden="true" />
+            URL'den Ekle
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -529,7 +631,11 @@ export default function MediaLibrary() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {items.map((item) => {
                 const isSelected = selectedSet.has(item._id)
-                const thumbnailUrl = item.variants?.find((variant) => variant.name === 'thumbnail')?.url || item.url
+                const isExternal = item.sourceType === 'external'
+                const isImage = item.mimeType?.startsWith('image/')
+                const thumbnailUrl = isExternal
+                  ? item.thumbnailUrl || item.url
+                  : item.variants?.find((variant) => variant.name === 'thumbnail')?.url || item.url
 
                 return (
                   <article
@@ -551,12 +657,23 @@ export default function MediaLibrary() {
                       >
                         {isSelected ? '✓' : ''}
                       </button>
-                      {item.mimeType?.startsWith('image/') ? (
+                      {isImage ? (
                         <img
                           src={thumbnailUrl}
                           alt={item.altText || item.originalName || item.fileName}
                           className="h-full w-full object-cover"
                         />
+                      ) : isExternal && thumbnailUrl ? (
+                        <div className="relative h-full w-full">
+                          <img
+                            src={thumbnailUrl}
+                            alt={item.altText || item.originalName || item.fileName}
+                            className="h-full w-full object-cover"
+                          />
+                          <PlayIcon className="absolute inset-0 m-auto h-12 w-12 text-white drop-shadow" />
+                        </div>
+                      ) : isExternal ? (
+                        <VideoCameraIcon className="h-12 w-12 text-gray-500" aria-hidden="true" />
                       ) : (
                         <DocumentIcon className="h-12 w-12 text-gray-400" aria-hidden="true" />
                       )}
@@ -564,8 +681,10 @@ export default function MediaLibrary() {
                     <div className="flex flex-1 flex-col p-4 gap-3">
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="text-sm font-semibold text-gray-900 line-clamp-2">{item.originalName || item.fileName}</h3>
-                        {item.mimeType?.startsWith('image/') ? (
+                        {isImage ? (
                           <PhotoIcon className="h-5 w-5 text-blue-500" />
+                        ) : isExternal ? (
+                          <VideoCameraIcon className="h-5 w-5 text-blue-500" />
                         ) : (
                           <DocumentIcon className="h-5 w-5 text-gray-400" />
                         )}
@@ -640,11 +759,23 @@ export default function MediaLibrary() {
         copyUrl={copyUrl}
         copiedId={copiedId}
       />
+      <ExternalMediaModal
+        open={isExternalModalOpen}
+        onClose={closeExternalModal}
+        formState={externalForm}
+        onChange={handleExternalChange}
+        onSubmit={handleExternalSubmit}
+        isSubmitting={createExternalMutation.isPending}
+        error={externalError}
+      />
     </div>
   )
 }
 
 function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, onDelete, saving, deleting, error, copyUrl, copiedId }) {
+  const isExternal = item?.sourceType === 'external'
+  const isImage = item?.mimeType?.startsWith('image/')
+  const previewUrl = isExternal ? item?.thumbnailUrl || item?.url : item?.url
   return (
     <Transition.Root show={open} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
@@ -688,12 +819,25 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                   <div className="mt-6 grid gap-6 lg:grid-cols-2">
                     <div className="space-y-4">
                       <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                        {item.mimeType?.startsWith('image/') ? (
+                        {isImage ? (
                           <img
-                            src={item.url}
+                            src={previewUrl}
                             alt={item.altText || item.originalName || item.fileName}
                             className="max-h-80 w-full rounded object-contain"
                           />
+                        ) : isExternal && previewUrl ? (
+                          <div className="relative">
+                            <img
+                              src={previewUrl}
+                              alt={item.altText || item.originalName || item.fileName}
+                              className="max-h-80 w-full rounded object-contain"
+                            />
+                            <PlayIcon className="absolute inset-0 m-auto h-16 w-16 text-white drop-shadow" />
+                          </div>
+                        ) : isExternal ? (
+                          <div className="flex h-48 items-center justify-center text-gray-500">
+                            <VideoCameraIcon className="h-12 w-12" />
+                          </div>
                         ) : (
                           <div className="flex h-48 items-center justify-center text-gray-500">
                             <DocumentIcon className="h-12 w-12" />
@@ -701,6 +845,10 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                         )}
                       </div>
                       <div className="rounded-lg border border-gray-200 p-4 text-sm text-gray-600 space-y-2">
+                        <div className="flex justify-between gap-2">
+                          <span className="font-medium text-gray-700">Kaynak</span>
+                          <span className="text-gray-900">{isExternal ? 'Harici Video' : 'Dosya Yükleme'}</span>
+                        </div>
                         <div className="flex justify-between gap-2">
                           <span className="font-medium text-gray-700">Dosya Adı</span>
                           <span className="text-gray-900">{item.fileName}</span>
@@ -733,6 +881,39 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                             <span className="ml-2 text-xs text-green-600">Kopyalandı</span>
                           )}
                         </div>
+                        {isExternal && (
+                          <div className="space-y-1 text-sm">
+                            {item.provider && (
+                              <div className="flex justify-between gap-2">
+                                <span className="font-medium text-gray-700">Platform</span>
+                                <span className="text-gray-900">{item.provider}</span>
+                              </div>
+                            )}
+                            {item.providerId && (
+                              <div className="flex justify-between gap-2">
+                                <span className="font-medium text-gray-700">Video ID</span>
+                                <span className="text-gray-900">{item.providerId}</span>
+                              </div>
+                            )}
+                            {item.duration && (
+                              <div className="flex justify-between gap-2">
+                                <span className="font-medium text-gray-700">Süre</span>
+                                <span className="text-gray-900">{Math.round(item.duration)} sn</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between gap-2">
+                              <span className="font-medium text-gray-700">Harici URL</span>
+                              <a
+                                href={item.externalUrl || item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                Aç
+                              </a>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -835,6 +1016,206 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                     </form>
                   </div>
                 )}
+              </Dialog.Panel>
+            </Transition.Child>
+          </div>
+        </div>
+      </Dialog>
+    </Transition.Root>
+  )
+}
+
+function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSubmitting, error }) {
+  return (
+    <Transition.Root show={open} as={Fragment}>
+      <Dialog as="div" className="relative z-50" onClose={onClose}>
+        <Transition.Child
+          as={Fragment}
+          enter="ease-out duration-200"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div className="fixed inset-0 bg-black/40" />
+        </Transition.Child>
+
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-200"
+              enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+              enterTo="opacity-100 translate-y-0 sm:scale-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100 translate-y-0 sm:scale-100"
+              leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            >
+              <Dialog.Panel className="relative w-full max-w-2xl transform overflow-hidden rounded-2xl bg-white px-4 pb-6 pt-5 text-left shadow-xl transition-all sm:p-8">
+                <button
+                  type="button"
+                  className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                  onClick={onClose}
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+                <Dialog.Title className="text-lg font-semibold leading-6 text-gray-900 flex items-center gap-2">
+                  <VideoCameraIcon className="h-6 w-6 text-blue-500" />
+                  URL'den Video Ekle
+                </Dialog.Title>
+                <div className="mt-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="external-url">
+                      Video URL'si
+                    </label>
+                    <input
+                      id="external-url"
+                      name="url"
+                      type="url"
+                      required
+                      value={formState.url}
+                      onChange={onChange}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700" htmlFor="external-title">
+                        Başlık
+                      </label>
+                      <input
+                        id="external-title"
+                        name="title"
+                        value={formState.title}
+                        onChange={onChange}
+                        placeholder="Örn. Lansman Videosu"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700" htmlFor="external-thumbnail">
+                        Thumbnail URL
+                      </label>
+                      <input
+                        id="external-thumbnail"
+                        name="thumbnailUrl"
+                        value={formState.thumbnailUrl}
+                        onChange={onChange}
+                        placeholder="https://.../preview.jpg"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700" htmlFor="external-provider">
+                        Platform
+                      </label>
+                      <input
+                        id="external-provider"
+                        name="provider"
+                        value={formState.provider}
+                        onChange={onChange}
+                        placeholder="youtube, vimeo"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700" htmlFor="external-providerId">
+                        Video ID
+                      </label>
+                      <input
+                        id="external-providerId"
+                        name="providerId"
+                        value={formState.providerId}
+                        onChange={onChange}
+                        placeholder="Opsiyonel"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700" htmlFor="external-altText">
+                        Alternatif Metin
+                      </label>
+                      <input
+                        id="external-altText"
+                        name="altText"
+                        value={formState.altText}
+                        onChange={onChange}
+                        placeholder="Erişilebilirlik açıklaması"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700" htmlFor="external-duration">
+                        Süre (sn)
+                      </label>
+                      <input
+                        id="external-duration"
+                        name="duration"
+                        type="number"
+                        min="0"
+                        value={formState.duration}
+                        onChange={onChange}
+                        placeholder="Opsiyonel"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="external-description">
+                      Açıklama
+                    </label>
+                    <textarea
+                      id="external-description"
+                      name="description"
+                      rows={3}
+                      value={formState.description}
+                      onChange={onChange}
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="external-tags">
+                      Etiketler
+                    </label>
+                    <input
+                      id="external-tags"
+                      name="tags"
+                      value={formState.tags}
+                      onChange={onChange}
+                      placeholder="ör. youtube, kampanya"
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Virgülle ayırarak birden fazla etiket ekleyebilirsin.</p>
+                  </div>
+                  {error && (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                      {error instanceof Error ? error.message : 'Video eklenemedi. Lütfen tekrar dene.'}
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      Vazgeç
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onSubmit}
+                      disabled={isSubmitting}
+                      className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {isSubmitting ? 'Ekleniyor…' : 'Medyaya Ekle'}
+                    </button>
+                  </div>
+                </div>
               </Dialog.Panel>
             </Transition.Child>
           </div>
