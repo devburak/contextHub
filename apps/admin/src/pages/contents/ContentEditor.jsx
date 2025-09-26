@@ -53,7 +53,7 @@ import { ImageNode } from './nodes/ImageNode.jsx'
 import { PhotoIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
 
-const DEFAULT_FONT_SIZE = 16
+const DEFAULT_FONT_SIZE = 12
 const FONT_MIN = 10
 const FONT_MAX = 48
 const DEFAULT_TEXT_COLOR = '#111827'
@@ -1741,12 +1741,14 @@ function Toolbar({ openMediaPicker = null }) {
       </div>
       <Divider />
       <ColorPicker
-        label="Metin"
+        icon="font-color"
+        title="Metin rengi"
         value={textColor}
         onChange={handleTextColorChange}
       />
       <ColorPicker
-        label="Vurgu"
+        icon="bg-color"
+        title="Vurgu rengi"
         value={highlightColor}
         onChange={handleHighlightChange}
       />
@@ -1918,10 +1920,11 @@ function FormattingDropdown() {
         ref={buttonRef}
         type="button"
         onClick={handleButtonClick}
-        title="Formatting options for additional text styles"
-        className="editor-toolbar__button formatting-trigger"
+        aria-label="Formatting options for additional text styles"
+        className="toolbar-item spaced"
       >
-        Aa
+        <span className="icon dropdown-more"></span>
+        <i className="chevron-down"></i>
       </button>
 
       {isOpen && (
@@ -1954,15 +1957,15 @@ function FormattingDropdown() {
   )
 }
 
-function ColorPicker({ label, value, onChange }) {
+function ColorPicker({ icon, title, value, onChange }) {
   return (
-    <label className="editor-toolbar__color-picker">
-      <span className="editor-toolbar__color-label">{label}</span>
+    <label className="editor-toolbar__color-picker-icon" title={title}>
+      <div className={`color-icon ${icon}`}></div>
       <input
         type="color"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="editor-toolbar__color-input"
+        className="editor-toolbar__color-input-hidden"
       />
     </label>
   )
