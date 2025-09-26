@@ -25,6 +25,7 @@ const CollectionItem = require('./CollectionItem');
 const Template = require('./Template');
 const Content = require('./Content');
 const ContentVersion = require('./ContentVersion');
+const TenantSettings = require('./TenantSettings');
 
 module.exports = {
   Tenant,
@@ -51,5 +52,6 @@ module.exports = {
   Template,
   Content,
   ContentVersion,
+  TenantSettings,
   mongoose
 };

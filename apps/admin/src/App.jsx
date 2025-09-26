@@ -11,6 +11,7 @@ import EditUser from './pages/users/EditUser.jsx'
 import TenantSelection from './pages/tenants/TenantSelection.jsx'
 import Tenants from './pages/tenants/Tenants.jsx'
 import CreateTenant from './pages/tenants/CreateTenant.jsx'
+import TenantSettings from './pages/tenants/TenantSettings.jsx'
 import MediaLibrary from './pages/media/Media.jsx'
 import Categories from './pages/categories/Categories.jsx'
 import ContentList from './pages/contents/ContentList.jsx'
@@ -203,6 +204,7 @@ function App() {
               <Route path="/kategoriler/*" element={<Navigate to="/categories" replace />} />
               <Route path="/varliklar" element={<Tenants />} />
               <Route path="/varliklar/yeni" element={<CreateTenant />} />
+              <Route path="/varliklar/ayarlar" element={<TenantSettings />} />
             </Route>
             {/* Fallback catch-all when authenticated */}
             <Route path="*" element={<Navigate to="/" replace />} />

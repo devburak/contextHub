@@ -10,5 +10,15 @@ export const tenantAPI = {
   createTenant: async (payload) => {
     const { data } = await apiClient.post('/tenants', payload)
     return data
+  },
+
+  getSettings: async () => {
+    const { data } = await apiClient.get('/tenant-settings')
+    return data.settings
+  },
+
+  updateSettings: async (payload) => {
+    const { data } = await apiClient.put('/tenant-settings', payload)
+    return data.settings
   }
 }

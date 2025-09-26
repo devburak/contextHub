@@ -11,6 +11,9 @@
 - API middleware (`tenantContext`, `authenticate`) resolves the tenant from the request, verifies the JWT, and checks membership/role requirements before handling tenant-scoped routes like `/users` and `/tenants`.
 
 ## Change Log
+- Introduced tenant-level configuration support: new `TenantSettings` mongoose model (`packages/common/src/models/TenantSettings.js`), service helper (`apps/api/src/services/tenantSettingsService.js`), and secured Fastify routes (`GET/PUT /api/tenant-settings`) wired through the server; settings cover SMTP, webhook, branding, limits, feature flags, and arbitrary metadata while masking passwords/secrets and merging defaults.
+- Added an admin "Tenant Ayarları" page (`apps/admin/src/pages/tenants/TenantSettings.jsx`) plus API client helpers so owners/admins can edit tenant settings with grouped sections, secret reset toggles, limit controls, feature flag management, and JSON metadata editing.
+- Normalised tenant settings form styling to match the media library inputs by centralising Tailwind classes, ensuring consistent padding/borders across text, number, select, and textarea controls.
 - Adjusted `apps/api/src/middleware/auth.js:47` so user lookup during auth only requires the `_id`; this keeps multi-tenant members authenticated when they switch tenants with a freshly issued membership token.
 - Updated root `.env` with `R2_PUBLIC_DOMAIN`, upload limit, and default image variants to prepare Cloudflare R2 as the public media CDN (now exposes tenant files under `https://contextstore.ikon-x.com.tr/{slug}/...`).
 - Expanded media schema (`packages/common/src/models/Media.js`) with tenant slug snapshots, file naming metadata, variant details, and status fields; introduced R2-backed media service plus `/api/media` routes supporting presigned uploads, automatic variant generation (including WebP thumbnails), and listing with filters.
