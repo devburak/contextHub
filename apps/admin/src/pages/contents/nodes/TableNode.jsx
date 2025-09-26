@@ -2,10 +2,16 @@ import { ElementNode } from 'lexical'
 
 export class TableNode extends ElementNode {
   __columnWidths
+  __borderWidth
+  __borderColor
+  __borderStyle
 
-  constructor(columnWidths = [], key) {
+  constructor(columnWidths = [], borderWidth = 1, borderColor = '#374151', borderStyle = 'solid', key) {
     super(key)
     this.__columnWidths = columnWidths
+    this.__borderWidth = borderWidth
+    this.__borderColor = borderColor
+    this.__borderStyle = borderStyle
   }
 
   static getType() {
@@ -13,12 +19,12 @@ export class TableNode extends ElementNode {
   }
 
   static clone(node) {
-    return new TableNode(node.__columnWidths, node.__key)
+    return new TableNode(node.__columnWidths, node.__borderWidth, node.__borderColor, node.__borderStyle, node.__key)
   }
 
   static importJSON(serializedNode) {
-    const { columnWidths } = serializedNode
-    return $createTableNode(columnWidths)
+    const { columnWidths, borderWidth, borderColor, borderStyle } = serializedNode
+    return $createTableNode(columnWidths, borderWidth, borderColor, borderStyle)
   }
 
   exportJSON() {
@@ -27,6 +33,9 @@ export class TableNode extends ElementNode {
       type: 'table',
       version: 1,
       columnWidths: this.__columnWidths,
+      borderWidth: this.__borderWidth,
+      borderColor: this.__borderColor,
+      borderStyle: this.__borderStyle,
     }
   }
 
@@ -34,6 +43,13 @@ export class TableNode extends ElementNode {
     const table = document.createElement('table')
     table.className = 'editor-table'
     table.setAttribute('data-lexical-table', 'true')
+
+    // Apply border styling
+    if (this.__borderStyle === 'none') {
+      table.style.border = 'none'
+    } else {
+      table.style.border = `${this.__borderWidth}px ${this.__borderStyle} ${this.__borderColor}`
+    }
 
     // Add selection functionality
     table.addEventListener('click', (e) => {
@@ -47,8 +63,12 @@ export class TableNode extends ElementNode {
     return table
   }
 
-  updateDOM() {
-    return false
+  updateDOM(prevNode) {
+    return (
+      this.__borderWidth !== prevNode.__borderWidth ||
+      this.__borderColor !== prevNode.__borderColor ||
+      this.__borderStyle !== prevNode.__borderStyle
+    )
   }
 
   canBeEmpty() {
@@ -67,11 +87,41 @@ export class TableNode extends ElementNode {
     const writable = this.getWritable()
     writable.__columnWidths = columnWidths
   }
+
+  getBorderWidth() {
+    return this.__borderWidth
+  }
+
+  setBorderWidth(borderWidth) {
+    const writable = this.getWritable()
+    writable.__borderWidth = borderWidth
+  }
+
+  getBorderColor() {
+    return this.__borderColor
+  }
+
+  setBorderColor(borderColor) {
+    const writable = this.getWritable()
+    writable.__borderColor = borderColor
+  }
+
+  getBorderStyle() {
+    return this.__borderStyle
+  }
+
+  setBorderStyle(borderStyle) {
+    const writable = this.getWritable()
+    writable.__borderStyle = borderStyle
+  }
 }
 
 export class TableRowNode extends ElementNode {
-  constructor(key) {
+  __height
+
+  constructor(height = undefined, key) {
     super(key)
+    this.__height = height
   }
 
   static getType() {
@@ -79,11 +129,12 @@ export class TableRowNode extends ElementNode {
   }
 
   static clone(node) {
-    return new TableRowNode(node.__key)
+    return new TableRowNode(node.__height, node.__key)
   }
 
-  static importJSON() {
-    return $createTableRowNode()
+  static importJSON(serializedNode) {
+    const { height } = serializedNode
+    return $createTableRowNode(height)
   }
 
   exportJSON() {
@@ -91,17 +142,21 @@ export class TableRowNode extends ElementNode {
       ...super.exportJSON(),
       type: 'tablerow',
       version: 1,
+      height: this.__height,
     }
   }
 
   createDOM() {
     const tr = document.createElement('tr')
     tr.className = 'editor-table-row'
+    if (this.__height) {
+      tr.style.height = `${this.__height}px`
+    }
     return tr
   }
 
-  updateDOM() {
-    return false
+  updateDOM(prevNode) {
+    return this.__height !== prevNode.__height
   }
 
   canBeEmpty() {
@@ -111,6 +166,15 @@ export class TableRowNode extends ElementNode {
   isShadowRoot() {
     return false
   }
+
+  getHeight() {
+    return this.__height
+  }
+
+  setHeight(height) {
+    const writable = this.getWritable()
+    writable.__height = height
+  }
 }
 
 export class TableCellNode extends ElementNode {
@@ -119,14 +183,20 @@ export class TableCellNode extends ElementNode {
   __backgroundColor
   __colSpan
   __rowSpan
+  __borderWidth
+  __borderColor
+  __borderStyle
 
-  constructor(headerState = 0, width = undefined, backgroundColor = null, colSpan = 1, rowSpan = 1, key) {
+  constructor(headerState = 0, width = undefined, backgroundColor = null, colSpan = 1, rowSpan = 1, borderWidth = null, borderColor = null, borderStyle = null, key) {
     super(key)
     this.__headerState = headerState
     this.__width = width
     this.__backgroundColor = backgroundColor
     this.__colSpan = colSpan
     this.__rowSpan = rowSpan
+    this.__borderWidth = borderWidth
+    this.__borderColor = borderColor
+    this.__borderStyle = borderStyle
   }
 
   static getType() {
@@ -134,12 +204,12 @@ export class TableCellNode extends ElementNode {
   }
 
   static clone(node) {
-    return new TableCellNode(node.__headerState, node.__width, node.__backgroundColor, node.__colSpan, node.__rowSpan, node.__key)
+    return new TableCellNode(node.__headerState, node.__width, node.__backgroundColor, node.__colSpan, node.__rowSpan, node.__borderWidth, node.__borderColor, node.__borderStyle, node.__key)
   }
 
   static importJSON(serializedNode) {
-    const { headerState, width, backgroundColor, colSpan, rowSpan } = serializedNode
-    return $createTableCellNode(headerState, width, backgroundColor, colSpan, rowSpan)
+    const { headerState, width, backgroundColor, colSpan, rowSpan, borderWidth, borderColor, borderStyle } = serializedNode
+    return $createTableCellNode(headerState, width, backgroundColor, colSpan, rowSpan, borderWidth, borderColor, borderStyle)
   }
 
   exportJSON() {
@@ -152,6 +222,9 @@ export class TableCellNode extends ElementNode {
       backgroundColor: this.__backgroundColor,
       colSpan: this.__colSpan,
       rowSpan: this.__rowSpan,
+      borderWidth: this.__borderWidth,
+      borderColor: this.__borderColor,
+      borderStyle: this.__borderStyle,
     }
   }
 
@@ -163,6 +236,9 @@ export class TableCellNode extends ElementNode {
     }
     if (this.__backgroundColor) {
       cell.style.backgroundColor = this.__backgroundColor
+    }
+    if (this.__borderWidth && this.__borderColor && this.__borderStyle && this.__borderStyle !== 'none') {
+      cell.style.setProperty('border', `${this.__borderWidth}px ${this.__borderStyle} ${this.__borderColor}`, 'important')
     }
     if (this.__colSpan > 1) {
       cell.setAttribute('colspan', this.__colSpan.toString())
@@ -183,14 +259,61 @@ export class TableCellNode extends ElementNode {
     return cell
   }
 
-  updateDOM(prevNode) {
-    return (
-      this.__headerState !== prevNode.__headerState ||
-      this.__width !== prevNode.__width ||
-      this.__backgroundColor !== prevNode.__backgroundColor ||
-      this.__colSpan !== prevNode.__colSpan ||
-      this.__rowSpan !== prevNode.__rowSpan
-    )
+  updateDOM(prevNode, dom) {
+    let needsUpdate = false
+
+    if (this.__headerState !== prevNode.__headerState) {
+      needsUpdate = true
+    }
+
+    if (this.__width !== prevNode.__width) {
+      if (this.__width) {
+        dom.style.width = `${this.__width}px`
+      } else {
+        dom.style.width = ''
+      }
+      needsUpdate = true
+    }
+
+    if (this.__backgroundColor !== prevNode.__backgroundColor) {
+      if (this.__backgroundColor) {
+        dom.style.backgroundColor = this.__backgroundColor
+      } else {
+        dom.style.backgroundColor = ''
+      }
+      needsUpdate = true
+    }
+
+    if (this.__borderWidth !== prevNode.__borderWidth ||
+        this.__borderColor !== prevNode.__borderColor ||
+        this.__borderStyle !== prevNode.__borderStyle) {
+      if (this.__borderWidth && this.__borderColor && this.__borderStyle && this.__borderStyle !== 'none') {
+        dom.style.setProperty('border', `${this.__borderWidth}px ${this.__borderStyle} ${this.__borderColor}`, 'important')
+      } else {
+        dom.style.removeProperty('border')
+      }
+      needsUpdate = true
+    }
+
+    if (this.__colSpan !== prevNode.__colSpan) {
+      if (this.__colSpan > 1) {
+        dom.setAttribute('colspan', this.__colSpan.toString())
+      } else {
+        dom.removeAttribute('colspan')
+      }
+      needsUpdate = true
+    }
+
+    if (this.__rowSpan !== prevNode.__rowSpan) {
+      if (this.__rowSpan > 1) {
+        dom.setAttribute('rowspan', this.__rowSpan.toString())
+      } else {
+        dom.removeAttribute('rowspan')
+      }
+      needsUpdate = true
+    }
+
+    return needsUpdate
   }
 
   canBeEmpty() {
@@ -245,19 +368,46 @@ export class TableCellNode extends ElementNode {
     const writable = this.getWritable()
     writable.__backgroundColor = backgroundColor
   }
+
+  getBorderWidth() {
+    return this.__borderWidth
+  }
+
+  setBorderWidth(borderWidth) {
+    const writable = this.getWritable()
+    writable.__borderWidth = borderWidth
+  }
+
+  getBorderColor() {
+    return this.__borderColor
+  }
+
+  setBorderColor(borderColor) {
+    const writable = this.getWritable()
+    writable.__borderColor = borderColor
+  }
+
+  getBorderStyle() {
+    return this.__borderStyle
+  }
+
+  setBorderStyle(borderStyle) {
+    const writable = this.getWritable()
+    writable.__borderStyle = borderStyle
+  }
 }
 
 // Helper functions
-export function $createTableNode(columnWidths = []) {
-  return new TableNode(columnWidths)
+export function $createTableNode(columnWidths = [], borderWidth = 1, borderColor = '#374151', borderStyle = 'solid') {
+  return new TableNode(columnWidths, borderWidth, borderColor, borderStyle)
 }
 
-export function $createTableRowNode() {
-  return new TableRowNode()
+export function $createTableRowNode(height = undefined) {
+  return new TableRowNode(height)
 }
 
-export function $createTableCellNode(headerState = 0, width = undefined, backgroundColor = null, colSpan = 1, rowSpan = 1) {
-  return new TableCellNode(headerState, width, backgroundColor, colSpan, rowSpan)
+export function $createTableCellNode(headerState = 0, width = undefined, backgroundColor = null, colSpan = 1, rowSpan = 1, borderWidth = null, borderColor = null, borderStyle = null) {
+  return new TableCellNode(headerState, width, backgroundColor, colSpan, rowSpan, borderWidth, borderColor, borderStyle)
 }
 
 export function $isTableNode(node) {
@@ -362,3 +512,67 @@ export function $getCellPosition(cell) {
 
 // Import from lexical for paragraph creation
 import { $createParagraphNode } from 'lexical'
+
+// Unmerge cells function
+export function $unmergeCells(cell) {
+  if (!$isTableCellNode(cell)) return
+
+  const colSpan = cell.getColSpan()
+  const rowSpan = cell.getRowSpan()
+
+  // If not merged, do nothing
+  if (colSpan <= 1 && rowSpan <= 1) return
+
+  const tableRowNode = cell.getParent()
+  const tableNode = tableRowNode?.getParent()
+
+  if (!$isTableRowNode(tableRowNode) || !$isTableNode(tableNode)) return
+
+  // Get cell position
+  const { row: startRow, col: startCol } = $getCellPosition(cell)
+  const rows = tableNode.getChildren()
+
+  // Reset original cell to single span
+  cell.setColSpan(1)
+  cell.setRowSpan(1)
+
+  // Add new cells to fill the merged area
+  for (let r = 0; r < rowSpan; r++) {
+    const targetRowIndex = startRow + r
+    if (targetRowIndex >= rows.length) break
+
+    const targetRow = rows[targetRowIndex]
+    if (!$isTableRowNode(targetRow)) continue
+
+    for (let c = 0; c < colSpan; c++) {
+      // Skip the original cell position (top-left)
+      if (r === 0 && c === 0) continue
+
+      const newCell = $createTableCellNode(0)
+      const paragraph = $createParagraphNode()
+      newCell.append(paragraph)
+
+      // For first row, insert after the original cell
+      if (r === 0) {
+        const currentCells = targetRow.getChildren()
+        const insertIndex = startCol + c
+
+        if (insertIndex < currentCells.length) {
+          currentCells[insertIndex].insertBefore(newCell)
+        } else {
+          targetRow.append(newCell)
+        }
+      } else {
+        // For other rows, insert at column positions
+        const currentCells = targetRow.getChildren()
+        const insertIndex = startCol + c
+
+        if (insertIndex < currentCells.length) {
+          currentCells[insertIndex].insertBefore(newCell)
+        } else {
+          targetRow.append(newCell)
+        }
+      }
+    }
+  }
+}

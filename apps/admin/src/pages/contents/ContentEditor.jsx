@@ -14,6 +14,7 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import {
   $createParagraphNode,
+  $createTextNode,
   $getRoot,
   $getSelection,
   $isRangeSelection,
@@ -29,7 +30,7 @@ import {
   SELECTION_CHANGE_COMMAND,
   UNDO_COMMAND,
 } from 'lexical'
-import { $generateHtmlFromNodes } from '@lexical/html'
+import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
 import { $setBlocksType } from '@lexical/selection'
 import { HeadingNode, QuoteNode, $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
 import { ListPlugin } from '@lexical/react/LexicalListPlugin'
@@ -50,9 +51,21 @@ import { registerCodeHighlighting, CodeNode, CodeHighlightNode, $createCodeNode 
 import './ContentEditor.css'
 import FloatingTextFormatToolbarPlugin from './plugins/FloatingTextFormatToolbarPlugin'
 import DraggableBlockPlugin from './plugins/DraggableBlockPlugin'
+import TableActionMenuPlugin from './plugins/TableActionMenuPlugin.jsx'
+import TableHoverActionsPlugin from './plugins/TableHoverActionsPlugin.jsx'
+import TableCellResizerPlugin from './plugins/TableCellResizerPlugin.jsx'
+import TableSelectionPlugin from './plugins/TableSelectionPlugin.jsx'
 import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
 import { ImageNode } from './nodes/ImageNode.jsx'
-import { TableNode, TableRowNode, TableCellNode, $createTableWithDimensions } from './nodes/TableNode.jsx'
+import {
+  TableNode,
+  TableRowNode,
+  TableCellNode,
+  $createTableWithDimensions,
+  $createTableNode,
+  $createTableRowNode,
+  $createTableCellNode
+} from './nodes/TableNode.jsx'
 import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
@@ -900,7 +913,12 @@ export default function ContentEditor() {
                 <CodeHighlightingPlugin />
                 <EditorStateHydrator stateJSON={initialEditorState} skipNextOnChangeRef={skipNextOnChangeRef} />
                 <OnChangePlugin onChange={onLexicalChange} />
+                <TablePastePlugin />
                 {editorAnchorElem && <DraggableBlockPlugin anchorElem={editorAnchorElem} />}
+                {editorAnchorElem && <TableActionMenuPlugin anchorElem={editorAnchorElem} />}
+                {editorAnchorElem && <TableHoverActionsPlugin anchorElem={editorAnchorElem} />}
+                {editorAnchorElem && <TableCellResizerPlugin anchorElem={editorAnchorElem} />}
+                {editorAnchorElem && <TableSelectionPlugin anchorElem={editorAnchorElem} />}
                 <FloatingTextFormatToolbarPlugin />
               </div>
             </LexicalComposer>
@@ -2245,4 +2263,143 @@ function ListMaxIndentLevelPlugin({ maxDepth }) {
   }, [editor, maxDepth])
 
   return null
+}
+
+function TablePastePlugin() {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    const handlePaste = (event) => {
+        const clipboardData = event.clipboardData
+        if (!clipboardData) return
+
+        const htmlData = clipboardData.getData('text/html')
+        if (!htmlData || !htmlData.includes('<table')) return
+
+        // Check if HTML contains table elements
+        const tempDiv = document.createElement('div')
+        tempDiv.innerHTML = htmlData
+        const tables = tempDiv.querySelectorAll('table')
+
+        if (tables.length === 0) return
+
+        event.preventDefault()
+        event.stopPropagation()
+
+        try {
+          editor.update(() => {
+            const selection = $getSelection()
+            if (!$isRangeSelection(selection)) return
+
+            tables.forEach(table => {
+              const lexicalTable = convertHTMLTableToLexicalTable(table, editor)
+              if (lexicalTable) {
+                $insertNodes([lexicalTable])
+              }
+            })
+          })
+        } catch (error) {
+          console.warn('Table paste failed:', error)
+        }
+    }
+
+    // Add event listener to the editor's root element
+    const rootElement = editor.getRootElement()
+    if (rootElement) {
+      rootElement.addEventListener('paste', handlePaste)
+    }
+
+    return () => {
+      if (rootElement) {
+        rootElement.removeEventListener('paste', handlePaste)
+      }
+    }
+  }, [editor])
+
+  return null
+}
+
+function convertHTMLTableToLexicalTable(htmlTable, editor) {
+  const rows = htmlTable.querySelectorAll('tr')
+  if (rows.length === 0) return null
+
+  const lexicalTable = $createTableNode()
+
+  rows.forEach((htmlRow) => {
+    const lexicalRow = $createTableRowNode()
+    const cells = htmlRow.querySelectorAll('td, th')
+
+    cells.forEach((htmlCell) => {
+      // Check if cell is a header (th tag or strong content)
+      const isHeader = htmlCell.tagName.toLowerCase() === 'th' ||
+                      htmlCell.querySelector('strong, b') !== null
+
+      // Get colspan and rowspan if present
+      const colSpan = parseInt(htmlCell.getAttribute('colspan') || '1', 10)
+      const rowSpan = parseInt(htmlCell.getAttribute('rowspan') || '1', 10)
+
+      // Get width if present
+      const width = htmlCell.getAttribute('width')
+        ? parseInt(htmlCell.getAttribute('width'), 10)
+        : undefined
+
+      const lexicalCell = $createTableCellNode(
+        isHeader ? 1 : 0, // headerState
+        width, // width
+        null, // backgroundColor
+        colSpan, // colSpan
+        rowSpan // rowSpan
+      )
+
+      // Convert cell content to Lexical nodes
+      const cellContent = htmlCell.innerHTML.trim()
+      if (cellContent) {
+        try {
+          // Create a temporary div to parse cell content
+          const tempDiv = document.createElement('div')
+          tempDiv.innerHTML = cellContent
+
+          // Generate Lexical nodes from the HTML content
+          const nodes = $generateNodesFromDOM(editor, tempDiv)
+
+          // If we have nodes, append them to the cell
+          if (nodes.length > 0) {
+            nodes.forEach(node => {
+              lexicalCell.append(node)
+            })
+          } else {
+            // Fallback: create a text node
+            const textContent = htmlCell.textContent || htmlCell.innerText || ''
+            if (textContent.trim()) {
+              const paragraph = $createParagraphNode()
+              paragraph.append($createTextNode(textContent.trim()))
+              lexicalCell.append(paragraph)
+            } else {
+              // Empty cell gets empty paragraph
+              lexicalCell.append($createParagraphNode())
+            }
+          }
+        } catch (error) {
+          // Fallback for content parsing errors
+          const textContent = htmlCell.textContent || htmlCell.innerText || ''
+          if (textContent.trim()) {
+            const paragraph = $createParagraphNode()
+            paragraph.append($createTextNode(textContent.trim()))
+            lexicalCell.append(paragraph)
+          } else {
+            lexicalCell.append($createParagraphNode())
+          }
+        }
+      } else {
+        // Empty cell gets empty paragraph
+        lexicalCell.append($createParagraphNode())
+      }
+
+      lexicalRow.append(lexicalCell)
+    })
+
+    lexicalTable.append(lexicalRow)
+  })
+
+  return lexicalTable
 }
