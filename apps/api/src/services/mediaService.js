@@ -194,6 +194,38 @@ async function uploadVariantBuffer({ key, buffer, contentType }) {
   await s3Client.send(command)
 }
 
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\]/g, '\$&');
+}
+
+const ACCENT_VARIANTS = {
+  'ç': ['ç', 'c'],
+  'ğ': ['ğ', 'g'],
+  'ı': ['ı', 'i'],
+  'i': ['i', 'ı'],
+  'ö': ['ö', 'o'],
+  'ş': ['ş', 's'],
+  'ü': ['ü', 'u'],
+};
+
+function buildAccentInsensitivePattern(term) {
+  if (!term) return ''
+  return term
+    .split('')
+    .map((char) => {
+      const lower = char.toLowerCase()
+      const variants = ACCENT_VARIANTS[lower]
+      const characterClass = variants
+        ? `[${Array.from(new Set([...variants, lower])).map(escapeRegex).join('')}]`
+        : escapeRegex(char)
+
+      // Allow trailing combining marks (e.g. decomposed ş => s +  ̧)
+      return `${characterClass}(?:[\u0300-\u036f]*)`
+    })
+    .join('')
+}
+
 function normaliseTags(tagsInput) {
   if (!Array.isArray(tagsInput)) return []
   const unique = new Set()
@@ -369,13 +401,23 @@ async function listMedia({ tenantId, filters = {}, pagination = {} }) {
     query.tags = { $all: tags.map((tag) => tag.toLowerCase()) }
   }
   if (search) {
-    const regex = new RegExp(search.split(' ').map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*'), 'i')
-    query.$or = [
-      { originalName: regex },
-      { fileName: regex },
-      { description: regex },
-      { caption: regex },
-    ]
+    const keywords = search
+      .split(' ')
+      .map((term) => term.trim())
+      .filter(Boolean)
+
+    if (keywords.length) {
+      const pattern = keywords.map((term) => buildAccentInsensitivePattern(term)).join('.*')
+      const regex = new RegExp(pattern, 'i')
+
+      query.$or = [
+        { originalName: regex },
+        { fileName: regex },
+        { description: regex },
+        { caption: regex },
+        { tags: { $elemMatch: { $regex: regex } } },
+      ]
+    }
   }
 
   const [items, total] = await Promise.all([

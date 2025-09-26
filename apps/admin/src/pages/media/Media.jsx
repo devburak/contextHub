@@ -234,6 +234,10 @@ export default function MediaLibrary() {
   const items = mediaQuery.data?.items ?? []
   const selectedCount = selectedIds.length
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const totalCount = mediaQuery.data?.pagination?.total ?? 0
+  const totalLabel = !mediaQuery.data && mediaQuery.isLoading
+    ? 'Yükleniyor…'
+    : `Toplam ${totalCount.toLocaleString('tr-TR')} medya`
 
   const copyUrl = useCallback(async (url, id) => {
     if (!url) return
@@ -254,7 +258,12 @@ export default function MediaLibrary() {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Medya Kütüphanesi</h1>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">Medya Kütüphanesi</h1>
+            <span className="text-sm text-gray-400">
+              {totalLabel}
+            </span>
+          </div>
           <p className="mt-2 text-sm text-gray-600">
             Varlık bazlı dosyalarını yönet, yeni dosyalar yükle ve mevcut içerikleri filtreleyerek bul.
           </p>

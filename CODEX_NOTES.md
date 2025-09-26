@@ -25,6 +25,8 @@
 - Normalised R2 endpoint handling and forced path-style S3 requests so presigned URLs use `https://<account>.r2.cloudflarestorage.com/<bucket>/...` regardless of env formatting (`apps/api/src/services/mediaService.js`).
 - Media API now supports metadata editing, per-item deletion, and bulk tag/delete operations; the admin media page gained a modal inspector with edit form, multi-select tooling, and tag assignment workflows.
 - Updated Media UI actions to copy the public CDN URL directly from cards or the detail modal, replacing the old open-in-new-tab link.
+- Media list header now surfaces the total asset count beside the title in a muted style, with a loading fallback to avoid visual flicker while queries resolve.
+- Media search tolerates decomposed Turkish characters by allowing optional combining marks in regex matching, so queries like “afiş” now match tags regardless of Unicode normalization.
 - Introduced hierarchical tenant categories with slug enforcement, default ordering attributes, and REST CRUD endpoints; admin console now has a “Kategoriler” section for tree management.
 - Added versioned content data model (`packages/common/src/models/Content*.js`) plus matching Fastify service/routes (`apps/api/src/services/contentService.js`, `apps/api/src/routes/contents.js`) for CRUD, slug uniqueness, scheduling, and snapshot history.
 - Added initial content management UI: content API client (`apps/admin/src/lib/api/contents.js`), content list page (`/contents`), and basic Lexical-powered editor (`/contents/:id` with `new` alias) featuring autosave, status & scheduling controls, version sidebar (read-only), and slug generation. Navigation updated to include “İçerikler”. Lexical dependencies added to admin `package.json`.

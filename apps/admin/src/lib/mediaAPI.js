@@ -1,14 +1,29 @@
 import { apiClient } from './api.js'
 
 export const mediaAPI = {
-  list: async ({ page = 1, limit = 20, filters = {} } = {}) => {
+  list: async ({
+    page = 1,
+    limit = 20,
+    filters = {},
+    search,
+    mimeType,
+    tags,
+    status,
+  } = {}) => {
+    const effectiveFilters = { ...filters }
+
+    if (search !== undefined) effectiveFilters.search = search
+    if (mimeType !== undefined) effectiveFilters.mimeType = mimeType
+    if (status !== undefined) effectiveFilters.status = status
+    if (tags !== undefined) effectiveFilters.tags = tags
+
     const params = { page, limit }
-    if (filters.search) params.search = filters.search
-    if (filters.mimeType) params.mimeType = filters.mimeType
-    if (Array.isArray(filters.tags) && filters.tags.length) {
-      params.tags = filters.tags.join(',')
+    if (effectiveFilters.search) params.search = effectiveFilters.search
+    if (effectiveFilters.mimeType) params.mimeType = effectiveFilters.mimeType
+    if (Array.isArray(effectiveFilters.tags) && effectiveFilters.tags.length) {
+      params.tags = effectiveFilters.tags.join(',')
     }
-    if (filters.status) params.status = filters.status
+    if (effectiveFilters.status) params.status = effectiveFilters.status
 
     const response = await apiClient.get('/media', { params })
     return response.data
