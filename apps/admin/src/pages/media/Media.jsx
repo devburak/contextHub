@@ -555,12 +555,14 @@ export default function MediaLibrary() {
         saving={updateMetadataMutation.isPending}
         deleting={deleteMutation.isPending}
         error={updateMetadataMutation.isError ? updateMetadataMutation.error : null}
+        copyUrl={copyUrl}
+        copiedId={copiedId}
       />
     </div>
   )
 }
 
-function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, onDelete, saving, deleting, error }) {
+function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, onDelete, saving, deleting, error, copyUrl, copiedId }) {
   return (
     <Transition.Root show={open} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
