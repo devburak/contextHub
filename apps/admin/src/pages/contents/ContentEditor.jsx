@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Fragment, useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getContent, createContent, updateContent, listVersions } from '../../lib/api/contents'
@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
+import LexicalErrorBoundary from '@lexical/react/LexicalErrorBoundary'
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import {
@@ -47,9 +48,10 @@ import { registerCodeHighlighting, CodeNode, CodeHighlightNode, $createCodeNode 
 import './ContentEditor.css'
 import FloatingTextFormatToolbarPlugin from './plugins/FloatingTextFormatToolbarPlugin'
 import DraggableBlockPlugin from './plugins/DraggableBlockPlugin'
-import { mediaAPI } from '../../lib/mediaAPI.js'
-import { Dialog, Transition } from '@headlessui/react'
-import { PhotoIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
+import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
+import { ImageNode } from './nodes/ImageNode.jsx'
+import { PhotoIcon } from '@heroicons/react/24/outline'
+import MediaPickerModal from './components/MediaPickerModal.jsx'
 
 const DEFAULT_FONT_SIZE = 16
 const FONT_MIN = 10
@@ -112,29 +114,46 @@ const toHexColor = (color) => {
   return color
 }
 
-// Basic theme placeholder
+// Lexical Playground inspired theme
 const theme = {
-  paragraph: 'mb-2 leading-relaxed text-gray-800',
+  paragraph: 'editor-paragraph',
   heading: {
-    h1: 'text-3xl font-semibold text-gray-900 mt-6 mb-3',
-    h2: 'text-2xl font-semibold text-gray-900 mt-5 mb-2',
-    h3: 'text-xl font-semibold text-gray-900 mt-4 mb-2',
+    h1: 'editor-heading-h1',
+    h2: 'editor-heading-h2',
+    h3: 'editor-heading-h3',
+    h4: 'editor-heading-h4',
+    h5: 'editor-heading-h5',
+    h6: 'editor-heading-h6',
   },
-  quote: 'border-l-4 border-gray-200 pl-4 italic text-gray-500 my-4',
-  code: 'bg-gray-900 text-gray-100 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto',
+  quote: 'editor-quote',
+  code: 'editor-code',
   list: {
-    listitem: 'my-1',
+    ul: 'editor-ul',
+    ol: 'editor-ol',
+    listitem: 'editor-listitem',
+    listitemChecked: 'editor-listitem-checked',
+    listitemUnchecked: 'editor-listitem-unchecked',
     nested: {
-      listitem: 'my-1',
+      listitem: 'editor-nested-listitem',
     },
   },
-  link: 'text-blue-600 underline hover:text-blue-700',
+  link: 'editor-link',
+  text: {
+    bold: 'editor-text-bold',
+    italic: 'editor-text-italic',
+    underline: 'editor-text-underline',
+    strikethrough: 'editor-text-strikethrough',
+    underlineStrikethrough: 'editor-text-underlineStrikethrough',
+    code: 'editor-text-code',
+    subscript: 'editor-text-subscript',
+    superscript: 'editor-text-superscript',
+  },
 }
 
 const initialConfig = {
   namespace: 'content-editor',
   theme,
-  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode],
+  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode],
   onError(error) {
     console.error(error)
   },
@@ -170,11 +189,7 @@ export default function ContentEditor() {
   const [previewVersion, setPreviewVersion] = useState(null)
   const [featuredMedia, setFeaturedMedia] = useState(null)
   const [featuredMediaId, setFeaturedMediaId] = useState(null)
-  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false)
-  const [mediaSearch, setMediaSearch] = useState('')
-  const [mediaPage, setMediaPage] = useState(1)
-  const [isUploadingMedia, setIsUploadingMedia] = useState(false)
-  const [mediaUploadError, setMediaUploadError] = useState('')
+  const [mediaPickerState, setMediaPickerState] = useState({ open: false, mode: 'image', onSelect: null })
   const [editorAnchorElem, setEditorAnchorElem] = useState(null)
   const skipNextOnChangeRef = useRef(false)
   const skipNextContentSyncRef = useRef(false)
@@ -201,21 +216,6 @@ export default function ContentEditor() {
       : []
   ), [])
 
-  const mediaQueryParams = useMemo(
-    () => ({
-      search: mediaSearch.trim() || undefined,
-      mimeType: 'image/',
-      page: mediaPage,
-      limit: 12,
-    }),
-    [mediaSearch, mediaPage]
-  )
-
-  const mediaQuery = useQuery(
-    ['media-picker', mediaQueryParams],
-    () => mediaAPI.list(mediaQueryParams),
-    { enabled: isMediaPickerOpen }
-  )
 
   useEffect(() => {
     if (!categories.length) {
@@ -605,15 +605,22 @@ export default function ContentEditor() {
     setSaveError('')
   }, [])
 
-  const openMediaPicker = () => {
-    setMediaUploadError('')
-    setIsMediaPickerOpen(true)
-  }
+  const openMediaPicker = useCallback((options) => {
+    setMediaPickerState({
+      open: true,
+      mode: options?.mode || 'image',
+      onSelect: options?.onSelect || null,
+    })
+  }, [])
+
+  const closeMediaPicker = useCallback(() => {
+    setMediaPickerState((prev) => ({ ...prev, open: false, onSelect: null }))
+  }, [])
 
   const handleFeaturedMediaSelect = (media) => {
     setFeaturedMedia(media)
     setFeaturedMediaId(media?._id || null)
-    setIsMediaPickerOpen(false)
+    closeMediaPicker()
     setDirty(true)
     setSaveError('')
   }
@@ -625,51 +632,6 @@ export default function ContentEditor() {
     setSaveError('')
   }
 
-  const handleMediaFileUpload = useCallback(
-    async (file) => {
-      if (!file) return
-      if (!file.type?.startsWith('image/')) {
-        setMediaUploadError('Sadece görsel dosyaları yükleyebilirsin.')
-        return
-      }
-
-      setMediaUploadError('')
-      setIsUploadingMedia(true)
-      try {
-        const presign = await mediaAPI.createPresignedUpload({
-          fileName: file.name,
-          contentType: file.type || 'application/octet-stream',
-          size: file.size,
-        })
-
-        await fetch(presign.uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': file.type || 'application/octet-stream',
-          },
-          body: file,
-        })
-
-        const mediaRecord = await mediaAPI.completeUpload({
-          key: presign.key,
-          originalName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          size: file.size,
-        })
-
-        handleFeaturedMediaSelect(mediaRecord)
-        queryClient.invalidateQueries({ queryKey: ['media-picker'] })
-      } catch (error) {
-        console.error('Media upload failed', error)
-        setMediaUploadError(
-          error instanceof Error ? error.message : 'Görsel yükleme sırasında bir hata oluştu.'
-        )
-      } finally {
-        setIsUploadingMedia(false)
-      }
-    },
-    [handleFeaturedMediaSelect, queryClient]
-  )
 
   const currentFeaturedMediaId = featuredMediaId
   const featuredMediaThumbnail =
@@ -802,12 +764,14 @@ export default function ContentEditor() {
             </div>
           </div>
           <div className="rounded-lg border border-gray-200 bg-white">
-            <LexicalComposer initialConfig={{ ...initialConfig, editorState: initialEditorState }}>
-              <Toolbar />
+            <LexicalComposer initialConfig={initialConfig}>
+              <Toolbar openMediaPicker={openMediaPicker} />
+              <ImagePlugin />
               <div className="relative" ref={editorContainerRef}>
                 <RichTextPlugin
                   contentEditable={<ContentEditable className="min-h-[260px] px-4 py-3 outline-none prose max-w-none" />}
                   placeholder={<Placeholder />}
+                  ErrorBoundary={LexicalErrorBoundary}
                 />
                 <HistoryPlugin />
                 <ListPlugin />
@@ -965,7 +929,7 @@ export default function ContentEditor() {
           ) : (
             <button
               type="button"
-              onClick={openMediaPicker}
+              onClick={() => openMediaPicker({ mode: 'image', onSelect: handleFeaturedMediaSelect })}
               className="flex w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600"
             >
               <PhotoIcon className="h-8 w-8" />
@@ -991,204 +955,15 @@ export default function ContentEditor() {
       </aside>
       </div>
 
-      <Transition.Root show={isMediaPickerOpen} as={Fragment}>
-        <Dialog
-          as="div"
-          className="relative z-40"
-          onClose={() => {
-            setIsMediaPickerOpen(false)
-            setMediaUploadError('')
-          }}
-        >
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-200"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-150"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-gray-900/40" />
-          </Transition.Child>
-
-          <div className="fixed inset-0 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4 sm:p-6">
-              <Transition.Child
-                as={Fragment}
-                enter="ease-out duration-200"
-                enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                enterTo="opacity-100 translate-y-0 sm:scale-100"
-                leave="ease-in duration-150"
-                leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-                leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-              >
-                <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5">
-                  <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                    <div>
-                      <Dialog.Title className="text-lg font-semibold text-gray-900">
-                        Öne çıkan görsel seç
-                      </Dialog.Title>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Medya kütüphanesinden bir görsel seçebilir veya yeni bir görsel yükleyebilirsin.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMediaPickerOpen(false)
-                        setMediaUploadError('')
-                      }}
-                      className="rounded-full p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                    >
-                      <span className="sr-only">Kapat</span>
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-4 px-6 py-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <div className="flex-1">
-                        <label htmlFor="media-picker-search" className="block text-sm font-medium text-gray-700">
-                          Arama
-                        </label>
-                        <input
-                          id="media-picker-search"
-                          type="search"
-                          value={mediaSearch}
-                          onChange={(event) => {
-                            setMediaSearch(event.target.value)
-                            setMediaPage(1)
-                          }}
-                          placeholder="Dosya adı veya etiket"
-                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(event) => {
-                              const file = event.target.files?.[0]
-                              if (file) {
-                                handleMediaFileUpload(file)
-                              }
-                              event.target.value = ''
-                            }}
-                          />
-                          Görsel yükle
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => mediaQuery.refetch()}
-                          className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                        >
-                          <ArrowPathIcon
-                            className={clsx('h-4 w-4', mediaQuery.isFetching ? 'animate-spin' : '')}
-                          />
-                          Yenile
-                        </button>
-                      </div>
-                    </div>
-
-                    {mediaUploadError && (
-                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-                        {mediaUploadError}
-                      </div>
-                    )}
-
-                    <div className="min-h-[220px] rounded-lg border border-gray-200 bg-gray-50 p-4">
-                      {mediaQuery.isLoading ? (
-                        <p className="text-sm text-gray-500">Görseller yükleniyor...</p>
-                      ) : mediaQuery.isError ? (
-                        <p className="text-sm text-red-600">Görseller alınamadı. Lütfen tekrar deneyin.</p>
-                      ) : (mediaQuery.data?.items?.length ?? 0) === 0 ? (
-                        <p className="text-sm text-gray-500">Henüz görsel yüklenmemiş.</p>
-                      ) : (
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                          {(mediaQuery.data?.items ?? []).map((item) => {
-                            const thumbnail =
-                              item.variants?.find((variant) => variant.name === 'thumbnail')?.url || item.url
-                            const isActive = item._id === currentFeaturedMediaId
-
-                            return (
-                              <button
-                                key={item._id}
-                                type="button"
-                                onClick={() => handleFeaturedMediaSelect(item)}
-                                className={clsx(
-                                  'flex flex-col overflow-hidden rounded-lg border bg-white text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500',
-                                  isActive ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'
-                                )}
-                              >
-                                <div className="relative aspect-video bg-gray-100">
-                                  {thumbnail ? (
-                                    <img src={thumbnail} alt={item.altText || item.originalName || 'Görsel'} className="h-full w-full object-cover" />
-                                  ) : (
-                                    <div className="flex h-full w-full items-center justify-center text-gray-300">
-                                      <PhotoIcon className="h-8 w-8" />
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="space-y-1 px-3 py-2">
-                                  <p className="truncate text-sm font-medium text-gray-900">
-                                    {item.originalName || item.fileName || 'Görsel'}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    {item.mimeType || 'image'}
-                                  </p>
-                                </div>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-gray-500">
-                        {(mediaQuery.data?.pagination?.total ?? 0)} kayıt bulundu
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setMediaPage((prev) => Math.max(1, prev - 1))}
-                          disabled={mediaPage <= 1 || mediaQuery.isFetching}
-                          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Önceki
-                        </button>
-                        <span className="text-xs text-gray-500">
-                          Sayfa {mediaPage} / {mediaQuery.data?.pagination?.pages ?? 1}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setMediaPage((prev) => prev + 1)}
-                          disabled={
-                            mediaQuery.isFetching ||
-                            mediaPage >= (mediaQuery.data?.pagination?.pages ?? 1)
-                          }
-                          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Sonraki
-                        </button>
-                      </div>
-                    </div>
-
-                    {isUploadingMedia && (
-                      <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                        Görsel yükleniyor...
-                      </div>
-                    )}
-                  </div>
-                </Dialog.Panel>
-              </Transition.Child>
-            </div>
-          </div>
-        </Dialog>
-      </Transition.Root>
+      <MediaPickerModal
+        isOpen={mediaPickerState.open}
+        mode={mediaPickerState.mode}
+        onClose={closeMediaPicker}
+        onSelect={(item) => {
+          mediaPickerState.onSelect?.(item)
+          closeMediaPicker()
+        }}
+      />
     </>
   )
 }
@@ -1542,14 +1317,15 @@ function useDebouncedValue(value, delay = 250) {
 }
 
 const BLOCK_OPTIONS = [
-  { value: 'paragraph', label: 'Paragraf' },
+  { value: 'paragraph', label: 'Normal' },
   { value: 'h1', label: 'Başlık 1' },
   { value: 'h2', label: 'Başlık 2' },
+  { value: 'h3', label: 'Başlık 3' },
   { value: 'quote', label: 'Alıntı' },
   { value: 'code', label: 'Kod Bloğu' },
 ]
 
-function Toolbar() {
+function Toolbar({ openMediaPicker = null }) {
   const [editor] = useLexicalComposerContext()
   const [formatState, setFormatState] = useState({
     bold: false,
@@ -1566,6 +1342,38 @@ function Toolbar() {
   const [textColor, setTextColor] = useState(DEFAULT_TEXT_COLOR)
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
   const [isLinkActive, setIsLinkActive] = useState(false)
+
+  const handleInsertImage = useCallback(() => {
+    if (typeof openMediaPicker !== 'function') {
+      return
+    }
+
+    openMediaPicker({
+      mode: 'image',
+      onSelect: (media) => {
+        if (!media) return
+        const variants = Array.isArray(media.variants) ? media.variants : []
+        const preferredOrder = ['large', 'preview', 'optimized', 'original']
+        const variant = preferredOrder
+          .map((name) => variants.find((item) => item.name === name))
+          .find(Boolean) || variants[0]
+
+        const src = variant?.url || media.url
+        if (!src) return
+
+        const width = variant?.width || media.width
+        const height = variant?.height || media.height
+        const altText = media.altText || media.originalName || media.fileName || ''
+
+        editor.dispatchCommand(INSERT_IMAGE_COMMAND, {
+          src,
+          altText,
+          width,
+          height,
+        })
+      },
+    })
+  }, [editor, openMediaPicker])
 
   const applyTextStyle = useCallback(
     (styleUpdates) => {
@@ -1633,6 +1441,7 @@ function Toolbar() {
             break
           case 'h1':
           case 'h2':
+          case 'h3':
             $setBlocksType(selection, () => $createHeadingNode(type))
             break
           default:
@@ -1860,14 +1669,15 @@ function Toolbar() {
         onClick={() => applyBlockType('bullet-list')}
         active={blockType === 'bullet-list'}
       >
-        •
       </ToolbarButton>
       <ToolbarButton
         title="Numaralı liste"
         onClick={() => applyBlockType('numbered-list')}
         active={blockType === 'numbered-list'}
       >
-        1.
+      </ToolbarButton>
+      <Divider />
+      <ToolbarButton title="Görsel ekle" onClick={handleInsertImage}>
       </ToolbarButton>
       <Divider />
       <ToolbarButton
@@ -1875,42 +1685,36 @@ function Toolbar() {
         onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')}
         active={formatState.bold}
       >
-        <span className="font-semibold">B</span>
       </ToolbarButton>
       <ToolbarButton
         title="İtalik"
         onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')}
         active={formatState.italic}
       >
-        <span className="italic">I</span>
       </ToolbarButton>
       <ToolbarButton
         title="Altı çizili"
         onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')}
         active={formatState.underline}
       >
-        <span className="underline">U</span>
       </ToolbarButton>
       <ToolbarButton
         title="Üzeri çizili"
         onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')}
         active={formatState.strikethrough}
       >
-        <span className="line-through">S</span>
       </ToolbarButton>
       <ToolbarButton
         title="Kod"
         onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')}
         active={formatState.code}
       >
-        {'<>'}
       </ToolbarButton>
       <ToolbarButton
         title="Bağlantı"
         onClick={toggleLink}
         active={isLinkActive}
       >
-        🔗
       </ToolbarButton>
       <Divider />
       <div className="flex items-center gap-1">
@@ -1919,7 +1723,6 @@ function Toolbar() {
           onClick={() => handleFontSizeChange(-1)}
           disabled={fontSize <= FONT_MIN}
         >
-          −
         </ToolbarButton>
         <input
           type="number"
@@ -1934,7 +1737,6 @@ function Toolbar() {
           onClick={() => handleFontSizeChange(1)}
           disabled={fontSize >= FONT_MAX}
         >
-          +
         </ToolbarButton>
       </div>
       <Divider />
@@ -1948,30 +1750,25 @@ function Toolbar() {
         value={highlightColor}
         onChange={handleHighlightChange}
       />
-      <ToolbarButton title="Stili temizle" onClick={clearInlineStyles}>
-        Aa
-      </ToolbarButton>
+      <FormattingDropdown />
       <Divider />
       <ToolbarButton
         title="Sola hizala"
         onClick={() => editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'left')}
         active={blockFormat === 'left'}
       >
-        Sol
       </ToolbarButton>
       <ToolbarButton
         title="Ortala"
         onClick={() => editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'center')}
         active={blockFormat === 'center'}
       >
-        Ort
       </ToolbarButton>
       <ToolbarButton
         title="Sağa hizala"
         onClick={() => editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'right')}
         active={blockFormat === 'right'}
       >
-        Sağ
       </ToolbarButton>
     </div>
   )
@@ -1997,6 +1794,166 @@ function Divider() {
   return <span className="editor-toolbar__divider" aria-hidden="true" />
 }
 
+function FormattingDropdown() {
+  const [editor] = useLexicalComposerContext()
+  const [isOpen, setIsOpen] = useState(false)
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 })
+  const buttonRef = useRef(null)
+  const dropdownRef = useRef(null)
+
+  const formatOptions = [
+    {
+      key: 'lowercase',
+      label: 'Lowercase',
+      shortcut: '⌃+Shift+1',
+      action: () => transformSelectedText((text) => text.toLowerCase())
+    },
+    {
+      key: 'uppercase',
+      label: 'Uppercase',
+      shortcut: '⌃+Shift+2',
+      action: () => transformSelectedText((text) => text.toUpperCase())
+    },
+    {
+      key: 'capitalize',
+      label: 'Capitalize',
+      shortcut: '⌃+Shift+3',
+      action: () => transformSelectedText((text) =>
+        text.replace(/\b\w/g, (char) => char.toUpperCase())
+      )
+    },
+    {
+      key: 'strikethrough',
+      label: 'Strikethrough',
+      shortcut: '⌘+Shift+X',
+      action: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')
+    },
+    {
+      key: 'subscript',
+      label: 'Subscript',
+      shortcut: '⌘+,',
+      action: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')
+    },
+    {
+      key: 'superscript',
+      label: 'Superscript',
+      shortcut: '⌘+.',
+      action: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')
+    },
+    {
+      key: 'highlight',
+      label: 'Highlight',
+      shortcut: '',
+      action: () => {
+        // Highlight functionality placeholder
+        console.log('Highlight selected')
+      }
+    },
+    {
+      key: 'clear',
+      label: 'Clear Formatting',
+      shortcut: '⌘+\\',
+      action: () => clearInlineStyles()
+    }
+  ]
+
+  const transformSelectedText = useCallback((transform) => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if ($isRangeSelection(selection)) {
+        const selectedText = selection.getTextContent()
+        const transformedText = transform(selectedText)
+        selection.insertText(transformedText)
+      }
+    })
+  }, [editor])
+
+  const clearInlineStyles = useCallback(() => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if ($isRangeSelection(selection)) {
+        selection.getNodes().forEach((node) => {
+          if ($isTextNode(node)) {
+            node.setFormat(0)
+            node.setStyle('')
+          }
+        })
+      }
+    })
+  }, [editor])
+
+  const handleButtonClick = useCallback(() => {
+    if (!buttonRef.current) return
+
+    const rect = buttonRef.current.getBoundingClientRect()
+    setDropdownPosition({
+      top: rect.bottom + 4,
+      left: rect.left
+    })
+    setIsOpen(!isOpen)
+  }, [isOpen])
+
+  const handleOptionClick = useCallback((option) => {
+    option.action()
+    setIsOpen(false)
+  }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+          buttonRef.current && !buttonRef.current.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={handleButtonClick}
+        title="Formatting options for additional text styles"
+        className="editor-toolbar__button formatting-trigger"
+      >
+        Aa
+      </button>
+
+      {isOpen && (
+        <div
+          ref={dropdownRef}
+          className="formatting-dropdown"
+          style={{
+            top: dropdownPosition.top,
+            left: dropdownPosition.left
+          }}
+        >
+          {formatOptions.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className="item wide"
+              title={option.label}
+              onClick={() => handleOptionClick(option)}
+            >
+              <div className="icon-text-container">
+                <i className={`icon ${option.key}`} />
+                <span className="text">{option.label}</span>
+              </div>
+              {option.shortcut && <span className="shortcut">{option.shortcut}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 function ColorPicker({ label, value, onChange }) {
   return (
     <label className="editor-toolbar__color-picker">
@@ -2019,17 +1976,20 @@ function EditorStateHydrator({ stateJSON, skipNextOnChangeRef }) {
     if (!stateJSON) return
     if (appliedStateRef.current === stateJSON) return
 
-    let parsedState
-    try {
-      parsedState = editor.parseEditorState(stateJSON)
-    } catch (error) {
-      console.error('Editor state hydration failed', error)
-      return
-    }
+    // Schedule the state update in the next microtask to avoid flushSync warning
+    Promise.resolve().then(() => {
+      let parsedState
+      try {
+        parsedState = editor.parseEditorState(stateJSON)
+      } catch (error) {
+        console.error('Editor state hydration failed', error)
+        return
+      }
 
-    skipNextOnChangeRef.current = true
-    editor.setEditorState(parsedState)
-    appliedStateRef.current = stateJSON
+      skipNextOnChangeRef.current = true
+      editor.setEditorState(parsedState)
+      appliedStateRef.current = stateJSON
+    })
   }, [editor, stateJSON, skipNextOnChangeRef])
 
   return null

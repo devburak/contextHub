@@ -1,7 +1,15 @@
 import { apiClient } from './api.js'
 
 export const mediaAPI = {
-  list: async (params = {}) => {
+  list: async ({ page = 1, limit = 20, filters = {} } = {}) => {
+    const params = { page, limit }
+    if (filters.search) params.search = filters.search
+    if (filters.mimeType) params.mimeType = filters.mimeType
+    if (Array.isArray(filters.tags) && filters.tags.length) {
+      params.tags = filters.tags.join(',')
+    }
+    if (filters.status) params.status = filters.status
+
     const response = await apiClient.get('/media', { params })
     return response.data
   },
