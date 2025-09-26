@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -24,6 +24,9 @@ const MIME_FILTERS = [
 export default function MediaLibrary() {
   const [search, setSearch] = useState('')
   const [mimeFilter, setMimeFilter] = useState('')
+  const [tagFilter, setTagFilter] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [debouncedTagFilter, setDebouncedTagFilter] = useState('')
   const [lastUploadedNames, setLastUploadedNames] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
   const [showBulkTagPanel, setShowBulkTagPanel] = useState(false)
@@ -41,12 +44,54 @@ export default function MediaLibrary() {
   const [copiedId, setCopiedId] = useState(null)
 
   const queryClient = useQueryClient()
+  const searchTimeoutRef = useRef(null)
+  const tagTimeoutRef = useRef(null)
 
-  const queryParams = useMemo(() => ({
-    search: search.trim() || undefined,
-    mimeType: mimeFilter || undefined,
-    limit: 40,
-  }), [search, mimeFilter])
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 300)
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
+  }, [search])
+
+  // Debounce tag filter input
+  useEffect(() => {
+    if (tagTimeoutRef.current) {
+      clearTimeout(tagTimeoutRef.current)
+    }
+
+    tagTimeoutRef.current = setTimeout(() => {
+      setDebouncedTagFilter(tagFilter)
+    }, 300)
+
+    return () => {
+      if (tagTimeoutRef.current) {
+        clearTimeout(tagTimeoutRef.current)
+      }
+    }
+  }, [tagFilter])
+
+  const queryParams = useMemo(() => {
+    const trimmedSearch = debouncedSearch.trim()
+    const trimmedTagFilter = debouncedTagFilter.trim()
+
+    return {
+      search: trimmedSearch || undefined,
+      tags: trimmedTagFilter ? trimmedTagFilter.split(',').map(tag => tag.trim()).filter(Boolean) : undefined,
+      mimeType: mimeFilter || undefined,
+      limit: 40,
+    }
+  }, [debouncedSearch, mimeFilter, debouncedTagFilter])
 
   const mediaQuery = useQuery({
     queryKey: ['media', queryParams],
@@ -283,17 +328,30 @@ export default function MediaLibrary() {
         </label>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="sm:col-span-1">
           <label htmlFor="media-search" className="block text-sm font-medium text-gray-700">
-            Arama
+            Dosya Adı
           </label>
           <input
             id="media-search"
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Dosya adı veya etiket"
+            placeholder="Dosya adında ara"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+          />
+        </div>
+        <div className="sm:col-span-1">
+          <label htmlFor="media-tags" className="block text-sm font-medium text-gray-700">
+            Etiketler
+          </label>
+          <input
+            id="media-tags"
+            type="search"
+            value={tagFilter}
+            onChange={(event) => setTagFilter(event.target.value)}
+            placeholder="afiş, 2024"
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
           />
         </div>
@@ -322,6 +380,21 @@ export default function MediaLibrary() {
           >
             <ArrowPathIcon className={clsx('h-5 w-5', mediaQuery.isFetching ? 'animate-spin' : '')} />
             Yenile
+          </button>
+        </div>
+        <div className="sm:col-span-1 lg:col-span-1">
+          <button
+            type="button"
+            onClick={() => {
+              setSearch('')
+              setTagFilter('')
+              setMimeFilter('')
+              setDebouncedSearch('')
+              setDebouncedTagFilter('')
+            }}
+            className="mt-6 inline-flex items-center gap-x-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            Temizle
           </button>
         </div>
         {lastUploadedNames.length > 0 && (
