@@ -1205,16 +1205,6 @@ export default function ContentEditor() {
         </section>
 
         <section className={`${cardClass} space-y-3 p-5`}>
-          <h3 className="text-sm font-semibold text-gray-900">Yakındaki İyileştirmeler</h3>
-          <ul className="list-disc space-y-1 pl-4 text-xs text-gray-500">
-            <li>Etiket seçimi ve yönetimi</li>
-            <li>Sürüm karşılaştırma & geri yükleme</li>
-            <li>Medya yerleştirme ve özel bloklar</li>
-            <li>İçerik çeviri ve lokalizasyon</li>
-          </ul>
-        </section>
-
-        <section className={`${cardClass} space-y-3 p-5`}>
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-gray-900">Sürümler</h3>
             {!isNew && (
