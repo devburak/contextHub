@@ -1,11 +1,26 @@
 const featureFlagService = require('../services/featureFlagService');
-const { authenticate, requireAdmin, tenantContext } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
+
+async function ensureTenantContext(request, reply) {
+  if (!request.tenantId) {
+    if (request.query?.tenantId) {
+      request.tenantId = request.query.tenantId;
+    } else if (request.headers['x-tenant-id']) {
+      request.tenantId = request.headers['x-tenant-id'];
+    }
+  }
+
+  if (!request.tenantId) {
+    return reply.code(400).send({
+      error: 'Tenant ID required',
+      message: 'Please provide tenantId in query params or X-Tenant-ID header'
+    });
+  }
+}
 
 async function featureFlagRoutes(fastify) {
-  fastify.addHook('preHandler', tenantContext);
-
   fastify.get('/feature-flags', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [ensureTenantContext, authenticate, requireAdmin],
     schema: {
       response: {
         200: {
@@ -37,7 +52,7 @@ async function featureFlagRoutes(fastify) {
   });
 
   fastify.post('/feature-flags', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [ensureTenantContext, authenticate, requireAdmin],
     schema: {
       body: {
         type: 'object',
