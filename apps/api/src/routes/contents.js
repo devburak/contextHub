@@ -4,6 +4,7 @@ const {
   requireEditor,
 } = require('../middleware/auth')
 const contentService = require('../services/contentService')
+const tenantSettingsService = require('../services/tenantSettingsService')
 
 async function contentRoutes(fastify) {
   fastify.addHook('preHandler', tenantContext)
@@ -61,13 +62,21 @@ async function contentRoutes(fastify) {
     },
   }, async (request, reply) => {
     try {
+      const settings = await tenantSettingsService.getSettings(request.tenantId)
+      const featureFlags = settings.features || {}
+
       const content = await contentService.createContent({
         tenantId: request.tenantId,
         userId: request.user?._id?.toString(),
         payload: request.body,
+        featureFlags,
       })
       return reply.code(201).send({ content })
     } catch (error) {
+      if (error.code === contentService.CONTENT_SCHEDULING_DISABLED_CODE) {
+        request.log.warn({ err: error }, 'Attempted to schedule content while feature disabled')
+        return reply.code(403).send({ error: 'FeatureDisabled', message: error.message })
+      }
       request.log.error({ err: error }, 'Failed to create content')
       return reply.code(400).send({ error: 'ContentCreateFailed', message: error.message })
     }
@@ -152,14 +161,22 @@ async function contentRoutes(fastify) {
     },
   }, async (request, reply) => {
     try {
+      const settings = await tenantSettingsService.getSettings(request.tenantId)
+      const featureFlags = settings.features || {}
+
       const content = await contentService.updateContent({
         tenantId: request.tenantId,
         contentId: request.params.id,
         userId: request.user?._id?.toString(),
         payload: request.body || {},
+        featureFlags,
       })
       return reply.send({ content })
     } catch (error) {
+      if (error.code === contentService.CONTENT_SCHEDULING_DISABLED_CODE) {
+        request.log.warn({ err: error }, 'Attempted to schedule content while feature disabled')
+        return reply.code(403).send({ error: 'FeatureDisabled', message: error.message })
+      }
       request.log.error({ err: error }, 'Failed to update content')
       return reply.code(400).send({ error: 'ContentUpdateFailed', message: error.message })
     }
@@ -246,6 +263,41 @@ async function contentRoutes(fastify) {
     } catch (error) {
       request.log.error({ err: error }, 'Failed to delete content versions')
       return reply.code(400).send({ error: 'ContentVersionDeleteFailed', message: error.message })
+    }
+  })
+
+  fastify.put('/contents/:id/galleries', {
+    preHandler: [authenticate, requireEditor],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' }
+        },
+        required: ['id']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          galleryIds: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        },
+        required: ['galleryIds']
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const galleries = await contentService.setContentGalleries({
+        tenantId: request.tenantId,
+        contentId: request.params.id,
+        galleryIds: request.body.galleryIds
+      })
+      return reply.send({ galleries })
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to update content galleries')
+      return reply.code(400).send({ error: 'ContentGalleryUpdateFailed', message: error.message })
     }
   })
 }

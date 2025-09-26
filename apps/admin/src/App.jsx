@@ -17,6 +17,8 @@ import Categories from './pages/categories/Categories.jsx'
 import ContentList from './pages/contents/ContentList.jsx'
 import ContentEditor from './pages/contents/ContentEditor.jsx'
 import { AuthContext } from './contexts/AuthContext.jsx'
+import Documentation from './pages/docs/Documentation.jsx'
+import GalleryManager from './pages/galleries/GalleryManager.jsx'
 
 const parseStoredJSON = (key, fallback) => {
   const raw = localStorage.getItem(key)
@@ -197,6 +199,7 @@ function App() {
               <Route path="/users/new" element={<CreateUser />} />
               <Route path="/users/:id/edit" element={<EditUser />} />
               <Route path="/media" element={<MediaLibrary />} />
+              <Route path="/galeriler" element={<GalleryManager />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/contents" element={<ContentList />} />
               <Route path="/contents/:id" element={<ContentEditor />} />
@@ -205,6 +208,7 @@ function App() {
               <Route path="/varliklar" element={<Tenants />} />
               <Route path="/varliklar/yeni" element={<CreateTenant />} />
               <Route path="/varliklar/ayarlar" element={<TenantSettings />} />
+              <Route path="/belgeler" element={<Documentation />} />
             </Route>
             {/* Fallback catch-all when authenticated */}
             <Route path="*" element={<Navigate to="/" replace />} />

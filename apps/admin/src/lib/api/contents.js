@@ -28,6 +28,11 @@ export async function updateContent({ id, payload }) {
   return response.data.content
 }
 
+export async function setContentGalleries({ id, galleryIds }) {
+  const response = await apiClient.put(`${BASE}/${id}/galleries`, { galleryIds })
+  return response.data.galleries
+}
+
 export async function listVersions({ id }) {
   const response = await apiClient.get(`${BASE}/${id}/versions`)
   const { versions = [], deletedVersions = [], deletionLog = [] } = response.data || {}

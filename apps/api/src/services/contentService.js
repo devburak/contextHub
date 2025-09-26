@@ -1,7 +1,10 @@
 const { Content, ContentVersion } = require('@contexthub/common')
 const mongoose = require('mongoose')
+const galleryService = require('./galleryService')
 
 const ObjectId = mongoose.Types.ObjectId
+
+const CONTENT_SCHEDULING_DISABLED_CODE = 'CONTENT_SCHEDULING_DISABLED'
 
 const TURKISH_CHAR_MAP = {
   ç: 'c', Ç: 'c', ğ: 'g', Ğ: 'g', ı: 'i', I: 'i', İ: 'i', ö: 'o', Ö: 'o', ş: 's', Ş: 's', ü: 'u', Ü: 'u', â: 'a', Â: 'a'
@@ -66,13 +69,22 @@ function normaliseTagIds(values = []) {
   return normaliseObjectIdList(values)
 }
 
-function resolveStatusAndDates({ status, publishAt }) {
+function createSchedulingDisabledError() {
+  const error = new Error('Content scheduling is disabled for this tenant')
+  error.code = CONTENT_SCHEDULING_DISABLED_CODE
+  return error
+}
+
+function resolveStatusAndDates({ status, publishAt }, { allowScheduling = false } = {}) {
   const payload = {}
   if (status === 'published') {
     payload.status = 'published'
     payload.publishAt = publishAt ? new Date(publishAt) : new Date()
     payload.publishedAt = payload.publishAt
   } else if (status === 'scheduled') {
+    if (!allowScheduling) {
+      throw createSchedulingDisabledError()
+    }
     if (!publishAt) {
       throw new Error('publishAt is required for scheduled content')
     }
@@ -91,7 +103,7 @@ function resolveStatusAndDates({ status, publishAt }) {
   return payload
 }
 
-async function createContent({ tenantId, userId, payload }) {
+async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
   const {
     title,
     slug,
@@ -117,7 +129,8 @@ async function createContent({ tenantId, userId, payload }) {
 
   await ensureUniqueSlug({ tenantId, slug: finalSlug })
 
-  const statusPayload = resolveStatusAndDates({ status, publishAt })
+  const allowScheduling = Boolean(featureFlags?.contentScheduling)
+  const statusPayload = resolveStatusAndDates({ status, publishAt }, { allowScheduling })
 
   const document = await Content.create({
     tenantId,
@@ -162,7 +175,7 @@ async function createContent({ tenantId, userId, payload }) {
   return document.toObject()
 }
 
-async function updateContent({ tenantId, contentId, userId, payload }) {
+async function updateContent({ tenantId, contentId, userId, payload, featureFlags = {} }) {
   if (!ObjectId.isValid(contentId)) {
     throw new Error('Invalid content id')
   }
@@ -238,10 +251,17 @@ async function updateContent({ tenantId, contentId, userId, payload }) {
     update.authorName = authorName
   }
 
-  const statusPayload = resolveStatusAndDates({
-    status: payload.status !== undefined ? payload.status : existing.status,
-    publishAt: payload.publishAt !== undefined ? payload.publishAt : existing.publishAt,
-  })
+  const requestedStatus = payload.status !== undefined ? payload.status : existing.status
+  const requestedPublishAt = payload.publishAt !== undefined ? payload.publishAt : existing.publishAt
+  const allowScheduling = Boolean(featureFlags?.contentScheduling) || existing.status === 'scheduled'
+
+  const statusPayload = resolveStatusAndDates(
+    {
+      status: requestedStatus,
+      publishAt: requestedPublishAt,
+    },
+    { allowScheduling }
+  )
 
   Object.assign(update, statusPayload)
 
@@ -305,6 +325,7 @@ async function deleteContent({ tenantId, contentId }) {
   }
 
   await ContentVersion.deleteMany({ tenantId, contentId })
+  await galleryService.setGalleriesForContent({ tenantId, contentId, galleryIds: [] })
   return { deleted: result.deletedCount }
 }
 
@@ -419,7 +440,12 @@ async function getContent({ tenantId, contentId }) {
     throw new Error('Content not found')
   }
 
-  return content
+  const galleries = await galleryService.listByContent({ tenantId, contentId })
+
+  return {
+    ...content,
+    galleries
+  }
 }
 
 async function listContents({ tenantId, filters = {}, pagination = {} }) {
@@ -547,6 +573,11 @@ async function checkSlugAvailability({ tenantId, slug, excludeId }) {
   return { available: false, suggestion }
 }
 
+async function setContentGalleries({ tenantId, contentId, galleryIds }) {
+  const galleries = await galleryService.setGalleriesForContent({ tenantId, contentId, galleryIds })
+  return galleries
+}
+
 module.exports = {
   createContent,
   updateContent,
@@ -556,4 +587,6 @@ module.exports = {
   listContents,
   listVersions,
   checkSlugAvailability,
+  CONTENT_SCHEDULING_DISABLED_CODE,
+  setContentGalleries,
 }

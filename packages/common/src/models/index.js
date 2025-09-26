@@ -26,6 +26,8 @@ const Template = require('./Template');
 const Content = require('./Content');
 const ContentVersion = require('./ContentVersion');
 const TenantSettings = require('./TenantSettings');
+const FeatureFlagDefinition = require('./FeatureFlagDefinition');
+const Gallery = require('./Gallery');
 
 module.exports = {
   Tenant,
@@ -53,5 +55,7 @@ module.exports = {
   Content,
   ContentVersion,
   TenantSettings,
+  FeatureFlagDefinition,
+  Gallery,
   mongoose
 };

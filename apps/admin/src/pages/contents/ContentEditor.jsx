@@ -2,9 +2,11 @@ import clsx from 'clsx'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getContent, createContent, updateContent, listVersions, deleteContentVersions } from '../../lib/api/contents'
+import { getContent, createContent, updateContent, listVersions, deleteContentVersions, setContentGalleries } from '../../lib/api/contents'
+import { tenantAPI } from '../../lib/tenantAPI.js'
 import { listCategories } from '../../lib/api/categories'
 import { searchTags, createTag } from '../../lib/api/tags'
+import { galleriesAPI } from '../../lib/galleriesAPI.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
@@ -202,6 +204,15 @@ export default function ContentEditor() {
   const { token, activeTenantId } = useAuth()
   const queryClient = useQueryClient()
 
+  const { data: tenantSettingsData } = useQuery({
+    queryKey: ['tenants', 'settings'],
+    queryFn: tenantAPI.getSettings,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const featureFlags = tenantSettingsData?.features || {}
+  const allowScheduling = Boolean(featureFlags.contentScheduling)
+
   const [title, setTitle] = useState('')
   const [slug, setSlug] = useState('')
   const [status, setStatus] = useState('draft')
@@ -226,11 +237,29 @@ export default function ContentEditor() {
   const [mediaPickerState, setMediaPickerState] = useState({ open: false, mode: 'image', onSelect: null })
   const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false)
   const [editorAnchorElem, setEditorAnchorElem] = useState(null)
+  const [attachedGalleries, setAttachedGalleries] = useState([])
+  const [selectedGalleryIds, setSelectedGalleryIds] = useState([])
+  const [galleriesDirty, setGalleriesDirty] = useState(false)
+  const [gallerySearch, setGallerySearch] = useState('')
+  const [galleryError, setGalleryError] = useState('')
   const skipNextOnChangeRef = useRef(false)
   const skipNextContentSyncRef = useRef(false)
   const cardClass = 'rounded-xl border border-gray-200 bg-white shadow-sm'
   const inputClass = 'mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:bg-white focus:ring-blue-500'
   const textareaClass = inputClass
+  const statusOptions = useMemo(() => {
+    const base = [
+      { value: 'draft', label: statusLabels.draft },
+      { value: 'published', label: statusLabels.published },
+      { value: 'archived', label: statusLabels.archived },
+    ]
+
+    if (allowScheduling || status === 'scheduled') {
+      base.splice(1, 0, { value: 'scheduled', label: statusLabels.scheduled })
+    }
+
+    return base
+  }, [allowScheduling, status])
   const normaliseIdList = useCallback((values = []) => (
     Array.isArray(values)
       ? values
@@ -403,6 +432,11 @@ export default function ContentEditor() {
       })
       setFeaturedMediaId(mediaValue || null)
     }
+    const galleries = Array.isArray(source.galleries) ? source.galleries : []
+    setAttachedGalleries(galleries)
+    setSelectedGalleryIds(galleries.map((gallery) => String(gallery.id || gallery._id)).filter(Boolean))
+    setGalleriesDirty(false)
+    setGalleryError('')
     setSlugError('')
     setSaveError('')
     setDirty(Boolean(markDirty))
@@ -427,12 +461,33 @@ export default function ContentEditor() {
     { enabled: !!token && !!activeTenantId && !isNew }
   )
 
+  const galleriesListQuery = useQuery(
+    ['galleries', 'content-link', { tenant: activeTenantId, search: gallerySearch }],
+    () => galleriesAPI.list({ search: gallerySearch, limit: 100 }),
+    { enabled: !!token && !!activeTenantId }
+  )
+
   const versionsData = useMemo(() => versionsPayload?.versions ?? [], [versionsPayload])
   const deletedVersionsData = useMemo(() => versionsPayload?.deletedVersions ?? [], [versionsPayload])
   const hasPublishedVersion = useMemo(
     () => versionsData.some((item) => item.status === 'published'),
     [versionsData]
   )
+
+  const availableGalleries = useMemo(() => {
+    const resultMap = new Map()
+    const listItems = galleriesListQuery.data?.items || []
+    listItems.forEach((gallery) => {
+      resultMap.set(gallery.id, gallery)
+    })
+    attachedGalleries.forEach((gallery) => {
+      const key = gallery.id || gallery._id
+      if (key && !resultMap.has(key)) {
+        resultMap.set(key, gallery)
+      }
+    })
+    return Array.from(resultMap.values())
+  }, [galleriesListQuery.data, attachedGalleries])
 
   useEffect(() => {
     if (!versionsData) return
@@ -490,6 +545,24 @@ export default function ContentEditor() {
     }
   })
 
+  const setGalleriesMut = useMutation(
+    (galleryIds) => setContentGalleries({ id, galleryIds }),
+    {
+      onMutate: () => setGalleryError(''),
+      onSuccess: (galleries) => {
+        setAttachedGalleries(galleries)
+        setSelectedGalleryIds(galleries.map((item) => String(item.id || item._id)))
+        setGalleriesDirty(false)
+        queryClient.invalidateQueries({ predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'content' })
+        queryClient.invalidateQueries({ predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'galleries' })
+      },
+      onError: (error) => {
+        const message = error?.response?.data?.message || error.message || 'Galeriler güncellenemedi.'
+        setGalleryError(message)
+      }
+    }
+  )
+
   const deleteVersionsMut = useMutation(
     ({ versionIds }) => deleteContentVersions({ id, versionIds }),
     {
@@ -508,6 +581,23 @@ export default function ContentEditor() {
 
   const isSaving = createMut.isLoading || updateMut.isLoading
   const isDeletingVersions = deleteVersionsMut.isLoading
+
+  const handleGalleryToggle = useCallback((galleryId, checked) => {
+    setSelectedGalleryIds((prev) => {
+      const idString = String(galleryId)
+      if (checked) {
+        if (prev.includes(idString)) return prev
+        return [...prev, idString]
+      }
+      return prev.filter((value) => value !== idString)
+    })
+    setGalleriesDirty(true)
+  }, [])
+
+  const handleGallerySave = useCallback(() => {
+    if (isNew) return
+    setGalleriesMut.mutate(selectedGalleryIds)
+  }, [isNew, selectedGalleryIds, setGalleriesMut])
 
   const handleSave = useCallback(async ({ silent = false } = {}) => {
     const trimmedTitle = title.trim()
@@ -899,27 +989,43 @@ export default function ContentEditor() {
               value={status}
               onChange={(e) => {
                 const nextStatus = e.target.value
-                setStatus(nextStatus)
-                if (nextStatus === 'scheduled') {
-                  setPublishAt((prev) => prev || formatDateTimeLocal())
-                } else if (nextStatus === 'published') {
-                  setPublishAt(() => {
-                    if (status === 'published' && publishAt) {
-                      return publishAt
-                    }
-                    return formatDateTimeLocal()
-                  })
+                if (nextStatus === 'scheduled' && !allowScheduling && status !== 'scheduled') {
+                  setSaveError('Bu tenant için içerik zamanlama özelliği kapalı.')
+                  return
                 }
+                setStatus(nextStatus)
+                setPublishAt((prev) => {
+                  if (nextStatus === 'scheduled') {
+                    return prev || formatDateTimeLocal()
+                  }
+                  if (nextStatus === 'published') {
+                    return prev || formatDateTimeLocal()
+                  }
+                  return prev
+                })
                 setDirty(true)
                 setSaveError('')
               }}
               className={inputClass}
             >
-              <option value="draft">Taslak</option>
-              <option value="scheduled">Zamanlanmış</option>
-              <option value="published">Yayında</option>
-              <option value="archived">Arşiv</option>
+              {statusOptions.map((option) => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                  disabled={option.value === 'scheduled' && !allowScheduling && status !== 'scheduled'}
+                >
+                  {option.label}
+                </option>
+              ))}
             </select>
+            {!allowScheduling && status !== 'scheduled' && (
+              <p className="mt-1 text-xs text-gray-500">Bu tenant için içerik zamanlama özelliği kapalı.</p>
+            )}
+            {!allowScheduling && status === 'scheduled' && (
+              <p className="mt-1 text-xs text-amber-600">
+                Zamanlama bu tenant için kapalı; mevcut içerik zamanlanmış durumda. Durumu değiştirdiğinizde yeniden zamanlayamazsınız.
+              </p>
+            )}
           </div>
           {(status === 'scheduled' || status === 'published') && (
             <div>
@@ -942,6 +1048,99 @@ export default function ContentEditor() {
             </div>
           )}
         </section>
+        {!isNew && (
+          <section className={`${cardClass} space-y-4 p-5`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Bağlı Galeriler</h3>
+                <p className="text-xs text-gray-600">İçerikle ilişkilendirilecek galerileri seç.</p>
+              </div>
+              <a
+                href="/galeriler"
+                className="text-xs font-medium text-blue-600 hover:text-blue-500"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Galerileri yönet
+              </a>
+            </div>
+
+            <input
+              type="search"
+              placeholder="Galeri ara..."
+              value={gallerySearch}
+              onChange={(e) => setGallerySearch(e.target.value)}
+              className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+            />
+
+            {galleriesListQuery.isLoading ? (
+              <p className="text-sm text-gray-500">Galeriler yükleniyor...</p>
+            ) : availableGalleries.length === 0 ? (
+              <p className="text-sm text-gray-500">Aramana uyan galeri bulunamadı.</p>
+            ) : (
+              <div className="space-y-2">
+                {availableGalleries.map((gallery) => {
+                  const id = String(gallery.id || gallery._id)
+                  const checked = selectedGalleryIds.includes(id)
+                  return (
+                    <label
+                      key={id}
+                      className={clsx(
+                        'flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm shadow-sm',
+                        checked ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-blue-300'
+                      )}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium">{gallery.title}</span>
+                        <span className="text-xs text-gray-500">{gallery.items?.length || 0} medya · {gallery.status === 'published' ? 'Yayında' : 'Taslak'}</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        checked={checked}
+                        onChange={(e) => handleGalleryToggle(id, e.target.checked)}
+                      />
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            {galleryError && <p className="text-xs text-red-600">{galleryError}</p>}
+
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={handleGallerySave}
+                disabled={isNew || !galleriesDirty || setGalleriesMut.isLoading}
+                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
+              >
+                {setGalleriesMut.isLoading ? 'Kaydediliyor...' : 'Bağlantıları Kaydet'}
+              </button>
+            </div>
+
+            {attachedGalleries.length > 0 && (
+              <div className="space-y-2 border-t border-gray-200 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Bağlı galeriler</p>
+                <ul className="space-y-1 text-xs text-gray-600">
+                  {attachedGalleries.map((gallery) => (
+                    <li key={gallery.id || gallery._id} className="truncate">
+                      • {gallery.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
+        {isNew && (
+          <section className={`${cardClass} space-y-3 p-5`}>
+            <h3 className="text-sm font-semibold text-gray-900">Bağlı Galeriler</h3>
+            <p className="text-sm text-gray-600">
+              Galeri eklemek için önce içeriği kaydet. İçerik oluşturulduktan sonra galerileri bu panelden ilişkilendirebilirsin.
+            </p>
+          </section>
+        )}
         <section className={`${cardClass} space-y-3 p-5`}>
           <h3 className="text-sm font-semibold text-gray-900">Öne çıkan görsel</h3>
           {featuredMedia ? (
