@@ -6,13 +6,15 @@ export class ImageNode extends DecoratorNode {
   __altText
   __width
   __height
+  __alignment
 
-  constructor({ src, altText = '', width = undefined, height = undefined }, key) {
+  constructor({ src, altText = '', width = undefined, height = undefined, alignment = 'center' }, key) {
     super(key)
     this.__src = src
     this.__altText = altText
     this.__width = width
     this.__height = height
+    this.__alignment = alignment
   }
 
   static getType() {
@@ -26,14 +28,15 @@ export class ImageNode extends DecoratorNode {
         altText: node.__altText,
         width: node.__width,
         height: node.__height,
+        alignment: node.__alignment,
       },
       node.__key
     )
   }
 
   static importJSON(serializedNode) {
-    const { src, altText, width, height } = serializedNode
-    return $createImageNode({ src, altText, width, height })
+    const { src, altText, width, height, alignment } = serializedNode
+    return $createImageNode({ src, altText, width, height, alignment })
   }
 
   exportJSON() {
@@ -44,6 +47,7 @@ export class ImageNode extends DecoratorNode {
       altText: this.__altText,
       width: this.__width,
       height: this.__height,
+      alignment: this.__alignment,
     }
   }
 
@@ -64,6 +68,7 @@ export class ImageNode extends DecoratorNode {
         altText={this.__altText}
         width={this.__width}
         height={this.__height}
+        alignment={this.__alignment}
         nodeKey={this.getKey()}
         resizable={true}
       />
@@ -83,6 +88,11 @@ export class ImageNode extends DecoratorNode {
     writable.__altText = altText
   }
 
+  setAlignment(alignment) {
+    const writable = this.getWritable()
+    writable.__alignment = alignment
+  }
+
   getSrc() {
     return this.__src
   }
@@ -90,15 +100,20 @@ export class ImageNode extends DecoratorNode {
   getAltText() {
     return this.__altText
   }
+
+  getAlignment() {
+    return this.__alignment
+  }
 }
 
-export function $createImageNode({ src, altText = '', width, height }) {
+export function $createImageNode({ src, altText = '', width, height, alignment = 'center' }) {
   return new ImageNode(
     {
       src,
       altText,
       width,
       height,
+      alignment,
     }
   )
 }

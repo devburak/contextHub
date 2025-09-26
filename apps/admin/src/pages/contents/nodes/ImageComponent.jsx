@@ -23,6 +23,7 @@ function ImageComponent({
   altText = '',
   width,
   height,
+  alignment = 'center',
   nodeKey,
   resizable = true
 }) {
@@ -144,10 +145,31 @@ function ImageComponent({
     }
   }, [editor, onDelete, onClick])
 
+  const handleAlignmentChange = useCallback((newAlignment) => {
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey)
+      if ($isImageNode(node)) {
+        node.setAlignment(newAlignment)
+      }
+    })
+  }, [editor, nodeKey])
+
   const draggable = isSelected && !isResizing
 
+  const getAlignmentStyle = () => {
+    switch (alignment) {
+      case 'left':
+        return 'justify-start'
+      case 'right':
+        return 'justify-end'
+      case 'center':
+      default:
+        return 'justify-center'
+    }
+  }
+
   return (
-    <div className="editor-image-container">
+    <div className={`editor-image-container flex ${getAlignmentStyle()}`}>
       <div
         className={`relative inline-block max-w-full ${
           isSelected ? 'selected' : ''
@@ -180,10 +202,39 @@ function ImageComponent({
         )}
 
         {isSelected && (
-          <div className="absolute -top-8 left-0 flex items-center gap-2 bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">
+          <div className="absolute -top-12 left-0 flex items-center gap-2 bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">
             <span>Görsel seçildi</span>
+            <div className="flex items-center gap-1 ml-2">
+              <button
+                className={`w-6 h-6 flex items-center justify-center rounded ${alignment === 'left' ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
+                onClick={() => handleAlignmentChange('left')}
+                title="Sola yasla"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 6h16M4 12h8M4 18h16"/>
+                </svg>
+              </button>
+              <button
+                className={`w-6 h-6 flex items-center justify-center rounded ${alignment === 'center' ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
+                onClick={() => handleAlignmentChange('center')}
+                title="Ortala"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 6h16M8 12h8M4 18h16"/>
+                </svg>
+              </button>
+              <button
+                className={`w-6 h-6 flex items-center justify-center rounded ${alignment === 'right' ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
+                onClick={() => handleAlignmentChange('right')}
+                title="Sağa yasla"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 6h16M12 12h8M4 18h16"/>
+                </svg>
+              </button>
+            </div>
             <button
-              className="text-white hover:text-red-200"
+              className="text-white hover:text-red-200 ml-2"
               onClick={() => {
                 editor.update(() => {
                   const node = $getNodeByKey(nodeKey)
