@@ -308,6 +308,104 @@ async function deleteContent({ tenantId, contentId }) {
   return { deleted: result.deletedCount }
 }
 
+async function deleteVersions({ tenantId, contentId, versionIds = [], user }) {
+  if (!ObjectId.isValid(contentId)) {
+    throw new Error('Invalid content id')
+  }
+
+  if (!Array.isArray(versionIds) || !versionIds.length) {
+    throw new Error('At least one version id is required')
+  }
+
+  const targetIds = versionIds
+    .map((value) => {
+      if (!value) return null
+      if (value instanceof ObjectId) return value
+      return ObjectId.isValid(value) ? new ObjectId(value) : null
+    })
+    .filter(Boolean)
+
+  if (!targetIds.length) {
+    throw new Error('No valid version ids provided')
+  }
+
+  const candidateVersions = await ContentVersion.find({
+    _id: { $in: targetIds },
+    tenantId,
+    contentId,
+    deletedAt: null,
+  })
+    .select({ _id: 1, version: 1 })
+    .lean()
+
+  if (!candidateVersions.length) {
+    return { deleted: 0, deletedVersions: [] }
+  }
+
+  const now = new Date()
+  const deletePayload = { deletedAt: now }
+  const userId = user?._id ? new ObjectId(user._id) : null
+  if (userId) {
+    deletePayload.deletedBy = userId
+  }
+
+  const derivedName = (() => {
+    if (!user) return null
+    if (user.name) return user.name
+    const parts = [user.firstName, user.lastName].filter(Boolean)
+    if (parts.length) {
+      return parts.join(' ').trim()
+    }
+    return user.email || null
+  })()
+
+  if (derivedName) {
+    deletePayload.deletedByName = derivedName
+  }
+
+  const idsToUpdate = candidateVersions.map((item) => item._id)
+
+  await ContentVersion.updateMany(
+    { _id: { $in: idsToUpdate } },
+    { $set: deletePayload }
+  )
+
+  const deletedIdStrings = new Set(idsToUpdate.map((id) => id.toString()))
+
+  const content = await Content.findOne({ _id: contentId, tenantId })
+    .select({ lastVersionId: 1 })
+    .lean()
+
+  let updatedLastVersionId = null
+
+  if (content && content.lastVersionId && deletedIdStrings.has(String(content.lastVersionId))) {
+    const latestActive = await ContentVersion.findOne({
+      tenantId,
+      contentId,
+      deletedAt: null,
+    })
+      .sort({ version: -1 })
+      .select({ _id: 1 })
+      .lean()
+
+    await Content.updateOne(
+      { _id: contentId, tenantId },
+      { $set: { lastVersionId: latestActive ? latestActive._id : null } }
+    )
+
+    updatedLastVersionId = latestActive ? latestActive._id.toString() : null
+  }
+
+  return {
+    deleted: candidateVersions.length,
+    deletedVersions: candidateVersions.map((item) => ({
+      versionId: item._id.toString(),
+      version: item.version,
+    })),
+    lastVersionId: updatedLastVersionId,
+  }
+}
+
 async function getContent({ tenantId, contentId }) {
   if (!ObjectId.isValid(contentId)) {
     throw new Error('Invalid content id')
@@ -379,11 +477,55 @@ async function listVersions({ tenantId, contentId }) {
     throw new Error('Invalid content id')
   }
 
-  const versions = await ContentVersion.find({ tenantId, contentId })
-    .sort({ version: -1 })
-    .lean()
+  const [versions, deletedVersionsRaw] = await Promise.all([
+    ContentVersion.find({ tenantId, contentId, deletedAt: null })
+      .sort({ version: -1 })
+      .lean(),
+    ContentVersion.find({ tenantId, contentId, deletedAt: { $ne: null } })
+      .sort({ deletedAt: -1 })
+      .populate('deletedBy', 'name firstName lastName email')
+      .lean(),
+  ])
 
-  return versions
+  const deletedVersions = deletedVersionsRaw.map((item) => {
+    const deletedByDisplayName = item.deletedByName
+      || (item.deletedBy
+        ? item.deletedBy.name
+          || [item.deletedBy.firstName, item.deletedBy.lastName].filter(Boolean).join(' ').trim()
+          || item.deletedBy.email
+        : null)
+
+    return {
+      ...item,
+      deletedBy: item.deletedBy
+        ? {
+            _id: item.deletedBy._id.toString(),
+            name: item.deletedBy.name || null,
+            firstName: item.deletedBy.firstName || null,
+            lastName: item.deletedBy.lastName || null,
+            email: item.deletedBy.email || null,
+          }
+        : null,
+      deletedByDisplayName: deletedByDisplayName || null,
+    }
+  })
+
+  const deletionLog = deletedVersions.map((item) => ({
+    versionId: item._id.toString(),
+    version: item.version,
+    deletedAt: item.deletedAt,
+    deletedBy: {
+      id: item.deletedBy?._id || null,
+      name: item.deletedByDisplayName,
+      email: item.deletedBy?.email || null,
+    },
+  }))
+
+  return {
+    versions,
+    deletedVersions,
+    deletionLog,
+  }
 }
 
 async function checkSlugAvailability({ tenantId, slug, excludeId }) {
@@ -409,6 +551,7 @@ module.exports = {
   createContent,
   updateContent,
   deleteContent,
+  deleteVersions,
   getContent,
   listContents,
   listVersions,

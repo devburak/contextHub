@@ -30,7 +30,15 @@ export async function updateContent({ id, payload }) {
 
 export async function listVersions({ id }) {
   const response = await apiClient.get(`${BASE}/${id}/versions`)
-  return response.data.versions ?? []
+  const { versions = [], deletedVersions = [], deletionLog = [] } = response.data || {}
+  return { versions, deletedVersions, deletionLog }
+}
+
+export async function deleteContentVersions({ id, versionIds }) {
+  const response = await apiClient.post(`${BASE}/${id}/versions/delete`, {
+    versionIds,
+  })
+  return response.data
 }
 
 export async function checkSlugAvailability({ slug, id }) {

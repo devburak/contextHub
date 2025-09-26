@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx'
 import { Link } from 'react-router-dom'
 import { searchTags } from '../../lib/api/tags'
 import clsx from 'clsx'
+import { ChevronDownIcon } from '@heroicons/react/20/solid'
 
 export default function ContentList() {
   const { token, activeTenantId } = useAuth()
@@ -17,10 +18,10 @@ export default function ContentList() {
   const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false)
   const tagContainerRef = useRef(null)
 
-  const debouncedTagSearch = useDebouncedValue(tagInput, 800)
+  const debouncedTagSearch = useDebouncedValue(tagInput, 300)
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 2000)
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(timer)
   }, [search])
 
@@ -63,32 +64,37 @@ export default function ContentList() {
 
   const tagOptions = useMemo(() => tagQuery.data?.tags ?? [], [tagQuery.data])
 
+  const filterInputClass = 'block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 placeholder:text-gray-400'
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700">Durum</label>
-          <select
-            value={status}
-            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-            className="mt-1 block w-44 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-          >
-            <option value="">Hepsi</option>
-            <option value="draft">Taslak</option>
-            <option value="scheduled">Zamanlanmış</option>
-            <option value="published">Yayında</option>
-            <option value="archived">Arşiv</option>
-          </select>
+          <div className="relative mt-1 w-44">
+            <select
+              value={status}
+              onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+              className={clsx(filterInputClass, 'appearance-none pr-9')}
+            >
+              <option value="">Hepsi</option>
+              <option value="draft">Taslak</option>
+              <option value="scheduled">Zamanlanmış</option>
+              <option value="published">Yayında</option>
+              <option value="archived">Arşiv</option>
+            </select>
+            <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Ara</label>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Başlık veya özet..."
-              className="mt-1 block w-72 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-            />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Başlık veya özet..."
+            className={clsx('mt-1 w-72', filterInputClass)}
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Etiket</label>
@@ -104,7 +110,7 @@ export default function ContentList() {
               }}
               onFocus={() => setIsTagDropdownOpen(true)}
               placeholder={selectedTag ? selectedTag.title || selectedTag.slug : 'Etiket ara'}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+              className={clsx('mt-1', filterInputClass)}
             />
             {selectedTag && (
               <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700">

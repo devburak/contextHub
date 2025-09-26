@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getContent, createContent, updateContent, listVersions } from '../../lib/api/contents'
+import { getContent, createContent, updateContent, listVersions, deleteContentVersions } from '../../lib/api/contents'
 import { listCategories } from '../../lib/api/categories'
 import { searchTags, createTag } from '../../lib/api/tags'
 import { useAuth } from '../../contexts/AuthContext.jsx'
@@ -53,7 +53,7 @@ import DraggableBlockPlugin from './plugins/DraggableBlockPlugin'
 import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
 import { ImageNode } from './nodes/ImageNode.jsx'
 import { TableNode, TableRowNode, TableCellNode, $createTableWithDimensions } from './nodes/TableNode.jsx'
-import { PhotoIcon } from '@heroicons/react/24/outline'
+import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
 
@@ -107,6 +107,21 @@ const styleObjectToString = (styles) =>
   Object.entries(styles)
     .map(([key, value]) => `${key}: ${value}`)
     .join('; ')
+
+function formatDateTimeLocal(date = new Date()) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return ''
+  }
+  const offset = date.getTimezoneOffset()
+  const localDate = new Date(date.getTime() - offset * 60000)
+  return localDate.toISOString().slice(0, 16)
+}
+
+function toDateTimeInputValue(value) {
+  if (!value) return ''
+  const date = value instanceof Date ? value : new Date(value)
+  return formatDateTimeLocal(date)
+}
 
 const toHexColor = (color) => {
   if (!color) return ''
@@ -178,7 +193,7 @@ export default function ContentEditor() {
   const [slug, setSlug] = useState('')
   const [status, setStatus] = useState('draft')
   const [summary, setSummary] = useState('')
-  const [publishAt, setPublishAt] = useState('')
+  const [publishAt, setPublishAt] = useState(() => formatDateTimeLocal())
   const [categories, setCategories] = useState([])
   const [selectedCategoryRecords, setSelectedCategoryRecords] = useState([])
   const [tags, setTags] = useState([])
@@ -190,7 +205,9 @@ export default function ContentEditor() {
   const [dirty, setDirty] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [selectedVersionId, setSelectedVersionId] = useState(null)
+  const [selectedVersionIds, setSelectedVersionIds] = useState([])
   const [previewVersion, setPreviewVersion] = useState(null)
+  const [versionActionError, setVersionActionError] = useState('')
   const [featuredMedia, setFeaturedMedia] = useState(null)
   const [featuredMediaId, setFeaturedMediaId] = useState(null)
   const [mediaPickerState, setMediaPickerState] = useState({ open: false, mode: 'image', onSelect: null })
@@ -343,7 +360,16 @@ export default function ContentEditor() {
     setSlug(source.slug || '')
     setStatus(source.status || 'draft')
     setSummary(source.summary || '')
-    setPublishAt(source.publishAt ? new Date(source.publishAt).toISOString().slice(0, 16) : '')
+    const formattedPublishAt = toDateTimeInputValue(source.publishAt)
+    setPublishAt(() => {
+      if (formattedPublishAt) {
+        return formattedPublishAt
+      }
+      if (source.status === 'scheduled') {
+        return formatDateTimeLocal()
+      }
+      return ''
+    })
     setHtml(source.html || '')
     const nextCategories = normaliseIdList(source.categories)
     setSelectedCategoryRecords([])
@@ -382,10 +408,17 @@ export default function ContentEditor() {
     { enabled: !!token && !!activeTenantId && !isNew }
   )
 
-  const { data: versionsData } = useQuery(
+  const { data: versionsPayload } = useQuery(
     ['contentVersions', { tenant: activeTenantId, id }],
     () => listVersions({ id }),
     { enabled: !!token && !!activeTenantId && !isNew }
+  )
+
+  const versionsData = useMemo(() => versionsPayload?.versions ?? [], [versionsPayload])
+  const deletedVersionsData = useMemo(() => versionsPayload?.deletedVersions ?? [], [versionsPayload])
+  const hasPublishedVersion = useMemo(
+    () => versionsData.some((item) => item.status === 'published'),
+    [versionsData]
   )
 
   useEffect(() => {
@@ -406,6 +439,16 @@ export default function ContentEditor() {
     setPreviewVersion(newest)
     setSelectedVersionId(String(newest._id))
   }, [versionsData, selectedVersionId])
+
+  useEffect(() => {
+    if (!versionsData) return
+    setSelectedVersionIds((prev) =>
+      prev.filter((id) => {
+        const version = versionsData.find((item) => String(item._id) === id)
+        return version && version.status !== 'published'
+      })
+    )
+  }, [versionsData])
 
   useEffect(() => {
     if (!contentData) return
@@ -434,7 +477,24 @@ export default function ContentEditor() {
     }
   })
 
+  const deleteVersionsMut = useMutation(
+    ({ versionIds }) => deleteContentVersions({ id, versionIds }),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['contents'] })
+        queryClient.invalidateQueries({ predicate: (query) => ['content', 'contentVersions'].includes(query.queryKey[0]) })
+        setVersionActionError('')
+        setSelectedVersionIds([])
+      },
+      onError: (error) => {
+        const message = error?.response?.data?.message
+        setVersionActionError(typeof message === 'string' ? message : 'Sürüm silme işlemi başarısız oldu.')
+      },
+    }
+  )
+
   const isSaving = createMut.isLoading || updateMut.isLoading
+  const isDeletingVersions = deleteVersionsMut.isLoading
 
   const handleSave = useCallback(async ({ silent = false } = {}) => {
     const trimmedTitle = title.trim()
@@ -519,7 +579,53 @@ export default function ContentEditor() {
     setPreviewVersion(version)
     setSelectedVersionId(String(version._id))
     setSaveError('')
+    setVersionActionError('')
   }
+
+  const handleToggleVersionSelection = useCallback((version, nextChecked) => {
+    if (!version || version.status === 'published') return
+    const versionId = String(version._id)
+    setSelectedVersionIds((prev) => {
+      if (nextChecked) {
+        if (prev.includes(versionId)) {
+          return prev
+        }
+        return [...prev, versionId]
+      }
+      return prev.filter((item) => item !== versionId)
+    })
+    setVersionActionError('')
+  }, [])
+
+  const handleDeleteSelectedVersions = useCallback(async () => {
+    if (!selectedVersionIds.length || isDeletingVersions) return
+    const confirmation = window.confirm('Seçili sürümleri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')
+    if (!confirmation) return
+    const deletableMap = selectedVersionIds
+      .map((id) => {
+        const version = versionsData?.find((item) => String(item._id) === id)
+        return { id, version }
+      })
+      .filter((entry) => entry.version && entry.version.status !== 'published')
+
+    if (!deletableMap.length) {
+      setVersionActionError('Yayındaki sürümler silinemez.')
+      return
+    }
+
+    const idsToDelete = deletableMap.map((entry) => entry.id)
+
+    if (idsToDelete.includes(selectedVersionId)) {
+      setPreviewVersion(null)
+      setSelectedVersionId(null)
+    }
+    setVersionActionError('')
+    try {
+      await deleteVersionsMut.mutateAsync({ versionIds: idsToDelete })
+    } catch (error) {
+      console.error('Version delete failed', error)
+    }
+  }, [selectedVersionIds, isDeletingVersions, selectedVersionId, deleteVersionsMut, versionsData])
 
   const handleApplyVersion = async () => {
     if (!previewVersion) return
@@ -705,7 +811,11 @@ export default function ContentEditor() {
                 <select
                   value={status}
                 onChange={(e) => {
-                  setStatus(e.target.value)
+                  const nextStatus = e.target.value
+                  setStatus(nextStatus)
+                  if (nextStatus === 'scheduled') {
+                    setPublishAt((prev) => prev || formatDateTimeLocal())
+                  }
                   setDirty(true)
                   setSaveError('')
                 }}
@@ -819,77 +929,6 @@ export default function ContentEditor() {
 
       <aside className="xl:col-span-1 space-y-6">
         <section className={`${cardClass} space-y-3 p-5`}>
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Sürümler</h3>
-            {!isNew && (
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-                {versionsData?.length || 0} kayıt
-              </span>
-            )}
-          </div>
-          {isNew && <div className="text-xs text-gray-500">Kaydedildikten sonra sürümler görünecek.</div>}
-          {!isNew && !versionsData?.length && <div className="text-xs text-gray-500">Sürüm yok.</div>}
-          <ul className="max-h-64 space-y-2 overflow-y-auto pr-1 text-xs">
-            {versionsData?.map((v) => {
-              const active = selectedVersionId === String(v._id)
-              return (
-                <li key={v._id}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectVersion(v)}
-                    className={clsx(
-                      'w-full rounded border px-3 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-blue-300',
-                      active
-                        ? 'border-blue-300 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-200 hover:bg-blue-50'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">#{v.version}</span>
-                      <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium">
-                        {statusLabels[v.status] || v.status}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-[11px]">
-                      {formatDateTime(v.createdAt || v.publishedAt)}
-                    </div>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          {previewVersion && (
-            <div className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-gray-900">Sürüm #{previewVersion.version}</p>
-                  <p className="text-[11px] text-gray-500">
-                    {formatDateTime(previewVersion.createdAt || previewVersion.publishedAt)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleApplyVersion}
-                  disabled={isSaving}
-                  className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
-                >
-                  Bu sürümü yükle
-                </button>
-              </div>
-              {previewVersion.summary && (
-                <p className="mt-2 text-gray-700">{previewVersion.summary}</p>
-              )}
-              {previewVersion.html && (
-                <div
-                  className="prose prose-sm mt-3 max-h-48 overflow-y-auto rounded bg-white p-3 text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: previewVersion.html }}
-                />
-              )}
-            </div>
-          )}
-        </section>
-
-        <section className={`${cardClass} space-y-3 p-5`}>
           <h3 className="text-sm font-semibold text-gray-900">Öne çıkan görsel</h3>
           {featuredMedia ? (
             <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -960,6 +999,149 @@ export default function ContentEditor() {
             <li>Medya yerleştirme ve özel bloklar</li>
             <li>İçerik çeviri ve lokalizasyon</li>
           </ul>
+        </section>
+
+        <section className={`${cardClass} space-y-3 p-5`}>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-gray-900">Sürümler</h3>
+            {!isNew && (
+              <div className="flex items-center gap-2">
+                {selectedVersionIds.length > 0 && (
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
+                    {selectedVersionIds.length}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedVersions}
+                  disabled={!selectedVersionIds.length || isDeletingVersions}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Seçili sürümleri sil"
+                >
+                  <TrashIcon className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">Seçili sürümleri sil</span>
+                </button>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                  {versionsData?.length || 0} kayıt
+                </span>
+              </div>
+            )}
+          </div>
+          {isNew && <div className="text-xs text-gray-500">Kaydedildikten sonra sürümler görünecek.</div>}
+          {!isNew && versionActionError && (
+            <div className="text-xs text-red-500">{versionActionError}</div>
+          )}
+          {!isNew && versionsData?.length === 0 && (
+            <div className="text-xs text-gray-500">Sürüm yok.</div>
+          )}
+          {!isNew && hasPublishedVersion && (
+            <div className="text-[11px] text-gray-500">Yayındaki sürümler silinemez.</div>
+          )}
+          <ul className="max-h-64 space-y-2 overflow-y-auto pr-1 text-xs">
+            {versionsData?.map((v) => {
+              const versionKey = String(v._id)
+              const active = selectedVersionId === versionKey
+              const checked = selectedVersionIds.includes(versionKey)
+              const createdDisplay = formatDateTime(v.createdAt || v.publishedAt)
+              const isPublished = v.status === 'published'
+              return (
+                <li key={versionKey}>
+                  <div
+                    className={clsx(
+                      'flex items-start gap-2 rounded border px-3 py-2 transition',
+                      active
+                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-200 hover:bg-blue-50'
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Sürüm ${v.version} silme seçimi`}
+                      className={clsx(
+                        'mt-1 h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-400',
+                        isPublished && 'cursor-not-allowed opacity-40'
+                      )}
+                      checked={checked}
+                      disabled={isPublished}
+                      onChange={(event) => handleToggleVersionSelection(v, event.target.checked)}
+                      title={isPublished ? 'Yayındaki sürümler silinemez.' : undefined}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSelectVersion(v)}
+                      className="flex-1 cursor-pointer bg-transparent text-left focus:outline-none"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">#{v.version}</span>
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium">
+                          {statusLabels[v.status] || v.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px]">{createdDisplay}</div>
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          {previewVersion && (
+            <div className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-gray-900">Sürüm #{previewVersion.version}</p>
+                  <p className="text-[11px] text-gray-500">
+                    {formatDateTime(previewVersion.createdAt || previewVersion.publishedAt)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleApplyVersion}
+                  disabled={isSaving}
+                  className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
+                >
+                  Bu sürümü yükle
+                </button>
+              </div>
+              {previewVersion.summary && (
+                <p className="mt-2 text-gray-700">{previewVersion.summary}</p>
+              )}
+              {previewVersion.html && (
+                <div
+                  className="prose prose-sm mt-3 max-h-48 overflow-y-auto rounded bg-white p-3 text-gray-700"
+                  dangerouslySetInnerHTML={{ __html: previewVersion.html }}
+                />
+              )}
+            </div>
+          )}
+          {!!deletedVersionsData.length && (
+            <div className="border-t border-gray-200 pt-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-700">Silme geçmişi</h4>
+                <span className="text-[11px] text-gray-500">{deletedVersionsData.length} kayıt</span>
+              </div>
+              <ul className="mt-2 space-y-2 text-xs">
+                {deletedVersionsData.map((item) => {
+                  const deletedKey = String(item._id)
+                  const deletedByText = item.deletedByDisplayName
+                    || item.deletedBy?.name
+                    || item.deletedBy?.email
+                    || 'Bilinmeyen kullanıcı'
+                  return (
+                    <li key={deletedKey} className="rounded border border-rose-100 bg-rose-50 px-3 py-2 text-rose-700">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold">#{item.version}</span>
+                        <span className="text-[11px] text-rose-600">{formatDateTime(item.deletedAt)}</span>
+                      </div>
+                      {item.title && (
+                        <div className="mt-1 text-[11px] text-rose-700">{item.title}</div>
+                      )}
+                      <div className="mt-1 text-[11px] text-rose-600">{deletedByText} tarafından silindi</div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
         </section>
       </aside>
       </div>

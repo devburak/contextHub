@@ -205,14 +205,47 @@ async function contentRoutes(fastify) {
     },
   }, async (request, reply) => {
     try {
-      const versions = await contentService.listVersions({
+      const versionsPayload = await contentService.listVersions({
         tenantId: request.tenantId,
         contentId: request.params.id,
       })
-      return reply.send({ versions })
+      return reply.send(versionsPayload)
     } catch (error) {
       request.log.error({ err: error }, 'Failed to list versions')
       return reply.code(400).send({ error: 'ContentVersionListFailed', message: error.message })
+    }
+  })
+
+  fastify.post('/contents/:id/versions/delete', {
+    preHandler: [authenticate, requireEditor],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+        },
+        required: ['id'],
+      },
+      body: {
+        type: 'object',
+        properties: {
+          versionIds: { type: 'array', items: { type: 'string' }, minItems: 1 },
+        },
+        required: ['versionIds'],
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await contentService.deleteVersions({
+        tenantId: request.tenantId,
+        contentId: request.params.id,
+        versionIds: request.body.versionIds,
+        user: request.user,
+      })
+      return reply.send({ success: true, ...result })
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to delete content versions')
+      return reply.code(400).send({ error: 'ContentVersionDeleteFailed', message: error.message })
     }
   })
 }

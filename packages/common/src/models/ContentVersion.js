@@ -19,10 +19,14 @@ const contentVersionSchema = new Schema({
   publishedAt: { type: Date },
   publishedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now },
-  createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
+  createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  deletedAt: { type: Date },
+  deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  deletedByName: { type: String }
 })
 
 contentVersionSchema.index({ tenantId: 1, contentId: 1, version: -1 }, { unique: true })
+contentVersionSchema.index({ tenantId: 1, contentId: 1, deletedAt: 1 })
 
 const ContentVersion = mongoose.model('ContentVersion', contentVersionSchema)
 
