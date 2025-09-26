@@ -373,12 +373,12 @@ export default function ContentEditor() {
     setSlug(source.slug || '')
     setStatus(source.status || 'draft')
     setSummary(source.summary || '')
-    const formattedPublishAt = toDateTimeInputValue(source.publishAt)
+    const formattedPublishAt = toDateTimeInputValue(source.publishAt || source.publishedAt)
     setPublishAt(() => {
       if (formattedPublishAt) {
         return formattedPublishAt
       }
-      if (source.status === 'scheduled') {
+      if (source.status === 'scheduled' || source.status === 'published') {
         return formatDateTimeLocal()
       }
       return ''
@@ -541,12 +541,13 @@ export default function ContentEditor() {
       parsedLexical = JSON.parse(INITIAL_EDITOR_STATE)
     }
 
+    const shouldSendPublishAt = status === 'scheduled' || status === 'published'
     const payload = {
       title: trimmedTitle,
       slug: trimmedSlug,
       status,
       summary,
-      publishAt: publishAt ? new Date(publishAt).toISOString() : undefined,
+      publishAt: publishAt && shouldSendPublishAt ? new Date(publishAt).toISOString() : undefined,
       lexical: parsedLexical,
       html,
       categories,
@@ -776,7 +777,7 @@ export default function ContentEditor() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Temel Bilgiler</h2>
-              <p className="text-sm text-gray-500">Başlık, slug, durum ve özet ayarlarını düzenle.</p>
+              <p className="text-sm text-gray-500">Başlık, slug ve özet ayarlarını düzenle.</p>
             </div>
             {!isNew && (
               <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
@@ -802,59 +803,21 @@ export default function ContentEditor() {
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700">Slug</label>
-                <input
-                  type="text"
-                  value={slug}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700">Slug</label>
+              <input
+                type="text"
+                value={slug}
                 onChange={(e) => {
                   setSlug(e.target.value)
                   setDirty(true)
                   setSlugError('')
                   setSaveError('')
                 }}
-                  className={clsx(inputClass, slugError && 'border-red-300 focus:border-red-400 focus:ring-red-300')}
-                  placeholder="ornek-slug"
-                />
-                {slugError && <p className="mt-1 text-xs text-red-600">{slugError}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700">Durum</label>
-                <select
-                  value={status}
-                onChange={(e) => {
-                  const nextStatus = e.target.value
-                  setStatus(nextStatus)
-                  if (nextStatus === 'scheduled') {
-                    setPublishAt((prev) => prev || formatDateTimeLocal())
-                  }
-                  setDirty(true)
-                  setSaveError('')
-                }}
-                  className={inputClass}
-                >
-                  <option value="draft">Taslak</option>
-                  <option value="scheduled">Zamanlanmış</option>
-                  <option value="published">Yayında</option>
-                  <option value="archived">Arşiv</option>
-                </select>
-              </div>
-              {status === 'scheduled' && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700">Yayın Tarihi</label>
-                  <input
-                    type="datetime-local"
-                    value={publishAt}
-                    onChange={(e) => {
-                      setPublishAt(e.target.value)
-                      setDirty(true)
-                      setSaveError('')
-                    }}
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                className={clsx(inputClass, slugError && 'border-red-300 focus:border-red-400 focus:ring-red-300')}
+                placeholder="ornek-slug"
+              />
+              {slugError && <p className="mt-1 text-xs text-red-600">{slugError}</p>}
             </div>
 
             <div>
@@ -925,27 +888,60 @@ export default function ContentEditor() {
           </div>
         </section>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => handleSave()}
-            disabled={(!dirty && !isNew) || isSaving}
-            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
-          >
-            {isSaving ? 'Kaydediliyor…' : 'Kaydet'}
-          </button>
-          {saveError && (
-            <span className="text-xs text-red-500">{saveError}</span>
-          )}
-          {dirty && !saveError && (
-            <span className="text-xs text-gray-500">Kaydedilmemiş değişiklikler var.</span>
-          )}
-          {!isNew && (
-            <span className="text-xs text-gray-500">Son güncelleme: {formatDateTime(contentData?.updatedAt)}</span>
-          )}
-        </div>
       </div>
 
       <aside className="xl:col-span-1 space-y-6">
+        <section className={`${cardClass} space-y-4 p-5`}>
+          <h3 className="text-sm font-semibold text-gray-900">Yayınlama</h3>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700">Durum</label>
+            <select
+              value={status}
+              onChange={(e) => {
+                const nextStatus = e.target.value
+                setStatus(nextStatus)
+                if (nextStatus === 'scheduled') {
+                  setPublishAt((prev) => prev || formatDateTimeLocal())
+                } else if (nextStatus === 'published') {
+                  setPublishAt(() => {
+                    if (status === 'published' && publishAt) {
+                      return publishAt
+                    }
+                    return formatDateTimeLocal()
+                  })
+                }
+                setDirty(true)
+                setSaveError('')
+              }}
+              className={inputClass}
+            >
+              <option value="draft">Taslak</option>
+              <option value="scheduled">Zamanlanmış</option>
+              <option value="published">Yayında</option>
+              <option value="archived">Arşiv</option>
+            </select>
+          </div>
+          {(status === 'scheduled' || status === 'published') && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700">
+                {status === 'scheduled' ? 'Planlanan Yayın Tarihi' : 'Yayın Tarihi'}
+              </label>
+              <input
+                type="datetime-local"
+                value={publishAt}
+                onChange={(e) => {
+                  setPublishAt(e.target.value)
+                  setDirty(true)
+                  setSaveError('')
+                }}
+                className={inputClass}
+              />
+              {status === 'published' && (
+                <p className="mt-1 text-xs text-gray-500">Durum "Yayında" olduğunda tarih varsayılan olarak şuanı alır, dilerseniz düzenleyebilirsiniz.</p>
+              )}
+            </div>
+          )}
+        </section>
         <section className={`${cardClass} space-y-3 p-5`}>
           <h3 className="text-sm font-semibold text-gray-900">Öne çıkan görsel</h3>
           {featuredMedia ? (
@@ -1137,7 +1133,7 @@ export default function ContentEditor() {
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-700">Silme geçmişi</h4>
                 <span className="text-[11px] text-gray-500">{deletedVersionsData.length} kayıt</span>
               </div>
-              <ul className="mt-2 space-y-2 text-xs">
+              <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1 text-xs">
                 {deletedVersionsData.map((item) => {
                   const deletedKey = String(item._id)
                   const deletedByText = item.deletedByDisplayName
@@ -1159,6 +1155,25 @@ export default function ContentEditor() {
                 })}
               </ul>
             </div>
+          )}
+        </section>
+
+        <section className={`${cardClass} sticky top-4 space-y-3 p-5 shadow-md`}>
+          <div className="space-y-1 text-xs text-gray-500">
+            {dirty && !saveError && <p>Kaydedilmemiş değişiklikler var.</p>}
+            {!isNew && (
+              <p>Son güncelleme: {formatDateTime(contentData?.updatedAt)}</p>
+            )}
+          </div>
+          <button
+            onClick={() => handleSave()}
+            disabled={(!dirty && !isNew) || isSaving}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
+          >
+            {isSaving ? 'Kaydediliyor…' : 'Kaydet'}
+          </button>
+          {saveError && (
+            <span className="text-xs text-red-500">{saveError}</span>
           )}
         </section>
       </aside>
