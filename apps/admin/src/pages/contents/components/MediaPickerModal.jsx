@@ -7,12 +7,14 @@ import {
   CloudArrowUpIcon,
   DocumentIcon,
   PhotoIcon,
+  PlayIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { mediaAPI } from '../../../lib/mediaAPI.js'
 
 const MODE_LABELS = {
   image: 'Görsel',
+  video: 'Video',
   file: 'Dosya',
   any: 'Varlık',
 }
@@ -49,7 +51,7 @@ export default function MediaPickerModal({
     }
   }, [isOpen, initialSearch])
 
-  const filterMimePrefix = mode === 'image' ? 'image/' : mode === 'file' ? undefined : undefined
+  const filterMimePrefix = mode === 'image' ? 'image/' : mode === 'video' ? 'video/' : undefined
 
   const queryKey = useMemo(
     () => [
@@ -95,6 +97,9 @@ export default function MediaPickerModal({
         for (const file of files) {
           if (mode === 'image' && !file.type.startsWith('image/')) {
             throw new Error('Sadece görsel dosyaları yükleyebilirsin.')
+          }
+          if (mode === 'video' && !file.type.startsWith('video/')) {
+            throw new Error('Sadece video dosyaları yükleyebilirsin.')
           }
 
           const presign = await mediaAPI.createPresignedUpload({
@@ -254,9 +259,14 @@ export default function MediaPickerModal({
                       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {items.map((item) => {
                           const isImage = item.mimeType?.startsWith('image/')
+                          const providerName = typeof item.provider === 'string' ? item.provider.toLowerCase() : ''
+                          const isVideo = item.mimeType?.startsWith('video/') || ['youtube', 'vimeo'].includes(providerName)
+                          const imageThumbnail = item.variants?.find((variant) => variant.name === 'thumbnail')?.url
                           const thumbnail = isImage
-                            ? item.variants?.find((variant) => variant.name === 'thumbnail')?.url || item.url
-                            : null
+                            ? imageThumbnail || item.url
+                            : isVideo
+                              ? item.thumbnailUrl || imageThumbnail || null
+                              : null
                           return (
                             <button
                               key={item._id}
@@ -267,6 +277,15 @@ export default function MediaPickerModal({
                               <div className="relative aspect-video bg-gray-100">
                                 {isImage && thumbnail ? (
                                   <img src={thumbnail} alt={item.altText || item.originalName} className="h-full w-full object-cover" />
+                                ) : isVideo && thumbnail ? (
+                                  <div className="relative h-full w-full">
+                                    <img src={thumbnail} alt={item.altText || item.originalName || item.fileName} className="h-full w-full object-cover" />
+                                    <PlayIcon className="absolute inset-0 m-auto h-10 w-10 text-white drop-shadow" />
+                                  </div>
+                                ) : isVideo ? (
+                                  <div className="flex h-full w-full items-center justify-center bg-black/10 text-gray-500">
+                                    <PlayIcon className="h-10 w-10" />
+                                  </div>
                                 ) : (
                                   <div className="flex h-full w-full items-center justify-center text-gray-400">
                                     <DocumentIcon className="h-10 w-10" />
@@ -278,6 +297,9 @@ export default function MediaPickerModal({
                                   {item.originalName || item.fileName}
                                 </p>
                                 <p className="text-xs text-gray-500">{item.mimeType || 'Bilinmiyor'}</p>
+                                {isVideo && item.duration ? (
+                                  <p className="text-xs text-gray-500">{Math.round(item.duration)} sn</p>
+                                ) : null}
                               </div>
                             </button>
                           )

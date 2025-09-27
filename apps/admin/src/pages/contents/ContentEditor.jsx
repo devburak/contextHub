@@ -58,7 +58,9 @@ import TableHoverActionsPlugin from './plugins/TableHoverActionsPlugin.jsx'
 import TableCellResizerPlugin from './plugins/TableCellResizerPlugin.jsx'
 import TableSelectionPlugin from './plugins/TableSelectionPlugin.jsx'
 import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
+import VideoPlugin, { INSERT_VIDEO_COMMAND } from './plugins/VideoPlugin.jsx'
 import { ImageNode } from './nodes/ImageNode.jsx'
+import { VideoNode } from './nodes/VideoNode.jsx'
 import {
   TableNode,
   TableRowNode,
@@ -187,7 +189,7 @@ const theme = {
 const initialConfig = {
   namespace: 'content-editor',
   theme,
-  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, TableNode, TableRowNode, TableCellNode],
+  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, TableNode, TableRowNode, TableCellNode],
   onError(error) {
     console.error(error)
   },
@@ -952,6 +954,7 @@ export default function ContentEditor() {
                 setIsTableSelectorOpen={setIsTableSelectorOpen}
               />
               <ImagePlugin />
+              <VideoPlugin />
               <div className="relative" ref={editorContainerRef}>
                 <RichTextPlugin
                   contentEditable={<ContentEditable className="min-h-[260px] px-4 py-3 outline-none prose max-w-none" />}
@@ -1789,6 +1792,31 @@ function Toolbar({ openMediaPicker = null, isTableSelectorOpen = false, setIsTab
     })
   }, [editor, openMediaPicker])
 
+  const handleInsertVideo = useCallback(() => {
+    if (typeof openMediaPicker !== 'function') {
+      return
+    }
+
+    openMediaPicker({
+      mode: 'video',
+      onSelect: (media) => {
+        if (!media) return
+
+        editor.dispatchCommand(INSERT_VIDEO_COMMAND, {
+          url: media.url,
+          externalUrl: media.externalUrl || media.url,
+          provider: media.provider || null,
+          providerId: media.providerId || null,
+          thumbnailUrl: media.thumbnailUrl || (Array.isArray(media.variants) ? media.variants.find((variant) => variant.name === 'thumbnail')?.url : null),
+          title: media.originalName || media.caption || media.fileName || media.url,
+          caption: media.caption || '',
+          mimeType: media.mimeType,
+          duration: typeof media.duration === 'number' ? media.duration : null,
+        })
+      },
+    })
+  }, [editor, openMediaPicker])
+
   const handleCreateTable = useCallback((rows, columns) => {
     editor.update(() => {
       const table = $createTableWithDimensions(rows, columns, true)
@@ -2105,6 +2133,8 @@ function Toolbar({ openMediaPicker = null, isTableSelectorOpen = false, setIsTab
       </ToolbarButton>
       <Divider />
       <ToolbarButton title="Görsel ekle" onClick={handleInsertImage}>
+      </ToolbarButton>
+      <ToolbarButton title="Video ekle" onClick={handleInsertVideo}>
       </ToolbarButton>
       <div className="relative">
         <ToolbarButton
