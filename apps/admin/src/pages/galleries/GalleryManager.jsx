@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { galleriesAPI } from '../../lib/galleriesAPI.js'
 import MediaPickerModal from '../contents/components/MediaPickerModal.jsx'
-import { PhotoIcon, TrashIcon, ArrowsUpDownIcon, PlusCircleIcon } from '@heroicons/react/24/outline'
+import { PhotoIcon, TrashIcon, ArrowsUpDownIcon, PlusCircleIcon, VideoCameraIcon, PlayIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
 const emptyGallery = {
@@ -41,19 +41,39 @@ function GalleryItemsEditor({ items, onChange, openMediaPicker }) {
           className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
         >
           <PlusCircleIcon className="h-5 w-5" />
-          Medya ekle
+          Görsel/Video ekle
         </button>
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-gray-500">Galeride henüz medya yok. "Medya ekle" diyerek kütüphaneden öğe seçebilirsin.</p>
+        <p className="text-sm text-gray-500">Galeride henüz medya yok. "Görsel/Video ekle" diyerek kütüphaneden öğe seçebilirsin.</p>
       ) : (
         <ul className="space-y-4">
           {items.map((item, index) => (
             <li key={`${item.mediaId}-${index}`} className="rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="flex flex-col gap-4 p-4 sm:flex-row">
-                <div className="w-full max-w-[160px] flex-none overflow-hidden rounded-md bg-gray-100">
-                  {item.media?.publicUrl ? (
-                    <img src={item.media.publicUrl} alt={item.media.originalName || 'Medya'} className="h-32 w-full object-cover" />
+                <div className="w-full max-w-[160px] flex-none overflow-hidden rounded-md bg-gray-100 relative">
+                  {item.media?.sourceType === 'external' ? (
+                    // External video (YouTube, Vimeo, etc.)
+                    <div className="relative h-32 w-full bg-black">
+                      {item.media.thumbnailUrl ? (
+                        <>
+                          <img src={item.media.thumbnailUrl} alt={item.media.originalName || 'Video'} className="h-full w-full object-cover" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <PlayIcon className="h-8 w-8 text-white drop-shadow-lg" />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-white">
+                          <VideoCameraIcon className="h-10 w-10" />
+                        </div>
+                      )}
+                      <div className="absolute top-1 left-1 bg-red-600 text-white text-xs px-1 rounded">
+                        {item.media.provider?.toUpperCase() || 'VIDEO'}
+                      </div>
+                    </div>
+                  ) : item.media?.publicUrl || item.media?.url ? (
+                    // Regular image
+                    <img src={item.media.publicUrl || item.media.url} alt={item.media.originalName || 'Medya'} className="h-32 w-full object-cover" />
                   ) : (
                     <div className="flex h-32 w-full items-center justify-center text-gray-300">
                       <PhotoIcon className="h-10 w-10" />
@@ -269,7 +289,7 @@ export default function GalleryManager() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Galeri Yönetimi</h1>
-          <p className="mt-1 text-sm text-gray-600">Medya öğelerini gruplandırarak galeriler oluştur ve içeriklerle ilişkilendir.</p>
+          <p className="mt-1 text-sm text-gray-600">Görsel ve video öğelerini gruplandırarak galeriler oluştur ve içeriklerle ilişkilendir.</p>
         </div>
         <button
           type="button"
@@ -312,9 +332,16 @@ export default function GalleryManager() {
                     onClick={() => setSelectedGalleryId(gallery.id)}
                     className={clsx('flex w-full items-center gap-3 p-3 text-left hover:bg-gray-50 focus:outline-none', active && 'bg-blue-50 border-l-4 border-blue-500')}
                   >
-                    <div className="h-14 w-14 flex-none overflow-hidden rounded-md bg-gray-100">
+                    <div className="h-14 w-14 flex-none overflow-hidden rounded-md bg-gray-100 relative">
                       {thumbnail ? (
-                        <img src={thumbnail} alt={gallery.title} className="h-full w-full object-cover" />
+                        <>
+                          <img src={thumbnail} alt={gallery.title} className="h-full w-full object-cover" />
+                          {gallery.items?.[0]?.media?.sourceType === 'external' && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <PlayIcon className="h-4 w-4 text-white drop-shadow" />
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-gray-300">
                           <PhotoIcon className="h-6 w-6" />
@@ -445,7 +472,7 @@ export default function GalleryManager() {
 
       <MediaPickerModal
         isOpen={mediaPickerOpen}
-        mode="image"
+        mode="any"
         onClose={() => setMediaPickerOpen(false)}
         onSelect={handleMediaSelected}
       />
