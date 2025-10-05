@@ -19,7 +19,8 @@
     "db:indexes": "node -e \"require('./src/database').createIndexes().then(() => console.log('Indexes created'))\""
   },
   "dependencies": {
-    "mongoose": "^7.5.0",
-    "bcryptjs": "^2.4.3"
+    "bcryptjs": "^2.4.3",
+    "micromatch": "^4.0.8",
+    "mongoose": "^7.5.0"
   }
 }

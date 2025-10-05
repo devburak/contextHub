@@ -29,6 +29,8 @@ const ContentVersion = require('./ContentVersion');
 const TenantSettings = require('./TenantSettings');
 const FeatureFlagDefinition = require('./FeatureFlagDefinition');
 const Gallery = require('./Gallery');
+const PlacementDefinition = require('./PlacementDefinition');
+const PlacementEvent = require('./PlacementEvent');
 
 module.exports = {
   Tenant,
@@ -59,5 +61,7 @@ module.exports = {
   TenantSettings,
   FeatureFlagDefinition,
   Gallery,
+  PlacementDefinition,
+  PlacementEvent,
   mongoose
 };

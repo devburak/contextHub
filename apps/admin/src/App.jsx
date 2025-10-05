@@ -18,6 +18,7 @@ import ContentList from './pages/contents/ContentList.jsx'
 import ContentEditor from './pages/contents/ContentEditor.jsx'
 import FormList from './pages/forms/FormList.jsx'
 import FormBuilder from './pages/forms/FormBuilder.jsx'
+import { PlacementsList, PlacementEdit, PlacementAnalytics } from './pages/placements/index.js'
 import { AuthContext } from './contexts/AuthContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
@@ -207,6 +208,9 @@ function App() {
               <Route path="/contents/:id" element={<ContentEditor />} />
               <Route path="/forms" element={<FormList />} />
               <Route path="/forms/:id" element={<FormBuilder />} />
+              <Route path="/placements" element={<PlacementsList />} />
+              <Route path="/placements/:id" element={<PlacementEdit />} />
+              <Route path="/placements/:id/analytics" element={<PlacementAnalytics />} />
               <Route path="/icerikler/*" element={<Navigate to="/contents" replace />} />
               <Route path="/kategoriler/*" element={<Navigate to="/categories" replace />} />
               <Route path="/varliklar" element={<Tenants />} />
