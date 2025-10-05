@@ -104,7 +104,14 @@ function SignUp() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          password: formData.password,
+          tenantName: formData.organizationName,
+          tenantSlug: formData.subdomain
+        }),
       });
 
       if (!response.ok) {

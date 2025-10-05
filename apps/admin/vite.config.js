@@ -24,8 +24,8 @@ export default defineConfig({
       '/api': {
         // Point to the Fastify API (adjust if you run API on another port)
         target: 'http://localhost:3000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        changeOrigin: true
+        // Don't rewrite the path - keep /api prefix as the backend expects it
       }
     }
   },

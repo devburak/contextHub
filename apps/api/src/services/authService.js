@@ -1,5 +1,6 @@
 const { User, Tenant, Membership } = require('@contexthub/common');
 const bcrypt = require('bcryptjs');
+const { mailService } = require('./mailService');
 
 class AuthService {
   constructor(fastifyInstance) {
@@ -167,6 +168,25 @@ class AuthService {
         status: 'active'
       });
       await membership.save();
+    }
+
+    // Welcome email gönder
+    try {
+      await mailService.sendWelcomeEmail(
+        {
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName
+        },
+        tenant ? {
+          id: tenant._id,
+          name: tenant.name,
+          slug: tenant.slug
+        } : null
+      );
+    } catch (error) {
+      console.error('Failed to send welcome email:', error);
+      // Email hatası kayıt işlemini durdurmaz
     }
 
     return {
