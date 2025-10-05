@@ -16,6 +16,7 @@ const Media = require('./Media');
 const Category = require('./Category');
 const FormDefinition = require('./FormDefinition');
 const FormResponse = require('./FormResponse');
+const FormVersion = require('./FormVersion');
 const Event = require('./Event');
 const DailyAgg = require('./DailyAgg');
 const ApiToken = require('./ApiToken');
@@ -45,6 +46,7 @@ module.exports = {
   Category,
   FormDefinition,
   FormResponse,
+  FormVersion,
   Event,
   DailyAgg,
   ApiToken,

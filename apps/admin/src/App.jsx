@@ -16,6 +16,8 @@ import MediaLibrary from './pages/media/Media.jsx'
 import Categories from './pages/categories/Categories.jsx'
 import ContentList from './pages/contents/ContentList.jsx'
 import ContentEditor from './pages/contents/ContentEditor.jsx'
+import FormList from './pages/forms/FormList.jsx'
+import FormBuilder from './pages/forms/FormBuilder.jsx'
 import { AuthContext } from './contexts/AuthContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
@@ -203,6 +205,8 @@ function App() {
               <Route path="/categories" element={<Categories />} />
               <Route path="/contents" element={<ContentList />} />
               <Route path="/contents/:id" element={<ContentEditor />} />
+              <Route path="/forms" element={<FormList />} />
+              <Route path="/forms/:id" element={<FormBuilder />} />
               <Route path="/icerikler/*" element={<Navigate to="/contents" replace />} />
               <Route path="/kategoriler/*" element={<Navigate to="/categories" replace />} />
               <Route path="/varliklar" element={<Tenants />} />

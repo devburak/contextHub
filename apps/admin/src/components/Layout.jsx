@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
@@ -17,6 +17,7 @@ export default function Layout() {
     { name: 'Galeriler', href: '/galeriler', icon: Squares2X2Icon },
     { name: 'Kategoriler', href: '/categories', icon: Squares2X2Icon },
     { name: 'İçerikler', href: '/contents', icon: DocumentTextIcon },
+    { name: 'Formlar', href: '/forms', icon: ClipboardDocumentListIcon },
     { name: 'Varlıklar', href: '/varliklar', icon: BuildingOfficeIcon },
     { name: 'Tenant Ayarları', href: '/varliklar/ayarlar', icon: WrenchScrewdriverIcon },
     { name: 'Belgeler', href: '/belgeler', icon: BookOpenIcon }
