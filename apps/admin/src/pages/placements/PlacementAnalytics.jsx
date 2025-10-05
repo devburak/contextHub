@@ -86,7 +86,7 @@ export default function PlacementAnalytics() {
             <ArrowLeft size={24} />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Analitik</h1>
             <p className="text-gray-500 mt-1">{placement?.name}</p>
           </div>
         </div>
@@ -96,38 +96,38 @@ export default function PlacementAnalytics() {
           onChange={(e) => setDateRange(e.target.value)}
           className="px-4 py-2 border border-gray-300 rounded-lg"
         >
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="90d">Last 90 days</option>
+          <option value="7d">Son 7 gün</option>
+          <option value="30d">Son 30 gün</option>
+          <option value="90d">Son 90 gün</option>
         </select>
       </div>
 
       {/* Key Metrics */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <MetricCard
-          title="Impressions"
+          title="Gösterimler"
           value={totals.impressions?.toLocaleString() || 0}
           icon={<Eye />}
           color="blue"
         />
         <MetricCard
-          title="Views"
+          title="Görüntülenmeler"
           value={totals.views?.toLocaleString() || 0}
-          subtext={`${totals.viewRate || 0}% view rate`}
+          subtext={`${totals.viewRate || 0}% görüntülenme oranı`}
           icon={<Monitor />}
           color="green"
         />
         <MetricCard
-          title="Clicks"
+          title="Tıklamalar"
           value={totals.clicks?.toLocaleString() || 0}
-          subtext={`${totals.clickRate || 0}% CTR`}
+          subtext={`${totals.clickRate || 0}% tıklama oranı`}
           icon={<MousePointer />}
           color="purple"
         />
         <MetricCard
-          title="Conversions"
+          title="Dönüşümler"
           value={totals.conversions?.toLocaleString() || 0}
-          subtext={`${totals.conversionRate || 0}% CVR`}
+          subtext={`${totals.conversionRate || 0}% dönüşüm oranı`}
           icon={<Target />}
           color="orange"
         />
@@ -136,7 +136,7 @@ export default function PlacementAnalytics() {
       {/* A/B Test Results */}
       {abTest && abTest.experiences.length > 1 && (
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">A/B Test Results</h2>
+          <h2 className="text-lg font-semibold mb-4">A/B Test Sonuçları</h2>
           
           <div className="space-y-4">
             {abTest.experiences.map((exp) => (
@@ -145,35 +145,35 @@ export default function PlacementAnalytics() {
                   <div>
                     <h3 className="font-medium text-gray-900">{exp.name}</h3>
                     <p className="text-sm text-gray-500">
-                      Weight: {exp.weight}% • Priority: {exp.priority}
+                      Ağırlık: {exp.weight}% • Öncelik: {exp.priority}
                     </p>
                   </div>
                   {abTest.winner?.experienceId === exp.experienceId && (
                     <span className="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
-                      🏆 Winner
+                      🏆 Kazanan
                     </span>
                   )}
                 </div>
 
                 <div className="grid grid-cols-5 gap-4">
                   <div>
-                    <div className="text-xs text-gray-500">Impressions</div>
+                    <div className="text-xs text-gray-500">Gösterimler</div>
                     <div className="text-lg font-semibold">{exp.impressions?.toLocaleString()}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Views</div>
+                    <div className="text-xs text-gray-500">Görüntülenmeler</div>
                     <div className="text-lg font-semibold">{exp.views?.toLocaleString()}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Clicks</div>
+                    <div className="text-xs text-gray-500">Tıklamalar</div>
                     <div className="text-lg font-semibold">{exp.clicks?.toLocaleString()}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Conversions</div>
+                    <div className="text-xs text-gray-500">Dönüşümler</div>
                     <div className="text-lg font-semibold">{exp.conversions?.toLocaleString()}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">CVR</div>
+                    <div className="text-xs text-gray-500">Dönüşüm Oranı</div>
                     <div className="text-lg font-semibold text-green-600">{exp.conversionRate}%</div>
                   </div>
                 </div>
@@ -186,14 +186,14 @@ export default function PlacementAnalytics() {
       {/* Device & Browser Breakdown */}
       <div className="grid grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-lg shadow-sm p-6">
-          <h2 className="text-lg font-semibold mb-4">By Device</h2>
+          <h2 className="text-lg font-semibold mb-4">Cihazlara Göre</h2>
           <div className="space-y-3">
             {devices.map((device) => (
               <div key={device.device} className="flex justify-between items-center">
                 <span className="text-sm text-gray-600 capitalize">{device.device}</span>
                 <div className="text-right">
                   <div className="text-sm font-medium">{device.impressions.toLocaleString()}</div>
-                  <div className="text-xs text-gray-500">{device.conversionRate}% CVR</div>
+                  <div className="text-xs text-gray-500">{device.conversionRate}% dönüşüm</div>
                 </div>
               </div>
             ))}
@@ -201,14 +201,14 @@ export default function PlacementAnalytics() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm p-6">
-          <h2 className="text-lg font-semibold mb-4">By Browser</h2>
+          <h2 className="text-lg font-semibold mb-4">Tarayıcılara Göre</h2>
           <div className="space-y-3">
             {browsers.map((browser) => (
               <div key={browser.browser} className="flex justify-between items-center">
                 <span className="text-sm text-gray-600 capitalize">{browser.browser}</span>
                 <div className="text-right">
                   <div className="text-sm font-medium">{browser.impressions.toLocaleString()}</div>
-                  <div className="text-xs text-gray-500">{browser.conversionRate}% CVR</div>
+                  <div className="text-xs text-gray-500">{browser.conversionRate}% dönüşüm</div>
                 </div>
               </div>
             ))}
@@ -218,14 +218,14 @@ export default function PlacementAnalytics() {
 
       {/* Top Pages */}
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <h2 className="text-lg font-semibold mb-4">Top Converting Pages</h2>
+        <h2 className="text-lg font-semibold mb-4">En Çok Dönüştüren Sayfalar</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-2 px-4 text-sm font-medium text-gray-600">Page</th>
-                <th className="text-right py-2 px-4 text-sm font-medium text-gray-600">Conversions</th>
-                <th className="text-right py-2 px-4 text-sm font-medium text-gray-600">Revenue</th>
+                <th className="text-left py-2 px-4 text-sm font-medium text-gray-600">Sayfa</th>
+                <th className="text-right py-2 px-4 text-sm font-medium text-gray-600">Dönüşümler</th>
+                <th className="text-right py-2 px-4 text-sm font-medium text-gray-600">Gelir</th>
               </tr>
             </thead>
             <tbody>

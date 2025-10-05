@@ -31,6 +31,7 @@ const FeatureFlagDefinition = require('./FeatureFlagDefinition');
 const Gallery = require('./Gallery');
 const PlacementDefinition = require('./PlacementDefinition');
 const PlacementEvent = require('./PlacementEvent');
+const Menu = require('./Menu');
 
 module.exports = {
   Tenant,
@@ -63,5 +64,6 @@ module.exports = {
   Gallery,
   PlacementDefinition,
   PlacementEvent,
+  Menu,
   mongoose
 };

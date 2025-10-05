@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 import { 
   Plus, 
   Search, 
@@ -17,7 +16,6 @@ import {
 import { apiClient as api } from '../../lib/api';
 
 export default function PlacementsList() {
-  const { t } = useTranslation();
   const [placements, setPlacements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -82,7 +80,7 @@ export default function PlacementsList() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this placement?')) return;
+    if (!confirm('Bu yerleşimi silmek istediğinizden emin misiniz?')) return;
     
     try {
       await api.delete(`/placements/${id}`);
@@ -100,9 +98,16 @@ export default function PlacementsList() {
       archived: 'bg-red-100 text-red-800'
     };
     
+    const labels = {
+      active: 'Aktif',
+      draft: 'Taslak',
+      paused: 'Duraklatıldı',
+      archived: 'Arşivlendi'
+    };
+    
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded-full ${styles[status]}`}>
-        {status}
+        {labels[status] || status}
       </span>
     );
   };
@@ -112,15 +117,15 @@ export default function PlacementsList() {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Placements</h1>
-          <p className="text-gray-500 mt-1">Manage popups, banners, and inline content</p>
+          <h1 className="text-2xl font-bold text-gray-900">Yerleşimler</h1>
+          <p className="text-gray-500 mt-1">Popup'ları, banner'ları ve inline içerikleri yönetin</p>
         </div>
         <Link
           to="/placements/new"
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           <Plus size={20} />
-          New Placement
+          Yeni Yerleşim
         </Link>
       </div>
 
@@ -131,7 +136,7 @@ export default function PlacementsList() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Search placements..."
+              placeholder="Yerleşimlerde ara..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -143,11 +148,11 @@ export default function PlacementsList() {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="draft">Draft</option>
-            <option value="paused">Paused</option>
-            <option value="archived">Archived</option>
+            <option value="all">Tüm Durumlar</option>
+            <option value="active">Aktif</option>
+            <option value="draft">Taslak</option>
+            <option value="paused">Duraklatıldı</option>
+            <option value="archived">Arşivlendi</option>
           </select>
         </div>
       </div>
@@ -162,14 +167,14 @@ export default function PlacementsList() {
           <div className="text-gray-400 mb-4">
             <Eye size={48} className="mx-auto" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No placements yet</h3>
-          <p className="text-gray-500 mb-4">Create your first placement to get started</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Henüz yerleşim yok</h3>
+          <p className="text-gray-500 mb-4">Başlamak için ilk yerleşiminizi oluşturun</p>
           <Link
             to="/placements/new"
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             <Plus size={20} />
-            Create Placement
+            Yerleşim Oluştur
           </Link>
         </div>
       ) : (
@@ -178,25 +183,25 @@ export default function PlacementsList() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Name
+                  İsim
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
+                  Durum
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Experiences
+                  Deneyimler
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Impressions
+                  Gösterimler
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Conversions
+                  Dönüşümler
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Rate
+                  Oran
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                  İşlemler
                 </th>
               </tr>
             </thead>
@@ -239,35 +244,35 @@ export default function PlacementsList() {
                         <Link
                           to={`/placements/${placement._id}`}
                           className="text-blue-600 hover:text-blue-900"
-                          title="Edit"
+                          title="Düzenle"
                         >
                           <Edit2 size={18} />
                         </Link>
                         <Link
                           to={`/placements/${placement._id}/analytics`}
                           className="text-green-600 hover:text-green-900"
-                          title="Analytics"
+                          title="Analitik"
                         >
                           <TrendingUp size={18} />
                         </Link>
                         <button
                           onClick={() => handleDuplicate(placement._id, placement.name)}
                           className="text-gray-600 hover:text-gray-900"
-                          title="Duplicate"
+                          title="Kopyala"
                         >
                           <Copy size={18} />
                         </button>
                         <button
                           onClick={() => handleArchive(placement._id)}
                           className="text-orange-600 hover:text-orange-900"
-                          title="Archive"
+                          title="Arşivle"
                         >
                           <Archive size={18} />
                         </button>
                         <button
                           onClick={() => handleDelete(placement._id)}
                           className="text-red-600 hover:text-red-900"
-                          title="Delete"
+                          title="Sil"
                         >
                           <Trash2 size={18} />
                         </button>

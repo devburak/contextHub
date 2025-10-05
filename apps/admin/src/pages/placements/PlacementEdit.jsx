@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Save, Plus, X } from 'lucide-react';
 import { apiClient as api } from '../../lib/api';
 import ExperienceBuilder from './components/ExperienceBuilder';
 
 export default function PlacementEdit() {
-  const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
   const isNew = id === 'new';
@@ -50,10 +48,10 @@ export default function PlacementEdit() {
         await api.put(`/placements/${id}`, placement);
       }
 
-      alert('Placement saved successfully!');
+      alert('Yerleşim başarıyla kaydedildi!');
     } catch (error) {
       console.error('Failed to save placement:', error);
-      alert('Failed to save placement: ' + error.message);
+      alert('Yerleşim kaydedilemedi: ' + error.message);
     } finally {
       setSaving(false);
     }
@@ -101,7 +99,7 @@ export default function PlacementEdit() {
 
   const handleDeleteExperience = (index) => {
     if (placement.experiences.length === 1) {
-      alert('Cannot delete the last experience');
+      alert('Son deneyim silinemez');
       return;
     }
     
@@ -134,10 +132,10 @@ export default function PlacementEdit() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              {isNew ? 'New Placement' : 'Edit Placement'}
+              {isNew ? 'Yeni Yerleşim' : 'Yerleşimi Düzenle'}
             </h1>
             <p className="text-gray-500 mt-1">
-              {isNew ? 'Create a new placement' : `Editing: ${placement.name}`}
+              {isNew ? 'Yeni bir yerleşim oluşturun' : `Düzenleniyor: ${placement.name}`}
             </p>
           </div>
         </div>
@@ -148,18 +146,18 @@ export default function PlacementEdit() {
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
           <Save size={20} />
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? 'Kaydediliyor...' : 'Kaydet'}
         </button>
       </div>
 
       {/* Basic Info */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Basic Information</h2>
+        <h2 className="text-lg font-semibold mb-4">Temel Bilgiler</h2>
         
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Name *
+              İsim *
             </label>
             <input
               type="text"
@@ -173,7 +171,7 @@ export default function PlacementEdit() {
                 });
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="Welcome Popup"
+              placeholder="Hoşgeldin Popup'ı"
             />
           </div>
 
@@ -186,36 +184,36 @@ export default function PlacementEdit() {
               value={placement.slug}
               onChange={(e) => setPlacement({ ...placement, slug: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="welcome-popup"
+              placeholder="hosgeldin-popup"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Status
+              Durum
             </label>
             <select
               value={placement.status}
               onChange={(e) => setPlacement({ ...placement, status: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
-              <option value="draft">Draft</option>
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-              <option value="archived">Archived</option>
+              <option value="draft">Taslak</option>
+              <option value="active">Aktif</option>
+              <option value="paused">Duraklatıldı</option>
+              <option value="archived">Arşivlendi</option>
             </select>
           </div>
 
           <div className="col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Description
+              Açıklama
             </label>
             <textarea
               value={placement.description}
               onChange={(e) => setPlacement({ ...placement, description: e.target.value })}
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="Describe this placement..."
+              placeholder="Bu yerleşimi açıklayın..."
             />
           </div>
         </div>
@@ -224,25 +222,25 @@ export default function PlacementEdit() {
       {/* Experiences */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Experiences (A/B Tests)</h2>
+          <h2 className="text-lg font-semibold">Deneyimler (A/B Testleri)</h2>
           <button
             onClick={handleAddExperience}
             className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
           >
             <Plus size={18} />
-            Add Experience
+            Deneyim Ekle
           </button>
         </div>
 
         {placement.experiences.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
-            <p className="mb-4">No experiences yet. Add one to get started.</p>
+            <p className="mb-4">Henüz deneyim yok. Başlamak için bir tane ekleyin.</p>
             <button
               onClick={handleAddExperience}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               <Plus size={20} />
-              Add First Experience
+              İlk Deneyimi Ekle
             </button>
           </div>
         ) : (

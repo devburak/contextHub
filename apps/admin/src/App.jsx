@@ -19,7 +19,9 @@ import ContentEditor from './pages/contents/ContentEditor.jsx'
 import FormList from './pages/forms/FormList.jsx'
 import FormBuilder from './pages/forms/FormBuilder.jsx'
 import { PlacementsList, PlacementEdit, PlacementAnalytics } from './pages/placements/index.js'
+import { MenuList, MenuEdit } from './pages/menus/index.js'
 import { AuthContext } from './contexts/AuthContext.jsx'
+import { ToastProvider } from './contexts/ToastContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
 
@@ -180,17 +182,18 @@ function App() {
  
   return (
     <BrowserRouter>
-      <AuthContext.Provider value={authValue}>
-        {pendingTenantSelection ? (
-          <Routes>
-            <Route path="/select-tenant" element={<TenantSelection />} />
-            <Route path="*" element={<Navigate to="/select-tenant" replace />} />
-          </Routes>
-        ) : !token ? (
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
+      <ToastProvider>
+        <AuthContext.Provider value={authValue}>
+          {pendingTenantSelection ? (
+            <Routes>
+              <Route path="/select-tenant" element={<TenantSelection />} />
+              <Route path="*" element={<Navigate to="/select-tenant" replace />} />
+            </Routes>
+          ) : !token ? (
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         ) : (
@@ -211,6 +214,8 @@ function App() {
               <Route path="/placements" element={<PlacementsList />} />
               <Route path="/placements/:id" element={<PlacementEdit />} />
               <Route path="/placements/:id/analytics" element={<PlacementAnalytics />} />
+              <Route path="/menus" element={<MenuList />} />
+              <Route path="/menus/:id" element={<MenuEdit />} />
               <Route path="/icerikler/*" element={<Navigate to="/contents" replace />} />
               <Route path="/kategoriler/*" element={<Navigate to="/categories" replace />} />
               <Route path="/varliklar" element={<Tenants />} />
@@ -222,7 +227,8 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}
-      </AuthContext.Provider>
+        </AuthContext.Provider>
+      </ToastProvider>
     </BrowserRouter>
   )
 }

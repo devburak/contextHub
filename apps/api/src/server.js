@@ -64,6 +64,7 @@ async function buildServer() {
   await app.register(require('./routes/galleries'), { prefix: '/api' });
   await app.register(require('./routes/mail'), { prefix: '/api' });
   await app.register(require('./routes/placements'), { prefix: '/api' });
+  await app.register(require('./routes/menus'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {
