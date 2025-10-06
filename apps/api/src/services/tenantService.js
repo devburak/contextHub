@@ -1,4 +1,4 @@
-const { Tenant, Membership, rbac } = require('@contexthub/common');
+const { Tenant, Membership, User, rbac } = require('@contexthub/common');
 const roleService = require('./roleService');
 
 const { ROLE_KEYS } = rbac;
@@ -72,7 +72,7 @@ class TenantService {
   }
 
   async listUserTenants(userId) {
-    const memberships = await Membership.find({ userId, status: 'active' })
+    const memberships = await Membership.find({ userId, status: { $in: ['active', 'pending'] } })
       .populate('tenantId', 'name slug plan status createdAt')
       .sort({ createdAt: -1 });
 
@@ -103,6 +103,40 @@ class TenantService {
         status: membership.status
       };
     }));
+  }
+
+  async acceptMembershipInvitation(userId, tenantId) {
+    if (!userId || !tenantId) {
+      throw new Error('User and tenant identifiers are required');
+    }
+
+    const membership = await Membership.findOne({
+      userId,
+      tenantId,
+      status: { $in: ['pending', 'inactive'] }
+    });
+
+    if (!membership) {
+      throw new Error('Invitation not found');
+    }
+
+    membership.status = 'active';
+    membership.acceptedAt = new Date();
+    membership.inviteTokenHash = null;
+    membership.inviteTokenExpiresAt = null;
+    await membership.save();
+    await membership.populate('tenantId', 'name slug plan status createdAt');
+
+    const user = await User.findById(userId);
+    if (user) {
+      if (user.status !== 'active') {
+        user.status = 'active';
+      }
+      user.isEmailVerified = true;
+      await user.save();
+    }
+
+    return membership;
   }
 }
 

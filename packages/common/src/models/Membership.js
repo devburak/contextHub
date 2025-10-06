@@ -30,6 +30,9 @@ const membershipSchema = new Schema({
   }],
   invitedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   invitedAt: { type: Date },
+  inviteTokenHash: { type: String },
+  inviteTokenExpiresAt: { type: Date },
+  lastInvitedAt: { type: Date },
   acceptedAt: { type: Date },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
@@ -109,6 +112,7 @@ membershipSchema.pre('findOneAndUpdate', function(next) {
 
 // Index
 membershipSchema.index({ tenantId: 1, userId: 1 }, { unique: true });
+membershipSchema.index({ inviteTokenHash: 1 }, { sparse: true });
 
 const Membership = mongoose.model('Membership', membershipSchema);
 

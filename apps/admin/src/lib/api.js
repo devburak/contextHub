@@ -74,4 +74,7 @@ export const usersAPI = {
   
   deleteUser: (id) =>
     apiClient.delete(`/users/${id}`),
+
+  reinviteUser: (id) =>
+    apiClient.post(`/users/${id}/reinvite`),
 }

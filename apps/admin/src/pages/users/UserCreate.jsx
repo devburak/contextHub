@@ -4,11 +4,13 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeftIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { usersAPI } from '../../lib/api.js'
+import { useToast } from '../../contexts/ToastContext.jsx'
 
 export default function UserCreate() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { t } = useTranslation()
+  const toast = useToast()
   
   const [formData, setFormData] = useState({
     name: '',
@@ -23,7 +25,32 @@ export default function UserCreate() {
 
   const createMutation = useMutation({
     mutationFn: (data) => usersAPI.createUser(data),
-    onSuccess: () => {
+    onSuccess: (response, variables) => {
+      const payload = response?.data ?? {}
+      const invite = payload.invite
+      const displayName = variables?.name
+        || [variables?.firstName, variables?.lastName].filter(Boolean).join(' ').trim()
+        || ''
+      const inviteExpiresAt = invite?.invitation?.expiresAt
+        ? new Date(invite.invitation.expiresAt).toLocaleString('tr-TR')
+        : null
+
+      if (invite) {
+        const inviteMessage = payload.message
+          || (variables?.email
+            ? t('user.invite_existing', { email: variables.email })
+            : t('user.invite_existing_generic'))
+        const composedMessage = inviteExpiresAt
+          ? `${inviteMessage} (Son kullanım: ${inviteExpiresAt})`
+          : inviteMessage
+        toast.info(composedMessage)
+      } else {
+        const successMessage = displayName
+          ? t('user.create_success_named', { name: displayName })
+          : t('user.create_success')
+        toast.success(successMessage)
+      }
+
       queryClient.invalidateQueries({ queryKey: ['users'] })
       navigate('/users')
     },
@@ -31,6 +58,21 @@ export default function UserCreate() {
       if (error.response?.data?.errors) {
         setErrors(error.response.data.errors)
       }
+
+      const errorPayload = error.response?.data
+      const apiMessage = errorPayload?.message
+
+      if (apiMessage) {
+        toast.error(apiMessage)
+        return
+      }
+
+      if (errorPayload?.error === 'UserInvitationFailed') {
+        toast.error(t('user.invite_error'))
+        return
+      }
+
+      toast.error(t('user.create_error'))
     },
   })
 

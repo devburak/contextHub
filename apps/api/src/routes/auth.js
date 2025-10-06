@@ -222,6 +222,62 @@ async function authRoutes(fastify, options) {
     }
   });
 
+  fastify.post('/auth/invitations/accept', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          token: { type: 'string', minLength: 10 },
+          password: { type: 'string', minLength: 6 },
+          firstName: { type: 'string', minLength: 1 },
+          lastName: { type: 'string', minLength: 1 }
+        },
+        required: ['token']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            token: { type: 'string' },
+            user: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                email: { type: 'string' },
+                firstName: { type: 'string' },
+                lastName: { type: 'string' },
+                role: { type: 'string' },
+                permissions: {
+                  type: 'array',
+                  items: { type: 'string' }
+                }
+              }
+            },
+            membership: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                tenantId: { type: 'string' },
+                status: { type: 'string' },
+                acceptedAt: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const { token, password, firstName, lastName } = request.body;
+      const result = await authService.acceptInvitation(token, { password, firstName, lastName });
+
+      return reply.send(result);
+    } catch (error) {
+      const status = /expired/i.test(error.message) ? 410 : 400;
+      return reply.code(status).send({ error: 'InvitationAcceptFailed', message: error.message });
+    }
+  });
+
   // POST /auth/logout - Çıkış yap (şu an için token invalidation yok)
   fastify.post('/auth/logout', {
     schema: {

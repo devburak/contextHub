@@ -1,10 +1,31 @@
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
+import { useToast } from '../../contexts/ToastContext.jsx'
+import { CheckBadgeIcon, ClockIcon, XCircleIcon } from '@heroicons/react/24/outline'
+
+const STATUS_STYLES = {
+  active: {
+    label: 'Aktif',
+    className: 'bg-green-50 text-green-700 ring-green-200',
+    icon: CheckBadgeIcon
+  },
+  pending: {
+    label: 'Davet Bekliyor',
+    className: 'bg-amber-50 text-amber-700 ring-amber-200',
+    icon: ClockIcon
+  },
+  inactive: {
+    label: 'Pasif',
+    className: 'bg-gray-50 text-gray-600 ring-gray-200',
+    icon: XCircleIcon
+  }
+}
 
 export default function Tenants() {
-  const { memberships, activeMembership, updateMemberships } = useAuth()
+  const toast = useToast()
+  const { memberships, activeMembership, updateMemberships, selectTenant } = useAuth()
 
   const tenantsQuery = useQuery({
     queryKey: ['tenants', 'list'],
@@ -12,6 +33,22 @@ export default function Tenants() {
       const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
       updateMemberships(tenants)
       return tenants
+    }
+  })
+
+  const acceptInvitationMutation = useMutation({
+    mutationFn: (tenantId) => tenantAPI.acceptInvitation(tenantId),
+    onSuccess: ({ membership, tenant, token }) => {
+      toast.success('Davet başarıyla kabul edildi.')
+      tenantsQuery.refetch()
+
+      if (membership?.tenantId && token) {
+        selectTenant({ ...membership, tenant, token })
+      }
+    },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Davet kabul edilirken hata oluştu.'
+      toast.error(message)
     }
   })
 
@@ -65,15 +102,42 @@ export default function Tenants() {
                       </h3>
                       <p className="text-sm text-gray-500">{membership.tenant?.slug}</p>
                     </div>
-                    <div className="flex flex-col items-start gap-1 sm:items-end">
+                    <div className="flex flex-col items-start gap-2 sm:items-end">
                       <span className="text-sm font-medium text-gray-700">
                         Rol: {membership.role}
                       </span>
                       <span className="text-xs uppercase tracking-wide text-gray-500">
                         {membership.tenant?.plan || 'Free'} planı
                       </span>
+                      {(() => {
+                        const statusInfo = STATUS_STYLES[membership.status]
+                        if (!statusInfo) return null
+                        const Icon = statusInfo.icon
+                        return (
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusInfo.className}`}>
+                            <Icon className="h-3.5 w-3.5" />
+                            {statusInfo.label}
+                          </span>
+                        )
+                      })()}
                     </div>
                   </div>
+
+                  {membership.status === 'pending' && (
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-gray-600">
+                        Bu varlığa erişmek için daveti kabul etmeniz gerekiyor.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => acceptInvitationMutation.mutate(membership.tenantId)}
+                        disabled={acceptInvitationMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
+                      >
+                        {acceptInvitationMutation.isPending ? 'Kabul ediliyor...' : 'Daveti Kabul Et'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
