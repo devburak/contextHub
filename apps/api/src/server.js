@@ -63,10 +63,13 @@ async function buildServer() {
   await app.register(require('./routes/forms'), { prefix: '/api' });
   await app.register(require('./routes/featureFlags'), { prefix: '/api' });
   await app.register(require('./routes/galleries'), { prefix: '/api' });
+  await app.register(require('./routes/collections'), { prefix: '/api' });
   await app.register(require('./routes/mail'), { prefix: '/api' });
   await app.register(require('./routes/placements'), { prefix: '/api' });
   await app.register(require('./routes/menus'), { prefix: '/api' });
   await app.register(require('./routes/roles'), { prefix: '/api' });
+  await app.register(require('./routes/publicCollections'), { prefix: '/api' });
+  await app.register(require('./routes/dashboard'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {

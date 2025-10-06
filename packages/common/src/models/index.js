@@ -21,8 +21,8 @@ const Event = require('./Event');
 const DailyAgg = require('./DailyAgg');
 const ApiToken = require('./ApiToken');
 const Product = require('./Product');
-const CollectionDef = require('./CollectionDef');
-const CollectionItem = require('./CollectionItem');
+const CollectionType = require('./CollectionType');
+const CollectionEntry = require('./CollectionEntry');
 const Template = require('./Template');
 const Content = require('./Content');
 const ContentVersion = require('./ContentVersion');
@@ -55,8 +55,8 @@ module.exports = {
   DailyAgg,
   ApiToken,
   Product,
-  CollectionDef,
-  CollectionItem,
+  CollectionType,
+  CollectionEntry,
   Template,
   Content,
   ContentVersion,
