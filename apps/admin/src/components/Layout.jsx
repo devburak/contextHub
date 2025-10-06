@@ -1,29 +1,251 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon } from '@heroicons/react/24/outline'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
+import { PERMISSIONS } from '../constants/permissions.js'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { user, memberships, activeMembership, selectTenant, logout } = useAuth()
+  const { user, memberships, activeMembership, selectTenant, logout, hasPermission } = useAuth()
   const location = useLocation()
 
-  const navigation = [
-    { name: 'Kontrol Paneli', href: '/', icon: CogIcon },
-    { name: 'Kullanıcılar', href: '/users', icon: UserIcon },
-    { name: 'Medya', href: '/media', icon: PhotoIcon },
-    { name: 'Galeriler', href: '/galeriler', icon: Squares2X2Icon },
-    { name: 'Kategoriler', href: '/categories', icon: Squares2X2Icon },
-    { name: 'İçerikler', href: '/contents', icon: DocumentTextIcon },
-    { name: 'Formlar', href: '/forms', icon: ClipboardDocumentListIcon },
-    { name: 'Placements', href: '/placements', icon: SparklesIcon },
-    { name: 'Menüler', href: '/menus', icon: Bars3BottomLeftIcon },
-    { name: 'Varlıklar', href: '/varliklar', icon: BuildingOfficeIcon },
-    { name: 'Tenant Ayarları', href: '/varliklar/ayarlar', icon: WrenchScrewdriverIcon },
-    { name: 'Belgeler', href: '/belgeler', icon: BookOpenIcon }
-  ]
+  const navigation = useMemo(() => [
+    {
+      id: 'create-tenant',
+      name: 'Yeni Varlık Oluştur',
+      href: '/varliklar/yeni',
+      icon: PlusIcon,
+      permission: PERMISSIONS.TENANTS_MANAGE
+    },
+    {
+      id: 'dashboard',
+      name: 'Kontrol Paneli',
+      href: '/',
+      icon: CogIcon,
+      permission: PERMISSIONS.DASHBOARD_VIEW
+    },
+    {
+      id: 'users-group',
+      name: 'Kullanıcı Yönetimi',
+      icon: UserIcon,
+      children: [
+        {
+          id: 'users',
+          name: 'Kullanıcılar',
+          href: '/users',
+          icon: UserIcon,
+          permission: PERMISSIONS.USERS_VIEW
+        },
+        {
+          id: 'roles',
+          name: 'Roller',
+          href: '/roles',
+          icon: ShieldCheckIcon,
+          permission: PERMISSIONS.ROLES_VIEW
+        }
+      ]
+    },
+    {
+      id: 'media',
+      name: 'Medya',
+      href: '/media',
+      icon: PhotoIcon,
+      permission: PERMISSIONS.MEDIA_VIEW
+    },
+    {
+      id: 'galleries',
+      name: 'Galeriler',
+      href: '/galeriler',
+      icon: Squares2X2Icon,
+      permission: PERMISSIONS.MEDIA_VIEW
+    },
+    {
+      id: 'categories',
+      name: 'Kategoriler',
+      href: '/categories',
+      icon: QueueListIcon,
+      permission: PERMISSIONS.CATEGORIES_VIEW
+    },
+    {
+      id: 'contents',
+      name: 'İçerikler',
+      href: '/contents',
+      icon: DocumentTextIcon,
+      permission: PERMISSIONS.CONTENT_VIEW
+    },
+    {
+      id: 'forms',
+      name: 'Formlar',
+      href: '/forms',
+      icon: ClipboardDocumentListIcon,
+      permission: PERMISSIONS.FORMS_VIEW
+    },
+    {
+      id: 'placements',
+      name: 'Yerleşimler',
+      href: '/placements',
+      icon: SparklesIcon,
+      permission: PERMISSIONS.PLACEMENTS_VIEW
+    },
+    {
+      id: 'menus',
+      name: 'Menüler',
+      href: '/menus',
+      icon: Bars3BottomLeftIcon,
+      permission: PERMISSIONS.MENUS_VIEW
+    },
+    {
+      id: 'tenants-group',
+      name: 'Varlıklar',
+      icon: BuildingOfficeIcon,
+      children: [
+        {
+          id: 'tenants',
+          name: 'Varlık Listesi',
+          href: '/varliklar',
+          icon: BuildingOfficeIcon,
+          permission: PERMISSIONS.TENANTS_VIEW
+        },
+        {
+          id: 'tenant-settings',
+          name: 'Varlık Ayarları',
+          href: '/varliklar/ayarlar',
+          icon: WrenchScrewdriverIcon,
+          permission: PERMISSIONS.TENANTS_MANAGE
+        }
+      ]
+    },
+    {
+      id: 'docs',
+      name: 'Belgeler',
+      href: '/belgeler',
+      icon: BookOpenIcon,
+      permission: PERMISSIONS.DASHBOARD_VIEW
+    }
+  ], [])
+
+  const filterNavigation = useCallback((items) => {
+    return items
+      .map((item) => {
+        if (item.children) {
+          const filteredChildren = filterNavigation(item.children)
+          if (!filteredChildren.length) {
+            return null
+          }
+          return { ...item, children: filteredChildren }
+        }
+
+        if (item.permission && !hasPermission(item.permission)) {
+          return null
+        }
+
+        return item
+      })
+      .filter(Boolean)
+  }, [hasPermission])
+
+  const filteredNavigation = useMemo(() => filterNavigation(navigation), [navigation, filterNavigation])
+
+  const isActive = useCallback((href) => {
+    if (!href) return false
+    if (href === '/') {
+      return location.pathname === '/'
+    }
+    return location.pathname === href || location.pathname.startsWith(`${href}/`)
+  }, [location.pathname])
+
+  const [expandedGroups, setExpandedGroups] = useState({})
+
+  useEffect(() => {
+    const nextState = {}
+
+    const walk = (items) => {
+      items.forEach((item) => {
+        if (item.children) {
+          const childActive = item.children.some((child) => isActive(child.href))
+          nextState[item.id] = childActive
+          walk(item.children)
+        }
+      })
+    }
+
+    walk(filteredNavigation)
+    setExpandedGroups((prev) => ({ ...prev, ...nextState }))
+  }, [filteredNavigation, isActive])
+
+  const toggleGroup = (id) => {
+    setExpandedGroups((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const renderNavItem = (item) => {
+    if (item.children) {
+      const expanded = expandedGroups[item.id]
+      return (
+        <div key={item.id} className="space-y-1">
+          <button
+            type="button"
+            onClick={() => toggleGroup(item.id)}
+            className={classNames(
+              'group flex w-full items-center justify-between rounded-md px-2 py-2 text-sm font-semibold',
+              expanded ? 'bg-gray-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50 hover:text-blue-600'
+            )}
+          >
+            <span className="flex items-center gap-x-3">
+              {item.icon && (
+                <item.icon
+                  className={classNames(
+                    expanded ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600',
+                    'h-6 w-6 shrink-0'
+                  )}
+                  aria-hidden="true"
+                />
+              )}
+              {item.name}
+            </span>
+            <svg
+              className={classNames('h-4 w-4 transform transition-transform', expanded ? 'rotate-90 text-blue-600' : 'text-gray-400')}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path fillRule="evenodd" d="M6 4l8 6-8 6V4z" clipRule="evenodd" />
+            </svg>
+          </button>
+          {expanded && (
+            <div className="space-y-1 border-l border-gray-100 pl-4">
+              {item.children.map((child) => renderNavItem(child))}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    const active = isActive(item.href)
+
+    return (
+      <Link
+        key={item.id || item.href}
+        to={item.href}
+        className={classNames(
+          active ? 'bg-gray-50 text-blue-600' : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50',
+          'group flex items-center gap-x-3 rounded-md px-2 py-2 text-sm font-semibold'
+        )}
+      >
+        {item.icon && (
+          <item.icon
+            className={classNames(
+              active ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600',
+              'h-6 w-6 shrink-0'
+            )}
+            aria-hidden="true"
+          />
+        )}
+        {item.name}
+      </Link>
+    )
+  }
 
   function classNames(...classes) {
     return classes.filter(Boolean).join(' ')
@@ -86,31 +308,9 @@ export default function Layout() {
                       <ul role="list" className="flex flex-1 flex-col gap-y-7">
                         <li>
                           <ul role="list" className="-mx-2 space-y-1">
-                            {navigation.map((item) => {
-                              const isActive = location.pathname === item.href || (item.href !== '/' && location.pathname.startsWith(`${item.href}/`))
-                              return (
-                                <li key={item.name}>
-                                  <Link
-                                    to={item.href}
-                                    className={classNames(
-                                      isActive
-                                        ? 'bg-gray-50 text-blue-600'
-                                        : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50',
-                                      'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
-                                    )}
-                                  >
-                                    <item.icon
-                                      className={classNames(
-                                        isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600',
-                                        'h-6 w-6 shrink-0'
-                                      )}
-                                      aria-hidden="true"
-                                    />
-                                    {item.name}
-                                  </Link>
-                                </li>
-                              )
-                            })}
+                            {filteredNavigation.map((item) => (
+                              <li key={item.id || item.href}>{renderNavItem(item)}</li>
+                            ))}
                           </ul>
                         </li>
                       </ul>
@@ -137,31 +337,9 @@ export default function Layout() {
               <ul role="list" className="flex flex-1 flex-col gap-y-7">
                 <li>
                   <ul role="list" className="-mx-2 space-y-1">
-                    {navigation.map((item) => {
-                      const isActive = location.pathname === item.href || (item.href !== '/' && location.pathname.startsWith(`${item.href}/`))
-                      return (
-                        <li key={item.name}>
-                          <Link
-                            to={item.href}
-                            className={classNames(
-                              isActive
-                                ? 'bg-gray-50 text-blue-600'
-                                : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50',
-                              'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
-                            )}
-                          >
-                            <item.icon
-                              className={classNames(
-                                isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600',
-                                'h-6 w-6 shrink-0'
-                              )}
-                              aria-hidden="true"
-                            />
-                            {item.name}
-                          </Link>
-                        </li>
-                      )
-                    })}
+                    {filteredNavigation.map((item) => (
+                      <li key={item.id || item.href}>{renderNavItem(item)}</li>
+                    ))}
                   </ul>
                 </li>
               </ul>
@@ -206,38 +384,31 @@ export default function Layout() {
                 )}
               </div>
               <div className="flex items-center gap-x-4 lg:gap-x-6">
-                <Link
-                  to="/varliklar/yeni"
-                  className="hidden md:inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                >
-                  <PlusIcon className="h-4 w-4" aria-hidden="true" />
-                  Yeni Varlık Oluştur
-                </Link>
-                <Link
-                  to="/varliklar/yeni"
-                  className="md:hidden inline-flex items-center rounded-full border border-blue-600 p-2 text-blue-600 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                  aria-label="Yeni varlık oluştur"
-                >
-                  <PlusIcon className="h-4 w-4" aria-hidden="true" />
-                </Link>
                 <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200" aria-hidden="true" />
 
                 {/* Profile dropdown */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    className="flex items-center gap-x-2 text-sm font-semibold leading-6 text-gray-900"
-                    onClick={logout}
+                <div className="flex items-center gap-x-3">
+                  <Link
+                    to="/profile"
+                    className="flex items-center gap-x-2 text-sm font-semibold leading-6 text-gray-900 hover:text-blue-600"
                   >
-                    <span className="sr-only">Your profile</span>
-                    <div className="h-8 w-8 rounded-full bg-gray-800 flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">
+                    <span className="sr-only">Profil</span>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-800">
+                      <span className="text-sm font-medium text-white">
                         {user?.name?.charAt(0)?.toUpperCase() || 'U'}
                       </span>
                     </div>
-                    <span className="hidden lg:flex lg:items-center">
-                      <span>{user?.name || 'User'}</span>
+                    <span className="hidden lg:flex lg:flex-col lg:items-start">
+                      <span>{user?.name || 'Kullanıcı'}</span>
+                      <span className="text-xs font-normal text-gray-500">Profili görüntüle</span>
                     </span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Çıkış
                   </button>
                 </div>
               </div>

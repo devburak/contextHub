@@ -12,6 +12,14 @@ import {
 } from '@heroicons/react/24/outline'
 import { userAPI } from '../../lib/userAPI.js'
 
+const ROLE_PRESENTATION = {
+  owner: { className: 'bg-red-100 text-red-800', label: 'Sahip' },
+  admin: { className: 'bg-purple-100 text-purple-800', label: 'Yönetici' },
+  editor: { className: 'bg-blue-100 text-blue-800', label: 'Editör' },
+  author: { className: 'bg-green-100 text-green-800', label: 'Yazar' },
+  viewer: { className: 'bg-gray-100 text-gray-800', label: 'Görüntüleyici' }
+}
+
 export default function UserList() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -77,6 +85,14 @@ export default function UserList() {
   }
 
   const filteredUsers = users?.data || []
+  const pagination = users?.pagination
+  const totalUsers = pagination?.totalDocs ?? 0
+  const pageLimit = pagination?.limit ?? 10
+  const currentOffset = pagination?.offset ?? 0
+  const startIndex = totalUsers === 0 ? 0 : currentOffset + 1
+  const endIndex = totalUsers === 0 ? 0 : Math.min(currentOffset + pageLimit, totalUsers)
+  const hasPrevPage = Boolean(pagination?.hasPrevPage)
+  const hasNextPage = Boolean(pagination?.hasNextPage)
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
@@ -175,87 +191,88 @@ export default function UserList() {
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((user) => (
-                      <tr key={user.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              {user.avatar ? (
-                                <img
-                                  className="h-10 w-10 rounded-full"
-                                  src={user.avatar}
-                                  alt=""
-                                />
-                              ) : (
-                                <UserCircleIcon className="h-10 w-10 text-gray-400" />
-                              )}
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">
-                                {user.firstName} {user.lastName}
+                    filteredUsers.map((user) => {
+                      const roleInfo = ROLE_PRESENTATION[user.role] || ROLE_PRESENTATION.viewer
+                      const createdAtDate = user.createdAt ? new Date(user.createdAt) : null
+                      const createdAtLabel = createdAtDate && !Number.isNaN(createdAtDate.getTime())
+                        ? createdAtDate.toLocaleDateString('tr-TR')
+                        : '-'
+
+                      return (
+                        <tr key={user.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="flex-shrink-0 h-10 w-10">
+                                {user.avatar ? (
+                                  <img
+                                    className="h-10 w-10 rounded-full"
+                                    src={user.avatar}
+                                    alt=""
+                                  />
+                                ) : (
+                                  <UserCircleIcon className="h-10 w-10 text-gray-400" />
+                                )}
                               </div>
-                              <div className="text-sm text-gray-500">
-                                @{user.username}
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-gray-900">
+                                  {user.firstName} {user.lastName}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {user.username ? `@${user.username}` : '-'}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {user.email}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            user.role === 'admin' 
-                              ? 'bg-purple-100 text-purple-800'
-                              : user.role === 'editor'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {user.role === 'admin' ? 'Yönetici' : 
-                             user.role === 'editor' ? 'Editör' : 'Görüntüleyici'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => handleToggleStatus(user.id)}
-                            disabled={toggleStatusMutation.isPending}
-                            className="flex items-center gap-1"
-                          >
-                            {user.status === 'active' ? (
-                              <>
-                                <CheckBadgeIcon className="h-5 w-5 text-green-500" />
-                                <span className="text-sm text-green-600">Aktif</span>
-                              </>
-                            ) : (
-                              <>
-                                <XCircleIcon className="h-5 w-5 text-red-500" />
-                                <span className="text-sm text-red-600">Pasif</span>
-                              </>
-                            )}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(user.createdAt).toLocaleDateString('tr-TR')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center justify-end gap-2">
-                            <Link
-                              to={`/users/${user.id}/edit`}
-                              className="text-blue-600 hover:text-blue-900"
-                            >
-                              <PencilIcon className="h-4 w-4" />
-                            </Link>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {user.email}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${roleInfo.className}`}>
+                              {roleInfo.label}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <button
-                              onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`)}
-                              disabled={deleteUserMutation.isPending}
-                              className="text-red-600 hover:text-red-900"
+                              onClick={() => handleToggleStatus(user.id)}
+                              disabled={toggleStatusMutation.isPending}
+                              className="flex items-center gap-1"
                             >
-                              <TrashIcon className="h-4 w-4" />
+                              {user.status === 'active' ? (
+                                <>
+                                  <CheckBadgeIcon className="h-5 w-5 text-green-500" />
+                                  <span className="text-sm text-green-600">Aktif</span>
+                                </>
+                              ) : (
+                                <>
+                                  <XCircleIcon className="h-5 w-5 text-red-500" />
+                                  <span className="text-sm text-red-600">Pasif</span>
+                                </>
+                              )}
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {createdAtLabel}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <div className="flex items-center justify-end gap-2">
+                              <Link
+                                to={`/users/${user.id}/edit`}
+                                className="text-blue-600 hover:text-blue-900"
+                              >
+                                <PencilIcon className="h-4 w-4" />
+                              </Link>
+                              <button
+                                onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`)}
+                                disabled={deleteUserMutation.isPending}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
                   )}
                 </tbody>
               </table>
@@ -265,17 +282,17 @@ export default function UserList() {
       </div>
 
       {/* Pagination */}
-      {users?.pagination && (
+      {pagination && (
         <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
           <div className="flex-1 flex justify-between sm:hidden">
             <button
-              disabled={!users.pagination.hasPrevPage}
+              disabled={!hasPrevPage}
               className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
             >
               Önceki
             </button>
             <button
-              disabled={!users.pagination.hasNextPage}
+              disabled={!hasNextPage}
               className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
             >
               Sonraki
@@ -284,24 +301,30 @@ export default function UserList() {
           <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-gray-700">
-                Toplam <span className="font-medium">{users.pagination.totalDocs}</span> kullanıcıdan{' '}
-                <span className="font-medium">{users.pagination.offset + 1}</span> -{' '}
-                <span className="font-medium">
-                  {Math.min(users.pagination.offset + users.pagination.limit, users.pagination.totalDocs)}
-                </span>{' '}
-                arası gösteriliyor
+                {totalUsers === 0 ? (
+                  <>
+                    Toplam <span className="font-medium">0</span> kullanıcı bulunmuyor.
+                  </>
+                ) : (
+                  <>
+                    Toplam <span className="font-medium">{totalUsers}</span> kullanıcıdan{' '}
+                    <span className="font-medium">{startIndex}</span> -{' '}
+                    <span className="font-medium">{endIndex}</span>{' '}
+                    arası gösteriliyor
+                  </>
+                )}
               </p>
             </div>
             <div>
               <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
                 <button
-                  disabled={!users.pagination.hasPrevPage}
+                  disabled={!hasPrevPage}
                   className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Önceki
                 </button>
                 <button
-                  disabled={!users.pagination.hasNextPage}
+                  disabled={!hasNextPage}
                   className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Sonraki

@@ -5,6 +5,7 @@ const cors = require('@fastify/cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const { database } = require('@contexthub/common');
+const roleService = require('./services/roleService');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -65,6 +66,7 @@ async function buildServer() {
   await app.register(require('./routes/mail'), { prefix: '/api' });
   await app.register(require('./routes/placements'), { prefix: '/api' });
   await app.register(require('./routes/menus'), { prefix: '/api' });
+  await app.register(require('./routes/roles'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {
@@ -78,6 +80,7 @@ async function buildServer() {
 async function start() {
   // Connect to MongoDB before starting the server
   await database.connectDB();
+  await roleService.ensureSystemRoles();
   
   const app = await buildServer();
   const port = process.env.PORT || 3000;

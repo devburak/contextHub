@@ -26,7 +26,11 @@ async function authRoutes(fastify, options) {
                 email: { type: 'string' },
                 firstName: { type: 'string' },
                 lastName: { type: 'string' },
-                role: { type: 'string' }
+                role: { type: 'string' },
+                permissions: {
+                  type: 'array',
+                  items: { type: 'string' }
+                }
               }
             },
             token: { type: 'string' },
@@ -46,7 +50,29 @@ async function authRoutes(fastify, options) {
                     }
                   },
                   role: { type: 'string' },
+                  roleMeta: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      id: { type: 'string' },
+                      key: { type: 'string' },
+                      name: { type: 'string' },
+                      description: { type: 'string' },
+                      level: { type: 'number' },
+                      permissions: {
+                        type: 'array',
+                        items: { type: 'string' }
+                      },
+                      tenantId: { type: 'string' },
+                      isDefault: { type: 'boolean' },
+                      isSystem: { type: 'boolean' }
+                    }
+                  },
                   status: { type: 'string' },
+                  permissions: {
+                    type: 'array',
+                    items: { type: 'string' }
+                  },
                   token: { type: 'string' }
                 }
               }
@@ -66,7 +92,29 @@ async function authRoutes(fastify, options) {
                   }
                 },
                 role: { type: 'string' },
+                roleMeta: {
+                  type: 'object',
+                  nullable: true,
+                  properties: {
+                    id: { type: 'string' },
+                    key: { type: 'string' },
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    level: { type: 'number' },
+                    permissions: {
+                      type: 'array',
+                      items: { type: 'string' }
+                    },
+                    tenantId: { type: 'string' },
+                    isDefault: { type: 'boolean' },
+                    isSystem: { type: 'boolean' }
+                  }
+                },
                 status: { type: 'string' },
+                permissions: {
+                  type: 'array',
+                  items: { type: 'string' }
+                },
                 token: { type: 'string' }
               }
             }
@@ -153,7 +201,12 @@ async function authRoutes(fastify, options) {
         200: {
           type: 'object',
           properties: {
-            token: { type: 'string' }
+            token: { type: 'string' },
+            role: { type: 'string' },
+            permissions: {
+              type: 'array',
+              items: { type: 'string' }
+            }
           }
         }
       }

@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import UserList from './pages/users/UserList.jsx'
 import CreateUser from './pages/users/CreateUser.jsx'
 import EditUser from './pages/users/EditUser.jsx'
+import Roles from './pages/users/Roles.jsx'
 import TenantSelection from './pages/tenants/TenantSelection.jsx'
 import Tenants from './pages/tenants/Tenants.jsx'
 import CreateTenant from './pages/tenants/CreateTenant.jsx'
@@ -24,6 +25,9 @@ import { AuthContext } from './contexts/AuthContext.jsx'
 import { ToastProvider } from './contexts/ToastContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
+import { PermissionRoute } from './components/PermissionRoute.jsx'
+import { PERMISSIONS } from './constants/permissions.js'
+import Profile from './pages/profile/Profile.jsx'
 
 const parseStoredJSON = (key, fallback) => {
   const raw = localStorage.getItem(key)
@@ -51,6 +55,14 @@ function App() {
     } else {
       localStorage.removeItem('memberships')
     }
+  }, [])
+
+  const updateUserProfile = useCallback((nextUser) => {
+    if (!nextUser) {
+      return
+    }
+    setUser(nextUser)
+    localStorage.setItem('user', JSON.stringify(nextUser))
   }, [])
 
   const login = useCallback((authResult) => {
@@ -152,31 +164,90 @@ function App() {
     [memberships, activeTenantId]
   )
 
+  const activePermissions = useMemo(() => {
+    const collected = new Set()
+    if (Array.isArray(activeMembership?.roleMeta?.permissions)) {
+      activeMembership.roleMeta.permissions.forEach((permission) => {
+        if (permission) {
+          collected.add(permission)
+        }
+      })
+    }
+    if (Array.isArray(activeMembership?.permissions)) {
+      activeMembership.permissions.forEach((permission) => {
+        if (permission) {
+          collected.add(permission)
+        }
+      })
+    }
+    if (collected.size === 0 && activeMembership?.role === 'owner') {
+      Object.values(PERMISSIONS).forEach((permission) => collected.add(permission))
+    }
+    return Array.from(collected)
+  }, [activeMembership])
+
+  const hasPermission = useCallback((permissionsInput, options = {}) => {
+    const required = Array.isArray(permissionsInput)
+      ? permissionsInput.filter(Boolean)
+      : [permissionsInput].filter(Boolean)
+
+    if (!required.length) {
+      return true
+    }
+
+    const mode = options.mode || 'all'
+    const available = new Set(activePermissions)
+
+    if (available.size === 0) {
+      return false
+    }
+
+    if (mode === 'any') {
+      return required.some((permission) => available.has(permission))
+    }
+
+    return required.every((permission) => available.has(permission))
+  }, [activePermissions])
+
+  const hasAnyPermission = useCallback((permissionsInput) => {
+    return hasPermission(permissionsInput, { mode: 'any' })
+  }, [hasPermission])
+
   const authValue = useMemo(() => ({
     user,
     token,
     memberships,
     activeMembership,
     activeTenantId,
+    permissions: activePermissions,
+    role: activeMembership?.role || null,
+    roleMeta: activeMembership?.roleMeta || null,
     pendingTenantSelection,
     login,
     logout,
     selectTenant,
     addMembership,
     updateMemberships,
-    isAuthenticated: Boolean(token)
+    updateUserProfile,
+    isAuthenticated: Boolean(token),
+    hasPermission,
+    hasAnyPermission
   }), [
     user,
     token,
     memberships,
     activeMembership,
     activeTenantId,
+    activePermissions,
     pendingTenantSelection,
     login,
     logout,
     selectTenant,
     addMembership,
-    updateMemberships
+    updateMemberships,
+    updateUserProfile,
+    hasPermission,
+    hasAnyPermission
   ])
 
  
@@ -200,28 +271,30 @@ function App() {
           <Routes>
             {/* Layout wrapper with nested routes; Layout renders <Outlet /> */}
             <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/users" element={<UserList />} />
-              <Route path="/users/new" element={<CreateUser />} />
-              <Route path="/users/:id/edit" element={<EditUser />} />
-              <Route path="/media" element={<MediaLibrary />} />
-              <Route path="/galeriler" element={<GalleryManager />} />
-              <Route path="/categories" element={<Categories />} />
-              <Route path="/contents" element={<ContentList />} />
-              <Route path="/contents/:id" element={<ContentEditor />} />
-              <Route path="/forms" element={<FormList />} />
-              <Route path="/forms/:id" element={<FormBuilder />} />
-              <Route path="/placements" element={<PlacementsList />} />
-              <Route path="/placements/:id" element={<PlacementEdit />} />
-              <Route path="/placements/:id/analytics" element={<PlacementAnalytics />} />
-              <Route path="/menus" element={<MenuList />} />
-              <Route path="/menus/:id" element={<MenuEdit />} />
+              <Route path="/" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Dashboard /></PermissionRoute>} />
+              <Route path="/users" element={<PermissionRoute permissions={PERMISSIONS.USERS_VIEW}><UserList /></PermissionRoute>} />
+              <Route path="/users/new" element={<PermissionRoute permissions={PERMISSIONS.USERS_MANAGE}><CreateUser /></PermissionRoute>} />
+              <Route path="/users/:id/edit" element={<PermissionRoute permissions={PERMISSIONS.USERS_MANAGE}><EditUser /></PermissionRoute>} />
+              <Route path="/roles" element={<PermissionRoute permissions={PERMISSIONS.ROLES_VIEW}><Roles /></PermissionRoute>} />
+              <Route path="/media" element={<PermissionRoute permissions={PERMISSIONS.MEDIA_VIEW}><MediaLibrary /></PermissionRoute>} />
+              <Route path="/galeriler" element={<PermissionRoute permissions={PERMISSIONS.MEDIA_VIEW}><GalleryManager /></PermissionRoute>} />
+              <Route path="/categories" element={<PermissionRoute permissions={PERMISSIONS.CATEGORIES_VIEW}><Categories /></PermissionRoute>} />
+              <Route path="/contents" element={<PermissionRoute permissions={PERMISSIONS.CONTENT_VIEW}><ContentList /></PermissionRoute>} />
+              <Route path="/contents/:id" element={<PermissionRoute permissions={PERMISSIONS.CONTENT_MANAGE}><ContentEditor /></PermissionRoute>} />
+              <Route path="/forms" element={<PermissionRoute permissions={PERMISSIONS.FORMS_VIEW}><FormList /></PermissionRoute>} />
+              <Route path="/forms/:id" element={<PermissionRoute permissions={PERMISSIONS.FORMS_MANAGE}><FormBuilder /></PermissionRoute>} />
+              <Route path="/placements" element={<PermissionRoute permissions={PERMISSIONS.PLACEMENTS_VIEW}><PlacementsList /></PermissionRoute>} />
+              <Route path="/placements/:id" element={<PermissionRoute permissions={PERMISSIONS.PLACEMENTS_MANAGE}><PlacementEdit /></PermissionRoute>} />
+              <Route path="/placements/:id/analytics" element={<PermissionRoute permissions={[PERMISSIONS.PLACEMENTS_VIEW, PERMISSIONS.ANALYTICS_VIEW]} mode="any"><PlacementAnalytics /></PermissionRoute>} />
+              <Route path="/menus" element={<PermissionRoute permissions={PERMISSIONS.MENUS_VIEW}><MenuList /></PermissionRoute>} />
+              <Route path="/menus/:id" element={<PermissionRoute permissions={PERMISSIONS.MENUS_MANAGE}><MenuEdit /></PermissionRoute>} />
               <Route path="/icerikler/*" element={<Navigate to="/contents" replace />} />
               <Route path="/kategoriler/*" element={<Navigate to="/categories" replace />} />
-              <Route path="/varliklar" element={<Tenants />} />
-              <Route path="/varliklar/yeni" element={<CreateTenant />} />
-              <Route path="/varliklar/ayarlar" element={<TenantSettings />} />
-              <Route path="/belgeler" element={<Documentation />} />
+              <Route path="/varliklar" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_VIEW}><Tenants /></PermissionRoute>} />
+              <Route path="/varliklar/yeni" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_MANAGE}><CreateTenant /></PermissionRoute>} />
+              <Route path="/varliklar/ayarlar" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_MANAGE}><TenantSettings /></PermissionRoute>} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
             </Route>
             {/* Fallback catch-all when authenticated */}
             <Route path="*" element={<Navigate to="/" replace />} />

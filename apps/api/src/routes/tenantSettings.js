@@ -1,5 +1,8 @@
 const tenantSettingsService = require('../services/tenantSettingsService');
-const { tenantContext, authenticate, requireAdmin } = require('../middleware/auth');
+const { tenantContext, authenticate, requirePermission } = require('../middleware/auth');
+const { rbac } = require('@contexthub/common');
+
+const { PERMISSIONS } = rbac;
 
 async function tenantSettingsRoutes(fastify) {
   fastify.addHook('preHandler', tenantContext);
@@ -134,7 +137,7 @@ async function tenantSettingsRoutes(fastify) {
   };
 
   fastify.get('/tenant-settings', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requirePermission([PERMISSIONS.TENANTS_VIEW, PERMISSIONS.TENANTS_MANAGE], { mode: 'any' })],
     schema: {
       response: {
         200: {
@@ -151,7 +154,7 @@ async function tenantSettingsRoutes(fastify) {
   });
 
   fastify.put('/tenant-settings', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requirePermission(PERMISSIONS.TENANTS_MANAGE)],
     schema: {
       body: updateSchema,
       response: {

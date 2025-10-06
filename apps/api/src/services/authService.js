@@ -1,4 +1,5 @@
 const { User, Tenant, Membership } = require('@contexthub/common');
+const roleService = require('./roleService');
 const bcrypt = require('bcryptjs');
 const { mailService } = require('./mailService');
 
@@ -31,38 +32,82 @@ class AuthService {
       throw new Error('User does not have any active tenant access');
     }
 
-    // Tenant seçili ise tek token üret
-    const createToken = (membership) => this.fastify.jwt.sign(
+    const membershipDetails = await Promise.all(
+      memberships.map(async (membershipDoc) => {
+        const tenant = membershipDoc.tenantId;
+        const tenantIdResolved = tenant?.id?.toString?.() || tenant?._id?.toString() || membershipDoc.tenantId?.toString();
+
+        const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
+          membershipDoc,
+          tenantIdResolved
+        );
+
+        const rolePayload = roleService.formatRole(roleDoc);
+        const roleKey = rolePayload?.key || membershipDoc.role;
+
+        const tenantPayload = tenant
+          ? {
+              id: tenant._id ? tenant._id.toString() : tenant.id,
+              name: tenant.name,
+              slug: tenant.slug
+            }
+          : {
+              id: tenantIdResolved,
+              name: null,
+              slug: null
+            };
+
+        return {
+          doc: membershipDoc,
+          payload: {
+            id: membershipDoc._id.toString(),
+            tenantId: tenantIdResolved,
+            tenant: tenantPayload,
+            role: roleKey,
+            roleMeta: rolePayload,
+            status: membershipDoc.status,
+            permissions
+          }
+        };
+      })
+    );
+
+    const createToken = (payload) => this.fastify.jwt.sign(
       {
         sub: user._id.toString(),
         email: user.email,
-        role: membership.role,
-        tenantId: membership.tenantId._id.toString()
+        role: payload.role,
+        roleId: payload.roleMeta?.id ?? null,
+        tenantId: payload.tenantId,
+        permissions: payload.permissions
       },
       { expiresIn: '24h' }
     );
 
-    const mapMembershipPayload = (membership) => ({
-      id: membership._id.toString(),
-      tenantId: membership.tenantId._id.toString(),
-      tenant: {
-        id: membership.tenantId._id.toString(),
-        name: membership.tenantId.name,
-        slug: membership.tenantId.slug
-      },
-      role: membership.role,
-      status: membership.status
+    membershipDetails.forEach((entry) => {
+      entry.token = createToken(entry.payload);
     });
 
+    const membershipResponses = membershipDetails.map(({ payload, token }) => ({
+      ...payload,
+      token
+    }));
+
+    const membershipMap = new Map(
+      membershipDetails.map(({ doc, payload, token }) => [doc._id.toString(), { payload, token }])
+    );
+
     const resolveMembershipLogin = async (membership) => {
-      const token = createToken(membership);
-      const membershipResponses = memberships.map((item) => ({
-        ...mapMembershipPayload(item),
-        token: createToken(item)
-      }));
+      const detail = membershipMap.get(membership._id.toString());
+
+      if (!detail) {
+        throw new Error('Membership details could not be resolved');
+      }
 
       user.lastLoginAt = new Date();
       await user.save();
+
+      const { payload, token } = detail;
 
       return {
         token,
@@ -71,11 +116,12 @@ class AuthService {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: membership.role
+          role: payload.role,
+          permissions: payload.permissions
         },
         memberships: membershipResponses,
         activeMembership: {
-          ...mapMembershipPayload(membership),
+          ...payload,
           token
         },
         requiresTenantSelection: false
@@ -103,11 +149,6 @@ class AuthService {
     user.lastLoginAt = new Date();
     await user.save();
 
-    const membershipPayloads = memberships.map((membership) => ({
-      ...mapMembershipPayload(membership),
-      token: createToken(membership)
-    }));
-
     return {
       requiresTenantSelection: true,
       user: {
@@ -116,7 +157,7 @@ class AuthService {
         firstName: user.firstName,
         lastName: user.lastName
       },
-      memberships: membershipPayloads
+      memberships: membershipResponses
     };
   }
 
@@ -224,18 +265,27 @@ class AuthService {
         throw new Error('Membership not found or inactive');
       }
 
+      const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
+        membership,
+        decoded.tenantId
+      );
+
+      const roleKey = roleDoc?.key || membership.role;
+
       // Yeni token oluştur
       const newToken = this.fastify.jwt.sign(
         { 
           sub: user._id.toString(),
           email: user.email,
-          role: membership.role,
-          tenantId: decoded.tenantId
+          role: roleKey,
+          roleId: roleDoc?._id?.toString() ?? null,
+          tenantId: decoded.tenantId,
+          permissions
         },
         { expiresIn: '24h' }
       );
 
-      return { token: newToken };
+      return { token: newToken, permissions, role: roleKey };
 
     } catch (err) {
       throw new Error('Invalid or expired token');
@@ -265,6 +315,12 @@ class AuthService {
   async inviteUser(email, tenantId, role, invitedBy) {
     // Kullanıcının zaten mevcut olup olmadığını kontrol et
     const existingUser = await User.findOne({ email });
+
+    const resolvedRole = await roleService.resolveRole({ tenantId, roleKey: role });
+
+    if (!resolvedRole) {
+      throw new Error('Role not found');
+    }
     
     if (existingUser) {
       // Kullanıcı varsa sadece membership ekle
@@ -280,7 +336,8 @@ class AuthService {
       const membership = new Membership({
         tenantId,
         userId: existingUser._id,
-        role,
+        role: resolvedRole.key,
+        roleId: resolvedRole._id,
         status: 'pending',
         invitedBy
       });
@@ -309,7 +366,8 @@ class AuthService {
       const membership = new Membership({
         tenantId,
         userId: user._id,
-        role,
+        role: resolvedRole.key,
+        roleId: resolvedRole._id,
         status: 'pending',
         invitedBy
       });

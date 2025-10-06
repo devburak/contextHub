@@ -4,10 +4,20 @@ const { Schema } = mongoose;
 const membershipSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
-  role: { 
-    type: String, 
-    enum: ['viewer', 'author', 'editor', 'admin', 'owner'], 
-    required: true 
+  role: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  roleId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Role',
+    default: null
+  },
+  permissions: {
+    type: [String],
+    default: [],
+    set: (values = []) => Array.from(new Set(values.filter(Boolean))).map((value) => value.trim())
   },
   status: {
     type: String,
@@ -42,6 +52,27 @@ membershipSchema.pre('save', function(next) {
   this.updatedAt = new Date();
   next();
 });
+
+membershipSchema.methods.getEffectivePermissions = function(roleDoc) {
+  const permissionSet = new Set();
+  if (roleDoc && Array.isArray(roleDoc.permissions)) {
+    roleDoc.permissions.forEach((permission) => {
+      if (permission) {
+        permissionSet.add(permission);
+      }
+    });
+  }
+
+  if (Array.isArray(this.permissions)) {
+    this.permissions.forEach((permission) => {
+      if (permission) {
+        permissionSet.add(permission);
+      }
+    });
+  }
+
+  return Array.from(permissionSet);
+};
 
 // Pre-findOneAndUpdate middleware to update updatedAt field
 membershipSchema.pre('findOneAndUpdate', function(next) {

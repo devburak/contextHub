@@ -1,10 +1,13 @@
 const userService = require('../services/userService');
+const roleService = require('../services/roleService');
 const { 
   tenantContext, 
   authenticate, 
-  requireAdmin, 
-  requireEditor 
+  requirePermission
 } = require('../middleware/auth');
+const { rbac } = require('@contexthub/common');
+
+const { PERMISSIONS } = rbac;
 
 async function userRoutes(fastify, options) {
   // Tüm user route'ları için tenant context gerekli
@@ -12,7 +15,7 @@ async function userRoutes(fastify, options) {
 
   // GET /users - Kullanıcı listesi (Admin+)
   fastify.get('/users', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_VIEW)],
     schema: {
       querystring: {
         type: 'object',
@@ -20,7 +23,9 @@ async function userRoutes(fastify, options) {
           tenantId: { type: 'string' },
           page: { type: 'number', default: 1 },
           limit: { type: 'number', default: 10 },
-          search: { type: 'string' }
+          search: { type: 'string' },
+          status: { type: 'string' },
+          role: { type: 'string' }
         },
         required: ['tenantId']
       },
@@ -33,10 +38,12 @@ async function userRoutes(fastify, options) {
               items: {
                 type: 'object',
                 properties: {
-                  _id: { type: 'string' },
+                  id: { type: 'string' },
                   email: { type: 'string' },
                   firstName: { type: 'string' },
                   lastName: { type: 'string' },
+                  role: { type: 'string' },
+                  status: { type: 'string' },
                   createdAt: { type: 'string' },
                   lastLoginAt: { type: 'string' }
                 }
@@ -48,7 +55,10 @@ async function userRoutes(fastify, options) {
                 page: { type: 'number' },
                 limit: { type: 'number' },
                 total: { type: 'number' },
-                pages: { type: 'number' }
+                pages: { type: 'number' },
+                offset: { type: 'number' },
+                hasPrevPage: { type: 'boolean' },
+                hasNextPage: { type: 'boolean' }
               }
             }
           }
@@ -57,18 +67,21 @@ async function userRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
-      const { page, limit, search } = request.query;
-      const result = await userService.getUsersByTenant(request.tenantId, { page, limit, search });
+      const { page, limit, search, status, role } = request.query;
+      const result = await userService.getUsersByTenant(request.tenantId, { page, limit, search, status, role });
       
       return reply.send(result);
     } catch (error) {
+      if (error.message === 'Invalid tenant identifier') {
+        return reply.code(400).send({ error: 'InvalidTenant', message: error.message });
+      }
       return reply.code(500).send({ error: 'Internal server error', message: error.message });
     }
   });
 
   // GET /users/:id - Tekil kullanıcı (Editor+)
   fastify.get('/users/:id', {
-    preHandler: [authenticate, requireEditor],
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_VIEW)],
     schema: {
       params: {
         type: 'object',
@@ -101,7 +114,7 @@ async function userRoutes(fastify, options) {
 
   // POST /users - Yeni kullanıcı oluştur (Admin+)
   fastify.post('/users', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
     schema: {
       body: {
         type: 'object',
@@ -110,7 +123,7 @@ async function userRoutes(fastify, options) {
           password: { type: 'string', minLength: 6 },
           firstName: { type: 'string', minLength: 1 },
           lastName: { type: 'string', minLength: 1 },
-          role: { type: 'string', enum: ['viewer', 'author', 'editor', 'admin'] }
+          role: { type: 'string' }
         },
         required: ['email', 'password', 'firstName', 'lastName']
       },
@@ -124,7 +137,7 @@ async function userRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
-      const { email, password, firstName, lastName, role = 'viewer' } = request.body;
+      const { email, password, firstName, lastName, role = 'admin' } = request.body;
       
       const user = await userService.createUser({
         email,
@@ -148,13 +161,14 @@ async function userRoutes(fastify, options) {
       if (error.code === 11000) {
         return reply.code(409).send({ error: 'Email already exists' });
       }
-      return reply.code(500).send({ error: 'Internal server error', message: error.message });
+      const status = error.message === 'Role not found' ? 400 : 500;
+      return reply.code(status).send({ error: 'UserCreationFailed', message: error.message });
     }
   });
 
   // PUT /users/:id - Kullanıcı güncelle (Admin+)
   fastify.put('/users/:id', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
     schema: {
       params: {
         type: 'object',
@@ -202,7 +216,7 @@ async function userRoutes(fastify, options) {
 
   // DELETE /users/:id - Kullanıcı sil (Admin+)
   fastify.delete('/users/:id', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
     schema: {
       params: {
         type: 'object',
@@ -240,7 +254,7 @@ async function userRoutes(fastify, options) {
 
   // PUT /users/:id/role - Kullanıcı rolü güncelle (Admin+)
   fastify.put('/users/:id/role', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_ASSIGN_ROLE)],
     schema: {
       params: {
         type: 'object',
@@ -252,7 +266,7 @@ async function userRoutes(fastify, options) {
       body: {
         type: 'object',
         properties: {
-          role: { type: 'string', enum: ['viewer', 'author', 'editor', 'admin', 'owner'] }
+          role: { type: 'string' }
         },
         required: ['role']
       },
@@ -281,9 +295,75 @@ async function userRoutes(fastify, options) {
         return reply.code(404).send({ error: 'User membership not found' });
       }
 
-      return reply.send({ membership });
+      const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
+        membership,
+        request.tenantId
+      );
+
+      return reply.send({
+        membership: {
+          ...membership.toObject(),
+          permissions,
+          roleMeta: roleService.formatRole(roleDoc)
+        }
+      });
     } catch (error) {
-      return reply.code(500).send({ error: 'Internal server error', message: error.message });
+      const status = error.message === 'Role not found' ? 404 : 400;
+      return reply.code(status).send({ error: 'RoleUpdateFailed', message: error.message });
+    }
+  });
+
+  // PATCH /users/:id/toggle-status - Kullanıcı durumunu değiştir (Admin+)
+  fastify.patch('/users/:id/toggle-status', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' }
+        },
+        required: ['id']
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' }
+        },
+        required: ['tenantId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            membership: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                role: { type: 'string' },
+                status: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const membership = await userService.toggleUserStatus(request.params.id, request.tenantId);
+
+      if (!membership) {
+        return reply.code(404).send({ error: 'User membership not found' });
+      }
+
+      return reply.send({
+        membership: {
+          id: membership._id.toString(),
+          role: membership.role,
+          status: membership.status
+        }
+      });
+    } catch (error) {
+      return reply.code(400).send({ error: 'StatusUpdateFailed', message: error.message });
     }
   });
 
@@ -302,6 +382,19 @@ async function userRoutes(fastify, options) {
   }, async function(request, reply) {
     try {
       const memberships = await userService.getUserMemberships(request.user._id);
+
+      const activeMembership = memberships.find((item) => item.tenantId === request.tenantId) || (
+        request.membership
+          ? {
+              id: request.membership._id.toString(),
+              tenantId: request.tenantId,
+              role: request.userRole,
+              roleMeta: request.role,
+              permissions: request.userPermissions,
+              status: request.membership.status
+            }
+          : null
+      );
       
       return reply.send({ 
         user: {
@@ -311,11 +404,63 @@ async function userRoutes(fastify, options) {
           lastName: request.user.lastName,
           lastLoginAt: request.user.lastLoginAt
         },
-        currentMembership: request.membership,
+        currentMembership: activeMembership,
         allMemberships: memberships
       });
     } catch (error) {
       return reply.code(500).send({ error: 'Internal server error', message: error.message });
+    }
+  });
+
+  fastify.put('/users/me', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.PROFILE_UPDATE)],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          firstName: { type: 'string', minLength: 1 },
+          lastName: { type: 'string', minLength: 1 },
+          email: { type: 'string', format: 'email' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            user: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                email: { type: 'string' },
+                firstName: { type: 'string' },
+                lastName: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const updated = await userService.updateOwnProfile(request.user._id, request.body);
+
+      if (!updated) {
+        return reply.code(404).send({ error: 'User not found' });
+      }
+
+      return reply.send({
+        user: {
+          id: updated._id?.toString?.() || request.user._id.toString(),
+          email: updated.email,
+          firstName: updated.firstName,
+          lastName: updated.lastName
+        }
+      });
+    } catch (error) {
+      if (error.code === 11000) {
+        return reply.code(409).send({ error: 'Email already exists' });
+      }
+      return reply.code(400).send({ error: 'ProfileUpdateFailed', message: error.message });
     }
   });
 
@@ -358,13 +503,13 @@ async function userRoutes(fastify, options) {
 
   // POST /users/invite - Kullanıcı davet et (Admin+)
   fastify.post('/users/invite', {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_INVITE)],
     schema: {
       body: {
         type: 'object',
         properties: {
           email: { type: 'string', format: 'email' },
-          role: { type: 'string', enum: ['viewer', 'author', 'editor', 'admin'] }
+          role: { type: 'string' }
         },
         required: ['email', 'role']
       },

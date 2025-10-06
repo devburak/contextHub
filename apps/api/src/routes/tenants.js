@@ -1,4 +1,5 @@
 const tenantService = require('../services/tenantService');
+const roleService = require('../services/roleService');
 const { tenantContext, authenticate } = require('../middleware/auth');
 
 async function tenantRoutes(fastify) {
@@ -36,6 +37,25 @@ async function tenantRoutes(fastify) {
               properties: {
                 id: { type: 'string' },
                 role: { type: 'string' },
+                roleMeta: {
+                  type: 'object',
+                  nullable: true,
+                  properties: {
+                    id: { type: 'string' },
+                    key: { type: 'string' },
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    level: { type: 'number' },
+                    permissions: {
+                      type: 'array',
+                      items: { type: 'string' }
+                    }
+                  }
+                },
+                permissions: {
+                  type: 'array',
+                  items: { type: 'string' }
+                },
                 status: { type: 'string' }
               }
             },
@@ -49,11 +69,20 @@ async function tenantRoutes(fastify) {
       const { name, slug, plan } = request.body;
       const { tenant, membership } = await tenantService.createTenant({ name, slug, plan }, request.user._id);
 
+      const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
+        membership,
+        tenant._id.toString()
+      );
+
+      const rolePayload = roleService.formatRole(roleDoc);
+
       const token = fastify.jwt.sign({
         sub: request.user._id.toString(),
         email: request.user.email,
-        role: membership.role,
-        tenantId: tenant._id.toString()
+        role: rolePayload?.key || membership.role,
+        roleId: rolePayload?.id || null,
+        tenantId: tenant._id.toString(),
+        permissions
       }, { expiresIn: '24h' });
 
       return reply.code(201).send({
@@ -67,7 +96,9 @@ async function tenantRoutes(fastify) {
         },
         membership: {
           id: membership._id.toString(),
-          role: membership.role,
+          role: rolePayload?.key || membership.role,
+          roleMeta: rolePayload,
+          permissions,
           status: membership.status
         },
         token
@@ -112,6 +143,25 @@ async function tenantRoutes(fastify) {
                     }
                   },
                   role: { type: 'string' },
+                  roleMeta: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      id: { type: 'string' },
+                      key: { type: 'string' },
+                      name: { type: 'string' },
+                      description: { type: 'string' },
+                      level: { type: 'number' },
+                      permissions: {
+                        type: 'array',
+                        items: { type: 'string' }
+                      }
+                    }
+                  },
+                  permissions: {
+                    type: 'array',
+                    items: { type: 'string' }
+                  },
                   status: { type: 'string' },
                   token: { type: 'string' }
                 }
@@ -133,7 +183,9 @@ async function tenantRoutes(fastify) {
               sub: request.user._id.toString(),
               email: request.user.email,
               role: membership.role,
-              tenantId: membership.tenantId
+              roleId: membership.roleMeta?.id || null,
+              tenantId: membership.tenantId,
+              permissions: membership.permissions || []
             }, { expiresIn: '24h' })
           }))
         : tenants;

@@ -1,4 +1,7 @@
-const { User, Membership } = require('@contexthub/common');
+const { User, Membership, rbac } = require('@contexthub/common');
+const roleService = require('../services/roleService');
+
+const { getRoleLevel, ROLE_KEYS } = rbac;
 
 // Tenant context middleware - URL'den veya header'dan tenant bilgisini alır
 async function tenantContext(request, reply) {
@@ -63,10 +66,19 @@ async function authenticate(request, reply) {
       });
     }
 
+    const { role: roleDoc, permissions } = await roleService.ensureRoleReference(membership, tenantId);
+
+    const roleKey = roleDoc?.key || membership.role || ROLE_KEYS.VIEWER;
+    const roleLevel = roleDoc?.level ?? getRoleLevel(roleKey);
+
     // Request'e user ve membership bilgilerini ekle
     request.user = user;
     request.membership = membership;
-    request.userRole = membership.role;
+    request.userRole = roleKey;
+    request.role = roleDoc ? roleService.formatRole(roleDoc) : null;
+    request.roleLevel = roleLevel;
+    request.userPermissions = permissions;
+    request.userPermissionSet = new Set(permissions);
 
   } catch (err) {
     return reply.code(401).send({ error: 'Authentication failed', message: err.message });
@@ -80,17 +92,44 @@ function requireRole(allowedRoles) {
       return reply.code(401).send({ error: 'Authentication required' });
     }
 
-    const roleHierarchy = ['viewer', 'author', 'editor', 'admin', 'owner'];
-    const userRoleIndex = roleHierarchy.indexOf(request.userRole);
-    const hasPermission = allowedRoles.some(role => {
-      const requiredRoleIndex = roleHierarchy.indexOf(role);
-      return userRoleIndex >= requiredRoleIndex;
+    const userLevel = request.roleLevel ?? getRoleLevel(request.userRole);
+    const requiredLevels = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+
+    const hasPermission = requiredLevels.some((roleKey) => {
+      const requiredLevel = getRoleLevel(roleKey);
+      return userLevel >= requiredLevel;
     });
 
     if (!hasPermission) {
       return reply.code(403).send({ 
         error: 'Insufficient permissions',
         message: `Required roles: ${allowedRoles.join(', ')}. Current role: ${request.userRole}` 
+      });
+    }
+  };
+}
+
+function requirePermission(requiredPermissions, options = {}) {
+  const { mode = 'all' } = options;
+  const requiredList = Array.isArray(requiredPermissions)
+    ? requiredPermissions.filter(Boolean)
+    : [requiredPermissions].filter(Boolean);
+
+  return async function(request, reply) {
+    if (!request.userPermissionSet) {
+      request.userPermissionSet = new Set(request.userPermissions || []);
+    }
+
+    const userPermissions = request.userPermissionSet;
+
+    const check = mode === 'any'
+      ? requiredList.some((permission) => userPermissions.has(permission))
+      : requiredList.every((permission) => userPermissions.has(permission));
+
+    if (!check) {
+      return reply.code(403).send({
+        error: 'Insufficient permissions',
+        message: `Required permissions: ${requiredList.join(', ')}`
       });
     }
   };
@@ -115,5 +154,6 @@ module.exports = {
   requireOwner,
   requireAdmin,
   requireEditor,
-  requireAuthor
+  requireAuthor,
+  requirePermission
 };

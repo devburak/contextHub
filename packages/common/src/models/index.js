@@ -32,6 +32,7 @@ const Gallery = require('./Gallery');
 const PlacementDefinition = require('./PlacementDefinition');
 const PlacementEvent = require('./PlacementEvent');
 const Menu = require('./Menu');
+const Role = require('./Role');
 
 module.exports = {
   Tenant,
@@ -65,5 +66,6 @@ module.exports = {
   PlacementDefinition,
   PlacementEvent,
   Menu,
+  Role,
   mongoose
 };

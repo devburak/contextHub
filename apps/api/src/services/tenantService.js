@@ -1,4 +1,7 @@
-const { Tenant, Membership } = require('@contexthub/common');
+const { Tenant, Membership, rbac } = require('@contexthub/common');
+const roleService = require('./roleService');
+
+const { ROLE_KEYS } = rbac;
 
 class TenantService {
   #slugify(value) {
@@ -52,10 +55,14 @@ class TenantService {
     });
     await tenant.save();
 
+    const ownerRole = await roleService.resolveRole({ tenantId: tenant._id, roleKey: ROLE_KEYS.OWNER })
+      || await roleService.resolveRole({ tenantId: null, roleKey: ROLE_KEYS.OWNER });
+
     const membership = new Membership({
       tenantId: tenant._id,
       userId: ownerId,
-      role: 'owner',
+      role: ownerRole?.key || ROLE_KEYS.OWNER,
+      roleId: ownerRole?._id || null,
       status: 'active',
       createdBy: ownerId
     });
@@ -69,21 +76,32 @@ class TenantService {
       .populate('tenantId', 'name slug plan status createdAt')
       .sort({ createdAt: -1 });
 
-    return memberships.map((membership) => ({
-      id: membership._id.toString(),
-      tenantId: membership.tenantId?._id?.toString(),
-      tenant: membership.tenantId
-        ? {
-            id: membership.tenantId._id.toString(),
-            name: membership.tenantId.name,
-            slug: membership.tenantId.slug,
-            plan: membership.tenantId.plan,
-            status: membership.tenantId.status,
-            createdAt: membership.tenantId.createdAt
-          }
-        : null,
-      role: membership.role,
-      status: membership.status
+    return Promise.all(memberships.map(async (membership) => {
+      const tenantDoc = membership.tenantId;
+      const tenantId = tenantDoc?._id?.toString() || membership.tenantId?.toString();
+      const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
+        membership,
+        tenantId
+      );
+
+      return {
+        id: membership._id.toString(),
+        tenantId,
+        tenant: tenantDoc
+          ? {
+              id: tenantDoc._id.toString(),
+              name: tenantDoc.name,
+              slug: tenantDoc.slug,
+              plan: tenantDoc.plan,
+              status: tenantDoc.status,
+              createdAt: tenantDoc.createdAt
+            }
+          : null,
+        role: roleDoc?.key || membership.role,
+        roleMeta: roleService.formatRole(roleDoc),
+        permissions,
+        status: membership.status
+      };
     }));
   }
 }
