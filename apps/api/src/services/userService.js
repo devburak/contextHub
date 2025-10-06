@@ -50,6 +50,14 @@ class UserService {
     return user;
   }
 
+  async findUserByEmail(email) {
+    if (!email) {
+      return null;
+    }
+
+    return await User.findOne({ email });
+  }
+
   async getUserById(userId, tenantId) {
     return await User.findOne({ _id: userId, tenantId }).select('-password');
   }
@@ -192,13 +200,34 @@ class UserService {
     return user;
   }
 
-  async deleteUser(userId, tenantId) {
-    // Önce membership'leri sil
-    await Membership.deleteMany({ userId, tenantId });
-    
-    // Sonra kullanıcıyı sil
-    const user = await User.findOneAndDelete({ _id: userId, tenantId });
-    return user;
+  async detachUserFromTenant(userId, tenantId) {
+    const membership = await Membership.findOne({ userId, tenantId });
+
+    if (!membership) {
+      return null;
+    }
+
+    if (membership.role === ROLE_KEYS.OWNER) {
+      const otherOwnerExists = await Membership.exists({
+        tenantId,
+        role: membership.role,
+        status: 'active',
+        userId: { $ne: userId }
+      });
+
+      if (!otherOwnerExists) {
+        const error = new Error('Tenant için en az bir aktif sahibi bırakmalısınız.');
+        error.code = 'LAST_OWNER';
+        throw error;
+      }
+    }
+
+    await Membership.deleteOne({ _id: membership._id });
+
+    return {
+      status: membership.status,
+      removedAt: new Date()
+    };
   }
 
   async updateOwnProfile(userId, updates = {}) {
@@ -261,6 +290,22 @@ class UserService {
     }
 
     const nextStatus = membership.status === 'active' ? 'inactive' : 'active';
+
+    if (membership.role === ROLE_KEYS.OWNER && nextStatus !== 'active') {
+      const otherOwnerExists = await Membership.exists({
+        tenantId,
+        role: membership.role,
+        status: 'active',
+        userId: { $ne: userId }
+      });
+
+      if (!otherOwnerExists) {
+        const error = new Error('Son sahibi pasifleştiremezsiniz.');
+        error.code = 'LAST_OWNER';
+        throw error;
+      }
+    }
+
     membership.status = nextStatus;
     membership.updatedAt = new Date();
     await membership.save();
@@ -324,18 +369,31 @@ class UserService {
   }
 
   async getUserWithMembership(userId, tenantId) {
-    const user = await User.findOne({ _id: userId, tenantId }).select('-password');
-    if (!user) return null;
+    const membership = await Membership.findOne({ userId, tenantId });
 
-    const membership = await Membership.findOne({ userId, tenantId, status: 'active' });
-    if (!membership) return user.toObject();
+    if (!membership) {
+      return null;
+    }
+
+    const user = await User.findById(userId).select('-password');
+
+    if (!user) {
+      return null;
+    }
 
     const { role: roleDoc, permissions } = await roleService.ensureRoleReference(membership, tenantId);
+    const membershipPayload = membership.toObject({ versionKey: false });
+    delete membershipPayload.inviteTokenHash;
+
+    const userPayload = user.toObject({ versionKey: false });
+    if (membershipPayload.status) {
+      userPayload.status = membershipPayload.status;
+    }
 
     return {
-      ...user.toObject(),
+      ...userPayload,
       membership: {
-        ...membership.toObject(),
+        ...membershipPayload,
         permissions,
         roleMeta: roleService.formatRole(roleDoc)
       }

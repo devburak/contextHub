@@ -1,11 +1,111 @@
 const { User, Tenant, Membership } = require('@contexthub/common');
 const roleService = require('./roleService');
+const tenantService = require('./tenantService');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { mailService } = require('./mailService');
 
 class AuthService {
   constructor(fastifyInstance) {
     this.fastify = fastifyInstance;
+  }
+
+  generateInvitationToken(hours = 12) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+    return { token, tokenHash, expiresAt };
+  }
+
+  buildInvitationLink(token, tenantId) {
+    const baseUrl = process.env.ADMIN_URL || process.env.FRONTEND_URL || 'http://localhost:3100';
+    const url = new URL('/accept-invite', baseUrl);
+    url.searchParams.set('token', token);
+    if (tenantId) {
+      url.searchParams.set('tenantId', tenantId.toString());
+    }
+    return url.toString();
+  }
+
+  async sendInvitationEmail({ user, tenant, inviter, inviteLink, token, expiresAt, tenantId }) {
+    const inviterName = inviter
+      ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ') || inviter.email
+      : 'ContextHub';
+
+    const tenantName = tenant?.name || 'ContextHub';
+
+    const subject = `${tenantName} daveti`; // Turkish default - we can use bilingual message
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
+        <h1 style="font-size: 22px; font-weight: 600;">${tenantName} daveti</h1>
+        <p>Merhaba ${user.firstName || user.email},</p>
+        <p>${tenantName} organizasyonuna katılman için bir davet aldın. Daveti kabul etmek için aşağıdaki bağlantıyı kullanabilirsin.</p>
+        <p style="margin: 24px 0; text-align: center;">
+          <a href="${inviteLink}" style="background-color:#2563eb; color:#fff; padding:12px 24px; border-radius:8px; text-decoration:none; display:inline-block;">Daveti Kabul Et</a>
+        </p>
+        <p style="margin-bottom: 12px;">Bağlantı <strong>${expiresAt.toLocaleString()}</strong> tarihine kadar geçerlidir (12 saat).</p>
+        <p style="margin-bottom: 12px;">Bağlantı çalışmazsa aşağıdaki adresi tarayıcına yapıştırabilirsin:</p>
+        <p style="word-break: break-all; background:#f3f4f6; padding:12px; border-radius:8px;">${inviteLink}</p>
+        <p style="margin-bottom: 12px;">Tek kullanımlık davet kodun:</p>
+        <p style="font-family:'Fira Code',monospace; background:#111827; color:#f9fafb; padding:12px; border-radius:8px; display:inline-block;">${token}</p>
+        <p style="margin-top:24px;">Bu daveti <strong>${inviterName}</strong> gönderdi.</p>
+        <p style="margin-top:32px; font-size: 13px; color:#6b7280;">Eğer bu daveti beklemiyorsan bu e-postayı görmezden gelebilirsin.</p>
+      </div>
+    `;
+
+    const text = `Merhaba ${user.firstName || user.email},\n\n${tenantName} organizasyonuna katılman için bir davet aldın.\n\nDaveti kabul etmek için bu bağlantıyı kullan: ${inviteLink}\n\nBağlantı ${expiresAt.toLocaleString()} tarihine kadar geçerli olacaktır (12 saat).\n\nTek kullanımlık davet kodun: ${token}\n\nBu daveti ${inviterName} gönderdi. Eğer bu daveti beklemiyorsan bu e-postayı görmezden gelebilirsin.`;
+
+    await mailService.sendMail({
+      to: user.email,
+      subject,
+      html,
+      text
+    }, tenantId);
+  }
+
+  async issueInvitation({ membership, tenantId, invitedBy }) {
+    const user = await User.findById(membership.userId);
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const { token, tokenHash, expiresAt } = this.generateInvitationToken();
+
+    membership.status = 'pending';
+    membership.inviteTokenHash = tokenHash;
+    membership.inviteTokenExpiresAt = expiresAt;
+    membership.lastInvitedAt = new Date();
+    if (invitedBy) {
+      membership.invitedBy = invitedBy;
+    }
+    if (!membership.invitedAt) {
+      membership.invitedAt = new Date();
+    }
+
+    await membership.save();
+
+    const tenant = await Tenant.findById(tenantId).select('name slug');
+    const inviter = invitedBy ? await User.findById(invitedBy).select('firstName lastName email') : null;
+    const inviteLink = this.buildInvitationLink(token, tenantId);
+
+    await this.sendInvitationEmail({
+      user,
+      tenant,
+      inviter,
+      inviteLink,
+      token,
+      expiresAt,
+      tenantId
+    });
+
+    return {
+      membershipId: membership._id,
+      userId: user._id,
+      status: membership.status,
+      expiresAt
+    };
   }
 
   async login(email, password, tenantId) {
@@ -343,10 +443,13 @@ class AuthService {
       });
       await membership.save();
 
+      const invitation = await this.issueInvitation({ membership, tenantId, invitedBy });
+
       return { 
         type: 'existing_user',
         userId: existingUser._id,
-        membershipId: membership._id 
+        membershipId: membership._id,
+        invitation
       };
     } else {
       // Yeni kullanıcı için invitation oluştur
@@ -359,6 +462,7 @@ class AuthService {
         firstName: email.split('@')[0], // Geçici
         lastName: 'User', // Geçici
         tenantId,
+        status: 'inactive',
         isEmailVerified: false
       });
       await user.save();
@@ -373,13 +477,106 @@ class AuthService {
       });
       await membership.save();
 
+      const invitation = await this.issueInvitation({ membership, tenantId, invitedBy });
+
       return { 
         type: 'new_user',
         userId: user._id,
         membershipId: membership._id,
-        tempPassword 
+        tempPassword,
+        invitation
       };
     }
+  }
+
+  async resendInvitation(userId, tenantId, invitedBy) {
+    const membership = await Membership.findOne({ userId, tenantId });
+
+    if (!membership) {
+      throw new Error('User membership not found');
+    }
+
+    if (membership.status === 'active') {
+      throw new Error('User already active');
+    }
+
+    return this.issueInvitation({ membership, tenantId, invitedBy });
+  }
+
+  async acceptInvitation(inviteToken, { password, firstName, lastName } = {}) {
+    if (!inviteToken) {
+      throw new Error('Invitation token is required');
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(inviteToken).digest('hex');
+
+    const membership = await Membership.findOne({ inviteTokenHash: tokenHash });
+
+    if (!membership) {
+      throw new Error('Invitation not found or already used');
+    }
+
+    if (!membership.inviteTokenExpiresAt || membership.inviteTokenExpiresAt < new Date()) {
+      throw new Error('Invitation token has expired');
+    }
+
+    const user = await User.findById(membership.userId);
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (typeof firstName === 'string' && firstName.trim()) {
+      user.firstName = firstName.trim();
+    }
+
+    if (typeof lastName === 'string' && lastName.trim()) {
+      user.lastName = lastName.trim();
+    }
+
+    if (typeof password === 'string' && password.trim()) {
+      user.password = password.trim();
+    }
+
+    user.status = 'active';
+    user.isEmailVerified = true;
+    await user.save();
+
+    const tenantId = membership.tenantId?.toString();
+    const activatedMembership = await tenantService.acceptMembershipInvitation(user._id, tenantId);
+
+    const { role: roleDoc, permissions } = await roleService.ensureRoleReference(activatedMembership, tenantId);
+    const roleKey = roleDoc?.key || activatedMembership.role;
+
+    const authToken = this.fastify.jwt.sign(
+      {
+        sub: user._id.toString(),
+        email: user.email,
+        role: roleKey,
+        roleId: roleDoc?._id?.toString() ?? null,
+        tenantId,
+        permissions
+      },
+      { expiresIn: '24h' }
+    );
+
+    return {
+      token: authToken,
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: roleKey,
+        permissions
+      },
+      membership: {
+        id: activatedMembership._id.toString(),
+        tenantId,
+        status: activatedMembership.status,
+        acceptedAt: activatedMembership.acceptedAt
+      }
+    };
   }
 }
 

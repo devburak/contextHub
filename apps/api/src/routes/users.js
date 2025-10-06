@@ -1,5 +1,6 @@
 const userService = require('../services/userService');
 const roleService = require('../services/roleService');
+const AuthService = require('../services/authService');
 const { 
   tenantContext, 
   authenticate, 
@@ -7,7 +8,7 @@ const {
 } = require('../middleware/auth');
 const { rbac } = require('@contexthub/common');
 
-const { PERMISSIONS } = rbac;
+const { PERMISSIONS, ROLE_KEYS } = rbac;
 
 async function userRoutes(fastify, options) {
   // Tüm user route'ları için tenant context gerekli
@@ -108,6 +109,9 @@ async function userRoutes(fastify, options) {
 
       return reply.send({ user });
     } catch (error) {
+      if (error.code === 'LAST_OWNER') {
+        return reply.code(400).send({ error: 'LastOwnerRestriction', message: error.message });
+      }
       return reply.code(500).send({ error: 'Internal server error', message: error.message });
     }
   });
@@ -137,15 +141,55 @@ async function userRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
-      const { email, password, firstName, lastName, role = 'admin' } = request.body;
-      
+      const {
+        email,
+        password,
+        firstName,
+        lastName,
+        role = ROLE_KEYS.ADMIN
+      } = request.body;
+
+      const normalizedRole = roleService.normalizeKey(role) || ROLE_KEYS.ADMIN;
+
+      const existingUser = await userService.findUserByEmail(email);
+
+      if (existingUser) {
+        const authService = new AuthService(fastify);
+
+        try {
+          const invite = await authService.inviteUser(
+            email,
+            request.tenantId,
+            normalizedRole,
+            request.user?._id ?? null
+          );
+
+          return reply.code(200).send({
+            invite,
+            message: 'Invitation sent to existing user'
+          });
+        } catch (inviteError) {
+          if (inviteError.message === 'User already has access to this tenant') {
+            return reply.code(409).send({
+              error: 'UserAlreadyMember',
+              message: inviteError.message
+            });
+          }
+
+          return reply.code(400).send({
+            error: 'UserInvitationFailed',
+            message: inviteError.message || 'Unable to invite user'
+          });
+        }
+      }
+
       const user = await userService.createUser({
         email,
         password,
         firstName,
         lastName,
         tenantId: request.tenantId,
-        role
+        role: normalizedRole
       });
 
       return reply.code(201).send({ 
@@ -240,13 +284,17 @@ async function userRoutes(fastify, options) {
         return reply.code(400).send({ error: 'Cannot delete yourself' });
       }
 
-      const user = await userService.deleteUser(request.params.id, request.tenantId);
+      const result = await userService.detachUserFromTenant(request.params.id, request.tenantId);
 
-      if (!user) {
-        return reply.code(404).send({ error: 'User not found' });
+      if (!result) {
+        return reply.code(404).send({ error: 'User membership not found' });
       }
 
-      return reply.send({ message: 'User deleted successfully' });
+      return reply.send({
+        message: 'User detached from tenant',
+        status: result.status,
+        removedAt: result.removedAt
+      });
     } catch (error) {
       return reply.code(500).send({ error: 'Internal server error', message: error.message });
     }
@@ -363,6 +411,9 @@ async function userRoutes(fastify, options) {
         }
       });
     } catch (error) {
+      if (error.code === 'LAST_OWNER') {
+        return reply.code(400).send({ error: 'LastOwnerRestriction', message: error.message });
+      }
       return reply.code(400).send({ error: 'StatusUpdateFailed', message: error.message });
     }
   });
@@ -525,17 +576,52 @@ async function userRoutes(fastify, options) {
     try {
       const { email, role } = request.body;
       
-      const result = await AuthService.prototype.inviteUser.call(
-        { fastify }, 
-        email, 
-        request.tenantId, 
-        role, 
+      const authService = new AuthService(fastify);
+
+      const result = await authService.inviteUser(
+        email,
+        request.tenantId,
+        role,
         request.user._id
       );
 
       return reply.code(201).send(result);
     } catch (error) {
       return reply.code(400).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/users/:id/reinvite', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_INVITE)],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' }
+        },
+        required: ['id']
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' }
+        },
+        required: ['tenantId']
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const authService = new AuthService(fastify);
+      const invitation = await authService.resendInvitation(
+        request.params.id,
+        request.tenantId,
+        request.user?._id ?? null
+      );
+
+      return reply.send({ invitation });
+    } catch (error) {
+      const status = error.message === 'User membership not found' ? 404 : 400;
+      return reply.code(status).send({ error: 'ReinviteFailed', message: error.message });
     }
   });
 }

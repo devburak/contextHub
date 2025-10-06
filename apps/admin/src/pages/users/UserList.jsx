@@ -8,9 +8,11 @@ import {
   MagnifyingGlassIcon,
   UserCircleIcon,
   CheckBadgeIcon,
-  XCircleIcon
+  XCircleIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline'
 import { userAPI } from '../../lib/userAPI.js'
+import { useToast } from '../../contexts/ToastContext.jsx'
 
 const ROLE_PRESENTATION = {
   owner: { className: 'bg-red-100 text-red-800', label: 'Sahip' },
@@ -20,11 +22,18 @@ const ROLE_PRESENTATION = {
   viewer: { className: 'bg-gray-100 text-gray-800', label: 'Görüntüleyici' }
 }
 
+const STATUS_PRESENTATION = {
+  active: { label: 'Aktif', className: 'bg-green-50 text-green-700 ring-green-200' },
+  inactive: { label: 'Pasif', className: 'bg-gray-50 text-gray-600 ring-gray-200' },
+  pending: { label: 'Davet Bekliyor', className: 'bg-amber-50 text-amber-700 ring-amber-200' }
+}
+
 export default function UserList() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [roleFilter, setRoleFilter] = useState('all')
   const queryClient = useQueryClient()
+  const toast = useToast()
 
   // Kullanıcıları getir
   const { data: users, isLoading, error } = useQuery({
@@ -38,24 +47,60 @@ export default function UserList() {
 
   // Kullanıcı silme
   const deleteUserMutation = useMutation({
-    mutationFn: userAPI.deleteUser,
-    onSuccess: () => {
+    mutationFn: ({ id }) => userAPI.deleteUser(id),
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries(['users'])
+      const label = variables?.name ? `"${variables.name}"` : 'Kullanıcı'
+      toast.success(`${label} tenant bağlantısından çıkarıldı.`)
     },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Kullanıcı tenant bağlantısı kaldırılamadı.'
+      toast.error(message)
+    }
   })
 
   // Kullanıcı durumu değiştirme
   const toggleStatusMutation = useMutation({
-    mutationFn: userAPI.toggleUserStatus,
-    onSuccess: () => {
+    mutationFn: (id) => userAPI.toggleUserStatus(id),
+    onSuccess: (data) => {
       queryClient.invalidateQueries(['users'])
+      const status = data?.membership?.status
+      if (status === 'active') {
+        toast.success('Kullanıcı yeniden aktifleştirildi.')
+      } else if (status === 'inactive') {
+        toast.info('Kullanıcı pasif hale getirildi.')
+      } else {
+        toast.success('Kullanıcı durumu güncellendi.')
+      }
     },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Kullanıcı durumu güncellenemedi.'
+      toast.error(message)
+    }
   })
 
-  const handleDeleteUser = async (id, userName) => {
-    if (window.confirm(`"${userName}" kullanıcısını silmek istediğinizden emin misiniz?`)) {
-      deleteUserMutation.mutate(id)
+  const reinviteUserMutation = useMutation({
+    mutationFn: ({ id }) => userAPI.reinviteUser(id),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries(['users'])
+      const label = variables?.email || variables?.name || 'Kullanıcı'
+      toast.success(`${label} için davet e-postası yeniden gönderildi.`)
+    },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Davet gönderilirken bir hata oluştu.'
+      toast.error(message)
     }
+  })
+
+  const handleDeleteUser = async (user) => {
+    const nameLabel = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email
+    if (window.confirm(`"${nameLabel}" kullanıcısının tenant erişimini kaldırmak istediğinizden emin misiniz?`)) {
+      deleteUserMutation.mutate({ id: user.id, name: nameLabel })
+    }
+  }
+
+  const handleReinviteUser = (user) => {
+    reinviteUserMutation.mutate({ id: user.id, email: user.email, name: `${user.firstName || ''} ${user.lastName || ''}`.trim() })
   }
 
   const handleToggleStatus = (id) => {
@@ -140,6 +185,7 @@ export default function UserList() {
           <option value="all">Tüm Durumlar</option>
           <option value="active">Aktif</option>
           <option value="inactive">Pasif</option>
+          <option value="pending">Davet Bekliyor</option>
         </select>
 
         {/* Role Filter */}
@@ -232,23 +278,43 @@ export default function UserList() {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <button
-                              onClick={() => handleToggleStatus(user.id)}
-                              disabled={toggleStatusMutation.isPending}
-                              className="flex items-center gap-1"
-                            >
-                              {user.status === 'active' ? (
-                                <>
-                                  <CheckBadgeIcon className="h-5 w-5 text-green-500" />
-                                  <span className="text-sm text-green-600">Aktif</span>
-                                </>
-                              ) : (
-                                <>
-                                  <XCircleIcon className="h-5 w-5 text-red-500" />
-                                  <span className="text-sm text-red-600">Pasif</span>
-                                </>
+                            <div className="flex items-center gap-2">
+                              {(() => {
+                                const statusInfo = STATUS_PRESENTATION[user.status] || STATUS_PRESENTATION.inactive
+                                return (
+                                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusInfo.className}`}>
+                                    {user.status === 'active' ? (
+                                      <CheckBadgeIcon className="h-3.5 w-3.5" />
+                                    ) : user.status === 'pending' ? (
+                                      <ArrowPathIcon className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <XCircleIcon className="h-3.5 w-3.5" />
+                                    )}
+                                    {statusInfo.label}
+                                  </span>
+                                )
+                              })()}
+
+                              {user.status === 'active' && (
+                                <button
+                                  onClick={() => handleToggleStatus(user.id)}
+                                  disabled={toggleStatusMutation.isPending}
+                                  className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                                >
+                                  Pasifleştir
+                                </button>
                               )}
-                            </button>
+
+                              {user.status === 'inactive' && (
+                                <button
+                                  onClick={() => handleToggleStatus(user.id)}
+                                  disabled={toggleStatusMutation.isPending}
+                                  className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                                >
+                                  Aktifleştir
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {createdAtLabel}
@@ -261,8 +327,18 @@ export default function UserList() {
                               >
                                 <PencilIcon className="h-4 w-4" />
                               </Link>
+                              {(user.status === 'pending' || user.status === 'inactive') && (
+                                <button
+                                  onClick={() => handleReinviteUser(user)}
+                                  disabled={reinviteUserMutation.isPending}
+                                  className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200"
+                                >
+                                  <ArrowPathIcon className="h-3.5 w-3.5" />
+                                  Daveti Yenile
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`)}
+                                onClick={() => handleDeleteUser(user)}
                                 disabled={deleteUserMutation.isPending}
                                 className="text-red-600 hover:text-red-900"
                               >

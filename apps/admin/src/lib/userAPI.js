@@ -90,6 +90,12 @@ export const userAPI = {
     return data
   },
 
+  // Kullanıcıyı tekrar davet et
+  reinviteUser: async (id) => {
+    const { data } = await apiClient.post(`/users/${id}/reinvite`)
+    return data
+  },
+
   // Kullanıcı durumunu değiştir (aktif/pasif)
   toggleUserStatus: async (id) => {
     const { data } = await apiClient.patch(`/users/${id}/toggle-status`)

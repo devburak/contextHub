@@ -20,5 +20,10 @@ export const tenantAPI = {
   updateSettings: async (payload) => {
     const { data } = await apiClient.put('/tenant-settings', payload)
     return data.settings
+  },
+
+  acceptInvitation: async (tenantId) => {
+    const { data } = await apiClient.post(`/tenants/${tenantId}/accept`)
+    return data
   }
 }

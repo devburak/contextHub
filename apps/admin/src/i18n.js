@@ -60,12 +60,19 @@ const resources = {
       'user.update': 'Kullanıcıyı Güncelle',
       'user.creating': 'Oluşturuluyor...',
       'user.updating': 'Güncelleniyor...',
+      'user.create_success': 'Kullanıcı başarıyla oluşturuldu.',
+      'user.create_success_named': '{{name}} kullanıcısı başarıyla oluşturuldu.',
+      'user.invite_existing': '{{email}} zaten kayıtlı. Davet gönderildi.',
+      'user.invite_existing_generic': 'Kullanıcı zaten kayıtlı. Davet gönderildi.',
+      'user.create_error': 'Kullanıcı oluşturulamadı. Lütfen bilgileri kontrol edin.',
+      'user.invite_error': 'Kullanıcı daveti gönderilemedi.',
       
       // Roles & Status
       'role.user': 'Kullanıcı',
       'role.admin': 'Yönetici',
       'status.active': 'Aktif',
       'status.inactive': 'Pasif',
+      'status.pending': 'Davet Bekliyor',
       
       // Common
       'common.loading': 'Yükleniyor...',
@@ -139,12 +146,19 @@ const resources = {
       'user.update': 'Update User',
       'user.creating': 'Creating...',
       'user.updating': 'Updating...',
+      'user.create_success': 'User created successfully.',
+      'user.create_success_named': 'User {{name}} was created successfully.',
+      'user.invite_existing': '{{email}} is already registered. Invitation sent.',
+      'user.invite_existing_generic': 'User already exists. Invitation sent.',
+      'user.create_error': 'Could not create the user. Please check the details.',
+      'user.invite_error': 'User invitation could not be sent.',
       
       // Roles & Status
       'role.user': 'User',
       'role.admin': 'Administrator',
       'status.active': 'Active',
       'status.inactive': 'Inactive',
+      'status.pending': 'Invitation Pending',
       
       // Common
       'common.loading': 'Loading...',
