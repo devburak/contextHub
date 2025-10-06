@@ -19,7 +19,9 @@ export default {
     }
   ],
   plugins: [
-    resolve(),
+    resolve({
+      extensions: ['.js', '.jsx', '.json']
+    }),
     commonjs(),
     babel({
       babelHelpers: 'bundled',
