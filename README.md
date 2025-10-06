@@ -18,7 +18,7 @@ contextHub is a multi‑tenant headless CMS and content‑services platform buil
 
 ## Monorepo structure
 
-This repository follows a **modular monorepo** layout using [pnpm workspaces](https://pnpm.io/workspaces).  All packages share a single `node_modules` directory.  The top‑level `package.json` exposes common scripts, while each app or package has its own package definition.
+This repository follows a **modular monorepo** layout using [pnpm workspaces](https://pnpm.io/workspaces).  All packages share a single `node_modules` directory.  The top-level `package.json` exposes common scripts, while each app or package has its own package definition.
 
 ```
 contextHub/
@@ -27,10 +27,15 @@ contextHub/
 │   └── admin/      # React admin interface (placeholder for now)
 ├── packages/
 │   └── common/     # Shared code (types, utilities, RBAC, etc.)
+├── scripts/        # Helpers to execute shared tooling (eslint, prettier, vitest)
 ├── pnpm-workspace.yaml
 ├── package.json    # root package with workspace configuration
 └── README.md       # this file
 ```
+
+### Shared tooling
+
+Tooling that every package uses (ESLint, Prettier, Vitest, etc.) now lives only in the root `package.json`.  Workspace scripts call `node ../../scripts/run-tool.mjs <binary> [...args]`, which delegates to the single copy of the CLI in `node_modules/.bin`.  This keeps package manifests lean, ensures the per-package `node_modules` folders contain just workspace links, and avoids duplicating the same devDependencies across the monorepo.  A shared `.eslintrc.cjs` at the repo root defines the base lint rules so all packages lint consistently.
 
 ### Installation
 

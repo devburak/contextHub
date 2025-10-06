@@ -13,15 +13,26 @@ const Term = require('./Term');
 const Tag = require('./Tag');
 const Navigation = require('./Navigation');
 const Media = require('./Media');
+const Category = require('./Category');
 const FormDefinition = require('./FormDefinition');
 const FormResponse = require('./FormResponse');
+const FormVersion = require('./FormVersion');
 const Event = require('./Event');
 const DailyAgg = require('./DailyAgg');
 const ApiToken = require('./ApiToken');
 const Product = require('./Product');
-const CollectionDef = require('./CollectionDef');
-const CollectionItem = require('./CollectionItem');
+const CollectionType = require('./CollectionType');
+const CollectionEntry = require('./CollectionEntry');
 const Template = require('./Template');
+const Content = require('./Content');
+const ContentVersion = require('./ContentVersion');
+const TenantSettings = require('./TenantSettings');
+const FeatureFlagDefinition = require('./FeatureFlagDefinition');
+const Gallery = require('./Gallery');
+const PlacementDefinition = require('./PlacementDefinition');
+const PlacementEvent = require('./PlacementEvent');
+const Menu = require('./Menu');
+const Role = require('./Role');
 
 module.exports = {
   Tenant,
@@ -36,14 +47,25 @@ module.exports = {
   Tag,
   Navigation,
   Media,
+  Category,
   FormDefinition,
   FormResponse,
+  FormVersion,
   Event,
   DailyAgg,
   ApiToken,
   Product,
-  CollectionDef,
-  CollectionItem,
+  CollectionType,
+  CollectionEntry,
   Template,
+  Content,
+  ContentVersion,
+  TenantSettings,
+  FeatureFlagDefinition,
+  Gallery,
+  PlacementDefinition,
+  PlacementEvent,
+  Menu,
+  Role,
   mongoose
 };

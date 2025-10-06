@@ -1,0 +1,99 @@
+.floating-text-format-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate3d(-10000px, -10000px, 0);
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: #0f172a;
+  box-shadow: 0 10px 40px rgba(15, 15, 54, 0.25);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  color: #f8fafc;
+  z-index: 9999;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.floating-text-format-toolbar__button {
+  position: relative;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.floating-text-format-toolbar__button::before {
+  content: '';
+  display: block;
+  width: 17px;
+  height: 17px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 17px 17px;
+  filter: invert(94%) sepia(12%) saturate(98%) hue-rotate(180deg) brightness(102%);
+  transition: filter 0.12s ease;
+}
+
+.floating-text-format-toolbar__button:hover,
+.floating-text-format-toolbar__button:focus-visible {
+  background: rgba(148, 163, 184, 0.2);
+  outline: none;
+}
+
+.floating-text-format-toolbar__button:hover::before,
+.floating-text-format-toolbar__button:focus-visible::before {
+  filter: invert(98%) sepia(21%) saturate(332%) hue-rotate(175deg) brightness(105%);
+}
+
+.floating-text-format-toolbar__button.is-active {
+  background: rgba(96, 165, 250, 0.3);
+  color: #bfdbfe;
+}
+
+.floating-text-format-toolbar__button.is-active::before {
+  filter: invert(86%) sepia(57%) saturate(624%) hue-rotate(188deg) brightness(108%);
+}
+
+.floating-text-format-toolbar__divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(148, 163, 184, 0.3);
+}
+
+.floating-text-format-toolbar__button[aria-label='Kalın']::before {
+  background-image: url('../assets/icons/type-bold.svg');
+}
+
+.floating-text-format-toolbar__button[aria-label='İtalik']::before {
+  background-image: url('../assets/icons/type-italic.svg');
+}
+
+.floating-text-format-toolbar__button[aria-label='Altı Çizili']::before {
+  background-image: url('../assets/icons/type-underline.svg');
+}
+
+.floating-text-format-toolbar__button[aria-label='Üzeri Çizili']::before {
+  background-image: url('../assets/icons/type-strikethrough.svg');
+}
+
+.floating-text-format-toolbar__button[aria-label='Kod']::before {
+  background-image: url('../assets/icons/code.svg');
+}
+
+.floating-text-format-toolbar__button[aria-label='Bağlantı ekle']::before,
+.floating-text-format-toolbar__button[aria-label='Bağlantıyı kaldır']::before {
+  background-image: url('../assets/icons/link.svg');
+}

@@ -7,25 +7,20 @@
   "type": "commonjs",
   "scripts": {
     "build": "echo \"Common package built - models ready\"",
-    "test": "vitest run --dir src",
-    "test:watch": "vitest --dir src",
-    "lint": "eslint . --ext .js,.ts",
-    "lint:fix": "eslint . --ext .js,.ts --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "test": "node ../../scripts/run-tool.mjs vitest run --dir src",
+    "test:watch": "node ../../scripts/run-tool.mjs vitest --dir src",
+    "lint": "node ../../scripts/run-tool.mjs eslint . --ext .js,.ts",
+    "lint:fix": "node ../../scripts/run-tool.mjs eslint . --ext .js,.ts --fix",
+    "format": "node ../../scripts/run-tool.mjs prettier --write .",
+    "format:check": "node ../../scripts/run-tool.mjs prettier --check .",
     "clean": "rm -rf dist .turbo",
     "type-check": "echo \"No TypeScript in common yet\"",
     "models:validate": "node -e \"require('./src/models'); console.log('All models loaded successfully')\"",
     "db:indexes": "node -e \"require('./src/database').createIndexes().then(() => console.log('Indexes created'))\""
   },
   "dependencies": {
-    "mongoose": "^7.5.0",
-    "bcryptjs": "^2.4.3"
-  },
-  "devDependencies": {
-    "eslint": "^8.49.0",
-    "eslint-config-prettier": "^9.0.0",
-    "prettier": "^3.1.0",
-    "vitest": "^0.34.4"
+    "bcryptjs": "^2.4.3",
+    "micromatch": "^4.0.8",
+    "mongoose": "^7.5.0"
   }
 }

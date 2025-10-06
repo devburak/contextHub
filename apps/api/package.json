@@ -9,30 +9,34 @@
     "dev:watch": "nodemon src/server.js",
     "start": "node src/server.js",
     "build": "echo \"API build completed - production ready\"",
-    "test": "vitest run --dir src",
-    "test:watch": "vitest --dir src",
-    "lint": "eslint . --ext .js,.ts",
-    "lint:fix": "eslint . --ext .js,.ts --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "test": "node ../../scripts/run-tool.mjs vitest run --dir src",
+    "test:watch": "node ../../scripts/run-tool.mjs vitest --dir src",
+    "lint": "node ../../scripts/run-tool.mjs eslint . --ext .js,.ts",
+    "lint:fix": "node ../../scripts/run-tool.mjs eslint . --ext .js,.ts --fix",
+    "format": "node ../../scripts/run-tool.mjs prettier --write .",
+    "format:check": "node ../../scripts/run-tool.mjs prettier --check .",
     "clean": "rm -rf dist .turbo",
     "type-check": "echo \"No TypeScript in API yet\"",
     "db:seed": "node scripts/seed.js",
     "db:migrate": "node scripts/migrate.js"
   },
   "dependencies": {
-    "fastify": "^4.22.2",
+    "@aws-sdk/client-s3": "^3.515.0",
+    "@aws-sdk/s3-request-presigner": "^3.515.0",
+    "@contexthub/common": "workspace:*",
+    "@fastify/cors": "^8.5.0",
     "@fastify/jwt": "^7.2.0",
+    "bcryptjs": "^2.4.3",
     "dotenv": "^16.3.1",
+    "fastify": "^4.22.2",
     "fastify-plugin": "^4.5.1",
-    "@contexthub/common": "workspace:*"
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.7",
+    "sharp": "^0.33.2",
+    "uuid": "^13.0.0",
+    "zod": "^4.1.11"
   },
   "devDependencies": {
-    "eslint": "^8.49.0",
-    "eslint-config-prettier": "^9.0.0",
-    "eslint-plugin-node": "^11.1.0",
-    "prettier": "^3.1.0",
-    "vitest": "^0.34.4",
     "nodemon": "^3.0.1"
   }
 }

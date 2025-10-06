@@ -4,6 +4,8 @@ const { Schema } = mongoose;
 const tenantSchema = new Schema({
   name: { type: String, required: true },
   slug: { type: String, required: true, unique: true },
+  plan: { type: String, default: 'free' },
+  status: { type: String, default: 'active', enum: ['active', 'inactive', 'suspended'] },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },

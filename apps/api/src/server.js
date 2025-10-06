@@ -1,9 +1,11 @@
 const fastify = require('fastify');
 const fp = require('fastify-plugin');
 const jwt = require('@fastify/jwt');
+const cors = require('@fastify/cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const { database } = require('@contexthub/common');
+const roleService = require('./services/roleService');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -36,27 +38,42 @@ async function buildServer() {
   const app = fastify({ logger: true });
 
   // Register plugins
+  const allowedOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
+  await app.register(cors, {
+    origin: allowedOrigins.length ? allowedOrigins : true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+    credentials: true
+  });
   await app.register(jwtPlugin);
+
+  // Register routes with /api prefix
+  await app.register(require('./routes/auth'), { prefix: '/api' });
+  await app.register(require('./routes/users'), { prefix: '/api' });
+  await app.register(require('./routes/tenants'), { prefix: '/api' });
+  await app.register(require('./routes/tenantSettings'), { prefix: '/api' });
+  await app.register(require('./routes/media'), { prefix: '/api' });
+  await app.register(require('./routes/categories'), { prefix: '/api' });
+  await app.register(require('./routes/tags'), { prefix: '/api' });
+  await app.register(require('./routes/contents'), { prefix: '/api' });
+  await app.register(require('./routes/forms'), { prefix: '/api' });
+  await app.register(require('./routes/featureFlags'), { prefix: '/api' });
+  await app.register(require('./routes/galleries'), { prefix: '/api' });
+  await app.register(require('./routes/collections'), { prefix: '/api' });
+  await app.register(require('./routes/mail'), { prefix: '/api' });
+  await app.register(require('./routes/placements'), { prefix: '/api' });
+  await app.register(require('./routes/menus'), { prefix: '/api' });
+  await app.register(require('./routes/roles'), { prefix: '/api' });
+  await app.register(require('./routes/publicCollections'), { prefix: '/api' });
+  await app.register(require('./routes/dashboard'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {
     return { status: 'ok', timestamp: Date.now() };
-  });
-
-  // Example protected route
-  app.get('/protected', { preHandler: [app.authenticate] }, async (request) => {
-    return { message: `Hello ${request.user?.sub || 'anonymous'}` };
-  });
-
-  // Example login route (stub).  In later phases this will validate against stored users.
-  app.post('/login', async (request, reply) => {
-    const { username } = request.body || {};
-    if (!username) {
-      return reply.code(400).send({ message: 'Username required' });
-    }
-    // Issue a token with a very simple payload.  Expiration and roles should be added later.
-    const token = app.jwt.sign({ sub: username, role: ROLES.ADMIN }, { expiresIn: '1h' });
-    return { token };
   });
 
   return app;
@@ -64,13 +81,16 @@ async function buildServer() {
 
 // Start the server if this file is run directly.  This allows `pnpm dev:api` to run the service.
 async function start() {
-  // Connect to MongoDB first
+  // Connect to MongoDB before starting the server
   await database.connectDB();
+  await roleService.ensureSystemRoles();
   
   const app = await buildServer();
   const port = process.env.PORT || 3000;
   try {
+    console.log(`Starting server on port ${port}...`);
     await app.listen({ port: Number(port), host: '0.0.0.0' });
+    console.log(`Server listening on port ${port}`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
