@@ -1,10 +1,11 @@
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useMemo } from 'react'
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeftIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { userAPI } from '../../lib/userAPI.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
+import { roleAPI } from '../../lib/roleAPI.js'
 
 export default function CreateUser() {
   const navigate = useNavigate()
@@ -21,6 +22,42 @@ export default function CreateUser() {
     role: 'viewer',
     status: 'active'
   })
+
+  const { data: rolesResponse, isLoading: rolesLoading, error: rolesError } = useQuery({
+    queryKey: ['roles'],
+    queryFn: roleAPI.getRoles,
+  })
+
+  const availableRoles = useMemo(() => {
+    if (!rolesResponse?.roles || !Array.isArray(rolesResponse.roles)) {
+      return []
+    }
+
+    return rolesResponse.roles
+      .map((role) => ({
+        id: role.id || role._id || role.key,
+        key: role.key,
+        name: role.name || role.key,
+      }))
+      .filter((role) => role.key)
+  }, [rolesResponse])
+
+  useEffect(() => {
+    if (availableRoles.length === 0) {
+      return
+    }
+
+    setFormData((prev) => {
+      if (prev.role && availableRoles.some((role) => role.key === prev.role)) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        role: availableRoles[0]?.key || prev.role,
+      }
+    })
+  }, [availableRoles])
 
   const createUserMutation = useMutation({
     mutationFn: userAPI.createUser,
@@ -212,11 +249,27 @@ export default function CreateUser() {
                 value={formData.role}
                 onChange={handleChange}
                 className="input"
+                disabled={rolesLoading}
               >
-                <option value="viewer">Görüntüleyici</option>
-                <option value="editor">Editör</option>
-                <option value="admin">Yönetici</option>
+                {availableRoles.length > 0 ? (
+                  availableRoles.map((role) => (
+                    <option key={role.id || role.key} value={role.key}>
+                      {role.name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="viewer">Görüntüleyici</option>
+                    <option value="editor">Editör</option>
+                    <option value="admin">Yönetici</option>
+                  </>
+                )}
               </select>
+              {rolesError && (
+                <p className="mt-1 text-sm text-red-600">
+                  Roller yüklenemedi. Lütfen sayfayı yenileyin.
+                </p>
+              )}
             </div>
 
             <div>
