@@ -3,14 +3,16 @@ const { CollectionType } = require('@contexthub/common');
 
 const FIELD_TYPES = CollectionType.FIELD_TYPES;
 
-const localizedMapSchema = z.record(z.string()).superRefine((value, ctx) => {
-  if (!value || Object.keys(value).length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'At least one locale value is required'
-    });
-  }
-});
+const localizedMapSchema = z
+  .record(z.string(), z.string())
+  .superRefine((value, ctx) => {
+    if (!value || Object.keys(value).length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At least one locale value is required'
+      });
+    }
+  });
 
 const fieldOptionSchema = z.object({
   value: z.string().min(1, 'Option value is required'),
@@ -80,7 +82,7 @@ const relationRefSchema = z.object({
 const entryPayloadSchema = z.object({
   slug: z.string().max(150).optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
-  data: z.record(z.any()).default({}),
+  data: z.record(z.string(), z.any()).default({}),
   relations: z.object({
     contents: z.array(z.string()).optional(),
     media: z.array(z.string()).optional(),
@@ -94,7 +96,9 @@ const entryListQuerySchema = z.object({
   status: z.enum(['draft', 'published', 'archived']).optional(),
   sort: z.string().optional(),
   q: z.string().optional(),
-  filter: z.record(z.union([z.string(), z.number(), z.boolean()])).optional()
+  filter: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .optional()
 });
 
 const queryOperatorSchema = z.enum(['=', '!=', 'IN', 'NIN', '>', '>=', '<', '<=', 'LIKE']);

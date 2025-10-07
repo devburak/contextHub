@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
@@ -37,6 +37,7 @@ export default function MediaPickerModal({
   showUpload = true,
 }) {
   const queryClient = useQueryClient()
+  const searchInputRef = useRef(null)
   const [search, setSearch] = useState(initialSearch)
   const [page, setPage] = useState(1)
   const [isUploading, setIsUploading] = useState(false)
@@ -143,7 +144,11 @@ export default function MediaPickerModal({
   )
 
   const handleSelect = useCallback(
-    (item) => {
+    (item, event) => {
+      if (event) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
       if (onSelect) {
         onSelect(item)
       }
@@ -157,7 +162,12 @@ export default function MediaPickerModal({
 
   return (
     <Transition.Root show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
+      <Dialog
+        as="div"
+        className="relative z-50"
+        onClose={onClose}
+        initialFocus={searchInputRef}
+      >
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
@@ -208,6 +218,7 @@ export default function MediaPickerModal({
                         Ara
                       </label>
                       <input
+                        ref={searchInputRef}
                         id="media-picker-search"
                         type="search"
                         value={search}
@@ -271,7 +282,7 @@ export default function MediaPickerModal({
                             <button
                               key={item._id}
                               type="button"
-                              onClick={() => handleSelect(item)}
+                              onClick={(event) => handleSelect(item, event)}
                               className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-left shadow-sm transition hover:border-blue-300 hover:shadow"
                             >
                               <div className="relative aspect-video bg-gray-100">
