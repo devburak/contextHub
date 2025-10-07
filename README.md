@@ -58,6 +58,38 @@ pnpm dev:api
 
 The API will start at [http://localhost:3000](http://localhost:3000) with a `/health` endpoint.  Environment variables can be set via a `.env` file at the root of the repository (see `.env.example` when available).
 
+### Deployment
+
+#### Admin Panel Deployment
+
+To deploy the admin panel to a production server:
+
+```bash
+# Build and deploy in one command
+pnpm deploy
+
+# Or separately:
+pnpm build:admin
+pnpm deploy:admin
+```
+
+Deploy configuration is managed via environment variables in `.env`:
+
+```env
+adminUser=your_ssh_user
+adminPassword=your_ssh_password
+adminDeployPath=/path/to/deployment/directory
+adminDeployServer=your.server.com
+```
+
+The deploy script will:
+- Connect to the server via SSH
+- Backup existing files
+- Upload the production build
+- Set correct file permissions
+
+For more details, see [DEPLOY.md](./DEPLOY.md) or [DEPLOY-QUICK.md](./DEPLOY-QUICK.md).
+
 ### Contributing
 
 The project uses conventional commits and enforces code style via ESLint and Prettier.  Tests should be written using `vitest`.  Pull requests must include unit tests and updates to documentation when relevant.
@@ -65,3 +97,4 @@ The project uses conventional commits and enforces code style via ESLint and Pre
 ### License
 
 This project is released under the MIT license.
+
