@@ -156,7 +156,11 @@ export function CollectionEntryModal({
   const contentIds = ensureArray(relations?.contents)?.map((item) => `${item}`) || [];
 
   const handleMediaSelect = useCallback(
-    (mediaItem) => {
+    (mediaItem, event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       const mediaId = mediaItem?._id || mediaItem?.id;
       if (!mediaId) return;
       applyRelationsUpdate((next) => {
@@ -167,7 +171,9 @@ export function CollectionEntryModal({
         next.media = [...current, `${mediaId}`];
         return next;
       });
-      setMediaPickerOpen(false);
+      setTimeout(() => {
+        setMediaPickerOpen(false);
+      }, 0);
     },
     [applyRelationsUpdate]
   );
@@ -189,7 +195,11 @@ export function CollectionEntryModal({
   );
 
   const handleContentSelect = useCallback(
-    (contentItem) => {
+    (contentItem, event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       const contentId = contentItem?._id || contentItem?.id;
       if (!contentId) return;
       applyRelationsUpdate((next) => {
@@ -200,7 +210,9 @@ export function CollectionEntryModal({
         next.contents = [...current, `${contentId}`];
         return next;
       });
-      setContentPickerOpen(false);
+      setTimeout(() => {
+        setContentPickerOpen(false);
+      }, 0);
     },
     [applyRelationsUpdate]
   );
@@ -240,25 +252,46 @@ export function CollectionEntryModal({
     }
   };
 
-  const handleSubmit = (event) => {
+      const handleSubmit = (event) => {
     event.preventDefault();
 
     try {
       let relationsPayload;
-      if (relationsText && relationsText.trim()) {
+      const hasRelationsText = relationsText && relationsText.trim();
+      const hasRelationsState = relations && typeof relations === 'object' && Object.keys(relations).length;
+      
+      if (hasRelationsText) {
         try {
-          relationsPayload = sanitizeRelations(parseRelationsText(relationsText));
-          setRelations(relationsPayload);
+          const parsed = sanitizeRelations(parseRelationsText(relationsText));
+          setRelations(parsed);
           setRelationsParseError(null);
+          // Backend'e her zaman tüm ilişki alanlarını gönder
+          relationsPayload = {
+            contents: parsed.contents || [],
+            media: parsed.media || [],
+            refs: parsed.refs || []
+          };
         } catch (parseError) {
           setRelationsParseError(parseError.message);
           throw parseError;
         }
-      } else if (relations && typeof relations === 'object' && Object.keys(relations).length) {
-        relationsPayload = sanitizeRelations(relations);
-        setRelationsText(formatRelationsText(relationsPayload));
+      } else if (hasRelationsState) {
+        const sanitized = sanitizeRelations(relations);
+        setRelationsText(formatRelationsText(sanitized));
         setRelationsParseError(null);
+        // Backend'e her zaman tüm ilişki alanlarını gönder
+        relationsPayload = {
+          contents: sanitized.contents || [],
+          media: sanitized.media || [],
+          refs: sanitized.refs || []
+        };
       } else {
+        // İlişkiler tamamen boş - tüm alanları boş array olarak gönder
+        relationsPayload = {
+          contents: [],
+          media: [],
+          refs: []
+        };
         setRelationsParseError(null);
       }
 
@@ -318,7 +351,8 @@ export function CollectionEntryModal({
         data: payloadData,
         status,
         slug: slug || undefined,
-        relations: relationsPayload && Object.keys(relationsPayload).length ? relationsPayload : undefined
+        // İlişkileri her zaman gönder - boş olsa bile
+        relations: relationsPayload
       };
 
       setError(null);
@@ -475,7 +509,7 @@ export function CollectionEntryModal({
         <Dialog
           as="div"
           className="relative z-50"
-          onClose={isSubmitting ? () => {} : onClose}
+          onClose={(isSubmitting || isMediaPickerOpen || isContentPickerOpen) ? () => {} : onClose}
           initialFocus={initialFocusRef}
         >
         <Transition.Child

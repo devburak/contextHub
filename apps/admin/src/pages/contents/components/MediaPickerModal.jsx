@@ -150,7 +150,7 @@ export default function MediaPickerModal({
         event.stopPropagation()
       }
       if (onSelect) {
-        onSelect(item)
+        onSelect(item, event)
       }
     },
     [onSelect]
@@ -164,7 +164,7 @@ export default function MediaPickerModal({
     <Transition.Root show={isOpen} as={Fragment}>
       <Dialog
         as="div"
-        className="relative z-50"
+        className="relative z-[70]"
         onClose={onClose}
         initialFocus={searchInputRef}
       >

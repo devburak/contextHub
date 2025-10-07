@@ -84,7 +84,7 @@ export default function ContentPickerModal({
       event.stopPropagation();
     }
     if (onSelect) {
-      onSelect(item);
+      onSelect(item, event);
     }
   };
 
@@ -101,7 +101,7 @@ export default function ContentPickerModal({
     <Transition.Root show={isOpen} as={Fragment}>
       <Dialog
         as="div"
-        className="relative z-[60]"
+        className="relative z-[70]"
         onClose={onClose}
         initialFocus={searchInputRef}
       >
