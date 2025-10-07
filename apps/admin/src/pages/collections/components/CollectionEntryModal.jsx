@@ -1,6 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, TrashIcon } from '@heroicons/react/24/outline';
+import MediaPickerModal from '../../contents/components/MediaPickerModal.jsx';
+import ContentPickerModal from '../../contents/components/ContentPickerModal.jsx';
 
 const STATUS_OPTIONS = [
   { value: 'draft', label: 'Taslak' },
@@ -38,6 +40,61 @@ const ensureArray = (value) => {
   return [value];
 };
 
+const sanitizeRelations = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const cleaned = {};
+
+  for (const [key, val] of Object.entries(value)) {
+    if (Array.isArray(val)) {
+      if (val.length) {
+        cleaned[key] = val;
+      }
+      continue;
+    }
+
+    if (val && typeof val === 'object') {
+      const nested = sanitizeRelations(val);
+      if (Object.keys(nested).length) {
+        cleaned[key] = nested;
+      }
+      continue;
+    }
+
+    if (val !== undefined && val !== null && val !== '') {
+      cleaned[key] = val;
+    }
+  }
+
+  return cleaned;
+};
+
+const formatRelationsText = (relations) => {
+  const normalized = sanitizeRelations(relations);
+  return Object.keys(normalized).length ? JSON.stringify(normalized, null, 2) : '';
+};
+
+const parseRelationsText = (text) => {
+  if (!text || !text.trim()) {
+    return {};
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error('İlişkiler alanında geçerli bir JSON kullanmalısın.');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('İlişkiler alanı bir JSON nesnesi olmalıdır.');
+  }
+
+  return parsed;
+};
+
 function getFieldLabel(field) {
   return field.label?.tr || field.label?.en || field.key;
 }
@@ -51,19 +108,31 @@ export function CollectionEntryModal({
   isSubmitting = false
 }) {
   const initialData = useMemo(() => entry?.data || {}, [entry]);
+  const initialRelations = useMemo(() => entry?.relations || {}, [entry]);
   const [data, setData] = useState(initialData);
   const [status, setStatus] = useState(entry?.status || 'draft');
   const [slug, setSlug] = useState(entry?.slug || '');
-  const [relationsText, setRelationsText] = useState(() => (entry?.relations ? JSON.stringify(entry.relations, null, 2) : ''));
+  const [relations, setRelations] = useState(initialRelations);
+  const [relationsText, setRelationsText] = useState(() => formatRelationsText(initialRelations));
+  const [relationsParseError, setRelationsParseError] = useState(null);
+  const [isMediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [isContentPickerOpen, setContentPickerOpen] = useState(false);
   const [error, setError] = useState(null);
+  const initialFocusRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
       setData(initialData);
       setStatus(entry?.status || 'draft');
       setSlug(entry?.slug || '');
-      setRelationsText(entry?.relations ? JSON.stringify(entry.relations, null, 2) : '');
+      const nextRelations = entry?.relations || {};
+      setRelations(nextRelations);
+      setRelationsText(formatRelationsText(nextRelations));
+      setRelationsParseError(null);
       setError(null);
+    } else {
+      setMediaPickerOpen(false);
+      setContentPickerOpen(false);
     }
   }, [isOpen, initialData, entry]);
 
@@ -71,13 +140,159 @@ export function CollectionEntryModal({
     setData((prev) => ({ ...prev, [fieldKey]: value }));
   };
 
-  const handleSubmit = (event) => {
+  const applyRelationsUpdate = useCallback((updater) => {
+    setRelations((prev) => {
+      const base = prev && typeof prev === 'object' && !Array.isArray(prev) ? { ...prev } : {};
+      const nextRaw = updater(base);
+      const next = sanitizeRelations(nextRaw);
+      const formatted = formatRelationsText(next);
+      setRelationsText(formatted);
+      setRelationsParseError(null);
+      return next;
+    });
+  }, []);
+
+  const mediaIds = ensureArray(relations?.media)?.map((item) => `${item}`) || [];
+  const contentIds = ensureArray(relations?.contents)?.map((item) => `${item}`) || [];
+
+  const handleMediaSelect = useCallback(
+    (mediaItem, event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      const mediaId = mediaItem?._id || mediaItem?.id;
+      if (!mediaId) return;
+      applyRelationsUpdate((next) => {
+        const current = ensureArray(next.media)?.map((item) => `${item}`) || [];
+        if (current.includes(`${mediaId}`)) {
+          return next;
+        }
+        next.media = [...current, `${mediaId}`];
+        return next;
+      });
+      setTimeout(() => {
+        setMediaPickerOpen(false);
+      }, 0);
+    },
+    [applyRelationsUpdate]
+  );
+
+  const handleRemoveMedia = useCallback(
+    (mediaId) => {
+      applyRelationsUpdate((next) => {
+        const current = ensureArray(next.media)?.map((item) => `${item}`) || [];
+        const filtered = current.filter((item) => item !== `${mediaId}`);
+        if (filtered.length) {
+          next.media = filtered;
+        } else {
+          delete next.media;
+        }
+        return next;
+      });
+    },
+    [applyRelationsUpdate]
+  );
+
+  const handleContentSelect = useCallback(
+    (contentItem, event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      const contentId = contentItem?._id || contentItem?.id;
+      if (!contentId) return;
+      applyRelationsUpdate((next) => {
+        const current = ensureArray(next.contents)?.map((item) => `${item}`) || [];
+        if (current.includes(`${contentId}`)) {
+          return next;
+        }
+        next.contents = [...current, `${contentId}`];
+        return next;
+      });
+      setTimeout(() => {
+        setContentPickerOpen(false);
+      }, 0);
+    },
+    [applyRelationsUpdate]
+  );
+
+  const handleRemoveContent = useCallback(
+    (contentId) => {
+      applyRelationsUpdate((next) => {
+        const current = ensureArray(next.contents)?.map((item) => `${item}`) || [];
+        const filtered = current.filter((item) => item !== `${contentId}`);
+        if (filtered.length) {
+          next.contents = filtered;
+        } else {
+          delete next.contents;
+        }
+        return next;
+      });
+    },
+    [applyRelationsUpdate]
+  );
+
+  const handleRelationsTextChange = (event) => {
+    setRelationsText(event.target.value);
+    if (relationsParseError) {
+      setRelationsParseError(null);
+    }
+  };
+
+  const handleRelationsTextBlur = () => {
+    try {
+      const parsed = parseRelationsText(relationsText);
+      const normalized = sanitizeRelations(parsed);
+      setRelations(normalized);
+      setRelationsText(formatRelationsText(normalized));
+      setRelationsParseError(null);
+    } catch (parseError) {
+      setRelationsParseError(parseError.message);
+    }
+  };
+
+      const handleSubmit = (event) => {
     event.preventDefault();
 
     try {
-      let relations;
-      if (relationsText && relationsText.trim()) {
-        relations = JSON.parse(relationsText);
+      let relationsPayload;
+      const hasRelationsText = relationsText && relationsText.trim();
+      const hasRelationsState = relations && typeof relations === 'object' && Object.keys(relations).length;
+      
+      if (hasRelationsText) {
+        try {
+          const parsed = sanitizeRelations(parseRelationsText(relationsText));
+          setRelations(parsed);
+          setRelationsParseError(null);
+          // Backend'e her zaman tüm ilişki alanlarını gönder
+          relationsPayload = {
+            contents: parsed.contents || [],
+            media: parsed.media || [],
+            refs: parsed.refs || []
+          };
+        } catch (parseError) {
+          setRelationsParseError(parseError.message);
+          throw parseError;
+        }
+      } else if (hasRelationsState) {
+        const sanitized = sanitizeRelations(relations);
+        setRelationsText(formatRelationsText(sanitized));
+        setRelationsParseError(null);
+        // Backend'e her zaman tüm ilişki alanlarını gönder
+        relationsPayload = {
+          contents: sanitized.contents || [],
+          media: sanitized.media || [],
+          refs: sanitized.refs || []
+        };
+      } else {
+        // İlişkiler tamamen boş - tüm alanları boş array olarak gönder
+        relationsPayload = {
+          contents: [],
+          media: [],
+          refs: []
+        };
+        setRelationsParseError(null);
       }
 
       const payloadData = {};
@@ -136,7 +351,8 @@ export function CollectionEntryModal({
         data: payloadData,
         status,
         slug: slug || undefined,
-        relations
+        // İlişkileri her zaman gönder - boş olsa bile
+        relations: relationsPayload
       };
 
       setError(null);
@@ -274,8 +490,28 @@ export function CollectionEntryModal({
   };
 
   return (
-    <Transition show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={isSubmitting ? () => {} : onClose}>
+    <>
+      <MediaPickerModal
+        isOpen={isMediaPickerOpen}
+        mode="any"
+        showUpload={false}
+        onClose={() => setMediaPickerOpen(false)}
+        onSelect={handleMediaSelect}
+      />
+      <ContentPickerModal
+        isOpen={isContentPickerOpen}
+        selectedIds={contentIds}
+        onClose={() => setContentPickerOpen(false)}
+        onSelect={handleContentSelect}
+      />
+
+      <Transition show={isOpen} as={Fragment}>
+        <Dialog
+          as="div"
+          className="relative z-50"
+          onClose={(isSubmitting || isMediaPickerOpen || isContentPickerOpen) ? () => {} : onClose}
+          initialFocus={initialFocusRef}
+        >
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-200"
@@ -324,6 +560,7 @@ export function CollectionEntryModal({
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Slug</label>
                       <input
+                        ref={initialFocusRef}
                         type="text"
                         value={slug}
                         onChange={(event) => setSlug(event.target.value)}
@@ -364,20 +601,108 @@ export function CollectionEntryModal({
                     ))}
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">İlişkiler (JSON)</label>
-                    <textarea
-                      rows={4}
-                      value={relationsText}
-                      onChange={(event) => setRelationsText(event.target.value)}
-                      placeholder={`{
-  "media": ["mediaId"]
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-900">Medya ilişkileri</h3>
+                          <p className="text-xs text-gray-500">Seçtiğin medya kimlikleri JSON alanına otomatik eklenir.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMediaPickerOpen(true)}
+                          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          Medya seç
+                        </button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {mediaIds.length ? (
+                          <ul className="space-y-2">
+                            {mediaIds.map((mediaId) => (
+                              <li
+                                key={mediaId}
+                                className="flex items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm"
+                              >
+                                <span className="font-mono text-xs text-gray-700">{mediaId}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveMedia(mediaId)}
+                                  className="inline-flex items-center rounded-md border border-transparent bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+                                >
+                                  <TrashIcon className="mr-1 h-4 w-4" />
+                                  Kaldır
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-gray-500">Henüz medya ilişkisi eklenmedi.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-900">İçerik ilişkileri</h3>
+                          <p className="text-xs text-gray-500">İçerik kayıtlarını seçerek JSON alanına ekleyebilirsin.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setContentPickerOpen(true)}
+                          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          İçerik seç
+                        </button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {contentIds.length ? (
+                          <ul className="space-y-2">
+                            {contentIds.map((contentId) => (
+                              <li
+                                key={contentId}
+                                className="flex items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm"
+                              >
+                                <span className="font-mono text-xs text-gray-700">{contentId}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveContent(contentId)}
+                                  className="inline-flex items-center rounded-md border border-transparent bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+                                >
+                                  <TrashIcon className="mr-1 h-4 w-4" />
+                                  Kaldır
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-gray-500">Henüz içerik ilişkisi eklenmedi.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">İlişkiler (JSON)</label>
+                      <textarea
+                        rows={4}
+                        value={relationsText}
+                        onChange={handleRelationsTextChange}
+                        onBlur={handleRelationsTextBlur}
+                        placeholder={`{
+  "media": ["mediaId"],
+  "contents": ["contentId"],
+  "refs": [{ "collectionKey": "diğer", "entryId": "kayitId" }]
 }`}
-                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      İsteğe bağlı olarak içerik, medya veya diğer koleksiyon kayıtlarını burada ilişkilendirebilirsiniz.
-                    </p>
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        UI üzerinden yaptığın seçimler bu alana yansır; dilersen farklı ilişkileri JSON olarak elle ekleyebilirsin.
+                      </p>
+                      {relationsParseError && (
+                        <p className="mt-1 text-xs font-medium text-red-600">{relationsParseError}</p>
+                      )}
+                    </div>
                   </div>
 
                   {error && (
@@ -412,7 +737,8 @@ export function CollectionEntryModal({
           </div>
         </div>
       </Dialog>
-    </Transition>
+      </Transition>
+    </>
   );
 }
 

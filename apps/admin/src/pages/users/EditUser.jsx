@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { userAPI } from '../../lib/userAPI.js'
+import { roleAPI } from '../../lib/roleAPI.js'
 
 export default function EditUser() {
   const { id } = useParams()
@@ -18,17 +19,52 @@ export default function EditUser() {
     role: 'viewer',
     status: 'active'
   })
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [initialRole, setInitialRole] = useState(null)
 
   // Kullanıcı bilgilerini getir
-  const { data: user, isLoading, error } = useQuery({
+  const { data: userResponse, isLoading, error } = useQuery({
     queryKey: ['user', id],
     queryFn: () => userAPI.getUser(id),
     enabled: !!id,
   })
 
+  const { data: rolesResponse, isLoading: rolesLoading, error: rolesError } = useQuery({
+    queryKey: ['roles'],
+    queryFn: roleAPI.getRoles,
+  })
+
+  const availableRoles = useMemo(() => {
+    if (!rolesResponse?.roles || !Array.isArray(rolesResponse.roles)) {
+      return []
+    }
+
+    return rolesResponse.roles
+      .map((role) => ({
+        id: role.id || role._id || role.key,
+        key: role.key,
+        name: role.name || role.key,
+      }))
+      .filter((role) => role.key)
+  }, [rolesResponse])
+
+  const user = useMemo(() => userResponse?.user ?? null, [userResponse])
+
   // Kullanıcı güncelleme
   const updateUserMutation = useMutation({
-    mutationFn: (userData) => userAPI.updateUser(id, userData),
+    mutationFn: async ({ profile, role }) => {
+      const updates = {}
+
+      if (profile && Object.keys(profile).length > 0) {
+        updates.profile = await userAPI.updateUser(id, profile)
+      }
+
+      if (role) {
+        updates.role = await userAPI.updateUserRole(id, role)
+      }
+
+      return updates
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['users'])
       queryClient.invalidateQueries(['user', id])
@@ -41,18 +77,25 @@ export default function EditUser() {
 
   // Form verilerini kullanıcı bilgileriyle doldur
   useEffect(() => {
-    if (user?.data) {
+    if (user && !isInitialized) {
       setFormData({
-        firstName: user.data.firstName || '',
-        lastName: user.data.lastName || '',
-        email: user.data.email || '',
-        username: user.data.username || '',
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        username: user.username || user.email?.split('@')[0] || '',
         password: '', // Şifre güvenlik için boş bırakılır
-        role: user.data.role || 'viewer',
-        status: user.data.status || 'active'
+        role: user.membership?.role || user.role || availableRoles[0]?.key || 'viewer',
+        status: user.status || user.membership?.status || 'active'
       })
+      setInitialRole(user.membership?.role || user.role || availableRoles[0]?.key || null)
+      setIsInitialized(true)
     }
-  }, [user])
+  }, [user, availableRoles, isInitialized])
+
+  useEffect(() => {
+    setIsInitialized(false)
+    setInitialRole(null)
+  }, [id])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -64,12 +107,46 @@ export default function EditUser() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    // Şifre boşsa güncelleme verisinden çıkar
-    const updateData = { ...formData }
-    if (!updateData.password) {
-      delete updateData.password
+    const profilePayload = {}
+
+    if (user) {
+      if (formData.firstName !== user.firstName) {
+        profilePayload.firstName = formData.firstName
+      }
+
+      if (formData.lastName !== user.lastName) {
+        profilePayload.lastName = formData.lastName
+      }
+
+      if (formData.email !== user.email) {
+        profilePayload.email = formData.email
+      }
+
+      if (formData.username !== user.username) {
+        profilePayload.username = formData.username
+      }
+
+      if (formData.status !== (user.status || user.membership?.status)) {
+        profilePayload.status = formData.status
+      }
+    } else {
+      profilePayload.firstName = formData.firstName
+      profilePayload.lastName = formData.lastName
+      profilePayload.email = formData.email
+      profilePayload.username = formData.username
+      profilePayload.status = formData.status
     }
-    updateUserMutation.mutate(updateData)
+
+    if (formData.password) {
+      profilePayload.password = formData.password
+    }
+
+    const roleChanged = formData.role && formData.role !== initialRole
+
+    updateUserMutation.mutate({
+      profile: profilePayload,
+      role: roleChanged ? formData.role : null,
+    })
   }
 
   if (isLoading) {
@@ -94,6 +171,20 @@ export default function EditUser() {
     )
   }
 
+  if (!isLoading && !user) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-gray-600 mb-4">Kullanıcı bulunamadı veya erişim izniniz yok.</div>
+        <button
+          onClick={() => navigate('/users')}
+          className="text-blue-600 hover:text-blue-500"
+        >
+          Kullanıcı listesine dön
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="md:flex md:items-center md:justify-between mb-8">
@@ -101,9 +192,11 @@ export default function EditUser() {
           <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
             Kullanıcı Düzenle
           </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            {user?.data.firstName} {user?.data.lastName} kullanıcısının bilgilerini düzenleyin
-          </p>
+          {user && (
+            <p className="mt-1 text-sm text-gray-500">
+              {user.firstName} {user.lastName} kullanıcısının bilgilerini düzenleyin
+            </p>
+          )}
         </div>
       </div>
 
@@ -120,7 +213,7 @@ export default function EditUser() {
                 name="firstName"
                 id="firstName"
                 required
-                className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                 value={formData.firstName}
                 onChange={handleChange}
               />
@@ -136,7 +229,7 @@ export default function EditUser() {
                 name="lastName"
                 id="lastName"
                 required
-                className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                 value={formData.lastName}
                 onChange={handleChange}
               />
@@ -152,7 +245,7 @@ export default function EditUser() {
                 name="email"
                 id="email"
                 required
-                className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                 value={formData.email}
                 onChange={handleChange}
               />
@@ -168,7 +261,7 @@ export default function EditUser() {
                 name="username"
                 id="username"
                 required
-                className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                 value={formData.username}
                 onChange={handleChange}
               />
@@ -186,7 +279,7 @@ export default function EditUser() {
                   name="password"
                   id="password"
                   placeholder="Yeni şifre (opsiyonel)"
-                  className="focus:ring-blue-500 focus:border-blue-500 block w-full pr-10 shadow-sm sm:text-sm border-gray-300 rounded-md"
+                  className="block w-full rounded-md border border-gray-300 px-3 py-2 pr-10 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                   value={formData.password}
                   onChange={handleChange}
                 />
@@ -212,14 +305,30 @@ export default function EditUser() {
               <select
                 id="role"
                 name="role"
-                className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                 value={formData.role}
                 onChange={handleChange}
+                disabled={rolesLoading}
               >
-                <option value="viewer">Görüntüleyici</option>
-                <option value="editor">Editör</option>
-                <option value="admin">Yönetici</option>
+                {availableRoles.length > 0 ? (
+                  availableRoles.map((role) => (
+                    <option key={role.id || role.key} value={role.key}>
+                      {role.name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="viewer">Görüntüleyici</option>
+                    <option value="editor">Editör</option>
+                    <option value="admin">Yönetici</option>
+                  </>
+                )}
               </select>
+              {rolesError && (
+                <p className="mt-1 text-sm text-red-600">
+                  Roller yüklenemedi. Lütfen sayfayı yenileyin.
+                </p>
+              )}
             </div>
 
             {/* Status */}
@@ -230,7 +339,7 @@ export default function EditUser() {
               <select
                 id="status"
                 name="status"
-                className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                 value={formData.status}
                 onChange={handleChange}
               >

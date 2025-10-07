@@ -69,7 +69,48 @@ export const userAPI = {
   // Tek kullanıcı getir
   getUser: async (id) => {
     const { data } = await apiClient.get(`/users/${id}`)
-    return data
+    if (!data?.user) {
+      return { user: null }
+    }
+
+    const rawUser = data.user
+    const rawMembership = rawUser.membership || null
+
+    const normalizedMembership = rawMembership
+      ? {
+          ...rawMembership,
+          id: rawMembership.id || rawMembership._id || null,
+          role: rawMembership.role || rawMembership.roleKey || rawUser.role || null,
+          status: rawMembership.status || rawUser.status || 'active',
+          roleMeta: rawMembership.roleMeta
+            ? {
+                ...rawMembership.roleMeta,
+                id: rawMembership.roleMeta.id
+                  || rawMembership.roleMeta._id
+                  || rawMembership.roleMeta.key
+                  || null,
+                key: rawMembership.roleMeta.key,
+                name: rawMembership.roleMeta.name
+                  || rawMembership.roleMeta.key
+                  || '',
+              }
+            : null,
+        }
+      : null
+
+    return {
+      user: {
+        ...rawUser,
+        id: rawUser.id || rawUser._id || '',
+        firstName: rawUser.firstName || '',
+        lastName: rawUser.lastName || '',
+        email: rawUser.email || '',
+        username: rawUser.username || rawUser.email?.split('@')[0] || '',
+        status: rawUser.status || normalizedMembership?.status || 'active',
+        role: rawUser.role || normalizedMembership?.role || 'viewer',
+        membership: normalizedMembership,
+      }
+    }
   },
 
   // Yeni kullanıcı oluştur
