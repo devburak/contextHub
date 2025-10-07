@@ -85,6 +85,32 @@ async function authenticate(request, reply) {
   }
 }
 
+// JWT Authentication without tenant check - for listing all user's tenants
+async function authenticateWithoutTenant(request, reply) {
+  try {
+    await request.jwtVerify();
+    
+    // Token'dan user bilgisini al
+    const userId = request.user.sub;
+
+    if (!userId) {
+      return reply.code(401).send({ error: 'Invalid token', message: 'User ID not found in token' });
+    }
+
+    // User'ı veritabanından getir
+    const user = await User.findOne({ _id: userId }).select('-password');
+    if (!user) {
+      return reply.code(401).send({ error: 'User not found', message: 'User does not exist' });
+    }
+
+    // Request'e user bilgisini ekle (tenant kontrolü yapma)
+    request.user = user;
+
+  } catch (err) {
+    return reply.code(401).send({ error: 'Authentication failed', message: err.message });
+  }
+}
+
 // Role-based authorization middleware
 function requireRole(allowedRoles) {
   return async function(request, reply) {
@@ -150,6 +176,7 @@ const requireAuthor = requireRole(['author', 'editor', 'admin', 'owner']);
 module.exports = {
   tenantContext,
   authenticate,
+  authenticateWithoutTenant,
   requireRole,
   requireOwner,
   requireAdmin,
