@@ -13,6 +13,8 @@
     "build": "turbo build",
     "build:api": "turbo build --filter=@contexthub/api",
     "build:admin": "turbo build --filter=@contexthub/admin",
+    "deploy": "pnpm build:admin && node scripts/deploy-admin.mjs",
+    "deploy:admin": "node scripts/deploy-admin.mjs",
     "test": "turbo test",
     "test:watch": "turbo test:watch",
     "lint": "turbo lint",
@@ -33,6 +35,8 @@
   },
   "devDependencies": {
     "turbo": "^2.5.6",
+    "dotenv": "^16.3.1",
+    "node-ssh": "^13.1.0",
     "eslint": "^8.49.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-node": "^11.1.0",

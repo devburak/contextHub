@@ -31,18 +31,18 @@ export default function ForgotPassword() {
           <div className="max-w-md w-full space-y-8">
             <div className="text-center">
               <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-                {t('forgot.check_email')}
+                E-postanızı kontrol edin
               </h2>
               <p className="mt-2 text-sm text-gray-600">
-                {t('forgot.email_sent')} <strong>{email}</strong>
+                Şifre sıfırlama bağlantısı <strong>{email}</strong> adresine gönderildi
               </p>
               <p className="mt-4 text-sm text-gray-600">
-                {t('forgot.no_email')}{' '}
+                E-posta almadınız mı?{' '}
                 <button
                   onClick={() => setIsSubmitted(false)}
                   className="font-medium text-blue-600 hover:text-blue-500"
                 >
-                  {t('forgot.try_again')}
+                  Tekrar deneyin
                 </button>
               </p>
               <div className="mt-6">
@@ -51,7 +51,7 @@ export default function ForgotPassword() {
                   className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
                 >
                   <ArrowLeftIcon className="h-4 w-4" />
-                  {t('forgot.back_to_login')}
+                  Giriş sayfasına dön
                 </Link>
               </div>
             </div>
@@ -68,17 +68,17 @@ export default function ForgotPassword() {
         <div className="max-w-md w-full space-y-8">
           <div>
             <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              {t('forgot.title')}
+              Şifrenizi mi unuttunuz?
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
-              {t('forgot.description')}
+              E-posta adresinizi girin, size şifre sıfırlama bağlantısı gönderelim
             </p>
           </div>
           
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="sr-only">
-                {t('auth.email')}
+                E-posta
               </label>
               <input
                 id="email"
@@ -87,7 +87,7 @@ export default function ForgotPassword() {
                 autoComplete="email"
                 required
                 className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder={t('auth.email')}
+                placeholder="E-posta"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -99,13 +99,13 @@ export default function ForgotPassword() {
                 disabled={forgotPasswordMutation.isPending}
                 className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {forgotPasswordMutation.isPending ? t('forgot.sending') : t('forgot.send_button')}
+                {forgotPasswordMutation.isPending ? 'Gönderiliyor...' : 'Şifre sıfırlama bağlantısı gönder'}
               </button>
             </div>
 
             {forgotPasswordMutation.isError && (
               <div className="text-red-600 text-sm text-center">
-                Failed to send reset email. Please try again.
+                Şifre sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin.
               </div>
             )}
 
@@ -115,7 +115,7 @@ export default function ForgotPassword() {
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeftIcon className="h-4 w-4" />
-                {t('forgot.back_to_login')}
+                Giriş sayfasına dön
               </Link>
             </div>
           </form>

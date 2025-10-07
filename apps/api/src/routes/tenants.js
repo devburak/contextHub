@@ -1,6 +1,6 @@
 const tenantService = require('../services/tenantService');
 const roleService = require('../services/roleService');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authenticateWithoutTenant } = require('../middleware/auth');
 
 async function tenantRoutes(fastify) {
 
@@ -111,7 +111,7 @@ async function tenantRoutes(fastify) {
   });
 
   fastify.get('/tenants', {
-    preHandler: [authenticate],
+    preHandler: [authenticateWithoutTenant],
     schema: {
       querystring: {
         type: 'object',
@@ -195,7 +195,7 @@ async function tenantRoutes(fastify) {
     }
   });
   fastify.post('/tenants/:id/accept', {
-    preHandler: [authenticate],
+    preHandler: [authenticateWithoutTenant],
     schema: {
       params: {
         type: 'object',

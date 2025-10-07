@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import Footer from '../../components/Footer';
+import { authAPI } from '../../lib/api';
 
 function SignUp() {
   const navigate = useNavigate();
@@ -99,28 +100,16 @@ function SignUp() {
     setErrors({});
 
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          password: formData.password,
-          tenantName: formData.organizationName,
-          tenantSlug: formData.subdomain
-        }),
+      const response = await authAPI.register({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+        tenantName: formData.organizationName,
+        tenantSlug: formData.subdomain
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Kayıt işlemi başarısız');
-      }
-
-      const data = await response.json();
-      console.log('Registration successful:', data);
+      console.log('Registration successful:', response.data);
       
       // Başarılı kayıt sonrası login sayfasına yönlendir
       navigate('/login', { 
@@ -131,8 +120,9 @@ function SignUp() {
 
     } catch (error) {
       console.error('Registration error:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Kayıt işlemi sırasında bir hata oluştu';
       setErrors({
-        submit: error.message || 'Kayıt işlemi sırasında bir hata oluştu'
+        submit: errorMessage
       });
     } finally {
       setIsLoading(false);
