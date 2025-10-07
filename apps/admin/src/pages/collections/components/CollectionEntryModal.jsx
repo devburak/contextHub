@@ -3,6 +3,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, TrashIcon } from '@heroicons/react/24/outline';
 import MediaPickerModal from '../../contents/components/MediaPickerModal.jsx';
 import ContentPickerModal from '../../contents/components/ContentPickerModal.jsx';
+import RefFieldAutocomplete from './RefFieldAutocomplete.jsx';
 
 const STATUS_OPTIONS = [
   { value: 'draft', label: 'Taslak' },
@@ -447,6 +448,15 @@ export function CollectionEntryModal({
           </select>
         );
       case 'ref':
+        return (
+          <RefFieldAutocomplete
+            refTarget={field.ref}
+            value={value}
+            onChange={(newValue) => handleFieldUpdate(field.key, newValue)}
+            multiple={field.settings?.multiple}
+            placeholder={`${field.ref || 'Hedef koleksiyon'} içinden seçim yapın`}
+          />
+        );
       case 'media':
         if (field.settings?.multiple) {
           const listValue = Array.isArray(value) ? value.join(', ') : value || '';

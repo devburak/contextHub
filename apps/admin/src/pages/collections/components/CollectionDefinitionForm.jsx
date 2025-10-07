@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import CollectionKeyAutocomplete from './CollectionKeyAutocomplete.jsx';
 
 const FIELD_TYPES = [
   { value: 'string', label: 'Metin' },
@@ -307,13 +308,14 @@ export function CollectionDefinitionForm({
 
       {field.type === 'ref' && (
         <div className="mt-4">
-          <label className="block text-sm font-medium text-gray-700">Hedef Koleksiyon (key)</label>
-          <input
-            type="text"
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Hedef Koleksiyon (key)
+          </label>
+          <CollectionKeyAutocomplete
             value={field.refTarget}
-            onChange={(event) => handleFieldChange(field.clientId, { refTarget: slugifyKey(event.target.value) })}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            placeholder="ornek: donem"
+            onChange={(newValue) => handleFieldChange(field.clientId, { refTarget: slugifyKey(newValue) })}
+            placeholder="Hedef koleksiyon seçin veya key girin"
+            excludeKey={key}
           />
         </div>
       )}

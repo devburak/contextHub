@@ -348,7 +348,26 @@ async function listEntries({ tenantId, collectionKey, query }) {
   }
 
   if (q) {
-    criteria['indexed.title'] = { $regex: q, $options: 'i' };
+    // indexed.title varsa onu kullan, yoksa tüm string/text field'larında ara
+    const stringFields = (collectionType.fields || [])
+      .filter(f => ['string', 'text'].includes(f.type))
+      .map(f => f.key);
+    
+    if (stringFields.length > 0) {
+      const searchConditions = [
+        { 'indexed.title': { $regex: q, $options: 'i' } }
+      ];
+      
+      // Her string field için de arama yap
+      stringFields.forEach(fieldKey => {
+        searchConditions.push({ [`data.${fieldKey}`]: { $regex: q, $options: 'i' } });
+      });
+      
+      criteria.$or = searchConditions;
+    } else {
+      // String field yoksa sadece indexed.title'da ara
+      criteria['indexed.title'] = { $regex: q, $options: 'i' };
+    }
   }
 
   if (filter && typeof filter === 'object') {
