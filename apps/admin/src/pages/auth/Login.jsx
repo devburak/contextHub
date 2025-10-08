@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
@@ -10,8 +10,20 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    // Check if there's a success message from navigation state
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message)
+      // Clear the message after 5 seconds
+      const timer = setTimeout(() => setSuccessMessage(''), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [location.state])
 
   const loginMutation = useMutation({
     mutationFn: () => authAPI.login(email, password),
@@ -44,6 +56,22 @@ export default function Login() {
               ContextHub'a Giriş Yapın
             </h2>
           </div>
+
+          {successMessage && (
+            <div className="rounded-md bg-green-50 p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">{successMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
               <div>

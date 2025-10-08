@@ -165,5 +165,26 @@ export const userAPI = {
   updateProfile: async (profileData) => {
     const { data } = await apiClient.put('/users/me', profileData)
     return data
+  },
+
+  // Hesabı kalıcı olarak sil
+  deleteAccount: async () => {
+    const { data } = await apiClient.delete('/users/me')
+    return data
+  },
+
+  // Varlık üyeliğinden ayrıl
+  leaveMembership: async (membershipId, { password }) => {
+    const { data } = await apiClient.post(`/memberships/${membershipId}/leave`, { password })
+    return data
+  },
+
+  // Sahiplik devri talebi gönder
+  requestOwnershipTransfer: async (tenantId, { email, password }) => {
+    const { data } = await apiClient.post(`/tenants/${tenantId}/transfer-ownership`, { 
+      email, 
+      password 
+    })
+    return data
   }
 }

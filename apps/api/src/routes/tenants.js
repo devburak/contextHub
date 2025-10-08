@@ -302,6 +302,92 @@ async function tenantRoutes(fastify) {
       return reply.code(status).send({ error: 'TenantInvitationAcceptFailed', message: error.message });
     }
   });
+
+  // POST /tenants/:id/transfer-ownership - Sahiplik devri talebi
+  fastify.post('/tenants/:id/transfer-ownership', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' }
+        },
+        required: ['id']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' },
+          password: { type: 'string', minLength: 1 }
+        },
+        required: ['email', 'password']
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const tenantId = request.params.id;
+      const { email, password } = request.body;
+      
+      const result = await tenantService.requestOwnershipTransfer(
+        tenantId,
+        request.user._id,
+        email,
+        password
+      );
+
+      return reply.send({
+        message: 'Ownership transfer request sent successfully',
+        transfer: result
+      });
+    } catch (error) {
+      return reply.code(400).send({ 
+        error: 'OwnershipTransferFailed', 
+        message: error.message 
+      });
+    }
+  });
+
+  // POST /tenants/:id/accept-transfer - Sahiplik devri kabul
+  fastify.post('/tenants/:id/accept-transfer', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' }
+        },
+        required: ['id']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          token: { type: 'string', minLength: 1 }
+        },
+        required: ['token']
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const tenantId = request.params.id;
+      const { token } = request.body;
+      
+      const result = await tenantService.acceptOwnershipTransfer(
+        tenantId,
+        request.user._id,
+        token
+      );
+
+      return reply.send({
+        message: 'Ownership transfer accepted successfully',
+        membership: result
+      });
+    } catch (error) {
+      return reply.code(400).send({ 
+        error: 'OwnershipTransferAcceptFailed', 
+        message: error.message 
+      });
+    }
+  });
 }
 
 module.exports = tenantRoutes;

@@ -134,7 +134,7 @@ async function authRoutes(fastify, options) {
     }
   });
 
-  // POST /auth/register - Kayıt ol (yeni tenant ile)
+  // POST /auth/register - Kayıt ol (tenant opsiyonel)
   fastify.post('/auth/register', {
     schema: {
       body: {
@@ -147,7 +147,7 @@ async function authRoutes(fastify, options) {
           tenantName: { type: 'string', minLength: 1 },
           tenantSlug: { type: 'string', minLength: 1 }
         },
-        required: ['email', 'password', 'firstName', 'lastName', 'tenantName']
+        required: ['email', 'password', 'firstName', 'lastName']
       },
       response: {
         201: {
@@ -164,6 +164,7 @@ async function authRoutes(fastify, options) {
             },
             tenant: {
               type: 'object',
+              nullable: true,
               properties: {
                 id: { type: 'string' },
                 name: { type: 'string' },
@@ -293,6 +294,78 @@ async function authRoutes(fastify, options) {
   }, async function(request, reply) {
     // Gelecekte token blacklist'e eklenebilir
     return reply.send({ message: 'Logged out successfully' });
+  });
+
+  // POST /auth/forgot-password - Şifre sıfırlama talebi
+  fastify.post('/auth/forgot-password', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' }
+        },
+        required: ['email']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const { email } = request.body;
+      await authService.forgotPassword(email);
+      
+      return reply.send({ 
+        message: 'Password reset email sent successfully' 
+      });
+    } catch (error) {
+      // Güvenlik için her zaman başarılı mesajı dön
+      // (E-posta var mı yok mu belli olmasın)
+      return reply.send({ 
+        message: 'Password reset email sent successfully' 
+      });
+    }
+  });
+
+  // POST /auth/reset-password - Şifre sıfırlama
+  fastify.post('/auth/reset-password', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          token: { type: 'string', minLength: 1 },
+          password: { type: 'string', minLength: 6 }
+        },
+        required: ['token', 'password']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const { token, password } = request.body;
+      await authService.resetPassword(token, password);
+      
+      return reply.send({ 
+        message: 'Password reset successfully' 
+      });
+    } catch (error) {
+      return reply.code(400).send({ 
+        error: 'PasswordResetFailed', 
+        message: error.message 
+      });
+    }
   });
 }
 
