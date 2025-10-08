@@ -14,6 +14,7 @@ import TenantSelection from './pages/tenants/TenantSelection.jsx'
 import Tenants from './pages/tenants/Tenants.jsx'
 import CreateTenant from './pages/tenants/CreateTenant.jsx'
 import TenantSettings from './pages/tenants/TenantSettings.jsx'
+import AcceptTransfer from './pages/tenants/AcceptTransfer.jsx'
 import MediaLibrary from './pages/media/Media.jsx'
 import Categories from './pages/categories/Categories.jsx'
 import ContentList from './pages/contents/ContentList.jsx'
@@ -260,6 +261,7 @@ function App() {
           {pendingTenantSelection ? (
             <Routes>
               <Route path="/select-tenant" element={<TenantSelection />} />
+              <Route path="/transfer-accept" element={<AcceptTransfer />} />
               <Route path="*" element={<Navigate to="/select-tenant" replace />} />
             </Routes>
           ) : !token ? (
@@ -295,9 +297,10 @@ function App() {
               <Route path="/menus/:id" element={<PermissionRoute permissions={PERMISSIONS.MENUS_MANAGE}><MenuEdit /></PermissionRoute>} />
               <Route path="/icerikler/*" element={<Navigate to="/contents" replace />} />
               <Route path="/kategoriler/*" element={<Navigate to="/categories" replace />} />
-              <Route path="/varliklar" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_VIEW}><Tenants /></PermissionRoute>} />
-              <Route path="/varliklar/yeni" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_MANAGE}><CreateTenant /></PermissionRoute>} />
+              <Route path="/varliklar" element={<Tenants />} />
+              <Route path="/varliklar/yeni" element={<CreateTenant />} />
               <Route path="/varliklar/ayarlar" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_MANAGE}><TenantSettings /></PermissionRoute>} />
+              <Route path="/transfer-accept" element={<AcceptTransfer />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
             </Route>

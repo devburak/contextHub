@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { fetchDashboardActivities, fetchDashboardSummary } from '../lib/api/dashboard.js'
+import RecentActivities from '../components/RecentActivities.jsx'
 
 const ACTIVITY_PAGE_SIZE = 10
 
@@ -544,6 +545,11 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Kullanıcı Aktiviteleri */}
+      <div className="mt-8">
+        <RecentActivities limit={15} />
       </div>
     </div>
   )

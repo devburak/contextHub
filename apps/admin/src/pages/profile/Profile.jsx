@@ -308,10 +308,9 @@ export default function Profile() {
               <div className="divide-y divide-gray-200">
                 {(data?.allMemberships || []).map((membership) => {
                   const isOwner = membership.role === 'owner'
-                  const otherOwners = (data?.allMemberships || []).filter(
-                    m => m.tenantId === membership.tenantId && m.role === 'owner' && m.userId !== profile?.id
-                  )
-                  const hasOtherOwners = otherOwners.length > 0
+                  // Backend'den gelen ownerCount'u kullan
+                  const ownerCount = membership.ownerCount || 0
+                  const hasOtherOwners = isOwner && ownerCount > 1
                   
                   return (
                     <div
@@ -342,7 +341,14 @@ export default function Profile() {
                       {isOwner && !hasOtherOwners && (
                         <div className="mt-3 rounded-md bg-amber-50 p-2">
                           <p className="text-xs text-amber-800">
-                            ⚠️ Bu varlığın tek sahibisiniz. Görevi bırakmak için önce başka bir kullanıcıya sahiplik devretmeniz gerekmektedir.
+                            ⚠️ Bu varlığın tek sahibisiniz. Görevi bırakmak için önce başka bir kullanıcıya sahiplik devretmeniz gerekmektedir. (Toplam owner: {ownerCount})
+                          </p>
+                        </div>
+                      )}
+                      {isOwner && hasOtherOwners && (
+                        <div className="mt-3 rounded-md bg-green-50 p-2">
+                          <p className="text-xs text-green-800">
+                            ✓ {ownerCount} owner var. Sahipliğinizi bırakabilirsiniz.
                           </p>
                         </div>
                       )}

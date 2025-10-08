@@ -3,7 +3,8 @@ const roleService = require('../services/roleService');
 const AuthService = require('../services/authService');
 const { 
   tenantContext, 
-  authenticate, 
+  authenticate,
+  authenticateWithoutTenant,
   requirePermission
 } = require('../middleware/auth');
 const { rbac } = require('@contexthub/common');
@@ -554,7 +555,7 @@ async function userRoutes(fastify, options) {
 
   // DELETE /users/me - Hesabı kalıcı olarak sil
   fastify.delete('/users/me', {
-    preHandler: [authenticate],
+    preHandler: [authenticateWithoutTenant], // Tenant kontrolü yapma, tüm hesabı sil
     schema: {
       response: {
         200: {

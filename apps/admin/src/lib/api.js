@@ -81,3 +81,12 @@ export const usersAPI = {
   reinviteUser: (id) =>
     apiClient.post(`/users/${id}/reinvite`),
 }
+
+// Activities API
+export const activitiesAPI = {
+  getActivities: (params) =>
+    apiClient.get('/activities', { params }),
+  
+  getRecentActivities: (limit = 10) =>
+    apiClient.get('/activities/recent', { params: { limit } }),
+}

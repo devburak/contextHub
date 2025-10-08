@@ -326,6 +326,16 @@ class UserService {
         tenantId
       );
 
+      // Bu tenant'taki toplam owner sayısını hesapla
+      const ownerCount = await Membership.countDocuments({
+        tenantId: tenantId,
+        role: 'owner',
+        status: 'active'
+      });
+
+      // Debug log
+      console.log(`[DEBUG] Tenant ${tenantDoc?.name} (${tenantId}) - ownerCount: ${ownerCount}, userRole: ${membership.role}`);
+
       return {
         id: membership._id.toString(),
         tenantId,
@@ -340,6 +350,7 @@ class UserService {
         roleMeta: roleService.formatRole(roleDoc),
         permissions,
         status: membership.status,
+        ownerCount, // Toplam owner sayısı
         createdAt: membership.createdAt,
         updatedAt: membership.updatedAt
       };

@@ -1,4 +1,5 @@
 const { User, Tenant, Membership } = require('@contexthub/common');
+const ActivityLog = require('@contexthub/common/src/models/ActivityLog');
 const roleService = require('./roleService');
 const tenantService = require('./tenantService');
 const bcrypt = require('bcryptjs');
@@ -108,7 +109,32 @@ class AuthService {
     };
   }
 
-  async login(email, password, tenantId) {
+  async logActivity({ userId, tenantId, action, description, metadata = {}, request = null }) {
+    try {
+      const logData = {
+        user: userId,
+        action,
+        description,
+        metadata
+      };
+
+      if (tenantId) {
+        logData.tenant = tenantId;
+      }
+
+      if (request) {
+        logData.ipAddress = request.ip || request.headers['x-forwarded-for'] || request.socket?.remoteAddress;
+        logData.userAgent = request.headers['user-agent'];
+      }
+
+      await ActivityLog.create(logData);
+    } catch (error) {
+      console.error('Failed to log activity:', error);
+      // Don't throw - logging should not break the main flow
+    }
+  }
+
+  async login(email, password, tenantId, request = null) {
     // Kullanıcıyı email'e göre bul
     const user = await User.findOne({ email });
 
@@ -209,6 +235,16 @@ class AuthService {
 
       const { payload, token } = detail;
 
+      // Log login activity
+      await this.logActivity({
+        userId: user._id,
+        tenantId: payload.tenantId,
+        action: 'user.login',
+        description: `${user.firstName} ${user.lastName} giriş yaptı`,
+        metadata: { email: user.email, tenantName: payload.tenant?.name },
+        request
+      });
+
       return {
         token,
         user: {
@@ -261,7 +297,7 @@ class AuthService {
     };
   }
 
-  async register(userData) {
+  async register(userData, request = null) {
     const { email, password, firstName, lastName, tenantName, tenantSlug } = userData;
 
     // Email'in daha önce kullanılıp kullanılmadığını kontrol et
@@ -310,6 +346,20 @@ class AuthService {
       });
       await membership.save();
     }
+
+    // Log registration activity
+    await this.logActivity({
+      userId: user._id,
+      tenantId: tenant?._id,
+      action: 'user.register',
+      description: `${user.firstName} ${user.lastName} kayıt oldu`,
+      metadata: { 
+        email: user.email, 
+        withTenant: !!tenant,
+        tenantName: tenant?.name 
+      },
+      request
+    });
 
     // Welcome email gönder
     try {
@@ -579,7 +629,7 @@ class AuthService {
     };
   }
 
-  async forgotPassword(email) {
+  async forgotPassword(email, request = null) {
     // Kullanıcıyı bul
     const user = await User.findOne({ email });
     
@@ -600,6 +650,15 @@ class AuthService {
     user.resetPasswordExpiresAt = resetTokenExpiresAt;
     await user.save();
 
+    // Log forgot password activity
+    await this.logActivity({
+      userId: user._id,
+      action: 'user.password.forgot',
+      description: `${user.firstName} ${user.lastName} şifre sıfırlama talebinde bulundu`,
+      metadata: { email: user.email },
+      request
+    });
+
     // E-posta gönder
     try {
       await mailService.sendPasswordResetEmail(
@@ -616,7 +675,7 @@ class AuthService {
     return { message: 'Password reset email sent' };
   }
 
-  async resetPassword(token, newPassword) {
+  async resetPassword(token, newPassword, request = null) {
     // Token ile kullanıcıyı bul
     const users = await User.find({
       resetPasswordToken: { $exists: true },
@@ -641,6 +700,15 @@ class AuthService {
     user.resetPasswordToken = null;
     user.resetPasswordExpiresAt = null;
     await user.save();
+
+    // Log password reset activity
+    await this.logActivity({
+      userId: user._id,
+      action: 'user.password.reset',
+      description: `${user.firstName} ${user.lastName} şifresini sıfırladı`,
+      metadata: { email: user.email },
+      request
+    });
 
     console.log(`Password reset successfully for user ${user.email}`);
     return { message: 'Password reset successfully' };

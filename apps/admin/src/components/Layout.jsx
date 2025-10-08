@@ -17,7 +17,7 @@ export default function Layout() {
       name: 'Yeni Varlık Oluştur',
       href: '/varliklar/yeni',
       icon: PlusIcon,
-      permission: PERMISSIONS.TENANTS_MANAGE
+      // Herkes varlık oluşturabilir - permission yok
     },
     {
       id: 'dashboard',
@@ -107,20 +107,21 @@ export default function Layout() {
       id: 'tenants-group',
       name: 'Varlıklar',
       icon: BuildingOfficeIcon,
+      // Varlıklar menüsü herkes için görünür - permission yok
       children: [
         {
           id: 'tenants',
           name: 'Varlık Listesi',
           href: '/varliklar',
           icon: BuildingOfficeIcon,
-          permission: PERMISSIONS.TENANTS_VIEW
+          // Varlık listesi herkes görebilir - permission yok
         },
         {
           id: 'tenant-settings',
           name: 'Varlık Ayarları',
           href: '/varliklar/ayarlar',
           icon: WrenchScrewdriverIcon,
-          permission: PERMISSIONS.TENANTS_MANAGE
+          permission: PERMISSIONS.TENANTS_MANAGE // Sadece ayarlar yetkili olmalı
         }
       ]
     },
