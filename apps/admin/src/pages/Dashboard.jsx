@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { fetchDashboardActivities, fetchDashboardSummary } from '../lib/api/dashboard.js'
 import RecentActivities from '../components/RecentActivities.jsx'
+import i18n from '../i18n.js'
 
 const ACTIVITY_PAGE_SIZE = 10
 
@@ -163,6 +164,14 @@ export default function Dashboard() {
     type: 'all',
     scope: isOwner ? 'tenant' : 'self',
   }))
+
+  // Set default language to Turkish if not set
+  useEffect(() => {
+    if (!localStorage.getItem('language')) {
+      localStorage.setItem('language', 'tr')
+      i18n.changeLanguage('tr')
+    }
+  }, [])
 
   useEffect(() => {
     setActivityFilters((prev) => {

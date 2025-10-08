@@ -78,6 +78,7 @@ async function authRoutes(fastify, options) {
               }
             },
             requiresTenantSelection: { type: 'boolean' },
+            message: { type: 'string' },
             activeMembership: {
               type: 'object',
               properties: {

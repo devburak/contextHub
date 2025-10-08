@@ -394,7 +394,7 @@ export default function Layout() {
               <div className="flex items-center gap-x-4 lg:gap-x-6">
                 <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200" aria-hidden="true" />
 
-                {/* Profile dropdown */}
+                {/* Profile dropdown */  }
                 <div className="flex items-center gap-x-3">
                   <Link
                     to="/profile"
@@ -403,11 +403,11 @@ export default function Layout() {
                     <span className="sr-only">Profil</span>
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-800">
                       <span className="text-sm font-medium text-white">
-                        {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                        {user?.firstName?.charAt(0)?.toUpperCase() || 'U'}
                       </span>
                     </div>
                     <span className="hidden lg:flex lg:flex-col lg:items-start">
-                      <span>{user?.name || 'Kullanıcı'}</span>
+                      <span>{user?.firstName || 'Kullanıcı'}</span>
                       <span className="text-xs font-normal text-gray-500">Profili görüntüle</span>
                     </span>
                   </Link>

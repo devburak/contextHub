@@ -1,5 +1,5 @@
 import { Routes, Route, BrowserRouter, Navigate } from 'react-router-dom'
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import Layout from './components/Layout.jsx'
 import Login from './pages/auth/Login.jsx'
 import SignUp from './pages/auth/SignUp.jsx'
@@ -31,6 +31,7 @@ import GalleryManager from './pages/galleries/GalleryManager.jsx'
 import { PermissionRoute } from './components/PermissionRoute.jsx'
 import { PERMISSIONS } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
+import i18n from './i18n.js'
 
 const parseStoredJSON = (key, fallback) => {
   const raw = localStorage.getItem(key)
@@ -48,6 +49,14 @@ function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'))
   const [memberships, setMembershipsState] = useState(() => parseStoredJSON('memberships', []))
   const [activeTenantId, setActiveTenantId] = useState(() => localStorage.getItem('tenantId'))
+
+  // Set default language to Turkish on app mount
+  useEffect(() => {
+    if (!localStorage.getItem('language')) {
+      localStorage.setItem('language', 'tr')
+      i18n.changeLanguage('tr')
+    }
+  }, [])
   const [pendingTenantSelection, setPendingTenantSelection] = useState(false)
 
   const updateMemberships = useCallback((list) => {

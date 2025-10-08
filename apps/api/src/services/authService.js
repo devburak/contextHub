@@ -154,8 +154,49 @@ class AuthService {
       status: 'active'
     }).populate('tenantId', 'name slug');
 
+    // Eğer hiç aktif membership yoksa, kullanıcıyı yine de login yap
+    // ama tenant seçimi gerekli olduğunu belirt
     if (!memberships.length) {
-      throw new Error('User does not have any active tenant access');
+      user.lastLoginAt = new Date();
+      await user.save();
+
+      // Log login activity (tenant olmadan)
+      await this.logActivity({
+        userId: user._id,
+        tenantId: null,
+        action: 'user.login',
+        description: `${user.firstName} ${user.lastName} giriş yaptı (tenant yok)`,
+        metadata: { email: user.email, noTenant: true },
+        request
+      });
+
+      // Minimal token oluştur (tenant bilgisi olmadan)
+      const minimalToken = this.fastify.jwt.sign(
+        {
+          sub: user._id.toString(),
+          email: user.email,
+          role: null,
+          roleId: null,
+          tenantId: null,
+          permissions: []
+        },
+        { expiresIn: '24h' }
+      );
+
+      return {
+        token: minimalToken,
+        user: {
+          id: user._id.toString(),
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: null,
+          permissions: []
+        },
+        memberships: [],
+        requiresTenantSelection: true,
+        message: 'Lütfen bir varlık oluşturun veya mevcut bir varlığa katılın'
+      };
     }
 
     const membershipDetails = await Promise.all(

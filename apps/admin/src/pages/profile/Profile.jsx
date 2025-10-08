@@ -6,6 +6,7 @@ import { userAPI } from '../../lib/userAPI.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { PERMISSION_LABELS } from '../../constants/permissionLabels.js'
+import DeleteAccountModal from '../../components/DeleteAccountModal.jsx'
 
 export default function Profile() {
   const toast = useToast()
@@ -13,6 +14,7 @@ export default function Profile() {
   const queryClient = useQueryClient()
   const { updateUserProfile, roleMeta, permissions, logout, memberships } = useAuth()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   
   // Görevi bırakma state'leri
   const [leavingMembership, setLeavingMembership] = useState(null)
@@ -73,27 +75,10 @@ export default function Profile() {
   }
 
   const handleDeleteAccount = async () => {
-    // Önce sahip olunan varlıkları kontrol et
-    const ownedTenants = (memberships || []).filter(m => m.role === 'owner')
-    
-    if (ownedTenants.length > 0) {
-      const tenantNames = ownedTenants.map(m => m.tenant?.name || 'İsimsiz Varlık').join(', ')
-      toast.error(`Hesabınızı silmeden önce sahip olduğunuz varlıkları devretmeniz veya silmeniz gerekmektedir: ${tenantNames}`)
-      return
-    }
+    setShowDeleteModal(true)
+  }
 
-    const confirmed = window.confirm(
-      'Hesabınızı kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz ve tüm verileriniz silinecektir.'
-    )
-
-    if (!confirmed) return
-
-    const doubleConfirm = window.confirm(
-      'SON UYARI: Hesabınız ve tüm verileriniz kalıcı olarak silinecektir. Devam etmek istediğinize emin misiniz?'
-    )
-
-    if (!doubleConfirm) return
-
+  const confirmDeleteAccount = async () => {
     setIsDeleting(true)
     try {
       await userAPI.deleteAccount()
@@ -106,6 +91,7 @@ export default function Profile() {
       const message = error?.response?.data?.message || 'Hesap silinemedi'
       toast.error(message)
       setIsDeleting(false)
+      setShowDeleteModal(false)
     }
   }
 
@@ -547,6 +533,15 @@ export default function Profile() {
           </div>
         </div>
       )}
+
+      {/* Hesap Silme Modal */}
+      <DeleteAccountModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDeleteAccount}
+        isDeleting={isDeleting}
+        ownedTenants={(memberships || []).filter(m => m.role === 'owner')}
+      />
     </div>
   )
 }
