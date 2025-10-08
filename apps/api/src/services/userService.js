@@ -399,6 +399,77 @@ class UserService {
       }
     };
   }
+
+  async deleteOwnAccount(userId) {
+    // Önce kullanıcının sahip olduğu tenantları kontrol et
+    const ownedMemberships = await Membership.find({ 
+      userId, 
+      role: 'owner' 
+    }).populate('tenantId');
+
+    if (ownedMemberships.length > 0) {
+      const ownedTenantNames = ownedMemberships
+        .map(m => m.tenantId?.name || 'İsimsiz Varlık')
+        .join(', ');
+      
+      throw new Error(
+        `Hesabınızı silmeden önce sahip olduğunuz varlıkları devretmeniz veya silmeniz gerekmektedir: ${ownedTenantNames}`
+      );
+    }
+
+    // Kullanıcıya ait tüm üyelikleri sil
+    await Membership.deleteMany({ userId });
+
+    // Kullanıcıyı sil
+    await User.findByIdAndDelete(userId);
+
+    return { success: true };
+  }
+
+  async leaveMembership(userId, membershipId, password) {
+    // Üyeliği bul
+    const membership = await Membership.findById(membershipId).populate('tenantId');
+    
+    if (!membership) {
+      throw new Error('Üyelik bulunamadı');
+    }
+
+    // Üyeliğin kullanıcıya ait olduğunu kontrol et
+    if (membership.userId.toString() !== userId.toString()) {
+      throw new Error('Bu üyelik size ait değil');
+    }
+
+    // Kullanıcıyı bul ve şifreyi doğrula
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new Error('Kullanıcı bulunamadı');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new Error('Şifre hatalı');
+    }
+
+    // Eğer sahipse ve başka sahip yoksa engelle
+    if (membership.role === 'owner') {
+      const otherOwners = await Membership.countDocuments({
+        tenantId: membership.tenantId,
+        role: 'owner',
+        _id: { $ne: membershipId }
+      });
+
+      if (otherOwners === 0) {
+        throw new Error(
+          'Bu varlığın tek sahibisiniz. Görevi bırakmadan önce sahipliği başka bir kullanıcıya devretmeniz gerekmektedir.'
+        );
+      }
+    }
+
+    // Üyeliği sil
+    await Membership.findByIdAndDelete(membershipId);
+
+    return { success: true };
+  }
 }
 
 module.exports = new UserService();

@@ -145,8 +145,9 @@ function buildActivityDetails(item) {
 }
 
 export default function Dashboard() {
-  const { user, role } = useAuth()
+  const { user, role, memberships } = useAuth()
   const isOwner = role === 'owner'
+  const hasTenants = memberships && memberships.length > 0
 
   const [summary, setSummary] = useState(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
@@ -302,6 +303,48 @@ export default function Dashboard() {
           Hoş geldiniz, {user?.name || user?.firstName || 'misafir'}! Burada varlık performansınızın genel bir görünümünü bulabilirsiniz.
         </p>
       </div>
+
+      {/* Tenant yoksa uyarı mesajı */}
+      {!hasTenants && (
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <div className="ml-3 flex-1">
+              <h3 className="text-sm font-medium text-yellow-800">
+                Henüz Bir Varlığınız Yok
+              </h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                <p>
+                  ContextHub'ı kullanmaya başlamak için bir varlık (organizasyon) oluşturmanız veya mevcut bir varlığa katılmanız gerekmektedir.
+                </p>
+              </div>
+              <div className="mt-4">
+                <div className="flex gap-3">
+                  <a
+                    href="/varliklar"
+                    className="inline-flex items-center rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-yellow-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
+                  >
+                    <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    Yeni Varlık Oluştur
+                  </a>
+                  <a
+                    href="/varliklar"
+                    className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                  >
+                    Varlıklarımı Görüntüle
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <div className="card">

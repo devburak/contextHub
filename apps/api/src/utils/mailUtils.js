@@ -5,6 +5,7 @@ const { mailService } = require('../services/mailService');
  */
 async function sendWelcomeEmail(user, tenantId = null) {
   const mailOptions = {
+    from: process.env.SMTP_FROM,
     to: user.email,
     subject: 'Welcome to ContextHub!',
     html: `
@@ -26,6 +27,7 @@ async function sendPasswordResetEmail(user, resetToken, tenantId = null) {
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
   const mailOptions = {
+    from: process.env.SMTP_FROM,
     to: user.email,
     subject: 'Password Reset Request',
     html: `
@@ -69,6 +71,7 @@ async function sendEmailVerificationEmail(user, verificationToken, tenantId = nu
  */
 async function sendNotificationEmail(recipient, subject, message, tenantId = null) {
   const mailOptions = {
+    from: process.env.SMTP_FROM,
     to: recipient,
     subject: subject,
     html: `
@@ -90,6 +93,7 @@ async function sendNotificationEmail(recipient, subject, message, tenantId = nul
  */
 async function sendContentPublishedEmail(user, content, tenantId = null) {
   const mailOptions = {
+    from: process.env.SMTP_FROM,
     to: user.email,
     subject: `Content Published: ${content.title}`,
     html: `
@@ -120,6 +124,7 @@ async function sendBulkEmail(recipients, subject, message, tenantId = null) {
  */
 async function sendTestEmail(recipient, tenantId = null) {
   const mailOptions = {
+    from: process.env.SMTP_FROM,
     to: recipient,
     subject: 'ContextHub Test Email',
     html: `

@@ -270,7 +270,7 @@ class AuthService {
       throw new Error('Email already exists');
     }
 
-    // Tenant slug'ının mevcut olup olmadığını kontrol et
+    // Tenant slug'ının mevcut olup olmadığını kontrol et (eğer tenant bilgisi verilmişse)
     if (tenantSlug) {
       const existingTenant = await Tenant.findOne({ slug: tenantSlug });
       if (existingTenant) {
@@ -278,7 +278,7 @@ class AuthService {
       }
     }
 
-    // Yeni tenant oluştur (eğer belirtilmişse)
+    // Yeni tenant oluştur (SADECE tenantName verilmişse)
     let tenant = null;
     if (tenantName) {
       tenant = new Tenant({
@@ -290,17 +290,17 @@ class AuthService {
       await tenant.save();
     }
 
-    // Kullanıcı oluştur
+    // Kullanıcı oluştur (tenant olmadan da olabilir)
     const user = new User({
       email,
       password, // Model'de hash'lenecek
       firstName,
       lastName,
-      tenantId: tenant?._id
+      tenantId: tenant?._id // Opsiyonel
     });
     await user.save();
 
-    // Membership oluştur (tenant owner olarak)
+    // Membership oluştur (SADECE tenant varsa, tenant owner olarak)
     if (tenant) {
       const membership = new Membership({
         tenantId: tenant._id,
@@ -577,6 +577,73 @@ class AuthService {
         acceptedAt: activatedMembership.acceptedAt
       }
     };
+  }
+
+  async forgotPassword(email) {
+    // Kullanıcıyı bul
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      // Güvenlik için her zaman başarılı gibi görün
+      // (Saldırganlar e-posta varlığını test edemesin)
+      console.log(`Password reset requested for non-existent email: ${email}`);
+      return;
+    }
+
+    // Reset token oluştur
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = await bcrypt.hash(resetToken, 10);
+    const resetTokenExpiresAt = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 saat
+
+    // Kullanıcıya token'ı kaydet
+    user.resetPasswordToken = resetTokenHash;
+    user.resetPasswordExpiresAt = resetTokenExpiresAt;
+    await user.save();
+
+    // E-posta gönder
+    try {
+      await mailService.sendPasswordResetEmail(
+        email,
+        resetToken,
+        `${user.firstName} ${user.lastName}`.trim()
+      );
+      console.log(`Password reset email sent to ${email}`);
+    } catch (emailError) {
+      console.error('Failed to send password reset email:', emailError);
+      // E-posta gönderilemese bile hata fırlatma
+    }
+
+    return { message: 'Password reset email sent' };
+  }
+
+  async resetPassword(token, newPassword) {
+    // Token ile kullanıcıyı bul
+    const users = await User.find({
+      resetPasswordToken: { $exists: true },
+      resetPasswordExpiresAt: { $gt: new Date() }
+    });
+
+    let user = null;
+    for (const u of users) {
+      const isValid = await bcrypt.compare(token, u.resetPasswordToken);
+      if (isValid) {
+        user = u;
+        break;
+      }
+    }
+
+    if (!user) {
+      throw new Error('Geçersiz veya süresi dolmuş şifre sıfırlama bağlantısı');
+    }
+
+    // Yeni şifreyi kaydet
+    user.password = newPassword; // Model'de pre-save ile hash'lenecek
+    user.resetPasswordToken = null;
+    user.resetPasswordExpiresAt = null;
+    await user.save();
+
+    console.log(`Password reset successfully for user ${user.email}`);
+    return { message: 'Password reset successfully' };
   }
 }
 

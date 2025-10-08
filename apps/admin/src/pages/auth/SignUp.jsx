@@ -12,9 +12,7 @@ function SignUp() {
     lastName: '',
     email: '',
     password: '',
-    confirmPassword: '',
-    organizationName: '',
-    subdomain: ''
+    confirmPassword: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -27,20 +25,6 @@ function SignUp() {
       ...prev,
       [name]: value
     }));
-
-    // Auto-generate subdomain from organization name
-    if (name === 'organizationName') {
-      const slug = value
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim();
-      setFormData(prev => ({
-        ...prev,
-        subdomain: slug
-      }));
-    }
 
     // Clear error when user starts typing
     if (errors[name]) {
@@ -80,10 +64,6 @@ function SignUp() {
       newErrors.confirmPassword = 'Şifreler eşleşmiyor';
     }
 
-    if (!formData.organizationName.trim()) {
-      newErrors.organizationName = 'Organizasyon adı gereklidir';
-    }
-
     return newErrors;
   };
 
@@ -104,9 +84,7 @@ function SignUp() {
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
-        password: formData.password,
-        tenantName: formData.organizationName,
-        tenantSlug: formData.subdomain
+        password: formData.password
       });
 
       console.log('Registration successful:', response.data);
@@ -277,48 +255,6 @@ function SignUp() {
               {errors.confirmPassword && (
                 <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>
               )}
-            </div>
-
-            <div>
-              <label htmlFor="organizationName" className="block text-sm font-medium text-gray-700">
-                Organizasyon Adı
-              </label>
-              <div className="mt-1">
-                <input
-                  id="organizationName"
-                  name="organizationName"
-                  type="text"
-                  required
-                  value={formData.organizationName}
-                  onChange={handleChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
-                {errors.organizationName && (
-                  <p className="mt-1 text-sm text-red-600">{errors.organizationName}</p>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="subdomain" className="block text-sm font-medium text-gray-700">
-                Alt Domain (İsteğe bağlı)
-              </label>
-              <div className="mt-1">
-                <input
-                  id="subdomain"
-                  name="subdomain"
-                  type="text"
-                  value={formData.subdomain}
-                  onChange={handleChange}
-                  placeholder="ornek-organizasyon"
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
-                {formData.subdomain && (
-                  <p className="mt-1 text-sm text-gray-500">
-                    Domain: {formData.subdomain}
-                  </p>
-                )}
-              </div>
             </div>
 
             <div>

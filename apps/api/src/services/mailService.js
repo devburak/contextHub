@@ -360,6 +360,229 @@ class MailService {
       return false;
     }
   }
+
+  /**
+   * Send ownership transfer request email
+   */
+  async sendOwnershipTransferEmail(recipientEmail, transferToken, tenantData, currentOwnerName) {
+    try {
+      const acceptUrl = `${process.env.ADMIN_URL || 'http://localhost:3100'}/transfer-accept?token=${transferToken}&tenant=${tenantData.id}`;
+      
+      const subject = `${tenantData.name} - Sahiplik Devri Talebi`;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${subject}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #9333ea; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+            .button { background-color: #9333ea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+            .info-box { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px; }
+            .footer { margin-top: 30px; text-align: center; color: #6b7280; font-size: 14px; }
+            .token-box { background-color: #e0e7ff; padding: 10px; border-radius: 4px; font-family: monospace; word-break: break-all; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🔄 Sahiplik Devri Talebi</h1>
+            </div>
+            <div class="content">
+              <p>Merhaba,</p>
+              
+              <p><strong>${currentOwnerName}</strong> sizin <strong>${tenantData.name}</strong> varlığının yeni sahibi olmanızı talep ediyor.</p>
+              
+              <div class="info-box">
+                <strong>⚠️ Önemli:</strong> Bu talebi kabul ederseniz, varlığın sahibi olacak ve tüm yönetim yetkilerine sahip olacaksınız.
+              </div>
+              
+              <p><strong>Varlık Bilgileri:</strong></p>
+              <ul>
+                <li><strong>Varlık Adı:</strong> ${tenantData.name}</li>
+                <li><strong>Slug:</strong> ${tenantData.slug}</li>
+                <li><strong>Mevcut Sahip:</strong> ${currentOwnerName}</li>
+              </ul>
+              
+              <p>Bu talebi kabul etmek için aşağıdaki butona tıklayın:</p>
+              
+              <div style="text-align: center;">
+                <a href="${acceptUrl}" class="button">Sahiplik Devri Talebini Kabul Et</a>
+              </div>
+              
+              <p><small>Eğer buton çalışmıyorsa, aşağıdaki bağlantıyı tarayıcınıza kopyalayın:</small></p>
+              <div class="token-box">
+                ${acceptUrl}
+              </div>
+              
+              <div class="info-box">
+                <strong>⏰ Süre:</strong> Bu talep 7 gün geçerlidir.
+              </div>
+              
+              <p>Bu talebi siz göndermediyseniz, bu e-postayı görmezden gelebilirsiniz.</p>
+              
+              <p>İyi günler!<br>
+              ContextHub Ekibi</p>
+            </div>
+            <div class="footer">
+              <p>Bu e-posta otomatik olarak gönderilmiştir.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const textContent = `
+        Sahiplik Devri Talebi
+
+        Merhaba,
+
+        ${currentOwnerName} sizin ${tenantData.name} varlığının yeni sahibi olmanızı talep ediyor.
+
+        ⚠️ ÖNEMLI: Bu talebi kabul ederseniz, varlığın sahibi olacak ve tüm yönetim yetkilerine sahip olacaksınız.
+
+        Varlık Bilgileri:
+        - Varlık Adı: ${tenantData.name}
+        - Slug: ${tenantData.slug}
+        - Mevcut Sahip: ${currentOwnerName}
+
+        Bu talebi kabul etmek için aşağıdaki bağlantıyı kullanın:
+        ${acceptUrl}
+
+        ⏰ Bu talep 7 gün geçerlidir.
+
+        Bu talebi siz göndermediyseniz, bu e-postayı görmezden gelebilirsiniz.
+
+        İyi günler!
+        ContextHub Ekibi
+      `;
+
+      await this.sendMail({
+        to: recipientEmail,
+        subject,
+        html: htmlContent,
+        text: textContent
+      }, tenantData.id);
+
+      console.log(`Ownership transfer email sent to ${recipientEmail} for tenant ${tenantData.name}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to send ownership transfer email:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send password reset email
+   */
+  async sendPasswordResetEmail(recipientEmail, resetToken, userName) {
+    try {
+      const resetUrl = `${process.env.ADMIN_URL || 'http://localhost:3100'}/reset-password?token=${resetToken}`;
+      
+      const subject = 'ContextHub - Şifre Sıfırlama';
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${subject}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #ef4444; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+            .button { background-color: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+            .warning-box { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px; }
+            .footer { margin-top: 30px; text-align: center; color: #6b7280; font-size: 14px; }
+            .token-box { background-color: #fee2e2; padding: 10px; border-radius: 4px; font-family: monospace; word-break: break-all; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🔐 Şifre Sıfırlama</h1>
+            </div>
+            <div class="content">
+              <p>Merhaba ${userName || ''},</p>
+              
+              <p>Hesabınız için bir şifre sıfırlama talebi aldık. Şifrenizi sıfırlamak için aşağıdaki butona tıklayın:</p>
+              
+              <div style="text-align: center;">
+                <a href="${resetUrl}" class="button">Şifremi Sıfırla</a>
+              </div>
+              
+              <p><small>Eğer buton çalışmıyorsa, aşağıdaki bağlantıyı tarayıcınıza kopyalayın:</small></p>
+              <div class="token-box">
+                ${resetUrl}
+              </div>
+              
+              <div class="warning-box">
+                <strong>⚠️ Önemli Güvenlik Bilgileri:</strong>
+                <ul>
+                  <li>Bu bağlantı sadece <strong>1 saat</strong> geçerlidir</li>
+                  <li>Bağlantı tek kullanımlıktır</li>
+                  <li>Bu talebi siz yapmadıysanız, bu e-postayı görmezden gelin</li>
+                  <li>Şifrenizi kimseyle paylaşmayın</li>
+                </ul>
+              </div>
+              
+              <p>Bu talebi siz göndermediyseniz, hesabınız güvende. Hiçbir işlem yapmanıza gerek yok.</p>
+              
+              <p>İyi günler!<br>
+              ContextHub Ekibi</p>
+            </div>
+            <div class="footer">
+              <p>Bu e-posta otomatik olarak gönderilmiştir.</p>
+              <p>Güvenlik sorunlarınız için: support@ctxhub.net</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const textContent = `
+        Şifre Sıfırlama
+
+        Merhaba ${userName || ''},
+
+        Hesabınız için bir şifre sıfırlama talebi aldık.
+
+        Şifrenizi sıfırlamak için aşağıdaki bağlantıyı kullanın:
+        ${resetUrl}
+
+        ⚠️ ÖNEMLI GÜVENLİK BİLGİLERİ:
+        - Bu bağlantı sadece 1 saat geçerlidir
+        - Bağlantı tek kullanımlıktır
+        - Bu talebi siz yapmadıysanız, bu e-postayı görmezden gelin
+        - Şifrenizi kimseyle paylaşmayın
+
+        Bu talebi siz göndermediyseniz, hesabınız güvende. Hiçbir işlem yapmanıza gerek yok.
+
+        İyi günler!
+        ContextHub Ekibi
+
+        Güvenlik sorunlarınız için: support@ctxhub.net
+      `;
+
+      await this.sendMail({
+        to: recipientEmail,
+        subject,
+        html: htmlContent,
+        text: textContent
+      });
+
+      console.log(`Password reset email sent to ${recipientEmail}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to send password reset email:', error);
+      return false;
+    }
+  }
 }
 
 // Singleton instance

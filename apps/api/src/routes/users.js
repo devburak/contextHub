@@ -552,6 +552,38 @@ async function userRoutes(fastify, options) {
     }
   });
 
+  // DELETE /users/me - Hesabı kalıcı olarak sil
+  fastify.delete('/users/me', {
+    preHandler: [authenticate],
+    schema: {
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            message: { type: 'string' }
+          }
+        },
+        400: {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      await userService.deleteOwnAccount(request.user._id);
+      return reply.send({ message: 'Account deleted successfully' });
+    } catch (error) {
+      return reply.code(400).send({ 
+        error: 'AccountDeletionFailed', 
+        message: error.message 
+      });
+    }
+  });
+
   // POST /users/invite - Kullanıcı davet et (Admin+)
   fastify.post('/users/invite', {
     preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_INVITE)],
@@ -622,6 +654,47 @@ async function userRoutes(fastify, options) {
     } catch (error) {
       const status = error.message === 'User membership not found' ? 404 : 400;
       return reply.code(status).send({ error: 'ReinviteFailed', message: error.message });
+    }
+  });
+
+  // POST /memberships/:id/leave - Varlık üyeliğinden ayrıl
+  fastify.post('/memberships/:id/leave', {
+    preHandler: [authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' }
+        },
+        required: ['id']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          password: { type: 'string', minLength: 1 }
+        },
+        required: ['password']
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const membershipId = request.params.id;
+      const { password } = request.body;
+      
+      await userService.leaveMembership(
+        request.user._id,
+        membershipId,
+        password
+      );
+
+      return reply.send({ 
+        message: 'Successfully left the membership' 
+      });
+    } catch (error) {
+      return reply.code(400).send({ 
+        error: 'LeaveMembershipFailed', 
+        message: error.message 
+      });
     }
   });
 }

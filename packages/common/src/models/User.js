@@ -12,6 +12,8 @@ const userSchema = new Schema({
   status: { type: String, default: 'active', enum: ['active', 'inactive', 'suspended'] },
   isEmailVerified: { type: Boolean, default: false },
   lastLoginAt: { type: Date },
+  resetPasswordToken: { type: String },
+  resetPasswordExpiresAt: { type: Date },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
