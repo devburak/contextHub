@@ -1,4 +1,5 @@
 const upstashClient = require('../lib/upstash');
+const localRedisClient = require('../lib/localRedis');
 const ApiUsage = require('@contexthub/common/src/models/ApiUsage');
 const Tenant = require('@contexthub/common/src/models/Tenant');
 
@@ -405,8 +406,33 @@ class ApiUsageSyncService {
       results.executed.push({ type: 'monthly', ...monthlyResult });
     }
 
+    // Refresh limits cache in local Redis
+    await this.refreshLimitsCache();
+
     console.log('[ApiUsageSync] Scheduled sync completed:', results);
     return results;
+  }
+
+  /**
+   * Refresh tenant limits cache in local Redis
+   * Called after each sync to update request quotas
+   */
+  async refreshLimitsCache() {
+    console.log('[ApiUsageSync] Refreshing limits cache...');
+    
+    if (!localRedisClient.isEnabled()) {
+      console.warn('[ApiUsageSync] Local Redis not enabled, skipping cache refresh');
+      return;
+    }
+
+    try {
+      const limitCheckerService = require('./limitCheckerService');
+      await limitCheckerService.refreshAllLimitsCache();
+      
+      console.log('[ApiUsageSync] Limits cache refreshed successfully');
+    } catch (error) {
+      console.error('[ApiUsageSync] Failed to refresh limits cache:', error);
+    }
   }
 }
 

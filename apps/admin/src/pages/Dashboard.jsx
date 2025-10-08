@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { fetchDashboardActivities, fetchDashboardSummary, fetchApiStats } from '../lib/api/dashboard.js'
+import { fetchTenantLimits } from '../lib/api/subscriptions.js'
+import { tenantAPI } from '../lib/tenantAPI.js'
 import RecentActivities from '../components/RecentActivities.jsx'
 import i18n from '../i18n.js'
 
@@ -147,7 +149,7 @@ function buildActivityDetails(item) {
 }
 
 export default function Dashboard() {
-  const { user, role, memberships } = useAuth()
+  const { user, role, memberships, activeTenantId } = useAuth()
   const isOwner = role === 'owner'
   const hasTenants = memberships && memberships.length > 0
 
@@ -156,6 +158,12 @@ export default function Dashboard() {
 
   const [apiStats, setApiStats] = useState(null)
   const [apiStatsLoading, setApiStatsLoading] = useState(false)
+
+  const [tenantLimits, setTenantLimits] = useState(null)
+  const [tenantLimitsLoading, setTenantLimitsLoading] = useState(false)
+
+  const [tenantSettings, setTenantSettings] = useState(null)
+  const [tenantSettingsLoading, setTenantSettingsLoading] = useState(false)
 
   const [activityItems, setActivityItems] = useState([])
   const [activityAvailableTypes, setActivityAvailableTypes] = useState([])
@@ -192,6 +200,10 @@ export default function Dashboard() {
     let cancelled = false
 
     async function loadSummary() {
+      if (!hasTenants) {
+        return
+      }
+      
       setSummaryLoading(true)
       try {
         const data = await fetchDashboardSummary()
@@ -215,12 +227,16 @@ export default function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [activeTenantId, hasTenants])
 
   useEffect(() => {
     let cancelled = false
 
     async function loadApiStats() {
+      if (!hasTenants) {
+        return
+      }
+      
       setApiStatsLoading(true)
       try {
         const data = await fetchApiStats()
@@ -244,7 +260,74 @@ export default function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [activeTenantId, hasTenants])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadTenantLimits() {
+      if (!hasTenants) {
+        return
+      }
+      
+      setTenantLimitsLoading(true)
+      try {
+        const data = await fetchTenantLimits()
+        if (!cancelled) {
+          setTenantLimits(data)
+        }
+      } catch (error) {
+        console.error('Tenant limitleri alınamadı:', error)
+        if (!cancelled) {
+          setTenantLimits(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setTenantLimitsLoading(false)
+        }
+      }
+    }
+
+    loadTenantLimits()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTenantId, hasTenants])
+
+  // Fetch tenant settings for feature flags
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadTenantSettings() {
+      if (!hasTenants) {
+        return
+      }
+      
+      setTenantSettingsLoading(true)
+      try {
+        const data = await tenantAPI.getSettings()
+        if (!cancelled) {
+          setTenantSettings(data)
+        }
+      } catch (error) {
+        console.error('Tenant ayarları alınamadı:', error)
+        if (!cancelled) {
+          setTenantSettings(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setTenantSettingsLoading(false)
+        }
+      }
+    }
+
+    loadTenantSettings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTenantId, hasTenants])
 
   useEffect(() => {
     let cancelled = false
@@ -336,6 +419,11 @@ export default function Dashboard() {
 
   const summaryTotals = summary?.totals || {}
   const mediaTotals = summaryTotals.media || {}
+
+  // Feature flags
+  const featureFlags = tenantSettings?.features || {}
+  const showLimits = Boolean(featureFlags.limitShow)
+  const showStatistics = Boolean(featureFlags.statisticShow)
 
   return (
     <div>
@@ -501,6 +589,323 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Limit & Usage Section */}
+      {hasTenants && showLimits && (
+        <div className="mt-8">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Limit & Kullanım</h2>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Storage Limit Card */}
+            <div className="card">
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <dt className="text-sm font-medium text-gray-500">Depolama</dt>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500 text-xs font-semibold text-white">
+                    💾
+                  </div>
+                </div>
+                {tenantLimitsLoading ? (
+                  <div className="text-center text-gray-400">…</div>
+                ) : tenantLimits ? (
+                  <div>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <span className="text-2xl font-bold text-gray-900">
+                        {formatGigabytes(tenantLimits.usage.storage.current)}
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {tenantLimits.usage.storage.isUnlimited ? (
+                          'Sınırsız'
+                        ) : (
+                          `/ ${formatGigabytes(tenantLimits.usage.storage.limit)}`
+                        )}
+                      </span>
+                    </div>
+                    {!tenantLimits.usage.storage.isUnlimited && (
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full ${
+                            tenantLimits.usage.storage.percentage > 90 ? 'bg-red-500' :
+                            tenantLimits.usage.storage.percentage > 75 ? 'bg-yellow-500' :
+                            'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(100, tenantLimits.usage.storage.percentage)}%` }}
+                        />
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-gray-500">
+                      {tenantLimits.usage.storage.isUnlimited ? (
+                        'Sınırsız depolama'
+                      ) : (
+                        `${formatGigabytes(tenantLimits.usage.storage.remaining)} kaldı`
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400">Yüklenemedi</div>
+                )}
+              </div>
+            </div>
+
+            {/* API Requests Limit Card */}
+            <div className="card">
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <dt className="text-sm font-medium text-gray-500">API Çağrıları</dt>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500 text-xs font-semibold text-white">
+                    📊
+                  </div>
+                </div>
+                {tenantLimitsLoading ? (
+                  <div className="text-center text-gray-400">…</div>
+                ) : tenantLimits ? (
+                  <div>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <span className="text-2xl font-bold text-gray-900">
+                        {formatNumber(tenantLimits.usage.requests.current)}
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {tenantLimits.usage.requests.isUnlimited ? (
+                          'Sınırsız'
+                        ) : (
+                          `/ ${formatNumber(tenantLimits.usage.requests.limit)}`
+                        )}
+                      </span>
+                    </div>
+                    {!tenantLimits.usage.requests.isUnlimited && (
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full ${
+                            tenantLimits.usage.requests.percentage > 90 ? 'bg-red-500' :
+                            tenantLimits.usage.requests.percentage > 75 ? 'bg-yellow-500' :
+                            'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(100, tenantLimits.usage.requests.percentage)}%` }}
+                        />
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-gray-500">
+                      {tenantLimits.usage.requests.isUnlimited ? (
+                        'Sınırsız çağrı'
+                      ) : (
+                        `${formatNumber(tenantLimits.usage.requests.remaining)} kaldı (Bu ay)`
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400">Yüklenemedi</div>
+                )}
+              </div>
+            </div>
+
+            {/* Users Limit Card */}
+            <div className="card">
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <dt className="text-sm font-medium text-gray-500">Kullanıcılar</dt>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 text-xs font-semibold text-white">
+                    👥
+                  </div>
+                </div>
+                {tenantLimitsLoading ? (
+                  <div className="text-center text-gray-400">…</div>
+                ) : tenantLimits ? (
+                  <div>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <span className="text-2xl font-bold text-gray-900">
+                        {tenantLimits.usage.users.current}
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {tenantLimits.usage.users.isUnlimited ? (
+                          'Sınırsız'
+                        ) : (
+                          `/ ${tenantLimits.usage.users.limit}`
+                        )}
+                      </span>
+                    </div>
+                    {!tenantLimits.usage.users.isUnlimited && (
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full ${
+                            tenantLimits.usage.users.percentage > 90 ? 'bg-red-500' :
+                            tenantLimits.usage.users.percentage > 75 ? 'bg-yellow-500' :
+                            'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(100, tenantLimits.usage.users.percentage)}%` }}
+                        />
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-gray-500">
+                      {tenantLimits.usage.users.isUnlimited ? (
+                        'Sınırsız kullanıcı'
+                      ) : (
+                        `${tenantLimits.usage.users.remaining} slot kaldı`
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400">Yüklenemedi</div>
+                )}
+              </div>
+            </div>
+
+            {/* Current Plan Card */}
+            <div className="card">
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <dt className="text-sm font-medium text-gray-500">Paket</dt>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-xs font-semibold text-white">
+                    ⭐
+                  </div>
+                </div>
+                {tenantLimitsLoading ? (
+                  <div className="text-center text-gray-400">…</div>
+                ) : tenantLimits ? (
+                  <div>
+                    <div className="mb-2">
+                      <span className="text-2xl font-bold text-gray-900">
+                        {tenantLimits.plan.name}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-1 mb-3">
+                      <span className="text-lg font-semibold text-emerald-600">
+                        ${tenantLimits.plan.price}
+                      </span>
+                      <span className="text-sm text-gray-500">/ay</span>
+                    </div>
+                    {tenantLimits.plan.billingType === 'usage-based' && (
+                      <p className="text-xs text-gray-500">
+                        Kullandığınız kadar ödeyin
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400">Yüklenemedi</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Statistics Section */}
+      {showStatistics && (
+        <div className="mt-8">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">İstatistikler</h2>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="card">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500 text-sm font-semibold text-white">
+                    K
+                  </div>
+                </div>
+                <div className="ml-5 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Toplam Kullanıcı
+                    </dt>
+                    <dd className="text-lg font-semibold text-gray-900">
+                      {summaryLoading ? '…' : formatNumber(summaryTotals.users)}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500 text-sm font-semibold text-white">
+                    İ
+                  </div>
+                </div>
+                <div className="ml-5 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Toplam İçerik
+                    </dt>
+                    <dd className="text-lg font-semibold text-gray-900">
+                      {summaryLoading ? '…' : formatNumber(summaryTotals.contents)}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-500 text-sm font-semibold text-white">
+                    M
+                  </div>
+                </div>
+                <div className="ml-5 flex-1">
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    Medya Dosyaları
+                  </dt>
+                  <dd className="mt-1 text-lg font-semibold text-gray-900">
+                    {summaryLoading
+                      ? '…'
+                      : `${formatNumber(mediaTotals.count)} dosya`
+                    }
+                  </dd>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {summaryLoading ? '…' : formatGigabytes(mediaTotals.totalSize)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500 text-sm font-semibold text-white">
+                    A
+                  </div>
+                </div>
+                <div className="ml-5 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      API Çağrıları
+                    </dt>
+                    <dd className="text-lg font-semibold text-gray-900">
+                      {apiStatsLoading ? '…' : (
+                        apiStats?.enabled ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-500">Bugün:</span>
+                              <span className="font-semibold">{formatNumber(apiStats.today)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-500">Haftalık:</span>
+                              <span className="font-semibold text-blue-600">{formatNumber(apiStats.weekly)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-500">Aylık:</span>
+                              <span className="font-semibold text-purple-600">{formatNumber(apiStats.monthly)}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">Devre dışı</span>
+                        )
+                      )}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+      )}
+
+      {/* Recent Activities Section */}
       <div className="mt-8">
         <div className="card">
           <div className="px-4 py-5 sm:px-6 sm:py-6">
