@@ -26,6 +26,7 @@
     "@contexthub/common": "workspace:*",
     "@fastify/cors": "^8.5.0",
     "@fastify/jwt": "^7.2.0",
+    "@upstash/redis": "^1.35.5",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.3.1",
     "fastify": "^4.22.2",

@@ -6,6 +6,8 @@ const dotenv = require('dotenv');
 const path = require('path');
 const { database } = require('@contexthub/common');
 const roleService = require('./services/roleService');
+const apiLogger = require('./middleware/apiLogger');
+const upstashClient = require('./lib/upstash');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -51,6 +53,10 @@ async function buildServer() {
   });
   await app.register(jwtPlugin);
 
+  // Register API logger middleware (logs all requests to Upstash Redis)
+  // Using onResponse hook to ensure tenantContext has run first
+  app.addHook('onResponse', apiLogger);
+
   // Register routes with /api prefix
   await app.register(require('./routes/auth'), { prefix: '/api' });
   await app.register(require('./routes/users'), { prefix: '/api' });
@@ -85,6 +91,9 @@ async function start() {
   // Connect to MongoDB before starting the server
   await database.connectDB();
   await roleService.ensureSystemRoles();
+  
+  // Initialize Upstash Redis client (after env vars are loaded)
+  upstashClient.initialize();
   
   const app = await buildServer();
   const port = process.env.PORT || 3000;

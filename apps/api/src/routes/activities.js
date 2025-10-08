@@ -1,4 +1,4 @@
-const { authenticate } = require('../middleware/auth');
+const { authenticate, tenantContext } = require('../middleware/auth');
 const ActivityLog = require('@contexthub/common/src/models/ActivityLog');
 
 async function activityRoutes(fastify, options) {
@@ -118,19 +118,21 @@ async function activityRoutes(fastify, options) {
 
   // GET /activities/recent - Get recent activities (simpler version for dashboard)
   fastify.get('/activities/recent', {
-    preHandler: authenticate,
+    preHandler: [tenantContext, authenticate],
     schema: {
       querystring: {
         type: 'object',
         properties: {
+          tenantId: { type: 'string' },
           limit: { type: 'integer', minimum: 1, maximum: 50, default: 10 }
-        }
+        },
+        required: ['tenantId']
       }
     }
   }, async function(request, reply) {
     try {
       const { limit = 10 } = request.query;
-      const tenantId = request.user.tenantId;
+      const tenantId = request.tenantId;
 
       const activities = await ActivityLog.find({ tenant: tenantId })
         .populate('user', 'firstName lastName email')

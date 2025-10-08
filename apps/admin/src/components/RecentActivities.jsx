@@ -43,7 +43,7 @@ export default function RecentActivities({ limit = 10 }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['recentActivities', limit],
     queryFn: () => activitiesAPI.getRecentActivities(limit),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    // Removed refetchInterval - activities will only update on manual refresh or page reload
   })
 
   if (isLoading) {
