@@ -12,6 +12,20 @@ const FEATURE_FLAGS = [
     defaultEnabled: true,
     description: 'Medya öğelerini galeriler halinde gruplayıp içeriklerle ilişkilendirme özelliğini aktif eder.',
     notes: 'Galeri yönetim sayfası ve içerikte galeri paneli bu bayrağa bağlıdır.'
+  },
+  {
+    key: 'limitShow',
+    label: 'Limit ve Kullanım Gösterimi',
+    defaultEnabled: false,
+    description: 'Dashboard\'da "Limit & Kullanım" bölümünü gösterir. Depolama, API çağrıları, kullanıcı limitleri ve aktif plan bilgilerini içerir.',
+    notes: 'Subscription plan sistemi aktif olduğunda açılmalıdır. Dashboard\'da 4 limit kartı (Storage, Requests, Users, Plan) görüntülenir.'
+  },
+  {
+    key: 'statisticShow',
+    label: 'İstatistikler Gösterimi',
+    defaultEnabled: false,
+    description: 'Dashboard\'da "İstatistikler" bölümünü gösterir. Toplam kullanıcı, içerik, medya dosyaları ve API çağrıları istatistiklerini içerir.',
+    notes: 'Genel bakış için kullanılır. Performans endişesi varsa kapatılabilir.'
   }
 ]
 

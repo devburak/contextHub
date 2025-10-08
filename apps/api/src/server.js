@@ -8,6 +8,7 @@ const { database } = require('@contexthub/common');
 const roleService = require('./services/roleService');
 const apiLogger = require('./middleware/apiLogger');
 const upstashClient = require('./lib/upstash');
+const localRedisClient = require('./lib/localRedis');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -78,6 +79,7 @@ async function buildServer() {
   await app.register(require('./routes/publicCollections'), { prefix: '/api' });
   await app.register(require('./routes/dashboard'), { prefix: '/api' });
   await app.register(require('./routes/apiUsageSync'), { prefix: '/api' });
+  await app.register(require('./routes/subscriptionPlans'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {
@@ -95,6 +97,21 @@ async function start() {
   
   // Initialize Upstash Redis client (after env vars are loaded)
   upstashClient.initialize();
+  
+  // Initialize Local Redis client for limit caching
+  await localRedisClient.initialize();
+  
+  // Pre-populate limits cache on startup
+  if (localRedisClient.isEnabled()) {
+    console.log('[Server] Pre-populating limits cache...');
+    try {
+      const limitCheckerService = require('./services/limitCheckerService');
+      await limitCheckerService.refreshAllLimitsCache();
+      console.log('[Server] Limits cache populated');
+    } catch (error) {
+      console.error('[Server] Failed to populate limits cache:', error.message);
+    }
+  }
   
   const app = await buildServer();
   const port = process.env.PORT || 3000;
