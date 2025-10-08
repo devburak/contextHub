@@ -1,5 +1,5 @@
 import { Routes, Route, BrowserRouter, Navigate } from 'react-router-dom'
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import Layout from './components/Layout.jsx'
 import Login from './pages/auth/Login.jsx'
 import SignUp from './pages/auth/SignUp.jsx'
@@ -14,6 +14,7 @@ import TenantSelection from './pages/tenants/TenantSelection.jsx'
 import Tenants from './pages/tenants/Tenants.jsx'
 import CreateTenant from './pages/tenants/CreateTenant.jsx'
 import TenantSettings from './pages/tenants/TenantSettings.jsx'
+import AcceptTransfer from './pages/tenants/AcceptTransfer.jsx'
 import MediaLibrary from './pages/media/Media.jsx'
 import Categories from './pages/categories/Categories.jsx'
 import ContentList from './pages/contents/ContentList.jsx'
@@ -30,6 +31,7 @@ import GalleryManager from './pages/galleries/GalleryManager.jsx'
 import { PermissionRoute } from './components/PermissionRoute.jsx'
 import { PERMISSIONS } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
+import i18n from './i18n.js'
 
 const parseStoredJSON = (key, fallback) => {
   const raw = localStorage.getItem(key)
@@ -47,6 +49,14 @@ function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'))
   const [memberships, setMembershipsState] = useState(() => parseStoredJSON('memberships', []))
   const [activeTenantId, setActiveTenantId] = useState(() => localStorage.getItem('tenantId'))
+
+  // Set default language to Turkish on app mount
+  useEffect(() => {
+    if (!localStorage.getItem('language')) {
+      localStorage.setItem('language', 'tr')
+      i18n.changeLanguage('tr')
+    }
+  }, [])
   const [pendingTenantSelection, setPendingTenantSelection] = useState(false)
 
   const updateMemberships = useCallback((list) => {
@@ -260,6 +270,7 @@ function App() {
           {pendingTenantSelection ? (
             <Routes>
               <Route path="/select-tenant" element={<TenantSelection />} />
+              <Route path="/transfer-accept" element={<AcceptTransfer />} />
               <Route path="*" element={<Navigate to="/select-tenant" replace />} />
             </Routes>
           ) : !token ? (
@@ -295,9 +306,10 @@ function App() {
               <Route path="/menus/:id" element={<PermissionRoute permissions={PERMISSIONS.MENUS_MANAGE}><MenuEdit /></PermissionRoute>} />
               <Route path="/icerikler/*" element={<Navigate to="/contents" replace />} />
               <Route path="/kategoriler/*" element={<Navigate to="/categories" replace />} />
-              <Route path="/varliklar" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_VIEW}><Tenants /></PermissionRoute>} />
-              <Route path="/varliklar/yeni" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_MANAGE}><CreateTenant /></PermissionRoute>} />
+              <Route path="/varliklar" element={<Tenants />} />
+              <Route path="/varliklar/yeni" element={<CreateTenant />} />
               <Route path="/varliklar/ayarlar" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_MANAGE}><TenantSettings /></PermissionRoute>} />
+              <Route path="/transfer-accept" element={<AcceptTransfer />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
             </Route>

@@ -87,6 +87,13 @@ class TenantService {
         tenantId
       );
 
+      // Bu tenant'taki toplam owner sayısını hesapla
+      const ownerCount = await Membership.countDocuments({
+        tenantId: membership.tenantId,
+        role: 'owner',
+        status: 'active'
+      });
+
       return {
         id: membership._id.toString(),
         tenantId,
@@ -103,7 +110,8 @@ class TenantService {
         role: roleDoc?.key || membership.role,
         roleMeta: roleService.formatRole(roleDoc),
         permissions,
-        status: membership.status
+        status: membership.status,
+        ownerCount // Toplam owner sayısı
       };
     }));
   }
@@ -300,19 +308,23 @@ class TenantService {
       await newOwner.save();
     }
 
-    // Eski sahibin membership'ini admin yap veya sil
-    const oldOwnerMembership = await Membership.findOne({
-      tenantId,
-      role: 'owner',
-      _id: { $ne: newOwnerMembership._id }
-    });
+    // Transfer isteğini gönderen owner'ı bul ve admin yap
+    // invitedBy field'ı transfer isteğini gönderen user'ı gösterir
+    if (newOwnerMembership.invitedBy) {
+      const oldOwnerMembership = await Membership.findOne({
+        userId: newOwnerMembership.invitedBy,
+        tenantId,
+        role: 'owner',
+        status: 'active'
+      });
 
-    if (oldOwnerMembership) {
-      // Admin rolüne düşür
-      const adminRole = await roleService.resolveRole({ tenantId, roleKey: ROLE_KEYS.ADMIN });
-      oldOwnerMembership.role = 'admin';
-      oldOwnerMembership.roleId = adminRole?._id || null;
-      await oldOwnerMembership.save();
+      if (oldOwnerMembership) {
+        // Admin rolüne düşür
+        const adminRole = await roleService.resolveRole({ tenantId, roleKey: ROLE_KEYS.ADMIN });
+        oldOwnerMembership.role = 'admin';
+        oldOwnerMembership.roleId = adminRole?._id || null;
+        await oldOwnerMembership.save();
+      }
     }
 
     return newOwnerMembership;

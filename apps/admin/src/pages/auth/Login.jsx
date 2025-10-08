@@ -5,6 +5,7 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import Footer from '../../components/Footer.jsx'
+import i18n from '../../i18n.js'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -14,6 +15,14 @@ export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    // Set default language to Turkish if not set
+    if (!localStorage.getItem('language')) {
+      localStorage.setItem('language', 'tr')
+      i18n.changeLanguage('tr')
+    }
+  }, [])
 
   useEffect(() => {
     // Check if there's a success message from navigation state

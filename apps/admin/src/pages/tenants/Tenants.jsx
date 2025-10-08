@@ -65,6 +65,16 @@ export default function Tenants() {
   const handleLeaveMembership = (membership, hasOtherOwners) => {
     const isOwner = membership.role === 'owner'
     
+    // Debug: ownerCount bilgisini logla
+    console.log('handleLeaveMembership called:', {
+      membershipId: membership.id,
+      tenantName: membership.tenant?.name,
+      role: membership.role,
+      ownerCount: membership.ownerCount,
+      hasOtherOwners,
+      isOwner
+    })
+    
     // Eğer sahip değilse direkt şifre modal aç
     if (!isOwner) {
       setLeavingMembership(membership)
@@ -74,6 +84,7 @@ export default function Tenants() {
     
     // Eğer sahipse ve başka sahip varsa direkt şifre modal aç
     if (isOwner && hasOtherOwners) {
+      console.log('Opening password modal - has other owners')
       setLeavingMembership(membership)
       setShowPasswordModal(true)
       return
@@ -81,6 +92,7 @@ export default function Tenants() {
     
     // Eğer sahipse ve başka sahip yoksa transfer modal aç
     if (isOwner && !hasOtherOwners) {
+      console.log('Opening transfer modal - sole owner')
       setLeavingMembership(membership)
       setShowTransferModal(true)
       return
@@ -134,6 +146,9 @@ export default function Tenants() {
       
       toast.success(`${transferEmail} adresine sahiplik devri talebi gönderildi`)
       
+      // Liste yenilenmeli (transfer tamamlanınca ownerCount güncellenecek)
+      tenantsQuery.refetch()
+      
       // Modal'ı kapat ve state'i temizle
       closeModals()
     } catch (error) {
@@ -163,12 +178,24 @@ export default function Tenants() {
             Aktif olduğun varlıkları görüntüle ve rollerini incele. Yeni bir varlık eklemek için aşağıdaki butonu kullanabilirsin.
           </p>
         </div>
-        <Link
-          to="/varliklar/yeni"
-          className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        >
-          Yeni Varlık Ekle
-        </Link>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => tenantsQuery.refetch()}
+            className="inline-flex items-center gap-x-2 rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            Yenile
+          </button>
+          <Link
+            to="/varliklar/yeni"
+            className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            Yeni Varlık Ekle
+          </Link>
+        </div>
       </div>
 
       <div className="bg-white shadow-sm rounded-xl border border-gray-200">
@@ -188,10 +215,9 @@ export default function Tenants() {
             <div className="space-y-4">
               {tenantList.map((membership) => {
                 const isOwner = membership.role === 'owner'
-                const otherOwners = tenantList.filter(
-                  m => m.tenantId === membership.tenantId && m.role === 'owner' && m.id !== membership.id
-                )
-                const hasOtherOwners = otherOwners.length > 0
+                // Backend'den gelen ownerCount'u kullan
+                const ownerCount = membership.ownerCount || 0
+                const hasOtherOwners = isOwner && ownerCount > 1
                 
                 return (
                   <div
@@ -244,7 +270,12 @@ export default function Tenants() {
                           <div className="flex-1">
                             {isOwner && !hasOtherOwners && (
                               <p className="text-xs text-amber-700">
-                                ⚠️ Tek sahipsiniz. Görevi bırakmak için önce sahiplik devretmelisiniz.
+                                ⚠️ Tek sahipsiniz. Görevi bırakmak için önce sahiplik devretmelisiniz. (Toplam owner: {ownerCount})
+                              </p>
+                            )}
+                            {isOwner && hasOtherOwners && (
+                              <p className="text-xs text-gray-600">
+                                {ownerCount} owner var. Sahipliğinizi bırakabilirsiniz.
                               </p>
                             )}
                           </div>

@@ -162,6 +162,7 @@ async function tenantRoutes(fastify) {
                     items: { type: 'string' }
                   },
                   status: { type: 'string' },
+                  ownerCount: { type: 'number' },
                   token: { type: 'string' }
                 }
               }

@@ -326,6 +326,16 @@ class UserService {
         tenantId
       );
 
+      // Bu tenant'taki toplam owner sayısını hesapla
+      const ownerCount = await Membership.countDocuments({
+        tenantId: tenantId,
+        role: 'owner',
+        status: 'active'
+      });
+
+      // Debug log
+      console.log(`[DEBUG] Tenant ${tenantDoc?.name} (${tenantId}) - ownerCount: ${ownerCount}, userRole: ${membership.role}`);
+
       return {
         id: membership._id.toString(),
         tenantId,
@@ -340,6 +350,7 @@ class UserService {
         roleMeta: roleService.formatRole(roleDoc),
         permissions,
         status: membership.status,
+        ownerCount, // Toplam owner sayısı
         createdAt: membership.createdAt,
         updatedAt: membership.updatedAt
       };
@@ -351,7 +362,8 @@ class UserService {
   }
 
   async changePassword(userId, tenantId, currentPassword, newPassword) {
-    const user = await User.findOne({ _id: userId, tenantId });
+    // tenantId artık opsiyonel, sadece userId ile bul
+    const user = await User.findOne({ _id: userId });
     
     if (!user) {
       throw new Error('User not found');
@@ -469,6 +481,27 @@ class UserService {
     await Membership.findByIdAndDelete(membershipId);
 
     return { success: true };
+  }
+
+  async checkUserByEmail(email) {
+    const user = await User.findOne({ email }).select('-password');
+    
+    if (!user) {
+      return {
+        exists: false,
+        user: null
+      };
+    }
+
+    return {
+      exists: true,
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName
+      }
+    };
   }
 }
 

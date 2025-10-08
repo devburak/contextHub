@@ -25,8 +25,20 @@ export default function TenantSelection() {
           </div>
 
           {memberships.length === 0 ? (
-            <div className="text-center text-gray-600">
-              Aktif bir varlık erişimin bulunmuyor. Yöneticiyle iletişime geç veya yeni bir varlık oluştur.
+            <div className="text-center space-y-6">
+              <div className="text-gray-600">
+                <p className="text-lg mb-2">Aktif bir varlık erişiminiz bulunmuyor.</p>
+                <p className="text-sm">Yeni bir varlık oluşturarak başlayabilir veya mevcut bir varlığa katılım için davet bekleyebilirsiniz.</p>
+              </div>
+              <button
+                onClick={() => navigate('/varliklar/yeni')}
+                className="inline-flex items-center rounded-md bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-700"
+              >
+                <svg className="mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Yeni Varlık Oluştur
+              </button>
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">

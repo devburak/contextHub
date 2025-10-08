@@ -1,4 +1,5 @@
 const { User, Tenant, Membership } = require('@contexthub/common');
+const ActivityLog = require('@contexthub/common/src/models/ActivityLog');
 const roleService = require('./roleService');
 const tenantService = require('./tenantService');
 const bcrypt = require('bcryptjs');
@@ -108,7 +109,32 @@ class AuthService {
     };
   }
 
-  async login(email, password, tenantId) {
+  async logActivity({ userId, tenantId, action, description, metadata = {}, request = null }) {
+    try {
+      const logData = {
+        user: userId,
+        action,
+        description,
+        metadata
+      };
+
+      if (tenantId) {
+        logData.tenant = tenantId;
+      }
+
+      if (request) {
+        logData.ipAddress = request.ip || request.headers['x-forwarded-for'] || request.socket?.remoteAddress;
+        logData.userAgent = request.headers['user-agent'];
+      }
+
+      await ActivityLog.create(logData);
+    } catch (error) {
+      console.error('Failed to log activity:', error);
+      // Don't throw - logging should not break the main flow
+    }
+  }
+
+  async login(email, password, tenantId, request = null) {
     // Kullanıcıyı email'e göre bul
     const user = await User.findOne({ email });
 
@@ -128,8 +154,49 @@ class AuthService {
       status: 'active'
     }).populate('tenantId', 'name slug');
 
+    // Eğer hiç aktif membership yoksa, kullanıcıyı yine de login yap
+    // ama tenant seçimi gerekli olduğunu belirt
     if (!memberships.length) {
-      throw new Error('User does not have any active tenant access');
+      user.lastLoginAt = new Date();
+      await user.save();
+
+      // Log login activity (tenant olmadan)
+      await this.logActivity({
+        userId: user._id,
+        tenantId: null,
+        action: 'user.login',
+        description: `${user.firstName} ${user.lastName} giriş yaptı (tenant yok)`,
+        metadata: { email: user.email, noTenant: true },
+        request
+      });
+
+      // Minimal token oluştur (tenant bilgisi olmadan)
+      const minimalToken = this.fastify.jwt.sign(
+        {
+          sub: user._id.toString(),
+          email: user.email,
+          role: null,
+          roleId: null,
+          tenantId: null,
+          permissions: []
+        },
+        { expiresIn: '24h' }
+      );
+
+      return {
+        token: minimalToken,
+        user: {
+          id: user._id.toString(),
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: null,
+          permissions: []
+        },
+        memberships: [],
+        requiresTenantSelection: true,
+        message: 'Lütfen bir varlık oluşturun veya mevcut bir varlığa katılın'
+      };
     }
 
     const membershipDetails = await Promise.all(
@@ -209,6 +276,16 @@ class AuthService {
 
       const { payload, token } = detail;
 
+      // Log login activity
+      await this.logActivity({
+        userId: user._id,
+        tenantId: payload.tenantId,
+        action: 'user.login',
+        description: `${user.firstName} ${user.lastName} giriş yaptı`,
+        metadata: { email: user.email, tenantName: payload.tenant?.name },
+        request
+      });
+
       return {
         token,
         user: {
@@ -261,7 +338,7 @@ class AuthService {
     };
   }
 
-  async register(userData) {
+  async register(userData, request = null) {
     const { email, password, firstName, lastName, tenantName, tenantSlug } = userData;
 
     // Email'in daha önce kullanılıp kullanılmadığını kontrol et
@@ -310,6 +387,20 @@ class AuthService {
       });
       await membership.save();
     }
+
+    // Log registration activity
+    await this.logActivity({
+      userId: user._id,
+      tenantId: tenant?._id,
+      action: 'user.register',
+      description: `${user.firstName} ${user.lastName} kayıt oldu`,
+      metadata: { 
+        email: user.email, 
+        withTenant: !!tenant,
+        tenantName: tenant?.name 
+      },
+      request
+    });
 
     // Welcome email gönder
     try {
@@ -579,7 +670,7 @@ class AuthService {
     };
   }
 
-  async forgotPassword(email) {
+  async forgotPassword(email, request = null) {
     // Kullanıcıyı bul
     const user = await User.findOne({ email });
     
@@ -600,6 +691,15 @@ class AuthService {
     user.resetPasswordExpiresAt = resetTokenExpiresAt;
     await user.save();
 
+    // Log forgot password activity
+    await this.logActivity({
+      userId: user._id,
+      action: 'user.password.forgot',
+      description: `${user.firstName} ${user.lastName} şifre sıfırlama talebinde bulundu`,
+      metadata: { email: user.email },
+      request
+    });
+
     // E-posta gönder
     try {
       await mailService.sendPasswordResetEmail(
@@ -616,7 +716,7 @@ class AuthService {
     return { message: 'Password reset email sent' };
   }
 
-  async resetPassword(token, newPassword) {
+  async resetPassword(token, newPassword, request = null) {
     // Token ile kullanıcıyı bul
     const users = await User.find({
       resetPasswordToken: { $exists: true },
@@ -641,6 +741,15 @@ class AuthService {
     user.resetPasswordToken = null;
     user.resetPasswordExpiresAt = null;
     await user.save();
+
+    // Log password reset activity
+    await this.logActivity({
+      userId: user._id,
+      action: 'user.password.reset',
+      description: `${user.firstName} ${user.lastName} şifresini sıfırladı`,
+      metadata: { email: user.email },
+      request
+    });
 
     console.log(`Password reset successfully for user ${user.email}`);
     return { message: 'Password reset successfully' };

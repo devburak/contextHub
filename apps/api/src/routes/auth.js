@@ -78,6 +78,7 @@ async function authRoutes(fastify, options) {
               }
             },
             requiresTenantSelection: { type: 'boolean' },
+            message: { type: 'string' },
             activeMembership: {
               type: 'object',
               properties: {
@@ -126,7 +127,7 @@ async function authRoutes(fastify, options) {
     try {
       const { email, password, tenantId: tenantFromBody } = request.body;
       const tenantId = tenantFromBody || request.query.tenantId;
-      const result = await authService.login(email, password, tenantId);
+      const result = await authService.login(email, password, tenantId, request);
       
       return reply.send(result);
     } catch (error) {
@@ -177,7 +178,7 @@ async function authRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
-      const result = await authService.register(request.body);
+      const result = await authService.register(request.body, request);
       
       return reply.code(201).send(result);
     } catch (error) {
@@ -318,7 +319,7 @@ async function authRoutes(fastify, options) {
   }, async function(request, reply) {
     try {
       const { email } = request.body;
-      await authService.forgotPassword(email);
+      await authService.forgotPassword(email, request);
       
       return reply.send({ 
         message: 'Password reset email sent successfully' 
@@ -355,7 +356,7 @@ async function authRoutes(fastify, options) {
   }, async function(request, reply) {
     try {
       const { token, password } = request.body;
-      await authService.resetPassword(token, password);
+      await authService.resetPassword(token, password, request);
       
       return reply.send({ 
         message: 'Password reset successfully' 

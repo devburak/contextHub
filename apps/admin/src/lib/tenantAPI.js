@@ -25,5 +25,10 @@ export const tenantAPI = {
   acceptInvitation: async (tenantId) => {
     const { data } = await apiClient.post(`/tenants/${tenantId}/accept`)
     return data
+  },
+
+  acceptOwnershipTransfer: async (token, tenantId) => {
+    const { data } = await apiClient.post(`/tenants/${tenantId}/accept-transfer`, { token })
+    return data
   }
 }

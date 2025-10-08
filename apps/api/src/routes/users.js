@@ -3,7 +3,8 @@ const roleService = require('../services/roleService');
 const AuthService = require('../services/authService');
 const { 
   tenantContext, 
-  authenticate, 
+  authenticate,
+  authenticateWithoutTenant,
   requirePermission
 } = require('../middleware/auth');
 const { rbac } = require('@contexthub/common');
@@ -11,12 +12,53 @@ const { rbac } = require('@contexthub/common');
 const { PERMISSIONS, ROLE_KEYS } = rbac;
 
 async function userRoutes(fastify, options) {
-  // Tüm user route'ları için tenant context gerekli
-  fastify.addHook('preHandler', tenantContext);
+  // NOT: Global tenantContext hook'u kaldırıldı
+  // Tenant gerektiren endpoint'ler kendi preHandler'larında tenantContext kullanacak
+
+  // POST /users/check-email - Email ile kullanıcı kontrol et
+  fastify.post('/users/check-email', {
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' }
+        },
+        required: ['email']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            exists: { type: 'boolean' },
+            user: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                id: { type: 'string' },
+                email: { type: 'string' },
+                firstName: { type: 'string' },
+                lastName: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const { email } = request.body;
+      const result = await userService.checkUserByEmail(email);
+      
+      return reply.send(result);
+    } catch (error) {
+      return reply.code(500).send({ error: 'Internal server error', message: error.message });
+    }
+  });
 
   // GET /users - Kullanıcı listesi (Admin+)
   fastify.get('/users', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_VIEW)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_VIEW)],
     schema: {
       querystring: {
         type: 'object',
@@ -82,7 +124,7 @@ async function userRoutes(fastify, options) {
 
   // GET /users/:id - Tekil kullanıcı (Editor+)
   fastify.get('/users/:id', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_VIEW)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_VIEW)],
     schema: {
       params: {
         type: 'object',
@@ -118,7 +160,7 @@ async function userRoutes(fastify, options) {
 
   // POST /users - Yeni kullanıcı oluştur (Admin+)
   fastify.post('/users', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
     schema: {
       body: {
         type: 'object',
@@ -212,7 +254,7 @@ async function userRoutes(fastify, options) {
 
   // PUT /users/:id - Kullanıcı güncelle (Admin+)
   fastify.put('/users/:id', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
     schema: {
       params: {
         type: 'object',
@@ -260,7 +302,7 @@ async function userRoutes(fastify, options) {
 
   // DELETE /users/:id - Kullanıcı sil (Admin+)
   fastify.delete('/users/:id', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
     schema: {
       params: {
         type: 'object',
@@ -302,7 +344,7 @@ async function userRoutes(fastify, options) {
 
   // PUT /users/:id/role - Kullanıcı rolü güncelle (Admin+)
   fastify.put('/users/:id/role', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_ASSIGN_ROLE)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_ASSIGN_ROLE)],
     schema: {
       params: {
         type: 'object',
@@ -363,7 +405,7 @@ async function userRoutes(fastify, options) {
 
   // PATCH /users/:id/toggle-status - Kullanıcı durumunu değiştir (Admin+)
   fastify.patch('/users/:id/toggle-status', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
     schema: {
       params: {
         type: 'object',
@@ -420,36 +462,28 @@ async function userRoutes(fastify, options) {
 
   // GET /users/me - Mevcut kullanıcı bilgileri
   fastify.get('/users/me', {
-    preHandler: [authenticate],
+    preHandler: [authenticateWithoutTenant], // Tenant olmadan da çalışmalı
     schema: {
       querystring: {
         type: 'object',
         properties: {
           tenantId: { type: 'string' }
-        },
-        required: ['tenantId']
+        }
+        // tenantId artık opsiyonel
       }
     }
   }, async function(request, reply) {
     try {
       const memberships = await userService.getUserMemberships(request.user._id);
-
-      const activeMembership = memberships.find((item) => item.tenantId === request.tenantId) || (
-        request.membership
-          ? {
-              id: request.membership._id.toString(),
-              tenantId: request.tenantId,
-              role: request.userRole,
-              roleMeta: request.role,
-              permissions: request.userPermissions,
-              status: request.membership.status
-            }
-          : null
-      );
+      
+      // Eğer tenantId verilmişse, o tenant'a ait membership'i bul
+      const activeMembership = request.query?.tenantId 
+        ? memberships.find((item) => item.tenantId === request.query.tenantId)
+        : null;
       
       return reply.send({ 
         user: {
-          id: request.user._id,
+          id: request.user._id.toString(),
           email: request.user.email,
           firstName: request.user.firstName,
           lastName: request.user.lastName,
@@ -464,7 +498,7 @@ async function userRoutes(fastify, options) {
   });
 
   fastify.put('/users/me', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.PROFILE_UPDATE)],
+    preHandler: [authenticateWithoutTenant], // Kendi profilini herkes güncelleyebilir
     schema: {
       body: {
         type: 'object',
@@ -517,7 +551,7 @@ async function userRoutes(fastify, options) {
 
   // PUT /users/me/password - Şifre değiştir
   fastify.put('/users/me/password', {
-    preHandler: [authenticate],
+    preHandler: [authenticateWithoutTenant], // Kendi şifresini herkes değiştirebilir
     schema: {
       body: {
         type: 'object',
@@ -526,22 +560,17 @@ async function userRoutes(fastify, options) {
           newPassword: { type: 'string', minLength: 6 }
         },
         required: ['currentPassword', 'newPassword']
-      },
-      querystring: {
-        type: 'object',
-        properties: {
-          tenantId: { type: 'string' }
-        },
-        required: ['tenantId']
       }
+      // tenantId artık gerekli değil
     }
   }, async function(request, reply) {
     try {
       const { currentPassword, newPassword } = request.body;
       
+      // tenantId parametresini kaldırdık
       await userService.changePassword(
         request.user._id,
-        request.tenantId,
+        null, // tenantId artık null
         currentPassword,
         newPassword
       );
@@ -554,7 +583,7 @@ async function userRoutes(fastify, options) {
 
   // DELETE /users/me - Hesabı kalıcı olarak sil
   fastify.delete('/users/me', {
-    preHandler: [authenticate],
+    preHandler: [authenticateWithoutTenant], // Tenant kontrolü yapma, tüm hesabı sil
     schema: {
       response: {
         200: {
@@ -586,7 +615,7 @@ async function userRoutes(fastify, options) {
 
   // POST /users/invite - Kullanıcı davet et (Admin+)
   fastify.post('/users/invite', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_INVITE)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_INVITE)],
     schema: {
       body: {
         type: 'object',
@@ -624,7 +653,7 @@ async function userRoutes(fastify, options) {
   });
 
   fastify.post('/users/:id/reinvite', {
-    preHandler: [authenticate, requirePermission(PERMISSIONS.USERS_INVITE)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_INVITE)],
     schema: {
       params: {
         type: 'object',
@@ -659,7 +688,7 @@ async function userRoutes(fastify, options) {
 
   // POST /memberships/:id/leave - Varlık üyeliğinden ayrıl
   fastify.post('/memberships/:id/leave', {
-    preHandler: [authenticate],
+    preHandler: [tenantContext, authenticate], // Tenant context gerekli
     schema: {
       params: {
         type: 'object',
