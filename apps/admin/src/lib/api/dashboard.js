@@ -27,3 +27,9 @@ export async function fetchDashboardActivities({ type, scope, limit, offset } = 
   const response = await apiClient.get('/dashboard/activities', { params })
   return response.data
 }
+
+export async function fetchApiStats() {
+  const response = await apiClient.get('/dashboard/api-stats')
+  return response.data
+}
+

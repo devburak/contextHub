@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext.jsx'
-import { fetchDashboardActivities, fetchDashboardSummary } from '../lib/api/dashboard.js'
+import { fetchDashboardActivities, fetchDashboardSummary, fetchApiStats } from '../lib/api/dashboard.js'
 import RecentActivities from '../components/RecentActivities.jsx'
 import i18n from '../i18n.js'
 
@@ -154,6 +154,9 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
 
+  const [apiStats, setApiStats] = useState(null)
+  const [apiStatsLoading, setApiStatsLoading] = useState(false)
+
   const [activityItems, setActivityItems] = useState([])
   const [activityAvailableTypes, setActivityAvailableTypes] = useState([])
   const [activityHasMore, setActivityHasMore] = useState(false)
@@ -208,6 +211,35 @@ export default function Dashboard() {
     }
 
     loadSummary()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadApiStats() {
+      setApiStatsLoading(true)
+      try {
+        const data = await fetchApiStats()
+        if (!cancelled) {
+          setApiStats(data)
+        }
+      } catch (error) {
+        console.error('API istatistikleri alınamadı:', error)
+        if (!cancelled) {
+          setApiStats(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setApiStatsLoading(false)
+        }
+      }
+    }
+
+    loadApiStats()
 
     return () => {
       cancelled = true
@@ -440,7 +472,28 @@ export default function Dashboard() {
                   <dt className="text-sm font-medium text-gray-500 truncate">
                     API Çağrıları
                   </dt>
-                  <dd className="text-lg font-semibold text-gray-900">—</dd>
+                  <dd className="text-lg font-semibold text-gray-900">
+                    {apiStatsLoading ? '…' : (
+                      apiStats?.enabled ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-500">Bugün:</span>
+                            <span className="font-semibold">{formatNumber(apiStats.today)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-500">Haftalık:</span>
+                            <span className="font-semibold text-blue-600">{formatNumber(apiStats.weekly)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-500">Aylık:</span>
+                            <span className="font-semibold text-purple-600">{formatNumber(apiStats.monthly)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">Devre dışı</span>
+                      )
+                    )}
+                  </dd>
                 </dl>
               </div>
             </div>

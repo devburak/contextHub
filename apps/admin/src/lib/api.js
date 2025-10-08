@@ -87,6 +87,10 @@ export const activitiesAPI = {
   getActivities: (params) =>
     apiClient.get('/activities', { params }),
   
-  getRecentActivities: (limit = 10) =>
-    apiClient.get('/activities/recent', { params: { limit } }),
+  getRecentActivities: (limit = 10) => {
+    const tenantId = localStorage.getItem('tenantId')
+    return apiClient.get('/activities/recent', { 
+      params: { limit, tenantId } 
+    })
+  },
 }
