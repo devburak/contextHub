@@ -2,6 +2,8 @@ const fastify = require('fastify');
 const fp = require('fastify-plugin');
 const jwt = require('@fastify/jwt');
 const cors = require('@fastify/cors');
+const swagger = require('@fastify/swagger');
+const swaggerUi = require('@fastify/swagger-ui');
 const dotenv = require('dotenv');
 const path = require('path');
 const { database } = require('@contexthub/common');
@@ -39,6 +41,81 @@ const jwtPlugin = fp(async function (app) {
 // Create the Fastify application
 async function buildServer() {
   const app = fastify({ logger: true });
+
+  // Register Swagger for OpenAPI documentation
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'ContextHub API',
+        description: 'Multi-tenant headless CMS and content services platform API documentation',
+        version: '0.1.0',
+        contact: {
+          name: 'ContextHub Support',
+          email: 'support@contexthub.com'
+        },
+        license: {
+          name: 'MIT',
+          url: 'https://opensource.org/licenses/MIT'
+        }
+      },
+      servers: [
+        {
+          url: process.env.API_BASE_URL || 'http://localhost:3000',
+          description: 'API Server'
+        }
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            description: 'JWT token from /api/auth/login endpoint'
+          },
+          tenantId: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-Tenant-ID',
+            description: 'Tenant ID for multi-tenant operations'
+          }
+        }
+      },
+      tags: [
+        { name: 'auth', description: 'Authentication endpoints' },
+        { name: 'users', description: 'User management' },
+        { name: 'tenants', description: 'Tenant management' },
+        { name: 'content', description: 'Content management' },
+        { name: 'media', description: 'Media management' },
+        { name: 'categories', description: 'Category management' },
+        { name: 'tags', description: 'Tag management' },
+        { name: 'collections', description: 'Collection management' },
+        { name: 'galleries', description: 'Gallery management' },
+        { name: 'forms', description: 'Form management' },
+        { name: 'menus', description: 'Menu management' },
+        { name: 'placements', description: 'Placement management' },
+        { name: 'mail', description: 'Email services' },
+        { name: 'roles', description: 'Role management' },
+        { name: 'featureFlags', description: 'Feature flag management' },
+        { name: 'subscriptionPlans', description: 'Subscription plan management' },
+        { name: 'dashboard', description: 'Dashboard statistics' },
+        { name: 'activities', description: 'Activity logging' },
+        { name: 'documentation', description: 'Developer documentation' }
+      ]
+    }
+  });
+
+  // Register Swagger UI for interactive documentation
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: true,
+      persistAuthorization: true
+    },
+    staticCSP: true,
+    transformStaticCSP: (header) => header,
+    exposeRoute: true
+  });
 
   // Register plugins
   const allowedOrigins = (process.env.CORS_ORIGIN || '')
@@ -80,6 +157,7 @@ async function buildServer() {
   await app.register(require('./routes/dashboard'), { prefix: '/api' });
   await app.register(require('./routes/apiUsageSync'), { prefix: '/api' });
   await app.register(require('./routes/subscriptionPlans'), { prefix: '/api' });
+  await app.register(require('./routes/documentation'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {
