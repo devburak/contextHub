@@ -354,10 +354,6 @@ async function completeUpload({
     throw new Error('key is required')
   }
 
-  if (!userId) {
-    throw new Error('Authenticated user is required to record media uploads')
-  }
-
   const tenant = await Tenant.findById(tenantId)
   if (!tenant) {
     throw new Error('Tenant not found')
@@ -493,10 +489,6 @@ async function createExternalMedia({
 }) {
   if (!url) {
     throw new Error('url is required')
-  }
-
-  if (!userId) {
-    throw new Error('Authenticated user is required to record media')
   }
 
   const tenant = await Tenant.findById(tenantId)
