@@ -5,6 +5,12 @@ const apiTokenSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
   name: { type: String, required: true },
   hash: { type: String, required: true },
+  role: {
+    type: String,
+    enum: ['viewer', 'author', 'editor', 'admin', 'owner'],
+    default: 'editor',
+    required: true
+  },
   scopes: [{ type: String }],
   expiresAt: { type: Date },
   lastUsedAt: { type: Date },

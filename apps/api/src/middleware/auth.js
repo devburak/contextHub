@@ -95,9 +95,10 @@ async function authenticateApiToken(request, reply) {
     request.authType = 'api_token';
     request.tokenScopes = apiToken.scopes || [];
 
-    // API token kullanımında user role'ü yok ama scope'lar var
-    request.userRole = 'api_token';
-    request.roleLevel = 0; // API token'lar role-based değil, scope-based
+    // API token'ın role'ünü ve level'ını set et
+    const tokenRole = apiToken.role || 'editor'; // Default: editor
+    request.userRole = tokenRole;
+    request.roleLevel = getRoleLevel(tokenRole);
 
   } catch (err) {
     return reply.code(401).send({
