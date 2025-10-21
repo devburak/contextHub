@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon } from '@heroicons/react/24/outline'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
@@ -130,6 +130,13 @@ export default function Layout() {
       name: 'Belgeler',
       href: '/belgeler',
       icon: BookOpenIcon,
+      permission: PERMISSIONS.DASHBOARD_VIEW
+    },
+    {
+      id: 'apidocs',
+      name: 'API Dokümantasyonu',
+      href: '/apidocs',
+      icon: CodeBracketIcon,
       permission: PERMISSIONS.DASHBOARD_VIEW
     }
   ], [])
