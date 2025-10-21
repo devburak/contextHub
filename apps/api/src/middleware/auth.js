@@ -1,22 +1,31 @@
-const { User, Membership, rbac } = require('@contexthub/common');
+const { User, Membership, rbac, ApiToken } = require('@contexthub/common');
 const roleService = require('../services/roleService');
+const crypto = require('crypto');
 
 const { getRoleLevel, ROLE_KEYS } = rbac;
 
 // Tenant context middleware - URL'den veya header'dan tenant bilgisini alır
 async function tenantContext(request, reply) {
   let tenantId = null;
-  
+
+  // API token kontrolü - ctx_ var mı?
+  const authHeader = request.headers.authorization;
+  if (authHeader && authHeader.includes('ctx_')) {
+    // API token kullanılıyor - tenant ID'yi token'dan alacağız
+    // Bu durumda tenantId kontrolünü atlayalım, authenticate middleware set edecek
+    return;
+  }
+
   // Query parameter'dan
   if (request.query.tenantId) {
     tenantId = request.query.tenantId;
   }
-  
+
   // Header'dan
   else if (request.headers['x-tenant-id']) {
     tenantId = request.headers['x-tenant-id'];
   }
-  
+
   // Subdomain'den (gelecekte)
   // else if (request.headers.host) {
   //   const subdomain = request.headers.host.split('.')[0];
@@ -24,20 +33,100 @@ async function tenantContext(request, reply) {
   // }
 
   if (!tenantId) {
-    return reply.code(400).send({ 
+    return reply.code(400).send({
       error: 'Tenant ID required',
-      message: 'Please provide tenantId in query params or X-Tenant-ID header' 
+      message: 'Please provide tenantId in query params or X-Tenant-ID header'
     });
   }
 
   request.tenantId = tenantId;
 }
 
-// JWT Authentication middleware
+// API Token Authentication - token'dan tenant ID'yi otomatik alır
+async function authenticateApiToken(request, reply) {
+  try {
+    const authHeader = request.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return reply.code(401).send({
+        error: 'Authentication required',
+        message: 'Authorization header with Bearer token is required'
+      });
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Token ctx_ ile başlamalı
+    if (!token.startsWith('ctx_')) {
+      return reply.code(401).send({
+        error: 'Invalid token',
+        message: 'API token must start with ctx_ prefix'
+      });
+    }
+
+    // Token'ı hash'le
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Token'ı veritabanında ara
+    const apiToken = await ApiToken.findOne({ hash });
+
+    if (!apiToken) {
+      return reply.code(401).send({
+        error: 'Invalid token',
+        message: 'API token not found or invalid'
+      });
+    }
+
+    // Token süresini kontrol et
+    if (apiToken.expiresAt && new Date(apiToken.expiresAt) < new Date()) {
+      return reply.code(401).send({
+        error: 'Token expired',
+        message: 'API token has expired'
+      });
+    }
+
+    // Last used at'i güncelle
+    apiToken.lastUsedAt = new Date();
+    await apiToken.save();
+
+    // Request'e tenant ve token bilgilerini ekle
+    request.tenantId = apiToken.tenantId.toString();
+    request.apiToken = apiToken;
+    request.authType = 'api_token';
+    request.tokenScopes = apiToken.scopes || [];
+
+    // API token kullanımında user role'ü yok ama scope'lar var
+    request.userRole = 'api_token';
+    request.roleLevel = 0; // API token'lar role-based değil, scope-based
+
+  } catch (err) {
+    return reply.code(401).send({
+      error: 'Authentication failed',
+      message: err.message
+    });
+  }
+}
+
+// JWT Authentication middleware - hem JWT hem API token destekler
 async function authenticate(request, reply) {
+  const authHeader = request.headers.authorization;
+
+  // API token kontrolü - ctx_ prefix'i varsa
+  if (authHeader && authHeader.includes('ctx_')) {
+    return await authenticateApiToken(request, reply);
+  }
+
+  // Normal JWT authentication için authHeader kontrolü
+  if (!authHeader) {
+    return reply.code(401).send({
+      error: 'Authentication required',
+      message: 'Authorization header is required'
+    });
+  }
+
   try {
     await request.jwtVerify();
-    
+
     // Token'dan user bilgisini al
     const userId = request.user.sub;
     const tenantId = request.tenantId;
@@ -53,16 +142,16 @@ async function authenticate(request, reply) {
     }
 
     // User'ın bu tenant'taki membership'ini kontrol et
-    const membership = await Membership.findOne({ 
-      userId, 
-      tenantId, 
-      status: 'active' 
+    const membership = await Membership.findOne({
+      userId,
+      tenantId,
+      status: 'active'
     });
 
     if (!membership) {
-      return reply.code(403).send({ 
-        error: 'Access denied', 
-        message: 'User does not have access to this tenant' 
+      return reply.code(403).send({
+        error: 'Access denied',
+        message: 'User does not have access to this tenant'
       });
     }
 
@@ -79,6 +168,7 @@ async function authenticate(request, reply) {
     request.roleLevel = roleLevel;
     request.userPermissions = permissions;
     request.userPermissionSet = new Set(permissions);
+    request.authType = 'jwt';
 
   } catch (err) {
     return reply.code(401).send({ error: 'Authentication failed', message: err.message });

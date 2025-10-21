@@ -159,9 +159,10 @@ async function apiTokenRoutes(fastify) {
       }
 
       // Generate a secure random token
-      const token = crypto.randomBytes(32).toString('hex');
+      const tokenValue = crypto.randomBytes(32).toString('hex');
+      const token = `ctx_${tokenValue}`; // Add prefix immediately
 
-      // Hash the token for storage
+      // Hash the token for storage (with prefix)
       const hash = crypto.createHash('sha256').update(token).digest('hex');
 
       // Calculate expiration date if provided
@@ -191,7 +192,7 @@ async function apiTokenRoutes(fastify) {
         token: {
           id: apiToken._id.toString(),
           name: apiToken.name,
-          token: `ctx_${token}`, // Prefix for easy identification
+          token: token, // Already has ctx_ prefix
           scopes: apiToken.scopes,
           expiresAt: apiToken.expiresAt,
           createdAt: apiToken.createdAt,
