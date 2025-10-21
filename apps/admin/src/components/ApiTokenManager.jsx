@@ -7,6 +7,7 @@ export default function ApiTokenManager() {
   const queryClient = useQueryClient()
   const [showModal, setShowModal] = useState(false)
   const [newTokenName, setNewTokenName] = useState('')
+  const [newTokenRole, setNewTokenRole] = useState('editor')
   const [newTokenScopes, setNewTokenScopes] = useState(['read'])
   const [newTokenExpires, setNewTokenExpires] = useState(90)
   const [createdToken, setCreatedToken] = useState(null)
@@ -27,6 +28,7 @@ export default function ApiTokenManager() {
       queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
       setCreatedToken(data.token)
       setNewTokenName('')
+      setNewTokenRole('editor')
       setNewTokenScopes(['read'])
       setNewTokenExpires(90)
       setFeedback({ type: 'success', message: 'API token başarıyla oluşturuldu!' })
@@ -57,6 +59,7 @@ export default function ApiTokenManager() {
     }
     createTokenMutation.mutate({
       name: newTokenName.trim(),
+      role: newTokenRole,
       scopes: newTokenScopes,
       expiresInDays: newTokenExpires,
     })
@@ -72,6 +75,7 @@ export default function ApiTokenManager() {
     setShowModal(false)
     setCreatedToken(null)
     setNewTokenName('')
+    setNewTokenRole('editor')
     setNewTokenScopes(['read'])
     setNewTokenExpires(90)
     setFeedback({ type: '', message: '' })
@@ -155,6 +159,9 @@ export default function ApiTokenManager() {
                     <div>
                       <h4 className="text-sm font-medium text-gray-900">{token.name}</h4>
                       <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                          {token.role || 'editor'}
+                        </span>
                         <span>Scopes: {token.scopes.join(', ')}</span>
                         <span>•</span>
                         <span>Son kullanım: {token.lastUsedAt ? formatDate(token.lastUsedAt) : 'Hiç kullanılmadı'}</span>
@@ -271,6 +278,14 @@ export default function ApiTokenManager() {
                         <p className="text-sm font-medium text-gray-900">{createdToken.name}</p>
                       </div>
                       <div>
+                        <p className="text-xs text-gray-500">Role</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                            {createdToken.role || 'editor'}
+                          </span>
+                        </p>
+                      </div>
+                      <div>
                         <p className="text-xs text-gray-500">Scopes</p>
                         <p className="text-sm font-medium text-gray-900">{createdToken.scopes.join(', ')}</p>
                       </div>
@@ -297,6 +312,26 @@ export default function ApiTokenManager() {
                         placeholder="Örn: Production App"
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Role *
+                      </label>
+                      <select
+                        value={newTokenRole}
+                        onChange={(e) => setNewTokenRole(e.target.value)}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                      >
+                        <option value="viewer">Viewer - Sadece okuma</option>
+                        <option value="author">Author - Kendi içeriklerini yönetir</option>
+                        <option value="editor">Editor - Tüm içerikleri yönetir (Önerilen)</option>
+                        <option value="admin">Admin - Yönetim yetkisi</option>
+                        <option value="owner">Owner - Tam yetki</option>
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Migration işlemleri için <strong>Editor</strong> rolü önerilir.
+                      </p>
                     </div>
 
                     <div>

@@ -100,6 +100,25 @@ async function authenticateApiToken(request, reply) {
     request.userRole = tokenRole;
     request.roleLevel = getRoleLevel(tokenRole);
 
+    // API token için user context'i oluştur
+    // Token'ı oluşturan user varsa onu kullan, yoksa minimal context oluştur
+    if (apiToken.createdBy) {
+      const user = await User.findById(apiToken.createdBy).select('-password');
+      if (user) {
+        request.user = user;
+      }
+    }
+
+    // User bulunamazsa, minimal user context oluştur (API token için)
+    // createdBy/updatedBy field'ları optional olduğu için bu yeterli
+    if (!request.user) {
+      request.user = {
+        _id: apiToken._id, // Token'ın kendi ID'si userId olarak kullanılır
+        name: apiToken.name,
+        isApiToken: true
+      };
+    }
+
   } catch (err) {
     return reply.code(401).send({
       error: 'Authentication failed',
