@@ -1,8 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, Edit2, Trash2, GripVertical, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Edit2, Trash2, GripVertical, ChevronRight, ChevronDown, ArrowUpToLine } from 'lucide-react';
 import { apiClient as api } from '../../lib/api';
 import { useToast } from '../../contexts/ToastContext';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 export default function MenuEdit() {
   const { id } = useParams();
@@ -26,6 +43,20 @@ export default function MenuEdit() {
   
   const [editingItem, setEditingItem] = useState(null);
   const [showItemForm, setShowItemForm] = useState(false);
+  const [activeId, setActiveId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const [collapsedItems, setCollapsedItems] = useState({});
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     if (!isNew) {
@@ -132,6 +163,115 @@ export default function MenuEdit() {
       .replace(/^-|-$/g, '');
   };
 
+  const toggleCollapse = (itemId) => {
+    setCollapsedItems(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
+  };
+
+  const handleDragStart = (event) => {
+    setActiveId(event.active.id);
+  };
+
+  const handleDragOver = (event) => {
+    setOverId(event.over?.id || null);
+  };
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+
+    setActiveId(null);
+    setOverId(null);
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const activeItem = menu.items.find(item => item._id === active.id);
+    const overItem = menu.items.find(item => item._id === over.id);
+
+    if (!activeItem || !overItem) return;
+
+    // Check if trying to move item to its own child (prevent circular reference)
+    const isDescendant = (parentId, childId) => {
+      const parent = menu.items.find(item => item._id === parentId);
+      if (!parent) return false;
+      if (parent.parentId?.toString() === childId.toString()) return true;
+      if (parent.parentId) return isDescendant(parent.parentId, childId);
+      return false;
+    };
+
+    if (isDescendant(over.id, active.id)) {
+      toast.error('Bir menü öğesini kendi alt öğesinin altına taşıyamazsınız!');
+      return;
+    }
+
+    // Determine if we're making it a sibling or a child
+    // If the over item has the same parent as active, they're siblings
+    // Otherwise, make active a child of over
+
+    const activeParentId = activeItem.parentId?.toString() || null;
+    const overParentId = overItem.parentId?.toString() || null;
+
+    let newParentId;
+    let newOrder;
+
+    // Simple approach: make it a child of the item we dropped on
+    newParentId = over.id;
+
+    // Get siblings in new parent
+    const siblings = menu.items.filter(item =>
+      (item.parentId?.toString() || null) === (newParentId?.toString() || null) &&
+      item._id !== active.id
+    ).sort((a, b) => a.order - b.order);
+
+    newOrder = siblings.length;
+
+    // Check depth limit
+    const getDepth = (itemId) => {
+      const item = menu.items.find(i => i._id === itemId);
+      if (!item || !item.parentId) return 0;
+      return 1 + getDepth(item.parentId);
+    };
+
+    const newDepth = getDepth(newParentId) + 1;
+    if (newDepth > (menu.meta?.maxDepth || 3)) {
+      toast.error(`Maksimum derinlik (${menu.meta?.maxDepth || 3}) aşılamaz!`);
+      return;
+    }
+
+    // Update all items with new positions
+    const updates = menu.items.map(item => {
+      if (item._id === active.id) {
+        return {
+          id: item._id,
+          order: newOrder,
+          parentId: newParentId
+        };
+      }
+      return {
+        id: item._id,
+        order: item.order,
+        parentId: item.parentId || null
+      };
+    });
+
+    try {
+      const response = await api.post(`/menus/${id}/reorder`, { items: updates });
+      setMenu(response.data);
+      toast.success('Menü sıralaması güncellendi!');
+    } catch (error) {
+      console.error('Failed to reorder items:', error);
+      toast.error('Sıralama güncellenemedi: ' + error.message);
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+    setOverId(null);
+  };
+
   // Build tree structure for display
   const buildTree = (items, parentId = null) => {
     return items
@@ -146,31 +286,94 @@ export default function MenuEdit() {
       }));
   };
 
-  const renderMenuItem = (item, level = 0) => {
+  // Sortable Menu Item Component
+  const SortableMenuItem = ({ item, level = 0 }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: item._id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+      marginLeft: `${level * 24}px`,
+    };
+
+    const hasChildren = item.children && item.children.length > 0;
+    const isCollapsed = collapsedItems[item._id];
+    const isOver = overId === item._id;
+
     return (
       <div key={item._id} className="mb-2">
-        <div 
-          className={`flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50`}
-          style={{ marginLeft: `${level * 24}px` }}
+        <div
+          ref={setNodeRef}
+          style={style}
+          className={`flex items-center gap-2 p-3 bg-white border rounded-lg hover:bg-gray-50 transition-colors ${
+            isOver ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+          } ${isDragging ? 'shadow-lg' : ''}`}
         >
-          <GripVertical size={16} className="text-gray-400 cursor-move" />
-          
+          <div {...attributes} {...listeners} className="cursor-move touch-none">
+            <GripVertical size={16} className="text-gray-400" />
+          </div>
+
+          {hasChildren && (
+            <button
+              onClick={() => toggleCollapse(item._id)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              {isCollapsed ? (
+                <ChevronRight size={16} />
+              ) : (
+                <ChevronDown size={16} />
+              )}
+            </button>
+          )}
+
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              {level > 0 && <ChevronRight size={16} className="text-gray-400" />}
               <span className="font-medium text-gray-900">{item.title}</span>
               {!item.isVisible && (
-                <span className="text-xs text-gray-500">(Gizli)</span>
+                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">Gizli</span>
+              )}
+              {level > 0 && (
+                <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-600 rounded">Alt Menü</span>
               )}
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 truncate">
               {item.type === 'custom' && item.url}
               {item.type === 'external' && item.url}
               {item.type !== 'custom' && item.type !== 'external' && `${item.type}: ${item.reference?.id}`}
             </div>
           </div>
-          
+
           <div className="flex gap-2">
+            {level > 0 && (
+              <button
+                onClick={async () => {
+                  try {
+                    const updates = menu.items.map(i => ({
+                      id: i._id,
+                      order: i._id === item._id ? 0 : i.order,
+                      parentId: i._id === item._id ? null : (i.parentId || null)
+                    }));
+                    const response = await api.post(`/menus/${id}/reorder`, { items: updates });
+                    setMenu(response.data);
+                    toast.success('Menü öğesi ana menüye taşındı!');
+                  } catch (error) {
+                    toast.error('Taşıma başarısız: ' + error.message);
+                  }
+                }}
+                className="text-purple-600 hover:text-purple-900"
+                title="Ana menüye çıkar"
+              >
+                <ArrowUpToLine size={16} />
+              </button>
+            )}
             <button
               onClick={() => handleEditItem(item)}
               className="text-blue-600 hover:text-blue-900"
@@ -187,10 +390,12 @@ export default function MenuEdit() {
             </button>
           </div>
         </div>
-        
-        {item.children && item.children.length > 0 && (
+
+        {hasChildren && !isCollapsed && (
           <div className="mt-1">
-            {item.children.map(child => renderMenuItem(child, level + 1))}
+            {item.children.map(child => (
+              <SortableMenuItem key={child._id} item={child} level={level + 1} />
+            ))}
           </div>
         )}
       </div>
@@ -327,7 +532,12 @@ export default function MenuEdit() {
         <div className="col-span-2">
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">Menü Öğeleri</h2>
+              <div>
+                <h2 className="text-lg font-semibold">Menü Öğeleri</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  Sürükle-bırak ile sıralayın ve iç içe menü yapısı oluşturun
+                </p>
+              </div>
               <button
                 onClick={handleAddItem}
                 disabled={isNew}
@@ -337,6 +547,27 @@ export default function MenuEdit() {
                 Öğe Ekle
               </button>
             </div>
+
+            {!isNew && tree.length > 0 && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <div className="text-blue-600 mt-0.5">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-1">Nasıl Kullanılır?</p>
+                    <ul className="space-y-1 text-xs">
+                      <li>• Menü öğelerini sürükleyip başka öğelerin üzerine bırakarak alt menü oluşturun</li>
+                      <li>• {ChevronDown && <span className="inline-flex"><ChevronDown size={12} /></span>} butonu ile alt menüleri açıp kapatın</li>
+                      <li>• <ArrowUpToLine className="inline" size={12} /> butonu ile alt menüyü ana menüye çıkarın</li>
+                      <li>• Maksimum {menu.meta?.maxDepth || 3} seviye derinlik desteklenir</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {isNew ? (
               <div className="text-center py-12 text-gray-500">
@@ -354,9 +585,35 @@ export default function MenuEdit() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-2">
-                {tree.map(item => renderMenuItem(item))}
-              </div>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
+              >
+                <SortableContext
+                  items={menu.items.map(item => item._id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {tree.map(item => (
+                      <SortableMenuItem key={item._id} item={item} />
+                    ))}
+                  </div>
+                </SortableContext>
+
+                <DragOverlay>
+                  {activeId ? (
+                    <div className="p-3 bg-white border-2 border-blue-500 rounded-lg shadow-xl">
+                      <div className="font-medium text-gray-900">
+                        {menu.items.find(item => item._id === activeId)?.title}
+                      </div>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
         </div>
@@ -442,6 +699,29 @@ export default function MenuEdit() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   placeholder="menu-item-home active"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Üst Menü
+                </label>
+                <select
+                  value={editingItem.parentId || ''}
+                  onChange={(e) => setEditingItem({ ...editingItem, parentId: e.target.value || null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="">-- Ana Menü Öğesi --</option>
+                  {menu.items
+                    .filter(item => item._id !== editingItem._id) // Kendi kendinin altı olamaz
+                    .map(item => (
+                      <option key={item._id} value={item._id}>
+                        {item.title}
+                      </option>
+                    ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Bu öğeyi başka bir menü öğesinin altında göstermek için üst menüyü seçin
+                </p>
               </div>
 
               <div>

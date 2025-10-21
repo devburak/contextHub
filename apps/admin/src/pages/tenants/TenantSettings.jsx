@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { tenantAPI } from '../../lib/tenantAPI.js'
+import { fetchTenantLimits, fetchSubscriptionPlans, updateTenantSubscription } from '../../lib/api/subscriptions.js'
+import { useAuth } from '../../contexts/AuthContext.jsx'
+import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
 
 const EMPTY_STATE = {
   smtp: {
@@ -169,9 +172,18 @@ const buildPayload = (state, secretFlags, metadataText) => {
 
 export default function TenantSettings() {
   const queryClient = useQueryClient()
+  const { activeMembership } = useAuth()
+
   const settingsQuery = useQuery({
     queryKey: ['tenants', 'settings'],
     queryFn: tenantAPI.getSettings
+  })
+
+  // Fetch current tenant limits and plan
+  const limitsQuery = useQuery({
+    queryKey: ['tenant-limits'],
+    queryFn: fetchTenantLimits,
+    staleTime: 30000, // 30 seconds
   })
 
   const [formState, setFormState] = useState(JSON.parse(JSON.stringify(EMPTY_STATE)))
@@ -180,6 +192,8 @@ export default function TenantSettings() {
   const [feedback, setFeedback] = useState({ type: '', message: '' })
   const [featureKeyInput, setFeatureKeyInput] = useState('')
   const [customLimitInput, setCustomLimitInput] = useState({ key: '', value: '' })
+  const [selectedPlan, setSelectedPlan] = useState(null)
+  const [showPlanModal, setShowPlanModal] = useState(false)
 
   useEffect(() => {
     if (settingsQuery.data) {
@@ -206,6 +220,19 @@ export default function TenantSettings() {
     onError: (error) => {
       const apiMessage = error?.response?.data?.message || error?.response?.data?.error
       setFeedback({ type: 'error', message: apiMessage || 'Ayarlar kaydedilirken bir hata oluştu.' })
+    }
+  })
+
+  const updatePlanMutation = useMutation({
+    mutationFn: ({ tenantId, planSlug }) => updateTenantSubscription(tenantId, { planSlug }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-limits'] })
+      setShowPlanModal(false)
+      setFeedback({ type: 'success', message: 'Abonelik planı başarıyla güncellendi!' })
+    },
+    onError: (error) => {
+      const apiMessage = error?.response?.data?.message || error?.response?.data?.error
+      setFeedback({ type: 'error', message: apiMessage || 'Plan güncellenemedi.' })
     }
   })
 
@@ -385,6 +412,16 @@ export default function TenantSettings() {
     }
   }
 
+  const handlePlanChange = () => {
+    if (!selectedPlan || !activeMembership?.tenantId) return
+    updatePlanMutation.mutate({
+      tenantId: activeMembership.tenantId,
+      planSlug: selectedPlan
+    })
+  }
+
+  const currentPlan = limitsQuery.data?.plan?.slug || 'free'
+
   if (settingsQuery.isLoading) {
     return <div className="text-sm text-gray-500">Ayarlar yükleniyor...</div>
   }
@@ -425,6 +462,87 @@ export default function TenantSettings() {
             {feedback.message}
           </div>
         )}
+
+        {/* Subscription Plan Section */}
+        <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">Abonelik Planı</h2>
+            <p className="text-sm text-gray-500">Varlığınızın abonelik planını görüntüleyin ve değiştirin. Plan değişiklikleri limitlerinizi anında günceller.</p>
+          </div>
+          <div className="px-6 py-5 space-y-4">
+            {limitsQuery.isLoading ? (
+              <div className="text-center text-gray-500 py-4">Plan bilgileri yükleniyor...</div>
+            ) : limitsQuery.isError ? (
+              <div className="text-center text-red-600 py-4">Plan bilgileri alınamadı.</div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Mevcut Plan</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{limitsQuery.data?.plan?.name || 'Free'}</p>
+                    {limitsQuery.data?.plan?.price > 0 && (
+                      <p className="text-sm text-gray-600 mt-1">${limitsQuery.data.plan.price}/ay</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPlanModal(true)}
+                    className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+                  >
+                    Planı Değiştir
+                  </button>
+                </div>
+
+                {/* Current Usage Stats */}
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                    <p className="text-xs font-medium text-blue-600 uppercase">Kullanıcılar</p>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {limitsQuery.data?.usage?.users?.current || 0} / {
+                        limitsQuery.data?.usage?.users?.isUnlimited
+                          ? '∞'
+                          : (limitsQuery.data?.usage?.users?.limit || 0)
+                      }
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                    <p className="text-xs font-medium text-purple-600 uppercase">Depolama</p>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {(limitsQuery.data?.usage?.storage?.current / (1024**3)).toFixed(2)} GB / {
+                        limitsQuery.data?.usage?.storage?.isUnlimited
+                          ? '∞'
+                          : `${(limitsQuery.data?.usage?.storage?.limit / (1024**3)).toFixed(0)} GB`
+                      }
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
+                    <p className="text-xs font-medium text-emerald-600 uppercase">API İstekleri</p>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {(limitsQuery.data?.usage?.requests?.current / 1000).toFixed(1)}K / {
+                        limitsQuery.data?.usage?.requests?.isUnlimited
+                          ? '∞'
+                          : `${(limitsQuery.data?.usage?.requests?.limit / 1000).toFixed(0)}K`
+                      }
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
+                    <p className="text-xs font-medium text-amber-600 uppercase">Owners</p>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {limitsQuery.data?.usage?.owners?.current || 0} / {
+                        limitsQuery.data?.usage?.owners?.isUnlimited
+                          ? '∞'
+                          : (limitsQuery.data?.usage?.owners?.limit || 0)
+                      }
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
@@ -868,6 +986,56 @@ export default function TenantSettings() {
           </button>
         </div>
       </form>
+
+      {/* Plan Change Modal */}
+      {showPlanModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={() => setShowPlanModal(false)}></div>
+
+            <div className="relative w-full max-w-6xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
+              <div className="bg-white px-6 py-5 border-b border-gray-200">
+                <h3 className="text-xl font-semibold text-gray-900">Abonelik Planını Değiştir</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  İhtiyaçlarınıza uygun planı seçin. Plan değişiklikleri anında etkinleşir.
+                </p>
+              </div>
+
+              <div className="px-6 py-6">
+                <SubscriptionPlanSelector
+                  selectedPlan={selectedPlan || currentPlan}
+                  onSelectPlan={setSelectedPlan}
+                  currentPlan={currentPlan}
+                  showPricing={true}
+                  compact={false}
+                />
+              </div>
+
+              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPlanModal(false)
+                    setSelectedPlan(null)
+                  }}
+                  disabled={updatePlanMutation.isPending}
+                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  İptal
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePlanChange}
+                  disabled={updatePlanMutation.isPending || !selectedPlan || selectedPlan === currentPlan}
+                  className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {updatePlanMutation.isPending ? 'Güncelleniyor...' : 'Planı Değiştir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

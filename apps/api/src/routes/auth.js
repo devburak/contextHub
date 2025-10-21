@@ -6,12 +6,15 @@ async function authRoutes(fastify, options) {
   // POST /auth/login - Giriş yap
   fastify.post('/auth/login', {
     schema: {
+      description: 'Authenticate user with email and password',
+      summary: 'User login',
+      tags: ['auth'],
       body: {
         type: 'object',
         properties: {
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 1 },
-          tenantId: { type: 'string' }
+          email: { type: 'string', format: 'email', description: 'User email address' },
+          password: { type: 'string', minLength: 1, description: 'User password' },
+          tenantId: { type: 'string', description: 'Optional tenant ID for multi-tenant login' }
         },
         required: ['email', 'password']
       },
@@ -138,15 +141,18 @@ async function authRoutes(fastify, options) {
   // POST /auth/register - Kayıt ol (tenant opsiyonel)
   fastify.post('/auth/register', {
     schema: {
+      description: 'Register a new user with optional tenant creation',
+      summary: 'User registration',
+      tags: ['auth'],
       body: {
         type: 'object',
         properties: {
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 6 },
-          firstName: { type: 'string', minLength: 1 },
-          lastName: { type: 'string', minLength: 1 },
-          tenantName: { type: 'string', minLength: 1 },
-          tenantSlug: { type: 'string', minLength: 1 }
+          email: { type: 'string', format: 'email', description: 'User email address' },
+          password: { type: 'string', minLength: 6, description: 'Password (minimum 6 characters)' },
+          firstName: { type: 'string', minLength: 1, description: 'User first name' },
+          lastName: { type: 'string', minLength: 1, description: 'User last name' },
+          tenantName: { type: 'string', minLength: 1, description: 'Optional tenant name to create' },
+          tenantSlug: { type: 'string', minLength: 1, description: 'Optional tenant slug (URL identifier)' }
         },
         required: ['email', 'password', 'firstName', 'lastName']
       },
@@ -192,6 +198,9 @@ async function authRoutes(fastify, options) {
   // POST /auth/refresh - Token yenile
   fastify.post('/auth/refresh', {
     schema: {
+      description: 'Refresh an existing JWT token',
+      summary: 'Token refresh',
+      tags: ['auth'],
       body: {
         type: 'object',
         properties: {
@@ -226,6 +235,9 @@ async function authRoutes(fastify, options) {
 
   fastify.post('/auth/invitations/accept', {
     schema: {
+      description: 'Accept a tenant invitation and create/update user account',
+      summary: 'Accept invitation',
+      tags: ['auth'],
       body: {
         type: 'object',
         properties: {
@@ -283,6 +295,9 @@ async function authRoutes(fastify, options) {
   // POST /auth/logout - Çıkış yap (şu an için token invalidation yok)
   fastify.post('/auth/logout', {
     schema: {
+      description: 'Logout user (currently no token invalidation)',
+      summary: 'User logout',
+      tags: ['auth'],
       response: {
         200: {
           type: 'object',
@@ -300,6 +315,9 @@ async function authRoutes(fastify, options) {
   // POST /auth/forgot-password - Şifre sıfırlama talebi
   fastify.post('/auth/forgot-password', {
     schema: {
+      description: 'Request a password reset email',
+      summary: 'Forgot password',
+      tags: ['auth'],
       body: {
         type: 'object',
         properties: {
@@ -336,6 +354,9 @@ async function authRoutes(fastify, options) {
   // POST /auth/reset-password - Şifre sıfırlama
   fastify.post('/auth/reset-password', {
     schema: {
+      description: 'Reset password using token from email',
+      summary: 'Reset password',
+      tags: ['auth'],
       body: {
         type: 'object',
         properties: {

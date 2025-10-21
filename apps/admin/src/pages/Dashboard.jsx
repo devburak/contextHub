@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { fetchDashboardActivities, fetchDashboardSummary, fetchApiStats } from '../lib/api/dashboard.js'
-import { fetchTenantLimits } from '../lib/api/subscriptions.js'
+import { fetchTenantLimits, updateTenantSubscription } from '../lib/api/subscriptions.js'
 import { tenantAPI } from '../lib/tenantAPI.js'
 import RecentActivities from '../components/RecentActivities.jsx'
+import SubscriptionPlanSelector from '../components/SubscriptionPlanSelector.jsx'
 import i18n from '../i18n.js'
 
 const ACTIVITY_PAGE_SIZE = 10
@@ -175,6 +176,11 @@ export default function Dashboard() {
     type: 'all',
     scope: isOwner ? 'tenant' : 'self',
   }))
+
+  const [showPlanModal, setShowPlanModal] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState(null)
+  const [planUpdateLoading, setPlanUpdateLoading] = useState(false)
+  const [planUpdateError, setPlanUpdateError] = useState(null)
 
   // Set default language to Turkish if not set
   useEffect(() => {
@@ -371,6 +377,29 @@ export default function Dashboard() {
       cancelled = true
     }
   }, [activityFilters.type, activityFilters.scope, isOwner])
+
+  const handlePlanChange = async () => {
+    if (!selectedPlan || !activeTenantId) return
+
+    setPlanUpdateLoading(true)
+    setPlanUpdateError(null)
+
+    try {
+      await updateTenantSubscription(activeTenantId, { planSlug: selectedPlan })
+
+      // Refresh tenant limits
+      const limitsData = await fetchTenantLimits()
+      setTenantLimits(limitsData)
+
+      setShowPlanModal(false)
+      setSelectedPlan(null)
+    } catch (error) {
+      console.error('Plan update failed:', error)
+      setPlanUpdateError(error?.response?.data?.message || 'Plan güncellenemedi')
+    } finally {
+      setPlanUpdateLoading(false)
+    }
+  }
 
   const handleLoadMoreActivities = async () => {
     if (activitiesLoadingMore || !activityHasMore) {
@@ -594,6 +623,43 @@ export default function Dashboard() {
         <div className="mt-8">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Limit & Kullanım</h2>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Subscription Plan Card - Clickable */}
+            {tenantLimits && (
+              <button
+                onClick={() => setShowPlanModal(true)}
+                className="card text-left hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 hover:border-blue-300"
+              >
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <dt className="text-sm font-medium text-gray-600">Mevcut Plan</dt>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-md">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900 mb-1">
+                      {tenantLimits.plan?.name || 'Free'}
+                    </div>
+                    {tenantLimits.plan?.price > 0 ? (
+                      <p className="text-sm text-gray-600 font-medium">${tenantLimits.plan.price}/ay</p>
+                    ) : (
+                      <p className="text-sm text-green-600 font-medium">Ücretsiz</p>
+                    )}
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-blue-200">
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                      <span>Planı Değiştir</span>
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            )}
+
             {/* Storage Limit Card */}
             <div className="card">
               <div className="p-5">
@@ -747,7 +813,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Current Plan Card */}
+            {/* Current Plan Card
             <div className="card">
               <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
@@ -781,7 +847,7 @@ export default function Dashboard() {
                   <div className="text-sm text-gray-400">Yüklenemedi</div>
                 )}
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       )}
@@ -1018,6 +1084,70 @@ export default function Dashboard() {
       <div className="mt-8">
         <RecentActivities limit={15} />
       </div>
+
+      {/* Plan Change Modal */}
+      {showPlanModal && tenantLimits && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => {
+                setShowPlanModal(false)
+                setSelectedPlan(null)
+                setPlanUpdateError(null)
+              }}
+            ></div>
+
+            <div className="relative w-full max-w-6xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
+              <div className="bg-white px-6 py-3 border-b border-gray-200">
+                <h3 className="text-xl font-semibold text-gray-900">Abonelik Planını Değiştir</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  İhtiyaçlarınıza uygun planı seçin. Plan değişiklikleri anında etkinleşir.
+                </p>
+              </div>
+
+              <div className="px-6 py-3">
+                {planUpdateError && (
+                  <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-4">
+                    <p className="text-sm text-red-800">{planUpdateError}</p>
+                  </div>
+                )}
+
+                <SubscriptionPlanSelector
+                  selectedPlan={selectedPlan || tenantLimits.plan?.slug}
+                  onSelectPlan={setSelectedPlan}
+                  currentPlan={tenantLimits.plan?.slug}
+                  showPricing={true}
+                  compact={false}
+                />
+              </div>
+
+              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPlanModal(false)
+                    setSelectedPlan(null)
+                    setPlanUpdateError(null)
+                  }}
+                  disabled={planUpdateLoading}
+                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  İptal
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePlanChange}
+                  disabled={planUpdateLoading || !selectedPlan || selectedPlan === tenantLimits.plan?.slug}
+                  className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {planUpdateLoading ? 'Güncelleniyor...' : 'Planı Değiştir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
