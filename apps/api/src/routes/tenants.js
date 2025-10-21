@@ -5,7 +5,7 @@ const { authenticate, authenticateWithoutTenant } = require('../middleware/auth'
 async function tenantRoutes(fastify) {
 
   fastify.post('/tenants', {
-    preHandler: [authenticate],
+    preHandler: [authenticateWithoutTenant],
     schema: {
       body: {
         type: 'object',

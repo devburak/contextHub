@@ -1,31 +1,28 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
-const { tenantContext } = require('../middleware/auth');
+const { tenantContext, authenticateWithoutTenant } = require('../middleware/auth');
 
 /**
  * Subscription Plan Management Routes
  * Admin-only endpoints for managing subscription plans
  */
 async function subscriptionPlanRoutes(fastify) {
-  
-  // Add tenant context to all routes
-  fastify.addHook('preHandler', tenantContext);
-  
+
+  // Add tenant context to specific routes that need it
+  // We'll manually add tenantContext to routes that require tenant
+  // The /subscription-plans GET endpoint is excluded as it needs to work without tenant
+
   /**
    * GET /subscription-plans
    * List all subscription plans
+   * PUBLIC: This endpoint is accessible to all authenticated users
+   * (including those without a tenant) so they can view plans when creating a new tenant
    */
   fastify.get('/subscription-plans', {
-    preHandler: [fastify.authenticate],
+    preHandler: [authenticateWithoutTenant],
   }, async function listPlansHandler(request, reply) {
     try {
-      // Check if user is owner
-      const userRole = request.user?.role;
-      if (userRole !== 'owner') {
-        return reply.code(403).send({
-          error: 'Forbidden',
-          message: 'Only owners can view subscription plans',
-        });
-      }
+      // This endpoint is now public to all authenticated users
+      // No role check required - new users need to see plans to create their first tenant
 
       const plans = await SubscriptionPlan.getActivePlans();
       
@@ -64,7 +61,7 @@ async function subscriptionPlanRoutes(fastify) {
    * Get a single plan by slug
    */
   fastify.get('/subscription-plans/:slug', {
-    preHandler: [fastify.authenticate],
+    preHandler: [tenantContext, fastify.authenticate],
   }, async function getPlanHandler(request, reply) {
     try {
       const { slug } = request.params;
@@ -114,7 +111,7 @@ async function subscriptionPlanRoutes(fastify) {
    * Update a subscription plan (owner only)
    */
   fastify.put('/subscription-plans/:slug', {
-    preHandler: [fastify.authenticate],
+    preHandler: [tenantContext, fastify.authenticate],
     schema: {
       body: {
         type: 'object',
@@ -202,7 +199,7 @@ async function subscriptionPlanRoutes(fastify) {
    * Update a tenant's subscription plan
    */
   fastify.put('/tenants/:tenantId/subscription', {
-    preHandler: [fastify.authenticate],
+    preHandler: [tenantContext, fastify.authenticate],
     schema: {
       body: {
         type: 'object',
@@ -300,7 +297,7 @@ async function subscriptionPlanRoutes(fastify) {
    * Get a tenant's current limits (effective limits after custom overrides)
    */
   fastify.get('/tenants/:tenantId/limits', {
-    preHandler: [fastify.authenticate],
+    preHandler: [tenantContext, fastify.authenticate],
   }, async function getTenantLimitsHandler(request, reply) {
     try {
       const { tenantId } = request.params;
@@ -371,7 +368,7 @@ async function subscriptionPlanRoutes(fastify) {
    * Get current tenant's limits (shortcut endpoint)
    */
   fastify.get('/tenants/current/limits', {
-    preHandler: [fastify.authenticate],
+    preHandler: [tenantContext, fastify.authenticate],
   }, async function getCurrentTenantLimitsHandler(request, reply) {
     try {
       const userTenantId = request.tenantId;
