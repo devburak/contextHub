@@ -91,7 +91,7 @@ export default function CreateTenant() {
       <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
               Varlık Adı
             </label>
             <input
@@ -101,12 +101,13 @@ export default function CreateTenant() {
               required
               value={formData.name}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              className="input"
+              placeholder="Örn. Şirket Adı"
             />
           </div>
 
           <div>
-            <label htmlFor="slug" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="slug" className="block text-sm font-medium text-gray-700 mb-1">
               Slug
             </label>
             <input
@@ -115,7 +116,7 @@ export default function CreateTenant() {
               type="text"
               value={formData.slug}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              className="input"
               placeholder="ör. firma-adi"
             />
             <p className="mt-1 text-xs text-gray-500">Slug alanını boş bırakırsan isimden otomatik üretilecektir.</p>
@@ -133,23 +134,60 @@ export default function CreateTenant() {
             />
           </div>
 
-          {error && <div className="text-sm text-red-600">{error}</div>}
-          {successMessage && <div className="text-sm text-green-600">{successMessage}</div>}
+          {error && (
+            <div className="rounded-md bg-red-50 border border-red-200 p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
-          <div className="flex items-center gap-3">
+          {successMessage && (
+            <div className="rounded-md bg-green-50 border border-green-200 p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">{successMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+            <Link
+              to="/varliklar"
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              İptal
+            </Link>
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
+              className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {createMutation.isPending ? 'Oluşturuluyor...' : 'Varlık Oluştur'}
+              {createMutation.isPending ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Oluşturuluyor...
+                </>
+              ) : (
+                'Varlık Oluştur'
+              )}
             </button>
-            <Link
-              to="/varliklar"
-              className="text-sm font-medium text-blue-600 hover:text-blue-500"
-            >
-              Geri dön
-            </Link>
           </div>
         </form>
       </div>

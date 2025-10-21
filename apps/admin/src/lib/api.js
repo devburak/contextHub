@@ -16,10 +16,13 @@ apiClient.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`
   }
 
+  // Skip tenant ID for auth, subscription-plans, and tenant creation endpoints
   const isAuthRequest = config.url?.startsWith('/auth')
+  const isSubscriptionPlansRequest = config.url?.startsWith('/subscription-plans')
+  const isTenantCreationRequest = config.url === '/tenants' && config.method?.toLowerCase() === 'post'
   const tenantId = localStorage.getItem('tenantId')
 
-  if (tenantId && !isAuthRequest) {
+  if (tenantId && !isAuthRequest && !isSubscriptionPlansRequest && !isTenantCreationRequest) {
     config.headers['X-Tenant-ID'] = tenantId
     if (!config.params || typeof config.params !== 'object') {
       config.params = {}

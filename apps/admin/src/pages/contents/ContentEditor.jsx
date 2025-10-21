@@ -1175,7 +1175,7 @@ export default function ContentEditor() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={openMediaPicker}
+                    onClick={() => openMediaPicker({ mode: 'image', onSelect: handleFeaturedMediaSelect })}
                     className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
                   >
                     Değiştir

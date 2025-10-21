@@ -31,6 +31,7 @@ import GalleryManager from './pages/galleries/GalleryManager.jsx'
 import { PermissionRoute } from './components/PermissionRoute.jsx'
 import { PERMISSIONS } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
+import ApiDocs from './pages/ApiDocs.jsx'
 import i18n from './i18n.js'
 
 const parseStoredJSON = (key, fallback) => {
@@ -312,6 +313,7 @@ function App() {
               <Route path="/transfer-accept" element={<AcceptTransfer />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
+              <Route path="/apidocs" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><ApiDocs /></PermissionRoute>} />
             </Route>
             {/* Fallback catch-all when authenticated */}
             <Route path="*" element={<Navigate to="/" replace />} />
