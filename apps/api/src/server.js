@@ -146,6 +146,7 @@ async function buildServer() {
   await app.register(require('./routes/auth'), { prefix: '/api' });
   await app.register(require('./routes/users'), { prefix: '/api' });
   await app.register(require('./routes/tenants'), { prefix: '/api' });
+  await app.register(require('./routes/tenantInfo'), { prefix: '/api' });
   await app.register(require('./routes/tenantSettings'), { prefix: '/api' });
   await app.register(require('./routes/activities'), { prefix: '/api' });
   await app.register(require('./routes/media'), { prefix: '/api' });
