@@ -3,18 +3,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
+import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
 
 const initialFormState = {
   name: '',
   slug: '',
   plan: 'free'
 }
-
-const plans = [
-  { value: 'free', label: 'Free' },
-  { value: 'pro', label: 'Pro' },
-  { value: 'enterprise', label: 'Enterprise' }
-]
 
 export default function CreateTenant() {
   const [formData, setFormData] = useState(initialFormState)
@@ -127,22 +122,15 @@ export default function CreateTenant() {
           </div>
 
           <div>
-            <label htmlFor="plan" className="block text-sm font-medium text-gray-700">
-              Plan
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Abonelik Planı Seç
             </label>
-            <select
-              id="plan"
-              name="plan"
-              value={formData.plan}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            >
-              {plans.map((plan) => (
-                <option key={plan.value} value={plan.value}>
-                  {plan.label}
-                </option>
-              ))}
-            </select>
+            <SubscriptionPlanSelector
+              selectedPlan={formData.plan}
+              onSelectPlan={(planSlug) => setFormData(prev => ({ ...prev, plan: planSlug }))}
+              compact={true}
+              showPricing={true}
+            />
           </div>
 
           {error && <div className="text-sm text-red-600">{error}</div>}
