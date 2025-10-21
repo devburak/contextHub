@@ -32,6 +32,7 @@ async function apiTokenRoutes(fastify) {
                 properties: {
                   id: { type: 'string' },
                   name: { type: 'string' },
+                  role: { type: 'string', description: 'Role-based permissions' },
                   scopes: { type: 'array', items: { type: 'string' } },
                   expiresAt: { type: 'string', format: 'date-time', nullable: true },
                   lastUsedAt: { type: 'string', format: 'date-time', nullable: true },
@@ -74,6 +75,7 @@ async function apiTokenRoutes(fastify) {
         tokens: tokens.map(token => ({
           id: token._id.toString(),
           name: token.name,
+          role: token.role || 'editor', // Default to editor for old tokens
           scopes: token.scopes,
           expiresAt: token.expiresAt,
           lastUsedAt: token.lastUsedAt,
@@ -108,6 +110,12 @@ async function apiTokenRoutes(fastify) {
         type: 'object',
         properties: {
           name: { type: 'string', minLength: 1, description: 'Human-readable name for the token' },
+          role: {
+            type: 'string',
+            enum: ['viewer', 'author', 'editor', 'admin', 'owner'],
+            description: 'Role-based permissions for this token',
+            default: 'editor'
+          },
           scopes: {
             type: 'array',
             items: { type: 'string', enum: ['read', 'write', 'delete'] },
@@ -133,6 +141,7 @@ async function apiTokenRoutes(fastify) {
                 id: { type: 'string' },
                 token: { type: 'string', description: 'The actual token starting with ctx_ - save this securely!' },
                 name: { type: 'string' },
+                role: { type: 'string', description: 'Role-based permissions for this token' },
                 scopes: { type: 'array', items: { type: 'string' } },
                 expiresAt: { type: 'string', format: 'date-time', nullable: true },
                 createdAt: { type: 'string', format: 'date-time' }
@@ -148,7 +157,7 @@ async function apiTokenRoutes(fastify) {
       const tenantId = request.tenantId;
       const userRole = request.userRole;
       const userId = request.user._id;
-      const { name, scopes = ['read'], expiresInDays } = request.body;
+      const { name, role = 'editor', scopes = ['read'], expiresInDays } = request.body;
 
       // Only owners can create API tokens
       if (userRole !== 'owner') {
@@ -177,6 +186,7 @@ async function apiTokenRoutes(fastify) {
         tenantId,
         name,
         hash,
+        role,
         scopes,
         expiresAt,
         createdBy: userId,
@@ -193,6 +203,7 @@ async function apiTokenRoutes(fastify) {
           id: apiToken._id.toString(),
           name: apiToken.name,
           token: token, // Already has ctx_ prefix
+          role: apiToken.role,
           scopes: apiToken.scopes,
           expiresAt: apiToken.expiresAt,
           createdAt: apiToken.createdAt,
