@@ -72,6 +72,12 @@ async function buildServer() {
             bearerFormat: 'JWT',
             description: 'JWT token from /api/auth/login endpoint'
           },
+          apiToken: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'Authorization',
+            description: 'API Token for Content-as-a-Service access. Format: Bearer ctx_your_token_here'
+          },
           tenantId: {
             type: 'apiKey',
             in: 'header',
@@ -84,6 +90,7 @@ async function buildServer() {
         { name: 'auth', description: 'Authentication endpoints' },
         { name: 'users', description: 'User management' },
         { name: 'tenants', description: 'Tenant management' },
+        { name: 'apiTokens', description: 'API Token management for Content-as-a-Service' },
         { name: 'content', description: 'Content management' },
         { name: 'media', description: 'Media management' },
         { name: 'categories', description: 'Category management' },
@@ -158,6 +165,7 @@ async function buildServer() {
   await app.register(require('./routes/apiUsageSync'), { prefix: '/api' });
   await app.register(require('./routes/subscriptionPlans'), { prefix: '/api' });
   await app.register(require('./routes/documentation'), { prefix: '/api' });
+  await app.register(require('./routes/apiTokens'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {

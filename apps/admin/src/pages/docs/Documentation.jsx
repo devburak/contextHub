@@ -71,6 +71,50 @@ export default function Documentation() {
           </table>
         </div>
       </section>
+
+      <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-200 px-6 py-4">
+          <h2 className="text-lg font-semibold text-gray-900">API Token ile Content-as-a-Service</h2>
+        </div>
+        <div className="space-y-4 px-6 py-5 text-sm text-gray-700">
+          <p>
+            ContextHub, <strong>Content-as-a-Service (CaaS)</strong> yaklaşımıyla içeriklerinizi harici uygulamalara, web sitelerine, mobil uygulamalara ve diğer servislere güvenli bir şekilde sunmanızı sağlar.
+            API Token sistemi sayesinde, kullanıcı kimlik doğrulaması gerektirmeden içeriklerinize programatik erişim sağlayabilirsiniz.
+          </p>
+          <p>
+            <strong>API Token Oluşturma:</strong> Tenant Ayarları → API Token Yönetimi bölümünden yeni token oluşturabilirsiniz.
+            Her token için bir isim belirleyin, izinleri seçin (<code className="rounded bg-gray-100 px-1 py-0.5">read</code>, <code className="rounded bg-gray-100 px-1 py-0.5">write</code>, <code className="rounded bg-gray-100 px-1 py-0.5">delete</code>)
+            ve geçerlilik süresini ayarlayın (30/90/180/365 gün veya sınırsız). Token sadece oluşturulduğunda bir kez gösterilir ve <code className="rounded bg-gray-100 px-1 py-0.5">ctx_</code> prefix'i ile başlar.
+          </p>
+          <p>
+            <strong>Token Kullanımı:</strong> API isteklerinizde token'ı <code className="rounded bg-gray-100 px-1 py-0.5">Authorization</code> header'ında Bearer prefix'i ile gönderin:
+          </p>
+          <pre className="rounded bg-gray-900 p-4 text-xs text-gray-100 overflow-x-auto">
+{`curl -H "Authorization: Bearer ctx_your_token_here" \\
+     https://api.contexthub.com/api/contents`}
+          </pre>
+          <p>
+            <strong>JavaScript Örneği:</strong>
+          </p>
+          <pre className="rounded bg-gray-900 p-4 text-xs text-gray-100 overflow-x-auto">
+{`const response = await fetch('https://api.contexthub.com/api/contents', {
+  headers: {
+    'Authorization': 'Bearer ctx_your_token_here'
+  }
+});
+const data = await response.json();`}
+          </pre>
+          <p>
+            <strong>Güvenlik:</strong> Token'larınızı <strong>asla</strong> kaynak koduna yazmayın. Ortam değişkenlerini (<code className="rounded bg-gray-100 px-1 py-0.5">process.env</code>) kullanın.
+            Frontend'de token kullanırken dikkatli olun; backend proxy kullanmanız önerilir. Her uygulama için ayrı token oluşturun ve sadece gerekli izinleri verin.
+          </p>
+          <p>
+            <strong>Detaylı Dokümantasyon:</strong> API Token kullanımı, kod örnekleri ve en iyi uygulamalar için <a href="http://localhost:3000/docs" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 font-medium">Swagger UI</a> dokümantasyonunu ziyaret edin
+            veya projedeki <code className="rounded bg-gray-100 px-1 py-0.5">docs/API-TOKEN-USAGE.md</code> dosyasını inceleyin.
+          </p>
+        </div>
+      </section>
+
       <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-gray-900">Tenant Ayarları API Kullanımı</h2>
@@ -85,7 +129,7 @@ export default function Documentation() {
             fonksiyonu varsayılanlarla birleştirilmiş sonucu döner; <code className="rounded bg-gray-100 px-1 py-0.5">features</code> alanı tenant bazlı özellik bayraklarını içerir.
           </p>
           <p>
-            Örnek kullanım: içerik servisinde <code className="rounded bg-gray-100 px-1 py-0.5">featureFlags.contentScheduling</code> kontrol edilerek “scheduled” durumuna izin verilir ya da engellenir.
+            Örnek kullanım: içerik servisinde <code className="rounded bg-gray-100 px-1 py-0.5">featureFlags.contentScheduling</code> kontrol edilerek "scheduled" durumuna izin verilir ya da engellenir.
           </p>
         </div>
       </section>

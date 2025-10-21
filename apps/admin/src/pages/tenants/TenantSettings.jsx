@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { tenantAPI } from '../../lib/tenantAPI.js'
-import { fetchTenantLimits, fetchSubscriptionPlans, updateTenantSubscription } from '../../lib/api/subscriptions.js'
+import { fetchTenantLimits, updateTenantSubscription } from '../../lib/api/subscriptions.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
+import ApiTokenManager from '../../components/ApiTokenManager.jsx'
 
 const EMPTY_STATE = {
   smtp: {
@@ -191,7 +192,6 @@ export default function TenantSettings() {
   const [secretFlags, setSecretFlags] = useState({ smtpPassword: false, webhookSecret: false })
   const [feedback, setFeedback] = useState({ type: '', message: '' })
   const [featureKeyInput, setFeatureKeyInput] = useState('')
-  const [customLimitInput, setCustomLimitInput] = useState({ key: '', value: '' })
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [showPlanModal, setShowPlanModal] = useState(false)
 
@@ -235,8 +235,6 @@ export default function TenantSettings() {
       setFeedback({ type: 'error', message: apiMessage || 'Plan güncellenemedi.' })
     }
   })
-
-  const customLimitEntries = useMemo(() => Object.entries(formState.limits.custom || {}), [formState.limits.custom])
 
   const handleInputChange = (section, field) => (event) => {
     const value = event.target.value
@@ -293,34 +291,6 @@ export default function TenantSettings() {
     })
   }
 
-  const handleCustomLimitChange = (key) => (event) => {
-    const value = event.target.value
-    setFormState((prev) => ({
-      ...prev,
-      limits: {
-        ...prev.limits,
-        custom: {
-          ...prev.limits.custom,
-          [key]: value
-        }
-      }
-    }))
-  }
-
-  const removeCustomLimit = (key) => {
-    setFormState((prev) => {
-      const next = { ...prev.limits.custom }
-      delete next[key]
-      return {
-        ...prev,
-        limits: {
-          ...prev.limits,
-          custom: next
-        }
-      }
-    })
-  }
-
   const handleAddFeature = () => {
     const trimmed = featureKeyInput.trim()
     if (!trimmed) return
@@ -332,22 +302,6 @@ export default function TenantSettings() {
       }
     }))
     setFeatureKeyInput('')
-  }
-
-  const handleAddCustomLimit = () => {
-    const key = customLimitInput.key.trim()
-    if (!key) return
-    setFormState((prev) => ({
-      ...prev,
-      limits: {
-        ...prev.limits,
-        custom: {
-          ...prev.limits.custom,
-          [key]: customLimitInput.value
-        }
-      }
-    }))
-    setCustomLimitInput({ key: '', value: '' })
   }
 
   const handlePasswordChange = (event) => {
@@ -543,6 +497,9 @@ export default function TenantSettings() {
             )}
           </div>
         </section>
+
+        {/* API Token Management Section */}
+        <ApiTokenManager />
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
@@ -764,125 +721,6 @@ export default function TenantSettings() {
                 placeholder="Tenant hakkında kısa bir açıklama"
                 className={FIELD_INPUT_WITH_MARGIN_CLASS}
               />
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
-          <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">Kullanım Limitleri</h2>
-            <p className="text-sm text-gray-500">Plan ve paketlere göre içerik, medya ve kullanıcı limitlerini yönet.</p>
-          </div>
-          <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">İçerik Limiti</label>
-              <input
-                type="number"
-                min="0"
-                value={formState.limits.entries}
-                onChange={handleInputChange('limits', 'entries')}
-                placeholder="Sınırsız için boş bırak"
-                className={FIELD_INPUT_WITH_MARGIN_CLASS}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Medya Limiti</label>
-              <input
-                type="number"
-                min="0"
-                value={formState.limits.media}
-                onChange={handleInputChange('limits', 'media')}
-                placeholder="Sınırsız için boş bırak"
-                className={FIELD_INPUT_WITH_MARGIN_CLASS}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Kullanıcı Limiti</label>
-              <input
-                type="number"
-                min="0"
-                value={formState.limits.users}
-                onChange={handleInputChange('limits', 'users')}
-                placeholder="Sınırsız için boş bırak"
-                className={FIELD_INPUT_WITH_MARGIN_CLASS}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">API Çağrı Limiti</label>
-              <input
-                type="number"
-                min="0"
-                value={formState.limits.apiCalls}
-                onChange={handleInputChange('limits', 'apiCalls')}
-                placeholder="Sınırsız için boş bırak"
-                className={FIELD_INPUT_WITH_MARGIN_CLASS}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Aylık E-posta Limiti</label>
-              <input
-                type="number"
-                min="0"
-                value={formState.limits.emailPerMonth}
-                onChange={handleInputChange('limits', 'emailPerMonth')}
-                placeholder="Sınırsız için boş bırak"
-                className={FIELD_INPUT_WITH_MARGIN_CLASS}
-              />
-            </div>
-          </div>
-          <div className="border-t border-gray-200 px-6 py-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">Özel Limitler</h3>
-              <p className="text-xs text-gray-500">Örneğin günlük form gönderimi limiti gibi özel alanlar ekleyebilirsin.</p>
-            </div>
-            {customLimitEntries.length > 0 && (
-              <div className="space-y-3">
-                {customLimitEntries.map(([key, value]) => (
-                  <div key={key} className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600">{key}</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={value}
-                        onChange={handleCustomLimitChange(key)}
-                        className={FIELD_INPUT_WITH_MARGIN_CLASS}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeCustomLimit(key)}
-                      className="self-end text-xs font-medium text-red-600 hover:text-red-500"
-                    >
-                      Kaldır
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-              <input
-                type="text"
-                placeholder="Limit anahtarı (örn. formSubmissions)"
-                value={customLimitInput.key}
-                onChange={(event) => setCustomLimitInput((prev) => ({ ...prev, key: event.target.value }))}
-                className={FIELD_INPUT_CLASS}
-              />
-              <input
-                type="number"
-                min="0"
-                placeholder="Değer"
-                value={customLimitInput.value}
-                onChange={(event) => setCustomLimitInput((prev) => ({ ...prev, value: event.target.value }))}
-                className={FIELD_INPUT_CLASS}
-              />
-              <button
-                type="button"
-                onClick={handleAddCustomLimit}
-                className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-              >
-                Ekle
-              </button>
             </div>
           </div>
         </section>
