@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getContent, createContent, updateContent, listVersions, deleteContentVersions, setContentGalleries } from '../../lib/api/contents'
+import { getContent, createContent, updateContent, listVersions, deleteContentVersions, deleteContent, setContentGalleries } from '../../lib/api/contents'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { listCategories } from '../../lib/api/categories'
 import { searchTags, createTag } from '../../lib/api/tags'
@@ -581,8 +581,23 @@ export default function ContentEditor() {
     }
   )
 
+  const deleteContentMut = useMutation(
+    () => deleteContent({ id }),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['contents'] })
+        navigate('/contents')
+      },
+      onError: (error) => {
+        const message = error?.response?.data?.message
+        alert('İçerik silinemedi: ' + (typeof message === 'string' ? message : 'Bir hata oluştu.'))
+      },
+    }
+  )
+
   const isSaving = createMut.isLoading || updateMut.isLoading
   const isDeletingVersions = deleteVersionsMut.isLoading
+  const isDeletingContent = deleteContentMut.isLoading
 
   const handleGalleryToggle = useCallback((galleryId, checked) => {
     setSelectedGalleryIds((prev) => {
@@ -755,6 +770,21 @@ export default function ContentEditor() {
     applyContentPayload(previewVersion, { markDirty: true })
     setSelectedVersionId(String(previewVersion._id))
   }
+
+  const handleDeleteEntireContent = useCallback(async () => {
+    if (isNew) return
+
+    const confirmMessage = `Bu içeriği tüm sürümleriyle birlikte kalıcı olarak silmek istediğinizden emin misiniz?\n\nBu işlem:\n• Tüm ${versionsData?.length || 0} sürümü silecek\n• Kalıcıdır ve geri alınamaz\n\nDevam etmek istiyor musunuz?`
+
+    const confirmation = window.confirm(confirmMessage)
+    if (!confirmation) return
+
+    try {
+      await deleteContentMut.mutateAsync()
+    } catch (error) {
+      console.error('Content delete failed', error)
+    }
+  }, [isNew, deleteContentMut, versionsData])
 
   function computeSlug(base) {
     const map = {
@@ -1347,6 +1377,24 @@ export default function ContentEditor() {
             </div>
           )}
         </section>
+
+        {!isNew && (
+          <section className={`${cardClass} space-y-3 p-5 border-2 border-rose-200`}>
+            <h3 className="text-sm font-semibold text-rose-900">Tehlikeli Bölge</h3>
+            <p className="text-xs text-gray-600">
+              Bu içeriği tüm sürümleriyle birlikte kalıcı olarak silin. Bu işlem geri alınamaz.
+            </p>
+            <button
+              type="button"
+              onClick={handleDeleteEntireContent}
+              disabled={isDeletingContent}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border-2 border-rose-600 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50 disabled:opacity-40"
+            >
+              <TrashIcon className="h-4 w-4" aria-hidden="true" />
+              {isDeletingContent ? 'Siliniyor…' : 'Tüm İçeriği Sil'}
+            </button>
+          </section>
+        )}
 
         <section className={`${cardClass} sticky top-4 space-y-3 p-5 shadow-md`}>
           <div className="space-y-1 text-xs text-gray-500">

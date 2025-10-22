@@ -46,6 +46,11 @@ export async function deleteContentVersions({ id, versionIds }) {
   return response.data
 }
 
+export async function deleteContent({ id }) {
+  const response = await apiClient.delete(`${BASE}/${id}`)
+  return response.data
+}
+
 export async function checkSlugAvailability({ slug, id }) {
   const response = await apiClient.get(`${BASE}/check-slug`, {
     params: {
