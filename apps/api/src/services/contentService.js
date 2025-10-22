@@ -583,8 +583,21 @@ async function checkSlugAvailability({ tenantId, slug, excludeId }) {
     return { available: true, slug: baseSlug }
   }
 
+  // Find the existing content with this slug
+  const existingContent = await Content.findOne({ tenantId, slug: baseSlug, deletedAt: null })
+    .select({ _id: 1, title: 1, slug: 1 })
+    .lean()
+
   const suggestion = await generateUniqueSlug({ tenantId, baseSlug, excludeId })
-  return { available: false, suggestion }
+  return {
+    available: false,
+    suggestion,
+    existingContent: existingContent ? {
+      id: existingContent._id.toString(),
+      title: existingContent.title,
+      slug: existingContent.slug
+    } : null
+  }
 }
 
 async function setContentGalleries({ tenantId, contentId, galleryIds }) {
