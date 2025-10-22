@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import {
   ArrowPathIcon,
@@ -38,8 +38,8 @@ export default function MediaPickerModal({
 }) {
   const queryClient = useQueryClient()
   const searchInputRef = useRef(null)
+  const loadMoreRef = useRef(null)
   const [search, setSearch] = useState(initialSearch)
-  const [page, setPage] = useState(1)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const debouncedSearch = useDebouncedValue(search, 400)
@@ -47,7 +47,6 @@ export default function MediaPickerModal({
   useEffect(() => {
     if (!isOpen) {
       setSearch(initialSearch)
-      setPage(1)
       setUploadError('')
     }
   }, [isOpen, initialSearch])
@@ -59,32 +58,58 @@ export default function MediaPickerModal({
       'media-picker-list',
       {
         search: debouncedSearch || undefined,
-        page,
         mode,
       },
     ],
-    [debouncedSearch, page, mode]
+    [debouncedSearch, mode]
   )
 
-  const mediaQuery = useQuery(
+  const mediaQuery = useInfiniteQuery({
     queryKey,
-    () =>
+    queryFn: async ({ pageParam = 1 }) =>
       mediaAPI.list({
-        page,
+        page: pageParam,
         limit: 18,
-        filters: {
-          search: debouncedSearch || undefined,
-          mimeType: filterMimePrefix,
-        },
+        search: debouncedSearch || undefined,
+        mimeType: filterMimePrefix,
       }),
-    {
-      enabled: isOpen,
-      keepPreviousData: true,
-    }
-  )
+    getNextPageParam: (lastPage, pages) => {
+      const currentPage = pages.length
+      const totalPages = lastPage?.pagination?.pages || 1
+      return currentPage < totalPages ? currentPage + 1 : undefined
+    },
+    enabled: isOpen,
+    keepPreviousData: true,
+  })
 
-  const items = mediaQuery.data?.items ?? []
-  const pagination = mediaQuery.data?.pagination ?? { page: 1, pages: 1, total: 0, limit: 18 }
+  const items = useMemo(() => {
+    return mediaQuery.data?.pages?.flatMap(page => page.items || []) ?? []
+  }, [mediaQuery.data])
+
+  const totalCount = mediaQuery.data?.pages?.[0]?.pagination?.total ?? 0
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    if (!loadMoreRef.current || !isOpen) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0]
+        if (first.isIntersecting && mediaQuery.hasNextPage && !mediaQuery.isFetchingNextPage) {
+          mediaQuery.fetchNextPage()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    observer.observe(loadMoreRef.current)
+
+    return () => {
+      if (loadMoreRef.current) {
+        observer.unobserve(loadMoreRef.current)
+      }
+    }
+  }, [mediaQuery, isOpen])
 
   const handleFiles = useCallback(
     async (fileList) => {
@@ -222,10 +247,7 @@ export default function MediaPickerModal({
                         id="media-picker-search"
                         type="search"
                         value={search}
-                        onChange={(event) => {
-                          setSearch(event.target.value)
-                          setPage(1)
-                        }}
+                        onChange={(event) => setSearch(event.target.value)}
                         placeholder={`${MODE_LABELS[mode] || 'Varlık'} ara`}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                       />
@@ -261,14 +283,15 @@ export default function MediaPickerModal({
                     </div>
                   )}
 
-                  <div className="min-h-[260px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="min-h-[260px] max-h-[500px] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
                     {mediaQuery.isLoading ? (
                       <div className="text-sm text-gray-500">Dosyalar yükleniyor…</div>
                     ) : items.length === 0 ? (
                       <div className="text-sm text-gray-500">Sonuç bulunamadı.</div>
                     ) : (
-                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {items.map((item) => {
+                      <>
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {items.map((item) => {
                           const isImage = item.mimeType?.startsWith('image/')
                           const providerName = typeof item.provider === 'string' ? item.provider.toLowerCase() : ''
                           const isVideo = item.mimeType?.startsWith('video/') || ['youtube', 'vimeo'].includes(providerName)
@@ -315,33 +338,23 @@ export default function MediaPickerModal({
                             </button>
                           )
                         })}
-                      </div>
+                        </div>
+                        {/* Infinite scroll trigger */}
+                        <div ref={loadMoreRef} className="py-4 text-center">
+                          {mediaQuery.isFetchingNextPage ? (
+                            <div className="text-sm text-gray-500">Daha fazla medya yükleniyor...</div>
+                          ) : mediaQuery.hasNextPage ? (
+                            <div className="text-sm text-gray-400">Aşağı kaydırarak daha fazla yükle</div>
+                          ) : (
+                            <div className="text-sm text-gray-400">Tüm medya dosyaları yüklendi</div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>{pagination.total} kayıt</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                        disabled={page <= 1 || mediaQuery.isFetching}
-                        className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Önceki
-                      </button>
-                      <span>
-                        Sayfa {pagination.page} / {pagination.pages}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setPage((prev) => prev + 1)}
-                        disabled={page >= pagination.pages || mediaQuery.isFetching}
-                        className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Sonraki
-                      </button>
-                    </div>
+                    <span>{totalCount} kayıt</span>
                   </div>
 
                   {isUploading && (

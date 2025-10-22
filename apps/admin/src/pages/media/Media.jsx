@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowPathIcon,
   CloudArrowUpIcon,
@@ -62,6 +62,7 @@ export default function MediaLibrary() {
   const queryClient = useQueryClient()
   const searchTimeoutRef = useRef(null)
   const tagTimeoutRef = useRef(null)
+  const loadMoreRef = useRef(null)
 
   // Debounce search input
   useEffect(() => {
@@ -109,9 +110,14 @@ export default function MediaLibrary() {
     }
   }, [debouncedSearch, mimeFilter, debouncedTagFilter])
 
-  const mediaQuery = useQuery({
+  const mediaQuery = useInfiniteQuery({
     queryKey: ['media', queryParams],
-    queryFn: async () => mediaAPI.list(queryParams),
+    queryFn: async ({ pageParam = 1 }) => mediaAPI.list({ ...queryParams, page: pageParam }),
+    getNextPageParam: (lastPage, pages) => {
+      const currentPage = pages.length
+      const totalPages = lastPage?.pagination?.pages || 1
+      return currentPage < totalPages ? currentPage + 1 : undefined
+    },
     keepPreviousData: true,
   })
 
@@ -320,13 +326,40 @@ export default function MediaLibrary() {
     setFormState((prev) => ({ ...prev, [name]: value }))
   }, [])
 
-  const items = mediaQuery.data?.items ?? []
+  // Flatten all pages into a single items array
+  const items = useMemo(() => {
+    return mediaQuery.data?.pages?.flatMap(page => page.items || []) ?? []
+  }, [mediaQuery.data])
+
   const selectedCount = selectedIds.length
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
-  const totalCount = mediaQuery.data?.pagination?.total ?? 0
+  const totalCount = mediaQuery.data?.pages?.[0]?.pagination?.total ?? 0
   const totalLabel = !mediaQuery.data && mediaQuery.isLoading
     ? 'Yükleniyor…'
     : `Toplam ${totalCount.toLocaleString('tr-TR')} medya`
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    if (!loadMoreRef.current) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0]
+        if (first.isIntersecting && mediaQuery.hasNextPage && !mediaQuery.isFetchingNextPage) {
+          mediaQuery.fetchNextPage()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    observer.observe(loadMoreRef.current)
+
+    return () => {
+      if (loadMoreRef.current) {
+        observer.unobserve(loadMoreRef.current)
+      }
+    }
+  }, [mediaQuery])
 
   const copyUrl = useCallback(async (url, id) => {
     if (!url) return
@@ -616,7 +649,7 @@ export default function MediaLibrary() {
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Dosyalar</h2>
           <span className="text-sm text-gray-500">
-            {mediaQuery.data?.pagination?.total ?? 0} kayıt
+            {totalCount} kayıt
           </span>
         </div>
         <div className="p-6">
@@ -741,6 +774,18 @@ export default function MediaLibrary() {
                   </article>
                 )
               })}
+            </div>
+          )}
+          {/* Infinite scroll trigger */}
+          {!mediaQuery.isLoading && items.length > 0 && (
+            <div ref={loadMoreRef} className="py-4 text-center">
+              {mediaQuery.isFetchingNextPage ? (
+                <div className="text-sm text-gray-500">Daha fazla medya yükleniyor...</div>
+              ) : mediaQuery.hasNextPage ? (
+                <div className="text-sm text-gray-400">Aşağı kaydırarak daha fazla yükle</div>
+              ) : (
+                <div className="text-sm text-gray-400">Tüm medya dosyaları yüklendi</div>
+              )}
             </div>
           )}
         </div>
