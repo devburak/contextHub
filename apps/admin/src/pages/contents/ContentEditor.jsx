@@ -689,7 +689,7 @@ export default function ContentEditor() {
   }
 
   const handleToggleVersionSelection = useCallback((version, nextChecked) => {
-    if (!version || version.status === 'published') return
+    if (!version) return
     const versionId = String(version._id)
     setSelectedVersionIds((prev) => {
       if (nextChecked) {
@@ -705,21 +705,22 @@ export default function ContentEditor() {
 
   const handleDeleteSelectedVersions = useCallback(async () => {
     if (!selectedVersionIds.length || isDeletingVersions) return
-    const confirmation = window.confirm('Seçili sürümleri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')
+
+    // Check if any selected versions are published
+    const publishedVersions = selectedVersionIds
+      .map((id) => versionsData?.find((item) => String(item._id) === id))
+      .filter((version) => version?.status === 'published')
+
+    const hasPublished = publishedVersions.length > 0
+
+    const confirmMessage = hasPublished
+      ? `Seçili sürümler arasında ${publishedVersions.length} yayında sürüm var. Yayında olan sürümleri de silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`
+      : 'Seçili sürümleri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.'
+
+    const confirmation = window.confirm(confirmMessage)
     if (!confirmation) return
-    const deletableMap = selectedVersionIds
-      .map((id) => {
-        const version = versionsData?.find((item) => String(item._id) === id)
-        return { id, version }
-      })
-      .filter((entry) => entry.version && entry.version.status !== 'published')
 
-    if (!deletableMap.length) {
-      setVersionActionError('Yayındaki sürümler silinemez.')
-      return
-    }
-
-    const idsToDelete = deletableMap.map((entry) => entry.id)
+    const idsToDelete = selectedVersionIds
 
     if (idsToDelete.includes(selectedVersionId)) {
       setPreviewVersion(null)
@@ -730,6 +731,7 @@ export default function ContentEditor() {
       await deleteVersionsMut.mutateAsync({ versionIds: idsToDelete })
     } catch (error) {
       console.error('Version delete failed', error)
+      setVersionActionError(error?.message || 'Sürümler silinirken hata oluştu')
     }
   }, [selectedVersionIds, isDeletingVersions, selectedVersionId, deleteVersionsMut, versionsData])
 
@@ -1241,7 +1243,7 @@ export default function ContentEditor() {
             <div className="text-xs text-gray-500">Sürüm yok.</div>
           )}
           {!isNew && hasPublishedVersion && (
-            <div className="text-[11px] text-gray-500">Yayındaki sürümler silinemez.</div>
+            <div className="text-[11px] text-amber-600">⚠️ Yayındaki sürümleri de silebilirsiniz, ancak dikkatli olun.</div>
           )}
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1 text-xs">
             {versionsData?.map((v) => {
@@ -1263,14 +1265,10 @@ export default function ContentEditor() {
                     <input
                       type="checkbox"
                       aria-label={`Sürüm ${v.version} silme seçimi`}
-                      className={clsx(
-                        'mt-1 h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-400',
-                        isPublished && 'cursor-not-allowed opacity-40'
-                      )}
+                      className="mt-1 h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-400"
                       checked={checked}
-                      disabled={isPublished}
                       onChange={(event) => handleToggleVersionSelection(v, event.target.checked)}
-                      title={isPublished ? 'Yayındaki sürümler silinemez.' : undefined}
+                      title={isPublished ? 'Bu sürüm yayında - silmek için onay gerekir' : undefined}
                     />
                     <button
                       type="button"
