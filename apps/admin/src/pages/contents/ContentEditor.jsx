@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getContent, createContent, updateContent, listVersions, deleteContentVersions, setContentGalleries } from '../../lib/api/contents'
+import { getContent, createContent, updateContent, listVersions, deleteContentVersions, deleteContent, setContentGalleries } from '../../lib/api/contents'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { listCategories } from '../../lib/api/categories'
 import { searchTags, createTag } from '../../lib/api/tags'
@@ -581,8 +581,23 @@ export default function ContentEditor() {
     }
   )
 
+  const deleteContentMut = useMutation(
+    () => deleteContent({ id }),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['contents'] })
+        navigate('/contents')
+      },
+      onError: (error) => {
+        const message = error?.response?.data?.message
+        alert('İçerik silinemedi: ' + (typeof message === 'string' ? message : 'Bir hata oluştu.'))
+      },
+    }
+  )
+
   const isSaving = createMut.isLoading || updateMut.isLoading
   const isDeletingVersions = deleteVersionsMut.isLoading
+  const isDeletingContent = deleteContentMut.isLoading
 
   const handleGalleryToggle = useCallback((galleryId, checked) => {
     setSelectedGalleryIds((prev) => {
@@ -689,7 +704,7 @@ export default function ContentEditor() {
   }
 
   const handleToggleVersionSelection = useCallback((version, nextChecked) => {
-    if (!version || version.status === 'published') return
+    if (!version) return
     const versionId = String(version._id)
     setSelectedVersionIds((prev) => {
       if (nextChecked) {
@@ -705,21 +720,22 @@ export default function ContentEditor() {
 
   const handleDeleteSelectedVersions = useCallback(async () => {
     if (!selectedVersionIds.length || isDeletingVersions) return
-    const confirmation = window.confirm('Seçili sürümleri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')
+
+    // Check if any selected versions are published
+    const publishedVersions = selectedVersionIds
+      .map((id) => versionsData?.find((item) => String(item._id) === id))
+      .filter((version) => version?.status === 'published')
+
+    const hasPublished = publishedVersions.length > 0
+
+    const confirmMessage = hasPublished
+      ? `Seçili sürümler arasında ${publishedVersions.length} yayında sürüm var. Yayında olan sürümleri de silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`
+      : 'Seçili sürümleri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.'
+
+    const confirmation = window.confirm(confirmMessage)
     if (!confirmation) return
-    const deletableMap = selectedVersionIds
-      .map((id) => {
-        const version = versionsData?.find((item) => String(item._id) === id)
-        return { id, version }
-      })
-      .filter((entry) => entry.version && entry.version.status !== 'published')
 
-    if (!deletableMap.length) {
-      setVersionActionError('Yayındaki sürümler silinemez.')
-      return
-    }
-
-    const idsToDelete = deletableMap.map((entry) => entry.id)
+    const idsToDelete = selectedVersionIds
 
     if (idsToDelete.includes(selectedVersionId)) {
       setPreviewVersion(null)
@@ -730,6 +746,7 @@ export default function ContentEditor() {
       await deleteVersionsMut.mutateAsync({ versionIds: idsToDelete })
     } catch (error) {
       console.error('Version delete failed', error)
+      setVersionActionError(error?.message || 'Sürümler silinirken hata oluştu')
     }
   }, [selectedVersionIds, isDeletingVersions, selectedVersionId, deleteVersionsMut, versionsData])
 
@@ -753,6 +770,21 @@ export default function ContentEditor() {
     applyContentPayload(previewVersion, { markDirty: true })
     setSelectedVersionId(String(previewVersion._id))
   }
+
+  const handleDeleteEntireContent = useCallback(async () => {
+    if (isNew) return
+
+    const confirmMessage = `Bu içeriği tüm sürümleriyle birlikte kalıcı olarak silmek istediğinizden emin misiniz?\n\nBu işlem:\n• Tüm ${versionsData?.length || 0} sürümü silecek\n• Kalıcıdır ve geri alınamaz\n\nDevam etmek istiyor musunuz?`
+
+    const confirmation = window.confirm(confirmMessage)
+    if (!confirmation) return
+
+    try {
+      await deleteContentMut.mutateAsync()
+    } catch (error) {
+      console.error('Content delete failed', error)
+    }
+  }, [isNew, deleteContentMut, versionsData])
 
   function computeSlug(base) {
     const map = {
@@ -1241,7 +1273,7 @@ export default function ContentEditor() {
             <div className="text-xs text-gray-500">Sürüm yok.</div>
           )}
           {!isNew && hasPublishedVersion && (
-            <div className="text-[11px] text-gray-500">Yayındaki sürümler silinemez.</div>
+            <div className="text-[11px] text-amber-600">⚠️ Yayındaki sürümleri de silebilirsiniz, ancak dikkatli olun.</div>
           )}
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1 text-xs">
             {versionsData?.map((v) => {
@@ -1263,14 +1295,10 @@ export default function ContentEditor() {
                     <input
                       type="checkbox"
                       aria-label={`Sürüm ${v.version} silme seçimi`}
-                      className={clsx(
-                        'mt-1 h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-400',
-                        isPublished && 'cursor-not-allowed opacity-40'
-                      )}
+                      className="mt-1 h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-400"
                       checked={checked}
-                      disabled={isPublished}
                       onChange={(event) => handleToggleVersionSelection(v, event.target.checked)}
-                      title={isPublished ? 'Yayındaki sürümler silinemez.' : undefined}
+                      title={isPublished ? 'Bu sürüm yayında - silmek için onay gerekir' : undefined}
                     />
                     <button
                       type="button"
@@ -1349,6 +1377,24 @@ export default function ContentEditor() {
             </div>
           )}
         </section>
+
+        {!isNew && (
+          <section className={`${cardClass} space-y-3 p-5 border-2 border-rose-200`}>
+            <h3 className="text-sm font-semibold text-rose-900">Tehlikeli Bölge</h3>
+            <p className="text-xs text-gray-600">
+              Bu içeriği tüm sürümleriyle birlikte kalıcı olarak silin. Bu işlem geri alınamaz.
+            </p>
+            <button
+              type="button"
+              onClick={handleDeleteEntireContent}
+              disabled={isDeletingContent}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border-2 border-rose-600 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50 disabled:opacity-40"
+            >
+              <TrashIcon className="h-4 w-4" aria-hidden="true" />
+              {isDeletingContent ? 'Siliniyor…' : 'Tüm İçeriği Sil'}
+            </button>
+          </section>
+        )}
 
         <section className={`${cardClass} sticky top-4 space-y-3 p-5 shadow-md`}>
           <div className="space-y-1 text-xs text-gray-500">

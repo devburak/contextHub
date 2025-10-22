@@ -363,6 +363,20 @@ async function deleteVersions({ tenantId, contentId, versionIds = [], user }) {
     return { deleted: 0, deletedVersions: [] }
   }
 
+  // Check if we're trying to delete the last active version
+  const totalActiveVersions = await ContentVersion.countDocuments({
+    tenantId,
+    contentId,
+    deletedAt: null,
+  })
+
+  const candidateIds = candidateVersions.map((item) => item._id.toString())
+  const remainingActiveVersions = totalActiveVersions - candidateVersions.length
+
+  if (remainingActiveVersions < 1) {
+    throw new Error('Cannot delete all versions. At least one version must remain active. Use content delete endpoint to remove the entire content.')
+  }
+
   const now = new Date()
   const deletePayload = { deletedAt: now }
   const userId = user?._id ? new ObjectId(user._id) : null
