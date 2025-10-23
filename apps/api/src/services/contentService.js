@@ -1,4 +1,4 @@
-const { Content, ContentVersion } = require('@contexthub/common')
+const { Content, ContentVersion, Category, Tag } = require('@contexthub/common')
 const mongoose = require('mongoose')
 const galleryService = require('./galleryService')
 
@@ -489,7 +489,9 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
     search,
     category,
     categories,
+    categoryName,
     tag,
+    tagName,
   } = filters
 
   const page = Math.max(Number(pagination.page || 1), 1)
@@ -501,29 +503,83 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
     query.status = status
   }
 
-  // Handle both single category and multiple categories
+  // Handle category filtering by ID or name
   const categoryFilter = categories || category
-  if (categoryFilter) {
-    // Support comma-separated category IDs
-    const categoryIds = typeof categoryFilter === 'string'
-      ? categoryFilter.split(',').map(id => id.trim()).filter(Boolean)
-      : Array.isArray(categoryFilter)
-        ? categoryFilter
-        : [categoryFilter]
+  if (categoryFilter || categoryName) {
+    let categoryIds = []
 
-    const validCategoryIds = categoryIds
-      .filter(id => ObjectId.isValid(id))
-      .map(id => new ObjectId(id))
+    // If category IDs are provided
+    if (categoryFilter) {
+      const ids = typeof categoryFilter === 'string'
+        ? categoryFilter.split(',').map(id => id.trim()).filter(Boolean)
+        : Array.isArray(categoryFilter)
+          ? categoryFilter
+          : [categoryFilter]
 
-    if (validCategoryIds.length > 0) {
+      categoryIds = ids
+        .filter(id => ObjectId.isValid(id))
+        .map(id => new ObjectId(id))
+    }
+
+    // If category name is provided, search by name
+    if (categoryName) {
+      const normalizedName = categoryName.trim()
+      const matchingCategories = await Category.find({
+        tenantId,
+        name: new RegExp(normalizedName, 'i')
+      }).select('_id').lean()
+
+      const nameCategoryIds = matchingCategories.map(cat => cat._id)
+      categoryIds = [...categoryIds, ...nameCategoryIds]
+    }
+
+    if (categoryIds.length > 0) {
       // Find contents that have ANY of the specified categories
-      query.categories = { $in: validCategoryIds }
+      query.categories = { $in: categoryIds }
     }
   }
 
-  if (tag && ObjectId.isValid(tag)) {
-    query.tags = new ObjectId(tag)
+  // Handle tag filtering by ID or name
+  if (tag || tagName) {
+    let tagIds = []
+
+    // If tag IDs are provided
+    if (tag) {
+      const ids = typeof tag === 'string'
+        ? tag.split(',').map(id => id.trim()).filter(Boolean)
+        : Array.isArray(tag)
+          ? tag
+          : [tag]
+
+      tagIds = ids
+        .filter(id => ObjectId.isValid(id))
+        .map(id => new ObjectId(id))
+    }
+
+    // If tag name is provided, search by title
+    if (tagName) {
+      const normalizedName = tagName.trim()
+      // Tag.title can be a string or an object with language keys
+      const matchingTags = await Tag.find({
+        tenantId,
+        $or: [
+          { 'title': new RegExp(normalizedName, 'i') }, // If title is a string
+          { 'title.en': new RegExp(normalizedName, 'i') }, // If title is an object
+          { 'title.tr': new RegExp(normalizedName, 'i') },
+          { slug: new RegExp(normalizedName, 'i') }
+        ]
+      }).select('_id').lean()
+
+      const nameTagIds = matchingTags.map(tag => tag._id)
+      tagIds = [...tagIds, ...nameTagIds]
+    }
+
+    if (tagIds.length > 0) {
+      query.tags = { $in: tagIds }
+    }
   }
+
+  // Handle text search in title and summary
   if (search) {
     const normalised = search.trim().split(/\s+/).join(' ')
     query.$or = [
@@ -534,9 +590,11 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
 
   const [items, total] = await Promise.all([
     Content.find(query)
-      .sort({ updatedAt: -1 })
+      .sort({ publishedAt: -1 })
       .skip(skip)
       .limit(limit)
+      .populate('categories', 'name slug')
+      .populate('tags', 'slug title')
       .lean(),
     Content.countDocuments(query)
   ])
