@@ -18,6 +18,7 @@ async function contentRoutes(fastify) {
           status: { type: 'string' },
           search: { type: 'string' },
           category: { type: 'string' },
+          categories: { type: 'string' },
           tag: { type: 'string' },
           page: { type: 'number' },
           limit: { type: 'number' },
@@ -26,10 +27,10 @@ async function contentRoutes(fastify) {
     },
   }, async (request, reply) => {
     try {
-      const { status, search, category, tag, page, limit } = request.query
+      const { status, search, category, categories, tag, page, limit } = request.query
       const result = await contentService.listContents({
         tenantId: request.tenantId,
-        filters: { status, search, category, tag },
+        filters: { status, search, category, categories, tag },
         pagination: { page, limit },
       })
       return reply.send(result)
@@ -105,6 +106,30 @@ async function contentRoutes(fastify) {
     } catch (error) {
       request.log.error({ err: error }, 'Failed to check slug availability')
       return reply.code(400).send({ error: 'ContentSlugCheckFailed', message: error.message })
+    }
+  })
+
+  fastify.get('/contents/slug/:slug', {
+    preHandler: [authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          slug: { type: 'string' },
+        },
+        required: ['slug'],
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const content = await contentService.getContentBySlug({
+        tenantId: request.tenantId,
+        slug: request.params.slug,
+      })
+      return reply.send({ content })
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to fetch content by slug')
+      return reply.code(404).send({ error: 'ContentNotFound', message: error.message })
     }
   })
 

@@ -1,8 +1,9 @@
 const menuService = require('../services/menuService');
+const { tenantContext, authenticate } = require('../middleware/auth');
 
 /**
  * Menu Routes - WordPress benzeri menu yönetimi
- * 
+ *
  * Admin Routes:
  * - GET    /api/menus                  - List all menus
  * - GET    /api/menus/:id              - Get menu details
@@ -17,7 +18,7 @@ const menuService = require('../services/menuService');
  * - POST   /api/menus/:id/reorder      - Reorder menu items
  * - POST   /api/menus/:id/items/:itemId/move - Move menu item
  * - GET    /api/menus/stats            - Get menu statistics
- * 
+ *
  * Public Routes:
  * - GET    /api/public/menus/location/:location - Get menu by location
  * - GET    /api/public/menus/slug/:slug - Get menu by slug
@@ -30,22 +31,18 @@ module.exports = async function(fastify, opts) {
   /**
    * List all menus
    */
-  fastify.get('/menus', async (request, reply) => {
+  fastify.get('/menus', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.query.tenantId;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
       const filters = {
         status: request.query.status,
         location: request.query.location,
         search: request.query.search
       };
-      
-      const menus = await menuService.listMenus(tenantId, filters);
-      
+
+      const menus = await menuService.listMenus(request.tenantId, filters);
+
       reply.send({
         success: true,
         menus,
@@ -60,28 +57,25 @@ module.exports = async function(fastify, opts) {
   /**
    * Get menu details
    */
-  fastify.get('/menus/:id', async (request, reply) => {
+  fastify.get('/menus/:id', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.query.tenantId;
       const { id } = request.params;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.getMenu(tenantId, id);
-      
+
+      const menu = await menuService.getMenu(request.tenantId, id);
+
       reply.send({
         success: true,
         ...menu.toObject()
       });
     } catch (error) {
       request.log.error(error);
-      
+
       if (error.message === 'Menu not found') {
         return reply.code(404).send({ error: error.message });
       }
-      
+
       reply.code(500).send({ error: error.message });
     }
   });
@@ -89,17 +83,14 @@ module.exports = async function(fastify, opts) {
   /**
    * Get menu as tree structure
    */
-  fastify.get('/menus/:id/tree', async (request, reply) => {
+  fastify.get('/menus/:id/tree', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.query.tenantId;
       const { id } = request.params;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const tree = await menuService.getMenuTree(tenantId, id);
-      
+
+      const tree = await menuService.getMenuTree(request.tenantId, id);
+
       reply.send({
         success: true,
         tree
@@ -113,28 +104,25 @@ module.exports = async function(fastify, opts) {
   /**
    * Create new menu
    */
-  fastify.post('/menus', async (request, reply) => {
+  fastify.post('/menus', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.body.tenantId;
       const userId = request.user?.id;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.createMenu(tenantId, request.body, userId);
-      
+
+      const menu = await menuService.createMenu(request.tenantId, request.body, userId);
+
       reply.code(201).send({
         success: true,
         ...menu.toObject()
       });
     } catch (error) {
       request.log.error(error);
-      
+
       if (error.message === 'Menu slug already exists') {
         return reply.code(409).send({ error: error.message });
       }
-      
+
       reply.code(500).send({ error: error.message });
     }
   });
@@ -142,33 +130,30 @@ module.exports = async function(fastify, opts) {
   /**
    * Update menu
    */
-  fastify.put('/menus/:id', async (request, reply) => {
+  fastify.put('/menus/:id', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.body.tenantId;
       const { id } = request.params;
       const userId = request.user?.id;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.updateMenu(tenantId, id, request.body, userId);
-      
+
+      const menu = await menuService.updateMenu(request.tenantId, id, request.body, userId);
+
       reply.send({
         success: true,
         ...menu.toObject()
       });
     } catch (error) {
       request.log.error(error);
-      
+
       if (error.message === 'Menu not found') {
         return reply.code(404).send({ error: error.message });
       }
-      
+
       if (error.message === 'Menu slug already exists') {
         return reply.code(409).send({ error: error.message });
       }
-      
+
       reply.code(500).send({ error: error.message });
     }
   });
@@ -176,28 +161,25 @@ module.exports = async function(fastify, opts) {
   /**
    * Delete menu
    */
-  fastify.delete('/menus/:id', async (request, reply) => {
+  fastify.delete('/menus/:id', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.query.tenantId;
       const { id } = request.params;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      await menuService.deleteMenu(tenantId, id);
-      
+
+      await menuService.deleteMenu(request.tenantId, id);
+
       reply.send({
         success: true,
         message: 'Menu deleted successfully'
       });
     } catch (error) {
       request.log.error(error);
-      
+
       if (error.message === 'Menu not found') {
         return reply.code(404).send({ error: error.message });
       }
-      
+
       reply.code(500).send({ error: error.message });
     }
   });
@@ -205,23 +187,20 @@ module.exports = async function(fastify, opts) {
   /**
    * Duplicate menu
    */
-  fastify.post('/menus/:id/duplicate', async (request, reply) => {
+  fastify.post('/menus/:id/duplicate', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.body.tenantId;
       const { id } = request.params;
       const { name } = request.body;
       const userId = request.user?.id;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
+
       if (!name) {
         return reply.code(400).send({ error: 'Name required' });
       }
-      
-      const menu = await menuService.duplicateMenu(tenantId, id, name, userId);
-      
+
+      const menu = await menuService.duplicateMenu(request.tenantId, id, name, userId);
+
       reply.code(201).send({
         success: true,
         ...menu.toObject()
@@ -237,28 +216,25 @@ module.exports = async function(fastify, opts) {
   /**
    * Add menu item
    */
-  fastify.post('/menus/:id/items', async (request, reply) => {
+  fastify.post('/menus/:id/items', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.body.tenantId;
       const { id } = request.params;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.addMenuItem(tenantId, id, request.body);
-      
+
+      const menu = await menuService.addMenuItem(request.tenantId, id, request.body);
+
       reply.code(201).send({
         success: true,
         ...menu.toObject()
       });
     } catch (error) {
       request.log.error(error);
-      
+
       if (error.message === 'Parent menu item not found') {
         return reply.code(404).send({ error: error.message });
       }
-      
+
       reply.code(500).send({ error: error.message });
     }
   });
@@ -266,28 +242,25 @@ module.exports = async function(fastify, opts) {
   /**
    * Update menu item
    */
-  fastify.put('/menus/:id/items/:itemId', async (request, reply) => {
+  fastify.put('/menus/:id/items/:itemId', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.body.tenantId;
       const { id, itemId } = request.params;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.updateMenuItem(tenantId, id, itemId, request.body);
-      
+
+      const menu = await menuService.updateMenuItem(request.tenantId, id, itemId, request.body);
+
       reply.send({
         success: true,
         ...menu.toObject()
       });
     } catch (error) {
       request.log.error(error);
-      
+
       if (error.message === 'Menu item not found') {
         return reply.code(404).send({ error: error.message });
       }
-      
+
       reply.code(500).send({ error: error.message });
     }
   });
@@ -295,17 +268,14 @@ module.exports = async function(fastify, opts) {
   /**
    * Delete menu item
    */
-  fastify.delete('/menus/:id/items/:itemId', async (request, reply) => {
+  fastify.delete('/menus/:id/items/:itemId', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.query.tenantId;
       const { id, itemId } = request.params;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.deleteMenuItem(tenantId, id, itemId);
-      
+
+      const menu = await menuService.deleteMenuItem(request.tenantId, id, itemId);
+
       reply.send({
         success: true,
         ...menu.toObject()
@@ -319,33 +289,30 @@ module.exports = async function(fastify, opts) {
   /**
    * Reorder menu items
    */
-  fastify.post('/menus/:id/reorder', async (request, reply) => {
+  fastify.post('/menus/:id/reorder', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.body.tenantId;
       const { id } = request.params;
       const { items } = request.body; // [{ id, order, parentId }]
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
+
       if (!items || !Array.isArray(items)) {
         return reply.code(400).send({ error: 'Items array required' });
       }
-      
-      const menu = await menuService.reorderMenuItems(tenantId, id, items);
-      
+
+      const menu = await menuService.reorderMenuItems(request.tenantId, id, items);
+
       reply.send({
         success: true,
         ...menu.toObject()
       });
     } catch (error) {
       request.log.error(error);
-      
+
       if (error.message === 'Some menu items not found') {
         return reply.code(404).send({ error: error.message });
       }
-      
+
       reply.code(500).send({ error: error.message });
     }
   });
@@ -353,33 +320,30 @@ module.exports = async function(fastify, opts) {
   /**
    * Move menu item
    */
-  fastify.post('/menus/:id/items/:itemId/move', async (request, reply) => {
+  fastify.post('/menus/:id/items/:itemId/move', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.body.tenantId;
       const { id, itemId } = request.params;
       const { parentId, order } = request.body;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.moveMenuItem(tenantId, id, itemId, parentId, order);
-      
+
+      const menu = await menuService.moveMenuItem(request.tenantId, id, itemId, parentId, order);
+
       reply.send({
         success: true,
         ...menu.toObject()
       });
     } catch (error) {
       request.log.error(error);
-      
+
       if (error.message.includes('not found')) {
         return reply.code(404).send({ error: error.message });
       }
-      
+
       if (error.message === 'Cannot move item to its own child') {
         return reply.code(400).send({ error: error.message });
       }
-      
+
       reply.code(500).send({ error: error.message });
     }
   });
@@ -387,16 +351,12 @@ module.exports = async function(fastify, opts) {
   /**
    * Get menu statistics
    */
-  fastify.get('/menus/stats', async (request, reply) => {
+  fastify.get('/menus/stats', {
+    preHandler: [tenantContext, authenticate]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.query.tenantId;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const stats = await menuService.getMenuStats(tenantId);
-      
+      const stats = await menuService.getMenuStats(request.tenantId);
+
       reply.send({
         success: true,
         stats
@@ -412,21 +372,18 @@ module.exports = async function(fastify, opts) {
   /**
    * Get menu by location (public)
    */
-  fastify.get('/public/menus/location/:location', async (request, reply) => {
+  fastify.get('/public/menus/location/:location', {
+    preHandler: [tenantContext]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.query.tenantId;
       const { location } = request.params;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.getMenuByLocation(tenantId, location);
-      
+
+      const menu = await menuService.getMenuByLocation(request.tenantId, location);
+
       if (!menu) {
         return reply.code(404).send({ error: 'Menu not found' });
       }
-      
+
       reply.send({
         success: true,
         ...menu
@@ -436,25 +393,22 @@ module.exports = async function(fastify, opts) {
       reply.code(500).send({ error: error.message });
     }
   });
-  
+
   /**
    * Get menu by slug (public)
    */
-  fastify.get('/public/menus/slug/:slug', async (request, reply) => {
+  fastify.get('/public/menus/slug/:slug', {
+    preHandler: [tenantContext]
+  }, async (request, reply) => {
     try {
-      const tenantId = request.headers['x-tenant-id'] || request.query.tenantId;
       const { slug } = request.params;
-      
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Tenant ID required' });
-      }
-      
-      const menu = await menuService.getMenuBySlug(tenantId, slug);
-      
+
+      const menu = await menuService.getMenuBySlug(request.tenantId, slug);
+
       if (!menu) {
         return reply.code(404).send({ error: 'Menu not found' });
       }
-      
+
       reply.send({
         success: true,
         ...menu
