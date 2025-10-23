@@ -15,22 +15,24 @@ async function contentRoutes(fastify) {
       querystring: {
         type: 'object',
         properties: {
-          status: { type: 'string' },
-          search: { type: 'string' },
-          category: { type: 'string' },
-          categories: { type: 'string' },
-          tag: { type: 'string' },
-          page: { type: 'number' },
-          limit: { type: 'number' },
+          status: { type: 'string', description: 'Filter by content status (draft, published, scheduled, archived)' },
+          search: { type: 'string', description: 'Search in title and summary fields' },
+          category: { type: 'string', description: 'Filter by category ID (single)' },
+          categories: { type: 'string', description: 'Filter by category IDs (comma-separated: id1,id2,id3)' },
+          categoryName: { type: 'string', description: 'Search categories by name' },
+          tag: { type: 'string', description: 'Filter by tag ID (single or comma-separated)' },
+          tagName: { type: 'string', description: 'Search tags by name/title' },
+          page: { type: 'number', description: 'Page number (default: 1)' },
+          limit: { type: 'number', description: 'Items per page (default: 20, max: 100)' },
         },
       },
     },
   }, async (request, reply) => {
     try {
-      const { status, search, category, categories, tag, page, limit } = request.query
+      const { status, search, category, categories, categoryName, tag, tagName, page, limit } = request.query
       const result = await contentService.listContents({
         tenantId: request.tenantId,
-        filters: { status, search, category, categories, tag },
+        filters: { status, search, category, categories, categoryName, tag, tagName },
         pagination: { page, limit },
       })
       return reply.send(result)
