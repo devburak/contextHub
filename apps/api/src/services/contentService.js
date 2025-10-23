@@ -462,11 +462,33 @@ async function getContent({ tenantId, contentId }) {
   }
 }
 
+async function getContentBySlug({ tenantId, slug }) {
+  if (!slug) {
+    throw new Error('Slug is required')
+  }
+
+  const content = await Content.findOne({ tenantId, slug })
+    .populate('featuredMediaId')
+    .lean()
+
+  if (!content) {
+    throw new Error('Content not found')
+  }
+
+  const galleries = await galleryService.listByContent({ tenantId, contentId: content._id })
+
+  return {
+    ...content,
+    galleries
+  }
+}
+
 async function listContents({ tenantId, filters = {}, pagination = {} }) {
   const {
     status,
     search,
     category,
+    categories,
     tag,
   } = filters
 
@@ -478,9 +500,27 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
   if (status) {
     query.status = status
   }
-  if (category && ObjectId.isValid(category)) {
-    query.categories = new ObjectId(category)
+
+  // Handle both single category and multiple categories
+  const categoryFilter = categories || category
+  if (categoryFilter) {
+    // Support comma-separated category IDs
+    const categoryIds = typeof categoryFilter === 'string'
+      ? categoryFilter.split(',').map(id => id.trim()).filter(Boolean)
+      : Array.isArray(categoryFilter)
+        ? categoryFilter
+        : [categoryFilter]
+
+    const validCategoryIds = categoryIds
+      .filter(id => ObjectId.isValid(id))
+      .map(id => new ObjectId(id))
+
+    if (validCategoryIds.length > 0) {
+      // Find contents that have ANY of the specified categories
+      query.categories = { $in: validCategoryIds }
+    }
   }
+
   if (tag && ObjectId.isValid(tag)) {
     query.tags = new ObjectId(tag)
   }
@@ -611,6 +651,7 @@ module.exports = {
   deleteContent,
   deleteVersions,
   getContent,
+  getContentBySlug,
   listContents,
   listVersions,
   checkSlugAvailability,
