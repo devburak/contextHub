@@ -590,7 +590,7 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
 
   const [items, total] = await Promise.all([
     Content.find(query)
-      .sort({ updatedAt: -1 })
+      .sort({ publishedAt: -1 })
       .skip(skip)
       .limit(limit)
       .populate('categories', 'name slug')
