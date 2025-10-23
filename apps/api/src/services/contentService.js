@@ -595,6 +595,7 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
       .limit(limit)
       .populate('categories', 'name slug')
       .populate('tags', 'slug title')
+      .populate('featuredMediaId', 'url title altText variants')
       .lean(),
     Content.countDocuments(query)
   ])
