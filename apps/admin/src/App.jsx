@@ -21,6 +21,7 @@ import ContentList from './pages/contents/ContentList.jsx'
 import ContentEditor from './pages/contents/ContentEditor.jsx'
 import FormList from './pages/forms/FormList.jsx'
 import FormBuilder from './pages/forms/FormBuilder.jsx'
+import FormResponses from './pages/forms/FormResponses.jsx'
 import { PlacementsList, PlacementEdit, PlacementAnalytics } from './pages/placements/index.js'
 import { MenuList, MenuEdit } from './pages/menus/index.js'
 import { CollectionsList, CollectionDetail } from './pages/collections/index.js'
@@ -298,6 +299,7 @@ function App() {
               <Route path="/contents/:id" element={<PermissionRoute permissions={PERMISSIONS.CONTENT_MANAGE}><ContentEditor /></PermissionRoute>} />
               <Route path="/forms" element={<PermissionRoute permissions={PERMISSIONS.FORMS_VIEW}><FormList /></PermissionRoute>} />
               <Route path="/forms/:id" element={<PermissionRoute permissions={PERMISSIONS.FORMS_MANAGE}><FormBuilder /></PermissionRoute>} />
+              <Route path="/forms/:id/responses" element={<PermissionRoute permissions={PERMISSIONS.FORMS_VIEW}><FormResponses /></PermissionRoute>} />
               <Route path="/collections" element={<PermissionRoute permissions={PERMISSIONS.COLLECTIONS_VIEW}><CollectionsList /></PermissionRoute>} />
               <Route path="/collections/:key" element={<PermissionRoute permissions={PERMISSIONS.COLLECTIONS_MANAGE}><CollectionDetail /></PermissionRoute>} />
               <Route path="/placements" element={<PermissionRoute permissions={PERMISSIONS.PLACEMENTS_VIEW}><PlacementsList /></PermissionRoute>} />

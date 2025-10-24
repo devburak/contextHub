@@ -8,11 +8,11 @@ const { getRoleLevel, ROLE_KEYS } = rbac;
 async function tenantContext(request, reply) {
   let tenantId = null;
 
-  // API token kontrolü - ctx_ var mı?
+  // Authorization header kontrolü - Bearer ctx_ var mı?
   const authHeader = request.headers.authorization;
   if (authHeader && authHeader.includes('ctx_')) {
     // API token kullanılıyor - tenant ID'yi token'dan alacağız
-    // Bu durumda tenantId kontrolünü atlayalım, authenticate middleware set edecek
+    // Bu durumda tenantId kontrolünü atlayalım, authenticate veya validateApiKey set edecek
     return;
   }
 

@@ -542,7 +542,7 @@ async function formRoutes(fastify) {
   }, async (request, reply) => {
     try {
       const { slug, formId } = request.query;
-      
+
       const available = !(await formService.ensureUniqueSlug({
         tenantId: request.tenantId,
         slug,
@@ -552,9 +552,585 @@ async function formRoutes(fastify) {
       return reply.send({ available });
     } catch (error) {
       request.log.error({ err: error }, 'Failed to check slug');
-      return reply.code(500).send({ 
-        error: 'SlugCheckFailed', 
-        message: error.message 
+      return reply.code(500).send({
+        error: 'SlugCheckFailed',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * GET /api/forms/:id/responses
+   * Get all responses for a form
+   */
+  fastify.get('/forms/:id/responses', {
+    preHandler: [authenticate],
+    schema: {
+      tags: ['forms'],
+      description: 'Get all form responses with filtering and pagination',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Form ID' }
+        },
+        required: ['id']
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          status: {
+            type: 'string',
+            enum: ['pending', 'processed', 'spam', 'deleted'],
+            description: 'Filter by response status'
+          },
+          startDate: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Filter responses from this date'
+          },
+          endDate: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Filter responses until this date'
+          },
+          page: {
+            type: 'number',
+            minimum: 1,
+            default: 1,
+            description: 'Page number'
+          },
+          limit: {
+            type: 'number',
+            minimum: 1,
+            maximum: 100,
+            default: 20,
+            description: 'Items per page'
+          }
+        }
+      },
+      response: {
+        200: {
+          description: 'List of form responses with field metadata',
+          type: 'object',
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                  _id: { type: 'string' },
+                  formId: { type: 'string' },
+                  formVersion: { type: 'number' },
+                  data: {
+                    type: 'object',
+                    additionalProperties: true,
+                    description: 'Form field data (field names as keys)'
+                  },
+                  status: { type: 'string', enum: ['pending', 'processed', 'spam', 'deleted'] },
+                  source: { type: 'string' },
+                  locale: { type: 'string' },
+                  ip: { type: 'string', description: 'Hashed IP address' },
+                  userAgent: { type: 'string' },
+                  createdAt: { type: 'string', format: 'date-time' },
+                  updatedAt: { type: 'string', format: 'date-time' },
+                  fieldMetadata: {
+                    type: 'object',
+                    additionalProperties: true,
+                    description: 'Field metadata mapping (field name -> { id, type, label, options })'
+                  }
+                }
+              }
+            },
+            pagination: {
+              type: 'object',
+              properties: {
+                page: { type: 'number' },
+                limit: { type: 'number' },
+                total: { type: 'number' },
+                pages: { type: 'number' }
+              }
+            },
+            form: {
+              type: 'object',
+              additionalProperties: true,
+              description: 'Form definition for reference',
+              properties: {
+                id: { type: 'string' },
+                title: { type: 'object', additionalProperties: true, description: 'Multilingual form title' },
+                fields: { type: 'array', description: 'Complete form field definitions' }
+              }
+            }
+          }
+        },
+        404: {
+          description: 'Form not found',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const { status, startDate, endDate, page = 1, limit = 20 } = request.query;
+
+      const result = await formService.getResponses({
+        tenantId: request.tenantId,
+        formId: request.params.id,
+        filters: { status, startDate, endDate },
+        pagination: { page, limit }
+      });
+
+      return reply.send(result);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to get form responses');
+
+      if (error.message === 'Form not found') {
+        return reply.code(404).send({
+          error: 'FormNotFound',
+          message: error.message
+        });
+      }
+
+      return reply.code(500).send({
+        error: 'ResponseListFailed',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * GET /api/forms/:id/responses/:responseId
+   * Get a single response by ID
+   */
+  fastify.get('/forms/:id/responses/:responseId', {
+    preHandler: [authenticate],
+    schema: {
+      tags: ['forms'],
+      description: 'Get detailed information about a specific form response',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Form ID' },
+          responseId: { type: 'string', description: 'Response ID' }
+        },
+        required: ['id', 'responseId']
+      },
+      response: {
+        200: {
+          description: 'Form response details with field metadata',
+          type: 'object',
+          properties: {
+            response: {
+              type: 'object',
+              additionalProperties: true,
+              properties: {
+                _id: { type: 'string' },
+                tenantId: { type: 'string' },
+                formId: { type: 'string' },
+                formVersion: { type: 'number' },
+                data: {
+                  type: 'object',
+                  additionalProperties: true,
+                  description: 'Form field data (field names as keys)'
+                },
+                status: { type: 'string' },
+                source: { type: 'string' },
+                locale: { type: 'string' },
+                userAgent: { type: 'string' },
+                ip: { type: 'string', description: 'Hashed IP address' },
+                geo: {
+                  type: 'object',
+                  nullable: true,
+                  additionalProperties: true,
+                  properties: {
+                    country: { type: 'string' },
+                    city: { type: 'string' }
+                  }
+                },
+                device: {
+                  type: 'object',
+                  nullable: true,
+                  additionalProperties: true,
+                  properties: {
+                    type: { type: 'string' },
+                    os: { type: 'string' },
+                    browser: { type: 'string' }
+                  }
+                },
+                userId: { type: 'string', nullable: true },
+                userEmail: { type: 'string', nullable: true },
+                userName: { type: 'string', nullable: true },
+                createdAt: { type: 'string', format: 'date-time' },
+                updatedAt: { type: 'string', format: 'date-time' },
+                fieldMetadata: {
+                  type: 'object',
+                  additionalProperties: true,
+                  description: 'Field metadata mapping (field name -> { id, type, label, placeholder, helpText, options, required })'
+                },
+                form: {
+                  type: 'object',
+                  additionalProperties: true,
+                  description: 'Form definition for reference',
+                  properties: {
+                    id: { type: 'string' },
+                    title: { type: 'object', additionalProperties: true, description: 'Multilingual form title' },
+                    fields: { type: 'array', description: 'Complete form field definitions' }
+                  }
+                }
+              }
+            }
+          }
+        },
+        404: {
+          description: 'Response not found',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const response = await formService.getResponseById({
+        tenantId: request.tenantId,
+        formId: request.params.id,
+        responseId: request.params.responseId
+      });
+
+      return reply.send({ response });
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to get form response');
+
+      if (error.message === 'Response not found') {
+        return reply.code(404).send({
+          error: 'ResponseNotFound',
+          message: error.message
+        });
+      }
+
+      return reply.code(500).send({
+        error: 'ResponseGetFailed',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * DELETE /api/forms/:id/responses/:responseId
+   * Delete a response (soft delete)
+   */
+  fastify.delete('/forms/:id/responses/:responseId', {
+    preHandler: [authenticate, requireEditor],
+    schema: {
+      tags: ['forms'],
+      description: 'Delete a form response (soft delete, sets status to deleted)',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Form ID' },
+          responseId: { type: 'string', description: 'Response ID' }
+        },
+        required: ['id', 'responseId']
+      },
+      response: {
+        200: {
+          description: 'Response deleted successfully',
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            response: {
+              type: 'object',
+              properties: {
+                _id: { type: 'string' },
+                status: { type: 'string', enum: ['deleted'] }
+              }
+            }
+          }
+        },
+        404: {
+          description: 'Response not found',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const response = await formService.deleteResponse({
+        tenantId: request.tenantId,
+        formId: request.params.id,
+        responseId: request.params.responseId
+      });
+
+      return reply.send({
+        success: true,
+        response
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to delete form response');
+
+      if (error.message === 'Response not found') {
+        return reply.code(404).send({
+          error: 'ResponseNotFound',
+          message: error.message
+        });
+      }
+
+      return reply.code(500).send({
+        error: 'ResponseDeleteFailed',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * DELETE /api/forms/:id/responses/:responseId/permanent
+   * Permanently delete a response (hard delete)
+   */
+  fastify.delete('/forms/:id/responses/:responseId/permanent', {
+    preHandler: [authenticate, requireAdmin],
+    schema: {
+      tags: ['forms'],
+      description: 'Permanently delete a form response from database (hard delete, cannot be undone)',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Form ID' },
+          responseId: { type: 'string', description: 'Response ID' }
+        },
+        required: ['id', 'responseId']
+      },
+      response: {
+        200: {
+          description: 'Response permanently deleted',
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            responseId: { type: 'string' }
+          }
+        },
+        404: {
+          description: 'Response not found',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const result = await formService.hardDeleteResponse({
+        tenantId: request.tenantId,
+        formId: request.params.id,
+        responseId: request.params.responseId
+      });
+
+      return reply.send(result);
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to permanently delete form response');
+
+      if (error.message === 'Response not found') {
+        return reply.code(404).send({
+          error: 'ResponseNotFound',
+          message: error.message
+        });
+      }
+
+      return reply.code(500).send({
+        error: 'ResponseHardDeleteFailed',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * PATCH /api/forms/:id/responses/:responseId/status
+   * Update response status
+   */
+  fastify.patch('/forms/:id/responses/:responseId/status', {
+    preHandler: [authenticate, requireEditor],
+    schema: {
+      tags: ['forms'],
+      description: 'Update form response status',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Form ID' },
+          responseId: { type: 'string', description: 'Response ID' }
+        },
+        required: ['id', 'responseId']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          status: {
+            type: 'string',
+            enum: ['pending', 'processed', 'spam', 'deleted'],
+            description: 'New status for the response'
+          }
+        },
+        required: ['status']
+      },
+      response: {
+        200: {
+          description: 'Status updated successfully',
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            response: {
+              type: 'object',
+              properties: {
+                _id: { type: 'string' },
+                status: { type: 'string', enum: ['pending', 'processed', 'spam', 'deleted'] },
+                flaggedAsSpam: { type: 'boolean' }
+              }
+            }
+          }
+        },
+        400: {
+          description: 'Invalid status',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        },
+        404: {
+          description: 'Response not found',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const response = await formService.updateResponseStatus({
+        tenantId: request.tenantId,
+        formId: request.params.id,
+        responseId: request.params.responseId,
+        status: request.body.status
+      });
+
+      return reply.send({
+        success: true,
+        response: {
+          _id: response._id,
+          status: response.status,
+          flaggedAsSpam: response.flaggedAsSpam
+        }
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to update response status');
+
+      if (error.message === 'Response not found') {
+        return reply.code(404).send({
+          error: 'ResponseNotFound',
+          message: error.message
+        });
+      }
+
+      if (error.message.includes('Invalid status')) {
+        return reply.code(400).send({
+          error: 'InvalidStatus',
+          message: error.message
+        });
+      }
+
+      return reply.code(500).send({
+        error: 'StatusUpdateFailed',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * POST /api/forms/:id/responses/:responseId/spam
+   * Mark a response as spam
+   */
+  fastify.post('/forms/:id/responses/:responseId/spam', {
+    preHandler: [authenticate, requireEditor],
+    schema: {
+      tags: ['forms'],
+      description: 'Mark a form response as spam',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Form ID' },
+          responseId: { type: 'string', description: 'Response ID' }
+        },
+        required: ['id', 'responseId']
+      },
+      response: {
+        200: {
+          description: 'Response marked as spam successfully',
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            response: {
+              type: 'object',
+              properties: {
+                _id: { type: 'string' },
+                status: { type: 'string', enum: ['spam'] },
+                flaggedAsSpam: { type: 'boolean' }
+              }
+            }
+          }
+        },
+        404: {
+          description: 'Response not found',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const response = await formService.markAsSpam({
+        tenantId: request.tenantId,
+        formId: request.params.id,
+        responseId: request.params.responseId
+      });
+
+      return reply.send({
+        success: true,
+        response
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to mark response as spam');
+
+      if (error.message === 'Response not found') {
+        return reply.code(404).send({
+          error: 'ResponseNotFound',
+          message: error.message
+        });
+      }
+
+      return reply.code(500).send({
+        error: 'SpamMarkFailed',
+        message: error.message
       });
     }
   });

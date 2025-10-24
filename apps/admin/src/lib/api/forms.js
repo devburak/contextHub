@@ -99,6 +99,43 @@ export async function checkFormSlug({ slug, formId }) {
 }
 
 /**
+ * Get form responses
+ */
+export async function getFormResponses({ id, page = 1, limit = 20, filters = {} } = {}) {
+  const params = { page, limit };
+  if (filters.status) params.status = filters.status;
+  if (filters.startDate) params.startDate = filters.startDate;
+  if (filters.endDate) params.endDate = filters.endDate;
+
+  const response = await apiClient.get(`${BASE}/${id}/responses`, { params });
+  return response.data;
+}
+
+/**
+ * Get a single form response by ID
+ */
+export async function getFormResponse({ formId, responseId }) {
+  const response = await apiClient.get(`${BASE}/${formId}/responses/${responseId}`);
+  return response.data.response;
+}
+
+/**
+ * Delete a form response
+ */
+export async function deleteFormResponse({ formId, responseId }) {
+  const response = await apiClient.delete(`${BASE}/${formId}/responses/${responseId}`);
+  return response.data;
+}
+
+/**
+ * Mark a form response as spam
+ */
+export async function markResponseAsSpam({ formId, responseId }) {
+  const response = await apiClient.post(`${BASE}/${formId}/responses/${responseId}/spam`);
+  return response.data;
+}
+
+/**
  * Forms API object with all methods
  */
 export const formsApi = {
@@ -113,4 +150,8 @@ export const formsApi = {
   restoreFormVersion: (id, version) => restoreFormVersion({ id, version }),
   duplicateForm: (id, title) => duplicateForm({ id, title }),
   checkFormSlug: (slug, formId) => checkFormSlug({ slug, formId }),
+  getFormResponses: (id, params = {}) => getFormResponses({ id, ...params }),
+  getFormResponse: (formId, responseId) => getFormResponse({ formId, responseId }),
+  deleteFormResponse: (formId, responseId) => deleteFormResponse({ formId, responseId }),
+  markResponseAsSpam: (formId, responseId) => markResponseAsSpam({ formId, responseId }),
 };
