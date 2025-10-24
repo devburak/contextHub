@@ -35,7 +35,7 @@ const formResponseSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
   formId: { type: Schema.Types.ObjectId, ref: 'FormDefinition', required: true, index: true },
   formVersion: { type: Number, required: true }, // Which version of the form was submitted
-  
+
   // Response data - field id to value mapping
   data: { type: Schema.Types.Mixed, required: true },
   
@@ -89,6 +89,10 @@ const formResponseSchema = new Schema({
   updatedAt: { type: Date },
   processedAt: { type: Date },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' } // For admin-created responses
+}, {
+  // Schema options
+  minimize: false, // Don't remove empty objects (important for Mixed types)
+  strict: true
 });
 
 // Pre-save middleware to update updatedAt field

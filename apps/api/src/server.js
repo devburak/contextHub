@@ -78,6 +78,12 @@ async function buildServer() {
             name: 'Authorization',
             description: 'API Token for Content-as-a-Service access. Format: Bearer ctx_your_token_here'
           },
+          apiKey: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Key',
+            description: 'API Key for public form submissions. Format: ctx_your_key_here'
+          },
           tenantId: {
             type: 'apiKey',
             in: 'header',
@@ -97,7 +103,7 @@ async function buildServer() {
         { name: 'tags', description: 'Tag management' },
         { name: 'collections', description: 'Collection management' },
         { name: 'galleries', description: 'Gallery management' },
-        { name: 'forms', description: 'Form management' },
+        { name: 'forms', description: 'Form management and form response handling' },
         { name: 'menus', description: 'Menu management' },
         { name: 'placements', description: 'Placement management' },
         { name: 'mail', description: 'Email services' },
@@ -162,6 +168,7 @@ async function buildServer() {
   await app.register(require('./routes/menus'), { prefix: '/api' });
   await app.register(require('./routes/roles'), { prefix: '/api' });
   await app.register(require('./routes/publicCollections'), { prefix: '/api' });
+  await app.register(require('./routes/publicForms'), { prefix: '/api' });
   await app.register(require('./routes/dashboard'), { prefix: '/api' });
   await app.register(require('./routes/apiUsageSync'), { prefix: '/api' });
   await app.register(require('./routes/subscriptionPlans'), { prefix: '/api' });

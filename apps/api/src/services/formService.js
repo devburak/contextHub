@@ -628,6 +628,286 @@ async function duplicate({ tenantId, formId, userId, newTitle }) {
   return await create({ tenantId, data: duplicateData, userId });
 }
 
+/**
+ * Submit a form response (public endpoint)
+ */
+async function submitResponse({ tenantId, formId, data, metadata = {} }) {
+  // Get form to validate it exists and is published
+  const form = await FormDefinition.findOne({
+    _id: formId,
+    tenantId,
+    status: 'published'
+  });
+
+  if (!form) {
+    throw new Error('Form not found or not published');
+  }
+
+  // Validate required fields
+  const requiredFields = form.fields.filter(f => f.required);
+  for (const field of requiredFields) {
+    if (!data[field.name] && data[field.name] !== 0 && data[field.name] !== false) {
+      throw new Error(`Field "${field.name}" is required`);
+    }
+  }
+
+  // Hash IP for privacy
+  const crypto = require('crypto');
+  const ipRaw = metadata.ip;
+  const ipHashed = ipRaw ? crypto.createHash('sha256').update(ipRaw).digest('hex') : null;
+
+  // Create response
+  const response = new FormResponse({
+    tenantId,
+    formId,
+    formVersion: form.version,
+    data,
+    source: metadata.source || 'web',
+    locale: metadata.locale || 'en',
+    userAgent: metadata.userAgent,
+    ip: ipHashed,
+    ipRaw: ipRaw,
+    geo: metadata.geo,
+    device: metadata.device,
+    referrer: metadata.referrer,
+    userId: metadata.userId,
+    userEmail: metadata.userEmail,
+    userName: metadata.userName,
+    status: 'pending'
+  });
+
+  await response.save();
+
+  // Update form submission count
+  await FormDefinition.updateOne(
+    { _id: formId },
+    {
+      $inc: { submissionCount: 1 },
+      $set: { lastSubmissionAt: new Date() }
+    }
+  );
+
+  return response;
+}
+
+/**
+ * Get form responses with filters (admin)
+ */
+async function getResponses({ tenantId, formId, filters = {}, pagination = {} }) {
+  const form = await FormDefinition.findOne({ _id: formId, tenantId });
+  if (!form) {
+    throw new Error('Form not found');
+  }
+
+  const { status, startDate, endDate } = filters;
+  const { page = 1, limit = 20 } = pagination;
+
+  const query = { tenantId, formId };
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) query.createdAt.$lte = new Date(endDate);
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [responseDocs, total] = await Promise.all([
+    FormResponse.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('userId', 'firstName lastName email'),
+    FormResponse.countDocuments(query)
+  ]);
+
+  // Convert to plain objects (important for Mixed type fields)
+  const responses = responseDocs.map(doc => doc.toObject());
+
+  // Create field mapping for enriching response data
+  const fieldMap = {};
+  form.fields.forEach(field => {
+    fieldMap[field.name] = {
+      id: field.id,
+      type: field.type,
+      label: field.label,
+      options: field.options
+    };
+  });
+
+  // Enrich responses with field metadata
+  const enrichedResponses = responses.map(response => ({
+    ...response,
+    fieldMetadata: fieldMap
+  }));
+
+  return {
+    items: enrichedResponses,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit)
+    },
+    form: {
+      id: form._id,
+      title: form.title,
+      fields: form.fields
+    }
+  };
+}
+
+/**
+ * Get single response by ID (admin)
+ */
+async function getResponseById({ tenantId, formId, responseId }) {
+  const [responseDoc, form] = await Promise.all([
+    FormResponse.findOne({
+      _id: responseId,
+      tenantId,
+      formId
+    })
+      .populate('userId', 'firstName lastName email')
+      .populate('files.mediaId', 'filename url size mimeType'),
+    FormDefinition.findOne({ _id: formId, tenantId })
+  ]);
+
+  if (!responseDoc) {
+    throw new Error('Response not found');
+  }
+
+  if (!form) {
+    throw new Error('Form not found');
+  }
+
+  // Convert to plain object AFTER accessing data
+  // This is important for Mixed type fields
+  const response = responseDoc.toObject();
+
+  // Create field mapping for enriching response data
+  const fieldMap = {};
+  form.fields.forEach(field => {
+    fieldMap[field.name] = {
+      id: field.id,
+      type: field.type,
+      label: field.label,
+      placeholder: field.placeholder,
+      helpText: field.helpText,
+      options: field.options,
+      required: field.required
+    };
+  });
+
+  return {
+    ...response,
+    fieldMetadata: fieldMap,
+    form: {
+      id: form._id,
+      title: form.title,
+      fields: form.fields
+    }
+  };
+}
+
+/**
+ * Delete response (admin) - Soft delete
+ */
+async function deleteResponse({ tenantId, formId, responseId }) {
+  const response = await FormResponse.findOne({
+    _id: responseId,
+    tenantId,
+    formId
+  });
+
+  if (!response) {
+    throw new Error('Response not found');
+  }
+
+  response.status = 'deleted';
+  await response.save();
+
+  return response;
+}
+
+/**
+ * Permanently delete response (admin) - Hard delete
+ */
+async function hardDeleteResponse({ tenantId, formId, responseId }) {
+  const response = await FormResponse.findOne({
+    _id: responseId,
+    tenantId,
+    formId
+  });
+
+  if (!response) {
+    throw new Error('Response not found');
+  }
+
+  // Permanently delete from database
+  await FormResponse.deleteOne({ _id: responseId });
+
+  return { success: true, responseId };
+}
+
+/**
+ * Mark response as spam (admin)
+ */
+async function markAsSpam({ tenantId, formId, responseId }) {
+  const response = await FormResponse.findOne({
+    _id: responseId,
+    tenantId,
+    formId
+  });
+
+  if (!response) {
+    throw new Error('Response not found');
+  }
+
+  response.status = 'spam';
+  response.flaggedAsSpam = true;
+  await response.save();
+
+  return response;
+}
+
+/**
+ * Update response status (admin)
+ */
+async function updateResponseStatus({ tenantId, formId, responseId, status }) {
+  const validStatuses = ['pending', 'processed', 'spam', 'deleted'];
+
+  if (!validStatuses.includes(status)) {
+    throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+  }
+
+  const response = await FormResponse.findOne({
+    _id: responseId,
+    tenantId,
+    formId
+  });
+
+  if (!response) {
+    throw new Error('Response not found');
+  }
+
+  response.status = status;
+
+  // Update spam flag if changing to/from spam status
+  if (status === 'spam') {
+    response.flaggedAsSpam = true;
+  } else if (response.flaggedAsSpam && status !== 'spam') {
+    response.flaggedAsSpam = false;
+  }
+
+  await response.save();
+
+  return response;
+}
+
 module.exports = {
   slugify,
   extractTitle,
@@ -644,5 +924,12 @@ module.exports = {
   restoreVersion,
   duplicate,
   generateUniqueSlug,
-  ensureUniqueSlug
+  ensureUniqueSlug,
+  submitResponse,
+  getResponses,
+  getResponseById,
+  deleteResponse,
+  hardDeleteResponse,
+  markAsSpam,
+  updateResponseStatus
 };
