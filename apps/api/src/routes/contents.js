@@ -22,6 +22,8 @@ async function contentRoutes(fastify) {
           categoryName: { type: 'string', description: 'Search categories by name' },
           tag: { type: 'string', description: 'Filter by tag ID (single or comma-separated)' },
           tagName: { type: 'string', description: 'Search tags by name/title' },
+          publishedFrom: { type: 'string', description: 'Filter contents published after or on this ISO date' },
+          publishedTo: { type: 'string', description: 'Filter contents published before or on this ISO date' },
           page: { type: 'number', description: 'Page number (default: 1)' },
           limit: { type: 'number', description: 'Items per page (default: 20, max: 100)' },
         },
@@ -29,10 +31,10 @@ async function contentRoutes(fastify) {
     },
   }, async (request, reply) => {
     try {
-      const { status, search, category, categories, categoryName, tag, tagName, page, limit } = request.query
+      const { status, search, category, categories, categoryName, tag, tagName, publishedFrom, publishedTo, page, limit } = request.query
       const result = await contentService.listContents({
         tenantId: request.tenantId,
-        filters: { status, search, category, categories, categoryName, tag, tagName },
+        filters: { status, search, category, categories, categoryName, tag, tagName, publishedFrom, publishedTo },
         pagination: { page, limit },
       })
       return reply.send(result)
@@ -121,12 +123,23 @@ async function contentRoutes(fastify) {
         },
         required: ['slug'],
       },
+      querystring: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', description: 'Optional content status filter (single or comma-separated)' },
+          publishedFrom: { type: 'string', description: 'Inclusive ISO timestamp to filter publishedAt' },
+          publishedTo: { type: 'string', description: 'Inclusive ISO timestamp to filter publishedAt' }
+        }
+      }
     },
   }, async (request, reply) => {
     try {
       const content = await contentService.getContentBySlug({
         tenantId: request.tenantId,
         slug: request.params.slug,
+        status: request.query?.status,
+        publishedFrom: request.query?.publishedFrom,
+        publishedTo: request.query?.publishedTo
       })
       return reply.send({ content })
     } catch (error) {
