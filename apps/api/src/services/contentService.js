@@ -462,14 +462,78 @@ async function getContent({ tenantId, contentId }) {
   }
 }
 
-async function getContentBySlug({ tenantId, slug }) {
+function buildStatusFilter(status) {
+  if (!status) {
+    return null
+  }
+
+  const values = Array.isArray(status)
+    ? status.map((value) => (typeof value === 'string' ? value.trim() : String(value).trim()))
+    : String(status).split(',').map((value) => value.trim())
+
+  const filtered = values.filter(Boolean)
+  if (!filtered.length) {
+    return null
+  }
+
+  if (filtered.length === 1) {
+    return filtered[0]
+  }
+
+  return { $in: filtered }
+}
+
+function buildDateRangeFilter(from, to) {
+  const range = {}
+
+  if (from) {
+    const fromDate = new Date(from)
+    if (!Number.isNaN(fromDate.getTime())) {
+      range.$gte = fromDate
+    }
+  }
+
+  if (to) {
+    const toDate = new Date(to)
+    if (!Number.isNaN(toDate.getTime())) {
+      range.$lte = toDate
+    }
+  }
+
+  return Object.keys(range).length ? range : null
+}
+
+async function getContentBySlug({ tenantId, slug, status = null, publishedFrom = null, publishedTo = null }) {
   if (!slug) {
     throw new Error('Slug is required')
   }
 
-  const content = await Content.findOne({ tenantId, slug })
+  const query = { tenantId, slug }
+  const statusClause = buildStatusFilter(status)
+  if (statusClause) {
+    query.status = statusClause
+  }
+
+  const publishedRange = buildDateRangeFilter(publishedFrom, publishedTo)
+  if (publishedRange) {
+    query.publishedAt = publishedRange
+  }
+
+  let content = await Content.findOne(query)
+    .sort({ publishedAt: -1, createdAt: -1, _id: -1 })
     .populate('featuredMediaId')
     .lean()
+
+  if (!content && publishedRange) {
+    const scheduleQuery = { ...query }
+    delete scheduleQuery.publishedAt
+    scheduleQuery.publishAt = publishedRange
+
+    content = await Content.findOne(scheduleQuery)
+      .sort({ publishAt: -1, createdAt: -1, _id: -1 })
+      .populate('featuredMediaId')
+      .lean()
+  }
 
   if (!content) {
     throw new Error('Content not found')
@@ -492,6 +556,8 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
     categoryName,
     tag,
     tagName,
+    publishedFrom,
+    publishedTo,
   } = filters
 
   const page = Math.max(Number(pagination.page || 1), 1)
@@ -499,8 +565,9 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
   const skip = (page - 1) * limit
 
   const query = { tenantId }
-  if (status) {
-    query.status = status
+  const statusClause = buildStatusFilter(status)
+  if (statusClause) {
+    query.status = statusClause
   }
 
   // Handle category filtering by ID or name
@@ -586,6 +653,26 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
       { title: new RegExp(normalised, 'i') },
       { summary: new RegExp(normalised, 'i') }
     ]
+  }
+
+  if (publishedFrom || publishedTo) {
+    const publishedAtFilter = {}
+    if (publishedFrom) {
+      const fromDate = new Date(publishedFrom)
+      if (!Number.isNaN(fromDate.getTime())) {
+        publishedAtFilter.$gte = fromDate
+      }
+    }
+    if (publishedTo) {
+      const toDate = new Date(publishedTo)
+      if (!Number.isNaN(toDate.getTime())) {
+        publishedAtFilter.$lte = toDate
+      }
+    }
+
+    if (Object.keys(publishedAtFilter).length > 0) {
+      query.publishedAt = { ...(query.publishedAt || {}), ...publishedAtFilter }
+    }
   }
 
   const [items, total] = await Promise.all([
