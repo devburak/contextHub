@@ -45,6 +45,7 @@ export default function MenuEdit() {
   const [showItemForm, setShowItemForm] = useState(false);
   const [activeId, setActiveId] = useState(null);
   const [overId, setOverId] = useState(null);
+  const [dropZonePosition, setDropZonePosition] = useState(null); // 'before', 'after', 'child'
   const [collapsedItems, setCollapsedItems] = useState({});
 
   const sensors = useSensors(
@@ -176,6 +177,38 @@ export default function MenuEdit() {
 
   const handleDragOver = (event) => {
     setOverId(event.over?.id || null);
+    
+    // Determine drop zone position - THREE modes:
+    // 'sibling': Insert as sibling (before/after)
+    // 'child': Make it a child of the over item
+    if (event.over) {
+      const activeItem = menu.items.find(item => item._id === event.active.id);
+      const overItem = menu.items.find(item => item._id === event.over.id);
+      
+      if (activeItem && overItem) {
+        const activeParentId = activeItem.parentId?.toString() || null;
+        const overParentId = overItem.parentId?.toString() || null;
+        
+        // Same parent level = always sibling reordering
+        if (activeParentId === overParentId) {
+          setDropZonePosition('sibling');
+        } else {
+          // Different parent levels
+          // If active is child of something and over is parent level = sibling
+          // If both at different levels = could be child
+          // Check if overItem can have children (not too deep)
+          const overItemChildren = menu.items.filter(i => i.parentId?.toString() === overItem._id?.toString());
+          
+          // If over item has children or is at root level, allow nesting
+          const overItemDepth = overItem.parentId ? 1 : 0;
+          if (overItemDepth < (menu.meta?.maxDepth || 3)) {
+            setDropZonePosition('child');
+          } else {
+            setDropZonePosition('sibling');
+          }
+        }
+      }
+    }
   };
 
   const handleDragEnd = async (event) => {
@@ -183,6 +216,7 @@ export default function MenuEdit() {
 
     setActiveId(null);
     setOverId(null);
+    setDropZonePosition(null);
 
     if (!over || active.id === over.id) {
       return;
@@ -207,49 +241,117 @@ export default function MenuEdit() {
       return;
     }
 
-    // Determine if we're making it a sibling or a child
-    // If the over item has the same parent as active, they're siblings
-    // Otherwise, make active a child of over
-
-    const activeParentId = activeItem.parentId?.toString() || null;
-    const overParentId = overItem.parentId?.toString() || null;
-
-    let newParentId;
-    let newOrder;
-
-    // Simple approach: make it a child of the item we dropped on
-    newParentId = over.id;
-
-    // Get siblings in new parent
-    const siblings = menu.items.filter(item =>
-      (item.parentId?.toString() || null) === (newParentId?.toString() || null) &&
-      item._id !== active.id
-    ).sort((a, b) => a.order - b.order);
-
-    newOrder = siblings.length;
-
-    // Check depth limit
+    // Check depth limit function
     const getDepth = (itemId) => {
       const item = menu.items.find(i => i._id === itemId);
       if (!item || !item.parentId) return 0;
       return 1 + getDepth(item.parentId);
     };
 
-    const newDepth = getDepth(newParentId) + 1;
-    if (newDepth > (menu.meta?.maxDepth || 3)) {
-      toast.error(`Maksimum derinlik (${menu.meta?.maxDepth || 3}) aşılamaz!`);
-      return;
+    const activeParentId = activeItem.parentId?.toString() || null;
+    const overParentId = overItem.parentId?.toString() || null;
+
+    // Determine new parent and calculate new order
+    let newParentId;
+    let newOrder;
+
+    if (activeParentId === overParentId) {
+      // SAME LEVEL: Reorder within same parent
+      newParentId = overParentId;
+
+      // Get items at this level, sorted by order
+      const levelItems = menu.items
+        .filter(item => 
+          (item.parentId?.toString() || null) === newParentId
+        )
+        .sort((a, b) => a.order - b.order);
+
+      // Find where to insert
+      const overIndex = levelItems.findIndex(item => item._id === over.id);
+      newOrder = overIndex + 1;
+    } else {
+      // DIFFERENT LEVEL: Could be sibling or child
+      // Check if dropZonePosition is 'child' (item will become child of overItem)
+      if (dropZonePosition === 'child') {
+        // Make it a child of overItem
+        newParentId = over.id;
+        
+        // Check depth limit
+        const overItemDepth = getDepth(over.id);
+        const newDepth = overItemDepth + 1;
+        if (newDepth > (menu.meta?.maxDepth || 3)) {
+          toast.error(`Maksimum derinlik (${menu.meta?.maxDepth || 3}) aşılamaz!`);
+          return;
+        }
+
+        // Get existing children of overItem
+        const childItems = menu.items
+          .filter(item => item.parentId?.toString() === over.id.toString())
+          .sort((a, b) => a.order - b.order);
+
+        // New order as last child
+        newOrder = childItems.length;
+      } else {
+        // Sibling: Move to overItem's parent level
+        newParentId = overParentId;
+
+        // Check depth limit
+        const depthAtTarget = newParentId ? getDepth(newParentId) + 1 : 0;
+        if (depthAtTarget > (menu.meta?.maxDepth || 3)) {
+          toast.error(`Maksimum derinlik (${menu.meta?.maxDepth || 3}) aşılamaz!`);
+          return;
+        }
+
+        // Get items at the new level
+        const levelItems = menu.items
+          .filter(item => 
+            (item.parentId?.toString() || null) === (newParentId?.toString() || null)
+          )
+          .sort((a, b) => a.order - b.order);
+
+        // Find where to insert
+        const overIndex = levelItems.findIndex(item => item._id === over.id);
+        newOrder = overIndex + 1;
+      }
     }
 
-    // Update all items with new positions
+    // Create updated items with sequential order numbers
     const updates = menu.items.map(item => {
+      const itemParentId = item.parentId?.toString() || null;
+
       if (item._id === active.id) {
+        // Moving item gets new parent and order
         return {
           id: item._id,
           order: newOrder,
           parentId: newParentId
         };
       }
+
+      // Recalculate order for items in the target parent
+      if (itemParentId === newParentId) {
+        // Get all items in target parent (excluding the one being moved)
+        const siblingItems = menu.items
+          .filter(i => 
+            (i.parentId?.toString() || null) === newParentId &&
+            i._id !== active.id
+          )
+          .sort((a, b) => a.order - b.order);
+
+        // Find this item's index among siblings
+        const itemIndex = siblingItems.findIndex(i => i._id === item._id);
+        
+        // Calculate new order: if before insertion point, keep; if after, shift up by 1
+        const recalculatedOrder = itemIndex < newOrder ? itemIndex : itemIndex + 1;
+
+        return {
+          id: item._id,
+          order: recalculatedOrder,
+          parentId: item.parentId || null
+        };
+      }
+
+      // Items in other parents unchanged
       return {
         id: item._id,
         order: item.order,
@@ -260,7 +362,7 @@ export default function MenuEdit() {
     try {
       const response = await api.post(`/menus/${id}/reorder`, { items: updates });
       setMenu(response.data);
-      toast.success('Menü sıralaması güncellendi!');
+      toast.success('Menü öğesi başarıyla taşındı!');
     } catch (error) {
       console.error('Failed to reorder items:', error);
       toast.error('Sıralama güncellenemedi: ' + error.message);
@@ -270,6 +372,7 @@ export default function MenuEdit() {
   const handleDragCancel = () => {
     setActiveId(null);
     setOverId(null);
+    setDropZonePosition(null);
   };
 
   // Build tree structure for display
@@ -309,14 +412,20 @@ export default function MenuEdit() {
     const isOver = overId === item._id;
 
     return (
-      <div key={item._id} className="mb-2">
-        <div
-          ref={setNodeRef}
-          style={style}
-          className={`flex items-center gap-2 p-3 bg-white border rounded-lg hover:bg-gray-50 transition-colors ${
-            isOver ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-          } ${isDragging ? 'shadow-lg' : ''}`}
-        >
+      <div key={item._id} className={`relative ${isOver ? 'mb-4' : 'mb-2'}`}>
+        {/* Drop zone indicator - BEFORE (üst kısım) - only for sibling mode */}
+        {isOver && activeId && dropZonePosition === 'sibling' && (
+          <div className="mb-2 h-1 bg-gradient-to-r from-blue-400 via-blue-500 to-blue-300 rounded-full shadow-md animate-pulse"></div>
+        )}
+        
+        <div className={`${isOver && dropZonePosition === 'sibling' ? 'ring-2 ring-blue-200 rounded-lg' : ''}`}>
+          <div
+            ref={setNodeRef}
+            style={style}
+            className={`flex items-center gap-2 p-3 bg-white border rounded-lg hover:bg-gray-50 transition-all ${
+              isOver && dropZonePosition === 'sibling' ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200'
+            } ${isOver && dropZonePosition === 'child' ? 'border-green-500 bg-green-50 shadow-md ring-2 ring-green-200' : ''} ${isDragging ? 'shadow-lg' : ''}`}
+          >
           <div {...attributes} {...listeners} className="cursor-move touch-none">
             <GripVertical size={16} className="text-gray-400" />
           </div>
@@ -398,6 +507,19 @@ export default function MenuEdit() {
             ))}
           </div>
         )}
+
+        {/* Drop zone indicator - AFTER (bottom) - only for sibling mode */}
+        {isOver && activeId && dropZonePosition === 'sibling' && (
+          <div className="mt-2 h-1 bg-gradient-to-r from-blue-300 via-blue-500 to-blue-400 rounded-full shadow-md animate-pulse"></div>
+        )}
+        
+        {/* Drop zone indicator - CHILD mode (inside item) */}
+        {isOver && activeId && dropZonePosition === 'child' && (
+          <div className="mt-2 ml-2 p-2 border-2 border-dashed border-green-400 rounded-lg bg-green-50 text-xs text-green-700 font-medium">
+            ➕ Alt menü olarak ekle
+          </div>
+        )}
+        </div>
       </div>
     );
   };
