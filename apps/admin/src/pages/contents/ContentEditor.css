@@ -390,6 +390,16 @@
   margin-bottom: 0;
 }
 
+/* Table cell paragraph formatting */
+.editor-table-cell .editor-paragraph {
+  margin: 0 !important;
+  position: relative;
+}
+
+.editor-table-cell .editor-paragraph:last-child {
+  margin-bottom: 0 !important;
+}
+
 .editor-heading-h1 {
   font-size: 24px;
   color: rgb(5, 5, 5);
@@ -415,6 +425,25 @@
   padding: 0;
 }
 
+/* Table cell heading formatting */
+.editor-table-cell .editor-heading-h1 {
+  font-size: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.editor-table-cell .editor-heading-h2 {
+  font-size: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.editor-table-cell .editor-heading-h3 {
+  font-size: 14px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 .editor-quote {
   margin: 0 0 15px 0;
   padding: 10px 20px;
@@ -438,6 +467,23 @@
   /* white-space: pre; */
   overflow-x: auto;
   position: relative;
+}
+
+/* Table cell quote and code formatting */
+.editor-table-cell .editor-quote {
+  margin: 0 !important;
+  padding: 4px 8px !important;
+  border-left: 2px solid #ccc !important;
+  background-color: #f9f9f9 !important;
+  font-size: 12px !important;
+}
+
+.editor-table-cell .editor-code {
+  background-color: rgb(240, 242, 245) !important;
+  padding: 2px 4px !important;
+  display: inline !important;
+  margin: 0 !important;
+  font-size: 12px !important;
 }
 
 .editor-code:before {
@@ -527,6 +573,44 @@
   cursor: pointer;
 }
 
+/* Table cell link formatting */
+.editor-table-cell .editor-link {
+  color: rgb(33, 111, 219) !important;
+  text-decoration: none !important;
+}
+
+.editor-table-cell .editor-link:hover {
+  text-decoration: underline !important;
+  cursor: pointer;
+}
+
+/* Native HTML tag formatting in table cells */
+.editor-table-cell strong,
+.editor-table-cell b {
+  font-weight: bold !important;
+}
+
+.editor-table-cell em,
+.editor-table-cell i {
+  font-style: italic !important;
+}
+
+.editor-table-cell u {
+  text-decoration: underline !important;
+}
+
+.editor-table-cell s,
+.editor-table-cell del {
+  text-decoration: line-through !important;
+}
+
+.editor-table-cell code {
+  background-color: rgb(240, 242, 245) !important;
+  padding: 1px 4px !important;
+  font-family: Menlo, Consolas, Monaco, monospace !important;
+  font-size: 12px !important;
+}
+
 .editor-text-bold {
   font-weight: bold;
 }
@@ -562,6 +646,44 @@
 .editor-text-superscript {
   font-size: 0.8em;
   vertical-align: super;
+}
+
+/* Table cell text formatting */
+.editor-table-cell .editor-text-bold {
+  font-weight: bold !important;
+}
+
+.editor-table-cell .editor-text-italic {
+  font-style: italic !important;
+}
+
+.editor-table-cell .editor-text-underline {
+  text-decoration: underline !important;
+}
+
+.editor-table-cell .editor-text-strikethrough {
+  text-decoration: line-through !important;
+}
+
+.editor-table-cell .editor-text-underlineStrikethrough {
+  text-decoration: underline line-through !important;
+}
+
+.editor-table-cell .editor-text-code {
+  background-color: rgb(240, 242, 245) !important;
+  padding: 1px 0.25rem !important;
+  font-family: Menlo, Consolas, Monaco, monospace !important;
+  font-size: 94% !important;
+}
+
+.editor-table-cell .editor-text-subscript {
+  font-size: 0.8em !important;
+  vertical-align: sub !important;
+}
+
+.editor-table-cell .editor-text-superscript {
+  font-size: 0.8em !important;
+  vertical-align: super !important;
 }
 
 /* Formatting Dropdown */
@@ -759,6 +881,7 @@
 
 .editor-table-cell:hover {
   background-color: #f9fafb;
+  box-shadow: inset 0 0 0 1px #e5e7eb;
 }
 
 .editor-table-cell th {
@@ -771,17 +894,41 @@
   outline: none;
 }
 
+/* Hücre tek-tıkla seçili durumu */
+.editor-table-cell.cell-selected {
+  background-color: #dbeafe !important;
+  border-color: #3b82f6 !important;
+  box-shadow: inset 0 0 0 2px #3b82f6;
+}
+
+/* Hücre çift-tıkla edit durumu (focus-within) - Google Docs tarzı */
+.editor-table-cell:focus-within {
+  background-color: #fffbeb !important;
+  outline: 2px solid #f59e0b;
+  outline-offset: -1px;
+  box-shadow: inset 0 0 0 2px #fcd34d;
+}
+
+/* Hover durumu */
+.editor-table-cell:hover {
+  background-color: #f9fafb;
+  box-shadow: inset 0 0 0 1px #e5e7eb;
+}
+
 /* Make borders more visible for empty cells */
 .editor-table-cell:empty::before {
   content: '\00a0'; /* Non-breaking space */
   display: inline-block;
 }
 
-/* Cell Selection Styles */
-.editor-table-cell.cell-selected {
-  background-color: #dbeafe !important;
-  border-color: #3b82f6 !important;
-  box-shadow: inset 0 0 0 2px #3b82f6;
+/* Enhanced cell padding ve spacing */
+.editor-table-cell {
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+}
+
+.editor-table-cell * {
+  user-select: text;
 }
 
 /* Table Selection Styles */
@@ -816,6 +963,28 @@
   align-items: center;
   gap: 8px;
   z-index: 10;
+}
+
+/* Multi-cell selection - Google Docs tarzı */
+.editor-table-cell.selected-cell {
+  background-color: #dbeafe !important;
+  border-color: #3b82f6 !important;
+}
+
+.editor-table-cell.selection-start {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+  box-shadow: inset 0 0 0 2px #0369a1;
+}
+
+.editor-table-cell.selection-end {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  box-shadow: inset 0 0 0 2px #0369a1;
+}
+
+.editor-table-cell.selection-corner {
+  box-shadow: inset 0 0 0 2px #0369a1;
 }
 
 .table-selected-label {
@@ -885,8 +1054,10 @@
 
 .table-dimension-footer {
   border-top: 1px solid #e5e7eb;
-  padding-top: 8px;
-  text-align: center;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .table-custom-size-btn {
@@ -897,6 +1068,7 @@
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
+  text-align: center;
 }
 
 .table-custom-size-btn:hover {
@@ -1605,4 +1777,56 @@
     width: 28px;
     height: 28px;
   }
+}
+
+/* ContentEditable scroll styling */
+.lexical-editor {
+  position: relative;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #222;
+  overflow: visible;
+}
+
+.lexical-editor::before {
+  content: '';
+  display: block;
+}
+
+.editor-editable {
+  height: 100%;
+  overflow: hidden;
+}
+
+.editor-editable::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.editor-editable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor-editable::-webkit-scrollbar-thumb {
+  background-color: #cbd5e0;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.editor-editable::-webkit-scrollbar-thumb:hover {
+  background-color: #a0aec0;
+  background-clip: content-box;
+}
+
+/* Firefox scrollbar */
+.editor-editable {
+  scrollbar-color: #cbd5e0 transparent;
+  scrollbar-width: thin;
+}
+
+.editor-editable:hover {
+  scrollbar-color: #a0aec0 transparent;
 }

@@ -231,6 +231,8 @@ export class TableCellNode extends ElementNode {
   createDOM() {
     const cell = document.createElement(this.__headerState !== 0 ? 'th' : 'td')
     cell.className = 'editor-table-cell'
+    cell.setAttribute('data-lexical-editor', 'true')
+    
     if (this.__width) {
       cell.style.width = `${this.__width}px`
     }
@@ -246,15 +248,6 @@ export class TableCellNode extends ElementNode {
     if (this.__rowSpan > 1) {
       cell.setAttribute('rowspan', this.__rowSpan.toString())
     }
-
-    // Add cell selection
-    cell.addEventListener('click', (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        cell.classList.toggle('cell-selected')
-        e.stopPropagation()
-      }
-    })
-
 
     return cell
   }
@@ -423,7 +416,7 @@ export function $isTableCellNode(node) {
 }
 
 // Table utility functions
-export function $createTableWithDimensions(rows, columns, includeHeaders = true) {
+export function $createTableWithDimensions(rows, columns, includeHeaders = false) {
   const table = $createTableNode()
 
   for (let r = 0; r < rows; r++) {
