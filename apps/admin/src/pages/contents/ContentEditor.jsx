@@ -19,6 +19,7 @@ import {
   $createTextNode,
   $getRoot,
   $getSelection,
+  $getNodeByKey,
   $isRangeSelection,
   $isTextNode,
   $insertNodes,
@@ -57,9 +58,11 @@ import TableActionMenuPlugin from './plugins/TableActionMenuPlugin.jsx'
 import TableHoverActionsPlugin from './plugins/TableHoverActionsPlugin.jsx'
 import TableCellResizerPlugin from './plugins/TableCellResizerPlugin.jsx'
 import TableSelectionPlugin from './plugins/TableSelectionPlugin.jsx'
+import TableCellFocusPlugin from './plugins/TableCellFocusPlugin.jsx'
 import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
+import ImageHandlersPlugin from './plugins/ImageHandlersPlugin.jsx'
 import VideoPlugin, { INSERT_VIDEO_COMMAND } from './plugins/VideoPlugin.jsx'
-import { ImageNode } from './nodes/ImageNode.jsx'
+import { ImageNode, $isImageNode } from './nodes/ImageNode.jsx'
 import { VideoNode } from './nodes/VideoNode.jsx'
 import {
   TableNode,
@@ -238,12 +241,14 @@ export default function ContentEditor() {
   const [featuredMediaId, setFeaturedMediaId] = useState(null)
   const [mediaPickerState, setMediaPickerState] = useState({ open: false, mode: 'image', onSelect: null })
   const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false)
+  const [includeTableHeaders, setIncludeTableHeaders] = useState(false)
   const [editorAnchorElem, setEditorAnchorElem] = useState(null)
   const [attachedGalleries, setAttachedGalleries] = useState([])
   const [selectedGalleryIds, setSelectedGalleryIds] = useState([])
   const [galleriesDirty, setGalleriesDirty] = useState(false)
   const [gallerySearch, setGallerySearch] = useState('')
   const [galleryError, setGalleryError] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const skipNextOnChangeRef = useRef(false)
   const skipNextContentSyncRef = useRef(false)
   const cardClass = 'rounded-xl border border-gray-200 bg-white shadow-sm'
@@ -895,8 +900,8 @@ export default function ContentEditor() {
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
-      <div className="xl:col-span-3 space-y-6">
+      <div className="grid grid-cols-1 gap-6 h-[calc(100vh-80px)]" style={{ gridTemplateColumns: sidebarOpen ? '1fr 300px' : '1fr' }}>
+      <div className="space-y-6 overflow-y-auto pr-4">
         <section className={`${cardClass} p-6 space-y-5`}>
           <div className="flex items-center justify-between">
             <div>
@@ -971,25 +976,43 @@ export default function ContentEditor() {
           </div>
         </section>
 
-        <section className={`${cardClass} space-y-4 p-6`}>
+        <section className={`${cardClass} space-y-4 p-6 flex flex-col h-full`}>
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-gray-900">İçerik</h2>
             
             </div>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+              title={sidebarOpen ? 'Sidebar\'ı kapat' : 'Sidebar\'ı aç'}
+            >
+              {sidebarOpen ? (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7m0 0l-7 7m7-7H6" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 0l-7 7 7 7" />
+                </svg>
+              )}
+            </button>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white">
+          <div className="flex-1 rounded-lg border border-gray-200 bg-white flex flex-col overflow-hidden">
             <LexicalComposer initialConfig={initialConfig}>
               <Toolbar
                 openMediaPicker={openMediaPicker}
                 isTableSelectorOpen={isTableSelectorOpen}
                 setIsTableSelectorOpen={setIsTableSelectorOpen}
+                includeTableHeaders={includeTableHeaders}
+                setIncludeTableHeaders={setIncludeTableHeaders}
               />
               <ImagePlugin />
+              <ImageHandlersPlugin openMediaPicker={openMediaPicker} />
               <VideoPlugin />
-              <div className="relative" ref={editorContainerRef}>
+              <div className="relative flex-1 flex overflow-hidden" ref={editorContainerRef}>
                 <RichTextPlugin
-                  contentEditable={<ContentEditable className="min-h-[260px] px-4 py-3 outline-none prose max-w-none" />}
+                  contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-y-auto overflow-x-hidden scroll-smooth" />}
                   placeholder={<Placeholder />}
                   ErrorBoundary={LexicalErrorBoundary}
                 />
@@ -1002,6 +1025,7 @@ export default function ContentEditor() {
                 <EditorStateHydrator stateJSON={initialEditorState} skipNextOnChangeRef={skipNextOnChangeRef} />
                 <OnChangePlugin onChange={onLexicalChange} />
                 <TablePastePlugin />
+                <TableCellFocusPlugin />
                 {editorAnchorElem && <DraggableBlockPlugin anchorElem={editorAnchorElem} />}
                 {editorAnchorElem && <TableActionMenuPlugin anchorElem={editorAnchorElem} />}
                 {editorAnchorElem && <TableHoverActionsPlugin anchorElem={editorAnchorElem} />}
@@ -1015,8 +1039,9 @@ export default function ContentEditor() {
 
       </div>
 
-      <aside className="xl:col-span-1 space-y-6">
-        <section className={`${cardClass} space-y-4 p-5`}>
+      {sidebarOpen && (
+        <aside className="space-y-6 h-[calc(100vh-80px)] overflow-y-auto sticky top-16 pr-4 min-w-[300px]">
+          <section className={`${cardClass} space-y-4 p-5`}>
           <h3 className="text-sm font-semibold text-gray-900">Yayınlama</h3>
           <div>
             <label className="block text-sm font-semibold text-gray-700">Durum</label>
@@ -1415,6 +1440,7 @@ export default function ContentEditor() {
           )}
         </section>
       </aside>
+      )}
       </div>
 
       <MediaPickerModal
@@ -1787,7 +1813,7 @@ const BLOCK_OPTIONS = [
   { value: 'code', label: 'Kod Bloğu' },
 ]
 
-function Toolbar({ openMediaPicker = null, isTableSelectorOpen = false, setIsTableSelectorOpen = null }) {
+function Toolbar({ openMediaPicker = null, isTableSelectorOpen = false, setIsTableSelectorOpen = null, includeTableHeaders = false, setIncludeTableHeaders = null }) {
   const [editor] = useLexicalComposerContext()
   const [formatState, setFormatState] = useState({
     bold: false,
@@ -1865,10 +1891,10 @@ function Toolbar({ openMediaPicker = null, isTableSelectorOpen = false, setIsTab
 
   const handleCreateTable = useCallback((rows, columns) => {
     editor.update(() => {
-      const table = $createTableWithDimensions(rows, columns, true)
+      const table = $createTableWithDimensions(rows, columns, includeTableHeaders)
       $insertNodes([table])
     })
-  }, [editor])
+  }, [editor, includeTableHeaders])
 
   const handleToggleTableSelector = useCallback(() => {
     if (setIsTableSelectorOpen) {
@@ -2197,6 +2223,8 @@ function Toolbar({ openMediaPicker = null, isTableSelectorOpen = false, setIsTab
             <TableDimensionSelector
               onCreateTable={handleCreateTable}
               onClose={() => setIsTableSelectorOpen && setIsTableSelectorOpen(false)}
+              includeHeaders={includeTableHeaders}
+              onIncludeHeadersChange={setIncludeTableHeaders}
             />
           </div>
         )}

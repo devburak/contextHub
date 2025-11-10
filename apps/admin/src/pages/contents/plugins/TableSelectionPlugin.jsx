@@ -22,6 +22,8 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
   const [selectionStart, setSelectionStart] = useState(null)
   const [dragCurrent, setDragCurrent] = useState(null)
   const [currentTable, setCurrentTable] = useState(null)
+  const [lastClickTime, setLastClickTime] = useState(0)
+  const [lastClickedCell, setLastClickedCell] = useState(null)
 
   // Clear all selection
   const clearSelection = useCallback(() => {
@@ -135,6 +137,19 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
     const tableElement = cellElement.closest('.editor-table')
     if (!tableElement) return
 
+    // Double-click detection
+    const now = Date.now()
+    const isDoubleClick = lastClickedCell === cellElement && (now - lastClickTime) < 300
+    
+    setLastClickTime(now)
+    setLastClickedCell(cellElement)
+
+    // Eğer double-click ise, seçimi temizle ve edit moduna geç
+    if (isDoubleClick) {
+      clearSelection()
+      return
+    }
+
     const coords = getCellCoordinates(cellElement)
     if (!coords) return
 
@@ -147,7 +162,7 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
     updateSelection(coords, coords, tableElement)
 
     event.preventDefault()
-  }, [getCellCoordinates, updateSelection, clearSelection])
+  }, [getCellCoordinates, updateSelection, clearSelection, lastClickTime, lastClickedCell])
 
   const handleMouseEnter = useCallback((event) => {
     if (!isSelecting || !selectionStart || !currentTable) return
@@ -233,20 +248,19 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
 
   const clearCellContent = useCallback(() => {
     editor.update(() => {
-      editor.getEditorState().read(() => {
-        const nodeMap = editor.getEditorState()._nodeMap
-        selectedCells.forEach(key => {
-          const cell = nodeMap.get(key)
-          if ($isTableCellNode(cell)) {
-            // Clear cell content
-            const children = cell.getChildren()
-            children.forEach(child => child.remove())
+      const nodeMap = editor.getEditorState()._nodeMap
+      selectedCells.forEach(key => {
+        const cell = nodeMap.get(key)
+        if ($isTableCellNode(cell)) {
+          const writable = cell.getWritable()
+          // Clear cell content
+          const children = writable.getChildren()
+          children.forEach(child => child.remove())
 
-            // Add empty paragraph
-            const paragraph = $createParagraphNode()
-            cell.append(paragraph)
-          }
-        })
+          // Add empty paragraph
+          const paragraph = $createParagraphNode()
+          writable.append(paragraph)
+        }
       })
     })
     clearSelection()

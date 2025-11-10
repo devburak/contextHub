@@ -6,13 +6,14 @@ import {
   $getSelection,
   $isNodeSelection,
   $getNodeByKey,
+  $createParagraphNode,
   CLICK_COMMAND,
   COMMAND_PRIORITY_LOW,
   DRAGSTART_COMMAND,
   KEY_DELETE_COMMAND,
   KEY_BACKSPACE_COMMAND,
 } from 'lexical'
-import { $isImageNode } from './ImageNode.jsx'
+import { $isImageNode, $createImageNode } from './ImageNode.jsx'
 
 const DEFAULT_IMAGE_DIMENSION = 640
 
@@ -25,14 +26,22 @@ function ImageComponent({
   caption = '',
   showCaption = true,
   nodeKey,
-  resizable = true
+  resizable = true,
+  onReplaceImage = null
 }) {
   const imageRef = useRef(null)
+  const textareaRef = useRef(null)
   const [editor] = useLexicalComposerContext()
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
   const [isResizing, setIsResizing] = useState(false)
   const [isEditingCaption, setIsEditingCaption] = useState(false)
   const [editCaption, setEditCaption] = useState(caption)
+  const [boldParts, setBoldParts] = useState([])
+  const [italicParts, setItalicParts] = useState([])
+  const [underlineParts, setUnderlineParts] = useState([])
+
+  // Try to get onReplaceImage callback from editor if not provided
+  const replaceImageCallback = onReplaceImage || editor?._editorCallbacks?.onReplaceImage
 
   const clampedWidth = typeof width === 'number' ? Math.min(width, DEFAULT_IMAGE_DIMENSION) : undefined
   const clampedHeight = typeof height === 'number' ? Math.min(height, DEFAULT_IMAGE_DIMENSION) : undefined
@@ -75,6 +84,81 @@ function ImageComponent({
     [isResizing, isSelected, setSelected, clearSelection]
   )
 
+  // Handle keyboard shortcuts for copy/cut/paste
+  const handleKeyboardShortcuts = useCallback((event) => {
+    if (!isSelected) return
+
+    const isMeta = event.metaKey || event.ctrlKey
+    if (!isMeta) return
+
+    if (event.key === 'c' || event.key === 'C') {
+      // Copy
+      event.preventDefault()
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isImageNode(node)) {
+          const nodeData = {
+            type: 'image',
+            src: node.getSrc(),
+            altText: node.getAltText(),
+            width: node.getWidth(),
+            height: node.getHeight(),
+            alignment: node.getAlignment(),
+            caption: node.getCaption(),
+            showCaption: node.getShowCaption(),
+          }
+          if (!window.__lexicalClipboard) window.__lexicalClipboard = []
+          window.__lexicalClipboard = [nodeData]
+        }
+      })
+    } else if (event.key === 'x' || event.key === 'X') {
+      // Cut
+      event.preventDefault()
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isImageNode(node)) {
+          const nodeData = {
+            type: 'image',
+            src: node.getSrc(),
+            altText: node.getAltText(),
+            width: node.getWidth(),
+            height: node.getHeight(),
+            alignment: node.getAlignment(),
+            caption: node.getCaption(),
+            showCaption: node.getShowCaption(),
+          }
+          if (!window.__lexicalClipboard) window.__lexicalClipboard = []
+          window.__lexicalClipboard = [nodeData]
+          // Delete the node
+          node.remove()
+        }
+      })
+    } else if (event.key === 'v' || event.key === 'V') {
+      // Paste
+      event.preventDefault()
+      if (window.__lexicalClipboard && window.__lexicalClipboard.length > 0) {
+        const clipboardData = window.__lexicalClipboard[0]
+        if (clipboardData.type === 'image') {
+          editor.update(() => {
+            const newNode = $createImageNode({
+              src: clipboardData.src,
+              altText: clipboardData.altText,
+              width: clipboardData.width,
+              height: clipboardData.height,
+              alignment: clipboardData.alignment,
+              caption: clipboardData.caption,
+              showCaption: clipboardData.showCaption,
+            })
+            const node = $getNodeByKey(nodeKey)
+            if ($isImageNode(node)) {
+              node.insertAfter(newNode)
+            }
+          })
+        }
+      }
+    }
+  }, [isSelected, nodeKey, editor])
+
   useEffect(() => {
     const unregister = mergeRegister(
       editor.registerCommand(CLICK_COMMAND, onClick, COMMAND_PRIORITY_LOW),
@@ -104,6 +188,17 @@ function ImageComponent({
       unregister()
     }
   }, [editor, onDelete, onClick])
+
+  // Keyboard shortcuts listener
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      handleKeyboardShortcuts(event)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [handleKeyboardShortcuts])
 
   const handleAlignmentChange = useCallback((newAlignment) => {
     editor.update(() => {
@@ -146,6 +241,16 @@ function ImageComponent({
   useEffect(() => {
     setEditCaption(caption)
   }, [caption])
+
+  // Focus textarea and select text when modal opens
+  useEffect(() => {
+    if (isEditingCaption && textareaRef.current) {
+      setTimeout(() => {
+        textareaRef.current?.focus()
+        textareaRef.current?.select()
+      }, 0)
+    }
+  }, [isEditingCaption])
 
   const draggable = isSelected && !isResizing
 
@@ -195,8 +300,9 @@ function ImageComponent({
         )}
 
         {isSelected && (
-          <div className="absolute -top-16 left-0 flex items-center gap-2 bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">
-            <span>Görsel seçildi</span>
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded">
+            <div className="flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded text-xs font-medium shadow-lg">
+              <span className="hidden sm:inline">Görsel seçildi</span>
             <div className="flex items-center gap-1 ml-2">
               <button
                 className={`w-6 h-6 flex items-center justify-center rounded ${alignment === 'left' ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
@@ -227,6 +333,20 @@ function ImageComponent({
               </button>
             </div>
             <div className="w-px h-4 bg-blue-400 mx-1"></div>
+            <button
+              className="w-6 h-6 flex items-center justify-center rounded bg-amber-600 hover:bg-amber-500"
+              onClick={() => {
+                if (typeof replaceImageCallback === 'function') {
+                  replaceImageCallback(nodeKey, caption)
+                }
+              }}
+              title="Resmi değiştir"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 7v6h6"/>
+                <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
+              </svg>
+            </button>
             <div className="flex items-center gap-1">
               <button
                 className={`w-6 h-6 flex items-center justify-center rounded ${showCaption ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
@@ -265,6 +385,7 @@ function ImageComponent({
               ×
             </button>
           </div>
+            </div>
         )}
 
         {showCaption && caption && (
@@ -277,16 +398,89 @@ function ImageComponent({
       {/* Caption Edit Modal */}
       {isEditingCaption && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-96 overflow-y-auto">
             <h3 className="text-lg font-medium mb-4">Caption Düzenle</h3>
+            
+            {/* Formatting Toolbar */}
+            <div className="flex gap-1 mb-3 border-b pb-3">
+              <button
+                onClick={() => {
+                  const textarea = textareaRef.current
+                  if (!textarea) return
+                  const start = textarea.selectionStart
+                  const end = textarea.selectionEnd
+                  const selected = editCaption.substring(start, end)
+                  if (selected) {
+                    const before = editCaption.substring(0, start)
+                    const after = editCaption.substring(end)
+                    setEditCaption(`${before}<b>${selected}</b>${after}`)
+                  }
+                }}
+                className="px-3 py-1 text-sm font-bold bg-gray-200 rounded hover:bg-gray-300"
+                title="Kalın (Bold)"
+              >
+                B
+              </button>
+              <button
+                onClick={() => {
+                  const textarea = textareaRef.current
+                  if (!textarea) return
+                  const start = textarea.selectionStart
+                  const end = textarea.selectionEnd
+                  const selected = editCaption.substring(start, end)
+                  if (selected) {
+                    const before = editCaption.substring(0, start)
+                    const after = editCaption.substring(end)
+                    setEditCaption(`${before}<i>${selected}</i>${after}`)
+                  }
+                }}
+                className="px-3 py-1 text-sm italic bg-gray-200 rounded hover:bg-gray-300"
+                title="İtalik (Italic)"
+              >
+                I
+              </button>
+              <button
+                onClick={() => {
+                  const textarea = textareaRef.current
+                  if (!textarea) return
+                  const start = textarea.selectionStart
+                  const end = textarea.selectionEnd
+                  const selected = editCaption.substring(start, end)
+                  if (selected) {
+                    const before = editCaption.substring(0, start)
+                    const after = editCaption.substring(end)
+                    setEditCaption(`${before}<u>${selected}</u>${after}`)
+                  }
+                }}
+                className="px-3 py-1 text-sm underline bg-gray-200 rounded hover:bg-gray-300"
+                title="Altı Çizili (Underline)"
+              >
+                U
+              </button>
+            </div>
+
+            {/* Caption Textarea */}
             <textarea
+              ref={textareaRef}
               value={editCaption}
               onChange={(e) => setEditCaption(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg resize-none"
               rows="3"
               placeholder="Görsel açıklaması..."
-              autoFocus
             />
+            
+            {/* Preview */}
+            {editCaption && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-xs text-gray-500 mb-1">Önizleme:</p>
+                <div 
+                  className="text-sm text-gray-700"
+                  dangerouslySetInnerHTML={{ __html: editCaption }}
+                />
+              </div>
+            )}
+            
+            {/* Buttons */}
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={handleCancelCaption}

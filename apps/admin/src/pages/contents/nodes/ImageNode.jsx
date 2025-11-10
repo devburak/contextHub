@@ -137,6 +137,11 @@ export class ImageNode extends DecoratorNode {
     writable.__height = typeof height === 'number' ? height : writable.__height
   }
 
+  setSrc(src) {
+    const writable = this.getWritable()
+    writable.__src = src
+  }
+
   setAltText(altText) {
     const writable = this.getWritable()
     writable.__altText = altText

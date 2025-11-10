@@ -3,7 +3,7 @@ import { useState, useCallback } from 'react'
 const MAX_ROWS = 10
 const MAX_COLS = 10
 
-function TableDimensionSelector({ onCreateTable, onClose }) {
+function TableDimensionSelector({ onCreateTable, onClose, includeHeaders = false, onIncludeHeadersChange }) {
   const [hoveredCell, setHoveredCell] = useState({ row: 0, col: 0 })
 
   const handleCellHover = useCallback((row, col) => {
@@ -50,6 +50,15 @@ function TableDimensionSelector({ onCreateTable, onClose }) {
         {renderGrid()}
       </div>
       <div className="table-dimension-footer">
+        <label className="flex items-center gap-2 px-3 py-2 text-sm">
+          <input
+            type="checkbox"
+            checked={includeHeaders}
+            onChange={(e) => onIncludeHeadersChange(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300"
+          />
+          <span>İlk satırı başlık yap</span>
+        </label>
         <button
           className="table-custom-size-btn"
           onClick={() => {
