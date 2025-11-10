@@ -365,3 +365,5 @@ async function contentRoutes(fastify) {
     }
   })
 }
+
+module.exports = contentRoutes
