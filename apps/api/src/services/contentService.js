@@ -803,6 +803,11 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
     query.status = statusClause
   }
 
+  // Also filter to only include items with publishedAt date
+  query.publishedAt = { $exists: true, $ne: null }
+
+  console.log('[Archive] Query:', JSON.stringify(query, null, 2))
+
   // Use MongoDB aggregation to group by year and month
   const stats = await Content.aggregate([
     { $match: query },
@@ -828,6 +833,8 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
     }
   ])
 
+  console.log('[Archive] Raw stats from aggregation:', JSON.stringify(stats, null, 2))
+
   // Format the response
   const archives = stats
     .filter(item => item.year && item.month) // Filter out null/0 values
@@ -842,10 +849,12 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
       return b.month.localeCompare(a.month)
     })
 
-  return {
+  const result = {
     total: archives.reduce((sum, item) => sum + item.count, 0),
     archives
   }
+  console.log('[Archive] Final result:', JSON.stringify(result, null, 2))
+  return result
 }
 
 module.exports = {
