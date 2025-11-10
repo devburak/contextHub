@@ -340,6 +340,28 @@ async function contentRoutes(fastify) {
       return reply.code(400).send({ error: 'ContentGalleryUpdateFailed', message: error.message })
     }
   })
-}
 
-module.exports = contentRoutes
+  fastify.get('/contents/archive/statistics', {
+    preHandler: [authenticate],
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', description: 'Filter by content status (default: published)', enum: ['draft', 'published', 'scheduled', 'archived'] },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const { status = 'published' } = request.query
+      const result = await contentService.getArchiveStatistics({
+        tenantId: request.tenantId,
+        status
+      })
+      return reply.send(result)
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to get archive statistics')
+      return reply.code(400).send({ error: 'ArchiveStatisticsFailed', message: error.message })
+    }
+  })
+}

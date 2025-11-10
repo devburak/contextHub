@@ -791,6 +791,63 @@ async function setContentGalleries({ tenantId, contentId, galleryIds }) {
   return galleries
 }
 
+async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
+  if (!tenantId) {
+    throw new Error('tenantId is required')
+  }
+
+  // Build the query
+  const query = { tenantId }
+  const statusClause = buildStatusFilter(status)
+  if (statusClause) {
+    query.status = statusClause
+  }
+
+  // Use MongoDB aggregation to group by year and month
+  const stats = await Content.aggregate([
+    { $match: query },
+    {
+      $group: {
+        _id: {
+          year: { $year: '$publishedAt' },
+          month: { $month: '$publishedAt' }
+        },
+        count: { $sum: 1 }
+      }
+    },
+    {
+      $sort: { '_id.year': -1, '_id.month': -1 }
+    },
+    {
+      $project: {
+        _id: 0,
+        year: '$_id.year',
+        month: { $cond: [{ $ne: ['$_id.month', null] }, '$_id.month', 0] },
+        count: 1
+      }
+    }
+  ])
+
+  // Format the response
+  const archives = stats
+    .filter(item => item.year && item.month) // Filter out null/0 values
+    .map(item => ({
+      year: item.year,
+      month: String(item.month).padStart(2, '0'), // Pad month to 2 digits
+      count: item.count
+    }))
+    .sort((a, b) => {
+      const yearDiff = b.year - a.year
+      if (yearDiff !== 0) return yearDiff
+      return b.month.localeCompare(a.month)
+    })
+
+  return {
+    total: archives.reduce((sum, item) => sum + item.count, 0),
+    archives
+  }
+}
+
 module.exports = {
   createContent,
   updateContent,
@@ -803,4 +860,5 @@ module.exports = {
   checkSlugAvailability,
   CONTENT_SCHEDULING_DISABLED_CODE,
   setContentGalleries,
+  getArchiveStatistics,
 }
