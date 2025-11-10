@@ -1127,7 +1127,7 @@ export default function ContentEditor() {
               <VideoPlugin />
               <div className="relative flex-1 flex overflow-hidden" ref={editorContainerRef}>
                 <RichTextPlugin
-                  contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-y-auto overflow-x-hidden scroll-smooth" />}
+                  contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-x-auto overflow-y-hidden scroll-smooth" />}
                   placeholder={<Placeholder />}
                   ErrorBoundary={LexicalErrorBoundary}
                 />
