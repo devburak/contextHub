@@ -796,65 +796,66 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
     throw new Error('tenantId is required')
   }
 
-  // Build the query
-  const query = { tenantId }
-  const statusClause = buildStatusFilter(status)
-  if (statusClause) {
-    query.status = statusClause
-  }
-
-  // Also filter to only include items with publishedAt date
-  query.publishedAt = { $exists: true, $ne: null }
-
-  console.log('[Archive] Query:', JSON.stringify(query, null, 2))
-
-  // Use MongoDB aggregation to group by year and month
-  const stats = await Content.aggregate([
-    { $match: query },
-    {
-      $group: {
-        _id: {
-          year: { $year: '$publishedAt' },
-          month: { $month: '$publishedAt' }
-        },
-        count: { $sum: 1 }
-      }
-    },
-    {
-      $sort: { '_id.year': -1, '_id.month': -1 }
-    },
-    {
-      $project: {
-        _id: 0,
-        year: '$_id.year',
-        month: { $cond: [{ $ne: ['$_id.month', null] }, '$_id.month', 0] },
-        count: 1
-      }
+  try {
+    // Build the query - same as listContents
+    const query = { tenantId }
+    const statusClause = buildStatusFilter(status)
+    if (statusClause) {
+      query.status = statusClause
     }
-  ])
 
-  console.log('[Archive] Raw stats from aggregation:', JSON.stringify(stats, null, 2))
+    console.log('[Archive] Finding contents with query:', JSON.stringify(query, null, 2))
 
-  // Format the response
-  const archives = stats
-    .filter(item => item.year && item.month) // Filter out null/0 values
-    .map(item => ({
-      year: item.year,
-      month: String(item.month).padStart(2, '0'), // Pad month to 2 digits
-      count: item.count
-    }))
-    .sort((a, b) => {
-      const yearDiff = b.year - a.year
-      if (yearDiff !== 0) return yearDiff
-      return b.month.localeCompare(a.month)
+    // Fetch all matching contents with publishedAt
+    const contents = await Content.find(query)
+      .select('publishedAt')
+      .lean()
+      .exec()
+
+    console.log('[Archive] Found', contents.length, 'contents')
+
+    if (contents.length === 0) {
+      return { total: 0, archives: [] }
+    }
+
+    // Group by year and month using JavaScript
+    const archiveMap = new Map()
+
+    contents.forEach(doc => {
+      if (!doc.publishedAt) return
+
+      const date = new Date(doc.publishedAt)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0') // getMonth is 0-indexed
+
+      const key = `${year}-${month}`
+      if (!archiveMap.has(key)) {
+        archiveMap.set(key, { year, month, count: 0 })
+      }
+
+      const item = archiveMap.get(key)
+      item.count += 1
     })
 
-  const result = {
-    total: archives.reduce((sum, item) => sum + item.count, 0),
-    archives
+    // Convert map to array and sort
+    const archives = Array.from(archiveMap.values())
+      .sort((a, b) => {
+        const yearDiff = b.year - a.year
+        if (yearDiff !== 0) return yearDiff
+        return parseInt(b.month) - parseInt(a.month)
+      })
+
+    const result = {
+      total: contents.length,
+      archives
+    }
+
+    console.log('[Archive] Final result:', JSON.stringify(result, null, 2))
+    return result
+  } catch (error) {
+    console.error('[Archive] Error:', error)
+    throw error
   }
-  console.log('[Archive] Final result:', JSON.stringify(result, null, 2))
-  return result
 }
 
 module.exports = {
