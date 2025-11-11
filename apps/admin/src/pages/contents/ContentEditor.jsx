@@ -1125,9 +1125,9 @@ export default function ContentEditor() {
               <ImagePlugin />
               <ImageHandlersPlugin openMediaPicker={openMediaPicker} />
               <VideoPlugin />
-              <div className="relative flex-1 flex overflow-hidden" ref={editorContainerRef}>
+              <div className="relative flex-1 flex overflow-hidden flex-col" ref={editorContainerRef}>
                 <RichTextPlugin
-                  contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-x-auto overflow-y-hidden scroll-smooth" />}
+                  contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-x-auto overflow-y-visible scroll-smooth" />}
                   placeholder={<Placeholder />}
                   ErrorBoundary={LexicalErrorBoundary}
                 />
