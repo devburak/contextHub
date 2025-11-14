@@ -1,6 +1,7 @@
 const { Redis } = require('@upstash/redis');
 const { Agent } = require('undici');
 
+const REALTIME_ENABLED = (process.env.UPSTASH_REALTIME_ENABLED || 'true').toLowerCase() === 'true';
 const CONNECT_TIMEOUT_MS = parseInt(process.env.UPSTASH_CONNECT_TIMEOUT_MS, 10) || 20000;
 const RETRY_ATTEMPTS = parseInt(process.env.UPSTASH_RETRY_ATTEMPTS, 10) || 3;
 const RETRY_BASE_DELAY_MS = parseInt(process.env.UPSTASH_RETRY_DELAY_MS, 10) || 250;
@@ -32,6 +33,7 @@ class UpstashClient {
     this.consecutiveFailures = 0;
     this.cooldownUntil = 0;
     this.lastCooldownLogAt = 0;
+    this.forceDisabled = !REALTIME_ENABLED;
   }
 
   initialize() {
@@ -40,6 +42,12 @@ class UpstashClient {
     }
 
     this.initialized = true;
+
+    if (this.forceDisabled) {
+      console.warn('Upstash real-time logging disabled via UPSTASH_REALTIME_ENABLED=false');
+      this.enabled = false;
+      return;
+    }
 
     const token = process.env.UPSTASH_TOKEN;
     const endpoint = process.env.UPSTASH_ENDPOINT;
