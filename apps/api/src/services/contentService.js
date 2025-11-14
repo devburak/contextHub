@@ -804,7 +804,7 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
       query.status = statusClause
     }
 
-    console.log('[Archive] Finding contents with query:', JSON.stringify(query, null, 2))
+
 
     // Fetch all matching contents with publishedAt
     const contents = await Content.find(query)
@@ -812,7 +812,7 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
       .lean()
       .exec()
 
-    console.log('[Archive] Found', contents.length, 'contents')
+
 
     if (contents.length === 0) {
       return { total: 0, archives: [] }
@@ -850,7 +850,6 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
       archives
     }
 
-    console.log('[Archive] Final result:', JSON.stringify(result, null, 2))
     return result
   } catch (error) {
     console.error('[Archive] Error:', error)

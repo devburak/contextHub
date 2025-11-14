@@ -1796,8 +1796,10 @@
 }
 
 .editor-editable {
-  height: 100%;
-  overflow: hidden;
+  height: auto;
+  min-height: 100%;
+  overflow-y: visible;
+  overflow-x: auto;
 }
 
 .editor-editable::-webkit-scrollbar {
