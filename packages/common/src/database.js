@@ -1,13 +1,43 @@
 const mongoose = require('mongoose');
 
+const getIntFromEnv = (key, defaultValue, { allowZero = false } = {}) => {
+  const raw = process.env[key];
+  if (raw === undefined || raw === null || raw === '') {
+    return defaultValue;
+  }
+
+  const parsed = parseInt(raw, 10);
+  if (Number.isNaN(parsed)) {
+    return defaultValue;
+  }
+
+  if (!allowZero && parsed <= 0) {
+    return defaultValue;
+  }
+
+  return parsed;
+};
+
+const buildMongoOptions = () => {
+  const options = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    maxPoolSize: getIntFromEnv('MONGODB_MAX_POOL_SIZE', 50),
+    minPoolSize: getIntFromEnv('MONGODB_MIN_POOL_SIZE', 5, { allowZero: true }),
+    maxIdleTimeMS: getIntFromEnv('MONGODB_MAX_IDLE_TIME_MS', 30000),
+    serverSelectionTimeoutMS: getIntFromEnv('MONGODB_SERVER_SELECTION_TIMEOUT_MS', 8000),
+    socketTimeoutMS: getIntFromEnv('MONGODB_SOCKET_TIMEOUT_MS', 30000),
+    waitQueueTimeoutMS: getIntFromEnv('MONGODB_WAIT_QUEUE_TIMEOUT_MS', 2000),
+  };
+
+  return options;
+};
+
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/contexthub';
     
-    const conn = await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    const conn = await mongoose.connect(mongoURI, buildMongoOptions());
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     
