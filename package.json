@@ -6,6 +6,7 @@
   "description": "Multi\u2011tenant headless CMS and content services platform.",
   "license": "MIT",
   "scripts": {
+     "start": "NODE_ENV=production node src/server.js",
     "dev": "turbo dev",
     "dev:api": "turbo dev --filter=@contexthub/api",
     "dev:admin": "turbo dev --filter=@contexthub/admin",
@@ -23,6 +24,7 @@
     "format:check": "turbo format -- --check",
     "type-check": "turbo type-check",
     "clean": "turbo clean",
+    "create:index": "node scripts/create-indexes.mjs",
     "db:seed": "turbo dev --filter=@contexthub/api -- --seed",
     "db:migrate": "turbo dev --filter=@contexthub/api -- --migrate"
   },

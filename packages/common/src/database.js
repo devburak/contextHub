@@ -18,6 +18,16 @@ const getIntFromEnv = (key, defaultValue, { allowZero = false } = {}) => {
   return parsed;
 };
 
+const shouldAutoCreateIndexes = () => {
+  const raw = process.env.MONGODB_AUTO_CREATE_INDEXES;
+  if (raw === undefined || raw === null || raw === '') {
+    return false;
+  }
+
+  const normalized = String(raw).toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(normalized);
+};
+
 const buildMongoOptions = () => {
   const options = {
     useNewUrlParser: true,
@@ -40,9 +50,12 @@ const connectDB = async () => {
     const conn = await mongoose.connect(mongoURI, buildMongoOptions());
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
-    
-    // Create indexes after connection
-    await createIndexes();
+
+    if (shouldAutoCreateIndexes()) {
+      console.log('MONGODB_AUTO_CREATE_INDEXES enabled. Ensuring indexes...');
+      await createIndexes();
+      console.log('Indexes ensured during startup');
+    }
     
     return conn;
   } catch (error) {
@@ -69,6 +82,7 @@ const createIndexes = async () => {
     console.log('All database indexes created successfully');
   } catch (error) {
     console.error('Error creating indexes:', error);
+    throw error;
   }
 };
 
