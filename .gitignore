@@ -121,3 +121,5 @@ temp/
 # Turbo
 .turbo/
 turbo.json.bak
+
+*.config.js
