@@ -130,9 +130,6 @@ async function authRoutes(fastify, options) {
     try {
       const { email, password, tenantId: tenantFromBody } = request.body;
       const tenantId = tenantFromBody || request.query.tenantId;
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'tenantId is required' });
-      }
       const result = await authService.login(email, password, tenantId, request);
       
       return reply.send(result);
