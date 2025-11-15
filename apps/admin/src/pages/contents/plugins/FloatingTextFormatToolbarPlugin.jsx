@@ -45,7 +45,7 @@ function hideToolbar(toolbarElem) {
   toolbarElem.style.transform = HIDDEN_TRANSFORM
 }
 
-export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElemProp } = {}) {
+export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElemProp, onOpenLinkModal } = {}) {
   const [editor] = useLexicalComposerContext()
   const toolbarRef = useRef(null)
   const [isBold, setIsBold] = useState(false)
@@ -198,11 +198,55 @@ export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElem
   const toggleLink = () => {
     if (isLink) {
       editor.dispatchCommand(TOGGLE_LINK_COMMAND, null)
-    } else {
-      const url = window.prompt('Bağlantı URL', 'https://')
-      if (url) {
-        editor.dispatchCommand(TOGGLE_LINK_COMMAND, url)
-      }
+      setTimeout(updateToolbar, 0)
+      return
+    }
+
+    if (typeof onOpenLinkModal === 'function') {
+      editor.getEditorState().read(() => {
+        const selection = $getSelection()
+        let existingLink = null
+        let selectionText = ''
+        if ($isRangeSelection(selection)) {
+          selectionText = selection.getTextContent()
+          const linkNode = selection
+            .getNodes()
+            .map((node) => {
+              if ($isLinkNode(node)) return node
+              const parent = node.getParent()
+              if (parent && $isLinkNode(parent)) return parent
+              return null
+            })
+            .find(Boolean)
+          existingLink = linkNode || null
+        }
+
+        if (existingLink) {
+          onOpenLinkModal({
+            open: true,
+            url: existingLink.getURL?.() || '',
+            text: existingLink.getTextContent() || '',
+            newTab: (existingLink.getTarget?.() || '_blank') === '_blank',
+            linkKey: existingLink.getKey ? existingLink.getKey() : null,
+            error: '',
+          })
+        } else {
+          onOpenLinkModal({
+            open: true,
+            url: '',
+            text: selectionText || '',
+            newTab: true,
+            linkKey: null,
+            error: '',
+          })
+        }
+      })
+      return
+    }
+
+    const url = window.prompt('Bağlantı URL', 'https://')
+    if (url) {
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, url)
     }
     setTimeout(updateToolbar, 0)
   }

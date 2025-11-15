@@ -25,6 +25,8 @@ function ImageComponent({
   alignment = 'center',
   caption = '',
   showCaption = true,
+  linkUrl = '',
+  linkTarget = '_blank',
   nodeKey,
   resizable = true,
   onReplaceImage = null
@@ -303,6 +305,11 @@ function ImageComponent({
           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded">
             <div className="flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded text-xs font-medium shadow-lg">
               <span className="hidden sm:inline">Görsel seçildi</span>
+            <span className="inline-flex items-center gap-1 ml-2">
+              {linkUrl ? (
+                <img src={new URL('../assets/icons/link.svg', import.meta.url)} alt="link" className="h-3 w-3" />
+              ) : null}
+            </span>
             <div className="flex items-center gap-1 ml-2">
               <button
                 className={`w-6 h-6 flex items-center justify-center rounded ${alignment === 'left' ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}

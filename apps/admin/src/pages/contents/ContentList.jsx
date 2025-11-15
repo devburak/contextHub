@@ -86,7 +86,7 @@ export default function ContentList() {
             <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
         </div>
-        <div>
+        <div className="relative w-72">
           <label className="block text-sm font-medium text-gray-700">Ara</label>
           <input
             type="text"

@@ -83,8 +83,15 @@ export default function MediaPickerModal({
   })
 
   const items = useMemo(() => {
-    return mediaQuery.data?.pages?.flatMap(page => page.items || []) ?? []
-  }, [mediaQuery.data])
+    const flat = mediaQuery.data?.pages?.flatMap(page => page.items || []) ?? []
+    if (mode === 'file') {
+      return flat.filter((item) => {
+        const mime = item?.mimeType || ''
+        return !(mime.startsWith('image/') || mime.startsWith('video/'))
+      })
+    }
+    return flat
+  }, [mediaQuery.data, mode])
 
   const totalCount = mediaQuery.data?.pages?.[0]?.pagination?.total ?? 0
 

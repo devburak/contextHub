@@ -9,8 +9,10 @@ export class ImageNode extends DecoratorNode {
   __alignment
   __caption
   __showCaption
+  __linkUrl
+  __linkTarget
 
-  constructor({ src, altText = '', width = undefined, height = undefined, alignment = 'center', caption = '', showCaption = true }, key) {
+  constructor({ src, altText = '', width = undefined, height = undefined, alignment = 'center', caption = '', showCaption = true, linkUrl = '', linkTarget = '_blank' }, key) {
     super(key)
     this.__src = src
     this.__altText = altText
@@ -19,6 +21,8 @@ export class ImageNode extends DecoratorNode {
     this.__alignment = alignment
     this.__caption = caption || altText // Default caption is altText
     this.__showCaption = showCaption
+    this.__linkUrl = linkUrl || ''
+    this.__linkTarget = linkTarget || '_blank'
   }
 
   static getType() {
@@ -35,14 +39,30 @@ export class ImageNode extends DecoratorNode {
         alignment: node.__alignment,
         caption: node.__caption,
         showCaption: node.__showCaption,
+        linkUrl: node.__linkUrl,
+        linkTarget: node.__linkTarget,
       },
       node.__key
     )
   }
 
+  static importDOM() {
+    return {
+      img: (domNode) => {
+        if (domNode instanceof HTMLImageElement) {
+          return {
+            conversion: convertImageElement,
+            priority: 2,
+          }
+        }
+        return null
+      },
+    }
+  }
+
   static importJSON(serializedNode) {
-    const { src, altText, width, height, alignment, caption, showCaption } = serializedNode
-    return $createImageNode({ src, altText, width, height, alignment, caption, showCaption })
+    const { src, altText, width, height, alignment, caption, showCaption, linkUrl, linkTarget } = serializedNode
+    return $createImageNode({ src, altText, width, height, alignment, caption, showCaption, linkUrl, linkTarget })
   }
 
   exportJSON() {
@@ -56,6 +76,8 @@ export class ImageNode extends DecoratorNode {
       alignment: this.__alignment,
       caption: this.__caption,
       showCaption: this.__showCaption,
+      linkUrl: this.__linkUrl,
+      linkTarget: this.__linkTarget,
     }
   }
 
@@ -84,7 +106,18 @@ export class ImageNode extends DecoratorNode {
       img.style.height = `${this.__height}px`
     }
 
-    wrapper.appendChild(img)
+    let content = img
+
+    if (this.__linkUrl) {
+      const anchor = document.createElement('a')
+      anchor.href = this.__linkUrl
+      anchor.target = this.__linkTarget || '_blank'
+      anchor.rel = 'noopener noreferrer'
+      anchor.appendChild(img)
+      content = anchor
+    }
+
+    wrapper.appendChild(content)
 
     if (this.__showCaption && this.__caption) {
       const caption = document.createElement('div')
@@ -123,6 +156,8 @@ export class ImageNode extends DecoratorNode {
         alignment={this.__alignment}
         caption={this.__caption}
         showCaption={this.__showCaption}
+        linkUrl={this.__linkUrl}
+        linkTarget={this.__linkTarget}
         nodeKey={this.getKey()}
         resizable={true}
       />
@@ -162,6 +197,20 @@ export class ImageNode extends DecoratorNode {
     writable.__showCaption = showCaption
   }
 
+  setLink({ url = '', target = '_blank' } = {}) {
+    const writable = this.getWritable()
+    writable.__linkUrl = url || ''
+    writable.__linkTarget = target || '_blank'
+  }
+
+  getLinkUrl() {
+    return this.__linkUrl
+  }
+
+  getLinkTarget() {
+    return this.__linkTarget
+  }
+
   getSrc() {
     return this.__src
   }
@@ -183,7 +232,7 @@ export class ImageNode extends DecoratorNode {
   }
 }
 
-export function $createImageNode({ src, altText = '', width, height, alignment = 'center', caption = '', showCaption = true }) {
+export function $createImageNode({ src, altText = '', width, height, alignment = 'center', caption = '', showCaption = true, linkUrl = '', linkTarget = '_blank' }) {
   return new ImageNode(
     {
       src,
@@ -193,6 +242,8 @@ export function $createImageNode({ src, altText = '', width, height, alignment =
       alignment,
       caption: caption || altText, // Default caption is altText
       showCaption,
+      linkUrl,
+      linkTarget,
     }
   )
 }
@@ -202,3 +253,34 @@ export function $isImageNode(node) {
 }
 
 export { DEFAULT_IMAGE_DIMENSION }
+
+function convertImageElement(domNode) {
+  if (!(domNode instanceof HTMLImageElement)) {
+    return null
+  }
+
+  const src = domNode.getAttribute('src') || ''
+  if (!src) return null
+
+  const altText = domNode.getAttribute('alt') || ''
+  const widthAttr = domNode.getAttribute('width') || domNode.style.width
+  const heightAttr = domNode.getAttribute('height') || domNode.style.height
+  const width = widthAttr ? parseInt(widthAttr, 10) || undefined : undefined
+  const height = heightAttr ? parseInt(heightAttr, 10) || undefined : undefined
+
+  let alignment = 'center'
+  const container = domNode.closest('.editor-image-container')
+  if (container?.classList.contains('justify-start')) {
+    alignment = 'left'
+  } else if (container?.classList.contains('justify-end')) {
+    alignment = 'right'
+  }
+
+  const captionElement = domNode.parentElement?.querySelector('.mt-2, figcaption')
+  const caption = captionElement?.textContent?.trim() || ''
+  const showCaption = Boolean(caption)
+
+  return {
+    node: $createImageNode({ src, altText, width, height, alignment, caption, showCaption }),
+  }
+}
