@@ -11,7 +11,8 @@
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
-    "test": "jest"
+    "test": "node ../../scripts/run-tool.mjs vitest run tests",
+    "test:watch": "node ../../scripts/run-tool.mjs vitest --watch tests"
   },
   "keywords": [
     "react",

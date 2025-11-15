@@ -26,7 +26,9 @@
     "clean": "turbo clean",
     "create:index": "node scripts/create-indexes.mjs",
     "db:seed": "turbo dev --filter=@contexthub/api -- --seed",
-    "db:migrate": "turbo dev --filter=@contexthub/api -- --migrate"
+    "db:migrate": "turbo dev --filter=@contexthub/api -- --migrate",
+    "dispatch:webhooks": "node apps/api/scripts/dispatch-webhooks.js",
+    "cron:webhooks": "node apps/api/scripts/webhook-cron.js"
   },
   "workspaces": [
     "apps/*",

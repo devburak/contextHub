@@ -174,6 +174,8 @@ async function buildServer() {
   await app.register(require('./routes/subscriptionPlans'), { prefix: '/api' });
   await app.register(require('./routes/documentation'), { prefix: '/api' });
   await app.register(require('./routes/apiTokens'), { prefix: '/api' });
+  await app.register(require('./routes/webhooks'), { prefix: '/api' });
+  await app.register(require('./routes/cronWebhooks'), { prefix: '/api' });
 
   // Health check
   app.get('/health', async () => {

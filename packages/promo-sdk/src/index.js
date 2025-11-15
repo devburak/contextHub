@@ -1,10 +1,12 @@
-// Core exports
-export { initTracker, getTracker, PlacementTracker } from './tracking';
-export { default as frequencyManager } from './FrequencyManager';
+import { initTracker, getTracker, PlacementTracker } from './tracking';
+import frequencyManager from './FrequencyManager';
+import { usePlacement } from './hooks/usePlacement';
+import { PlacementHost } from './components/PlacementHost';
 
-// React exports
-export { usePlacement } from './hooks/usePlacement';
-export { PlacementHost } from './components/PlacementHost';
+export { initTracker, getTracker, PlacementTracker };
+export { frequencyManager };
+export { usePlacement };
+export { PlacementHost };
 
 // Vanilla JS API
 export class ContextHubPlacement {
