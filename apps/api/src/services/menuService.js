@@ -1,8 +1,56 @@
 const { Menu } = require('@contexthub/common/src/models');
+const { emitDomainEvent } = require('../lib/domainEvents');
+const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 
 /**
  * Menu Service - WordPress benzeri menu yönetimi
  */
+
+function buildMenuEventPayload(menuDoc) {
+  if (!menuDoc) {
+    return null;
+  }
+
+  const doc = typeof menuDoc.toObject === 'function'
+    ? menuDoc.toObject({ depopulate: true })
+    : menuDoc;
+
+  return {
+    menuId: doc._id ? doc._id.toString() : null,
+    slug: doc.slug,
+    name: doc.name,
+    location: doc.location,
+    status: doc.status,
+    totalItems: doc.meta?.totalItems ?? null,
+    updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : new Date().toISOString()
+  };
+}
+
+async function emitMenuEvent({ tenantId, type, menu, userId }) {
+  if (!tenantId || !type || !menu) {
+    return;
+  }
+
+  const payload = buildMenuEventPayload(menu) || {};
+  const normalizedUserId = userId ? userId.toString() : null;
+  const metadata = {
+    triggeredBy: normalizedUserId ? 'user' : 'system',
+    source: 'admin-ui'
+  };
+
+  if (normalizedUserId) {
+    metadata.userId = normalizedUserId;
+  }
+
+  try {
+    const eventId = await emitDomainEvent(tenantId, type, payload, metadata);
+    if (eventId) {
+      triggerWebhooksForTenant(tenantId);
+    }
+  } catch (error) {
+    console.error('[menuService] Failed to emit domain event', { tenantId, type, error });
+  }
+}
 
 class MenuService {
   /**
@@ -116,6 +164,7 @@ class MenuService {
     });
     
     await menu.save();
+    await emitMenuEvent({ tenantId, type: 'menu.created', menu, userId });
     return menu;
   }
   
@@ -143,14 +192,16 @@ class MenuService {
     menu.meta.lastModifiedBy = userId;
     
     await menu.save();
+    await emitMenuEvent({ tenantId, type: 'menu.updated', menu, userId });
     return menu;
   }
   
   /**
    * Menu'yu sil
    */
-  async deleteMenu(tenantId, menuId) {
+  async deleteMenu(tenantId, menuId, userId) {
     const menu = await this.getMenu(tenantId, menuId);
+    await emitMenuEvent({ tenantId, type: 'menu.deleted', menu, userId });
     await menu.deleteOne();
     return { success: true };
   }

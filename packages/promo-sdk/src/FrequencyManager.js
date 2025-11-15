@@ -9,6 +9,7 @@ const CAP_DURATION = {
   daily: 24 * 60 * 60 * 1000, // 24 hours
   total: Infinity // Forever
 };
+const HAS_LOCAL_STORAGE = typeof localStorage !== 'undefined';
 
 class FrequencyManager {
   constructor() {
@@ -20,6 +21,11 @@ class FrequencyManager {
    * Load caps from localStorage
    */
   loadFromStorage() {
+    if (!HAS_LOCAL_STORAGE) {
+      this.caps = {};
+      return;
+    }
+
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -41,6 +47,10 @@ class FrequencyManager {
    * Save caps to localStorage
    */
   saveToStorage() {
+    if (!HAS_LOCAL_STORAGE) {
+      return;
+    }
+
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.caps));
     } catch (error) {

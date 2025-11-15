@@ -81,6 +81,19 @@ export class VideoNode extends DecoratorNode {
     })
   }
 
+  static importDOM() {
+    return {
+      iframe: () => ({
+        conversion: convertVideoElement,
+        priority: 2,
+      }),
+      video: () => ({
+        conversion: convertVideoElement,
+        priority: 2,
+      }),
+    }
+  }
+
   exportJSON() {
     return {
       type: 'video',
@@ -197,4 +210,61 @@ export function $createVideoNode(payload) {
 
 export function $isVideoNode(node) {
   return node instanceof VideoNode
+}
+
+function convertVideoElement(domNode) {
+  const payload = {}
+
+  if (domNode instanceof HTMLIFrameElement) {
+    const src = domNode.getAttribute('src') || ''
+    if (!src) return null
+
+    const { provider, providerId } = detectProviderFromUrl(src)
+    payload.url = src
+    payload.externalUrl = src
+    payload.provider = provider
+    payload.providerId = providerId
+    payload.title = domNode.getAttribute('title') || ''
+  } else if (domNode instanceof HTMLVideoElement) {
+    const src = domNode.getAttribute('src') ||
+      domNode.querySelector('source')?.getAttribute('src') ||
+      ''
+    if (!src) return null
+
+    payload.url = src
+    payload.externalUrl = src
+    payload.thumbnailUrl = domNode.getAttribute('poster') || null
+    payload.mimeType = domNode.getAttribute('type') || domNode.querySelector('source')?.getAttribute('type') || null
+    payload.title = domNode.getAttribute('title') || ''
+  } else {
+    return null
+  }
+
+  const captionElement = domNode.parentElement?.querySelector('.video-caption')
+  payload.caption = captionElement?.textContent?.trim() || ''
+
+  return {
+    node: $createVideoNode(payload),
+  }
+}
+
+function detectProviderFromUrl(url) {
+  try {
+    const parsed = new URL(url)
+    const host = parsed.hostname || ''
+
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      const id = parsed.searchParams.get('v') || parsed.pathname.split('/').filter(Boolean).pop()
+      return { provider: 'youtube', providerId: id || null }
+    }
+
+    if (host.includes('vimeo.com')) {
+      const id = parsed.pathname.split('/').filter(Boolean).pop()
+      return { provider: 'vimeo', providerId: id || null }
+    }
+  } catch (error) {
+    // ignore parsing errors and fall back to generic payload
+  }
+
+  return { provider: null, providerId: null }
 }

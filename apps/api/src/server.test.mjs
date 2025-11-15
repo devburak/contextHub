@@ -1,14 +1,41 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createRequire } from 'module';
 import buildServer from './server.js';
+
+const require = createRequire(import.meta.url);
+const AuthService = require('./services/authService');
 
 describe('API server', () => {
   let app;
+  let originalLogin;
 
   beforeAll(async () => {
+    originalLogin = AuthService.prototype.login;
+    AuthService.prototype.login = async function mockLogin(email, password, tenantId) {
+      if (tenantId && email === 'test@example.com' && password === '123456') {
+        return {
+          token: 'mock-token',
+          user: {
+            id: 'user-1',
+            email,
+            firstName: 'Test',
+            lastName: 'User',
+            role: 'admin',
+            permissions: []
+          },
+          memberships: [],
+          requiresTenantSelection: false,
+          message: 'ok',
+          activeMembership: null
+        };
+      }
+      throw new Error('Invalid credentials');
+    };
     app = await buildServer();
   });
   afterAll(async () => {
     await app.close();
+    AuthService.prototype.login = originalLogin;
   });
 
   it('returns ok from /health', async () => {

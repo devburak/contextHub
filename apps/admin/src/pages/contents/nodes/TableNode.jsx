@@ -22,6 +22,15 @@ export class TableNode extends ElementNode {
     return new TableNode(node.__columnWidths, node.__borderWidth, node.__borderColor, node.__borderStyle, node.__key)
   }
 
+  static importDOM() {
+    return {
+      table: () => ({
+        conversion: convertTableElement,
+        priority: 1,
+      }),
+    }
+  }
+
   static importJSON(serializedNode) {
     const { columnWidths, borderWidth, borderColor, borderStyle } = serializedNode
     return $createTableNode(columnWidths, borderWidth, borderColor, borderStyle)
@@ -132,6 +141,15 @@ export class TableRowNode extends ElementNode {
     return new TableRowNode(node.__height, node.__key)
   }
 
+  static importDOM() {
+    return {
+      tr: () => ({
+        conversion: convertTableRowElement,
+        priority: 1,
+      }),
+    }
+  }
+
   static importJSON(serializedNode) {
     const { height } = serializedNode
     return $createTableRowNode(height)
@@ -205,6 +223,19 @@ export class TableCellNode extends ElementNode {
 
   static clone(node) {
     return new TableCellNode(node.__headerState, node.__width, node.__backgroundColor, node.__colSpan, node.__rowSpan, node.__borderWidth, node.__borderColor, node.__borderStyle, node.__key)
+  }
+
+  static importDOM() {
+    return {
+      td: () => ({
+        conversion: convertTableCellElement,
+        priority: 1,
+      }),
+      th: () => ({
+        conversion: convertTableCellElement,
+        priority: 1,
+      }),
+    }
   }
 
   static importJSON(serializedNode) {
@@ -388,6 +419,92 @@ export class TableCellNode extends ElementNode {
     const writable = this.getWritable()
     writable.__borderStyle = borderStyle
   }
+}
+
+function convertTableElement(domNode) {
+  if (!(domNode instanceof HTMLTableElement)) {
+    return null
+  }
+
+  const parsedBorder = parseCssBorder(domNode.style.border || domNode.getAttribute('border'))
+  const borderWidth = parsedBorder.width ?? 1
+  const borderStyle = parsedBorder.style || 'solid'
+  const borderColor = parsedBorder.color || '#374151'
+
+  return {
+    node: $createTableNode([], borderWidth, borderColor, borderStyle),
+  }
+}
+
+function convertTableRowElement(domNode) {
+  if (!(domNode instanceof HTMLTableRowElement)) {
+    return null
+  }
+
+  const heightAttr = domNode.getAttribute('height') || domNode.style.height
+  const height = heightAttr ? parseInt(heightAttr, 10) || undefined : undefined
+
+  return {
+    node: $createTableRowNode(height),
+  }
+}
+
+function convertTableCellElement(domNode) {
+  if (!(domNode instanceof HTMLTableCellElement)) {
+    return null
+  }
+
+  const headerState = domNode.tagName.toLowerCase() === 'th' ? 1 : 0
+  const widthAttr = domNode.getAttribute('width') || domNode.style.width
+  const width = widthAttr ? parseInt(widthAttr, 10) || undefined : undefined
+  const backgroundColor = domNode.style.backgroundColor || null
+  const colSpanAttr = parseInt(domNode.getAttribute('colspan') || '1', 10)
+  const rowSpanAttr = parseInt(domNode.getAttribute('rowspan') || '1', 10)
+  const parsedBorder = parseCssBorder(domNode.style.border || domNode.getAttribute('border'))
+
+  const colSpan = Number.isNaN(colSpanAttr) ? 1 : colSpanAttr
+  const rowSpan = Number.isNaN(rowSpanAttr) ? 1 : rowSpanAttr
+
+  return {
+    node: $createTableCellNode(
+      headerState,
+      width,
+      backgroundColor || null,
+      colSpan,
+      rowSpan,
+      parsedBorder.width,
+      parsedBorder.color,
+      parsedBorder.style
+    ),
+  }
+}
+
+function parseCssBorder(borderValue) {
+  if (!borderValue) return { width: null, style: null, color: null }
+  const parts = String(borderValue).trim().split(/\s+/).filter(Boolean)
+  let width = null
+  let style = null
+  let color = null
+
+  parts.forEach((part) => {
+    const lower = part.toLowerCase()
+    if (part.endsWith('px') || /^\d+$/.test(part)) {
+      const numeric = parseInt(part, 10)
+      if (!Number.isNaN(numeric)) {
+        width = numeric
+      }
+      return
+    }
+    if (['solid', 'dashed', 'dotted', 'double', 'none'].includes(lower)) {
+      style = lower
+      return
+    }
+    if (part.startsWith('#') || lower.startsWith('rgb')) {
+      color = part
+    }
+  })
+
+  return { width, style, color }
 }
 
 // Helper functions

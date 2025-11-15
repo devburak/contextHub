@@ -33,6 +33,8 @@ const PlacementDefinition = require('./PlacementDefinition');
 const PlacementEvent = require('./PlacementEvent');
 const Menu = require('./Menu');
 const Role = require('./Role');
+const Webhook = require('./Webhook');
+const WebhookOutbox = require('./WebhookOutbox');
 
 module.exports = {
   Tenant,
@@ -67,5 +69,7 @@ module.exports = {
   PlacementEvent,
   Menu,
   Role,
+  Webhook,
+  WebhookOutbox,
   mongoose
 };

@@ -30,5 +30,60 @@ export const tenantAPI = {
   acceptOwnershipTransfer: async (token, tenantId) => {
     const { data } = await apiClient.post(`/tenants/${tenantId}/accept-transfer`, { token })
     return data
+  },
+
+  getWebhooks: async (tenantId) => {
+    if (!tenantId) throw new Error('tenantId gerekli')
+    const { data } = await apiClient.get(`/admin/tenants/${tenantId}/webhooks`)
+    return data
+  },
+
+  createWebhook: async (tenantId, payload) => {
+    if (!tenantId) throw new Error('tenantId gerekli')
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks`, payload)
+    return data
+  },
+
+  updateWebhook: async (tenantId, id, payload) => {
+    if (!tenantId || !id) throw new Error('tenantId ve id gerekli')
+    const { data } = await apiClient.put(`/admin/tenants/${tenantId}/webhooks/${id}`, payload)
+    return data
+  },
+
+  deleteWebhook: async (tenantId, id) => {
+    if (!tenantId || !id) throw new Error('tenantId ve id gerekli')
+    const { data } = await apiClient.delete(`/admin/tenants/${tenantId}/webhooks/${id}`)
+    return data
+  },
+
+  rotateWebhookSecret: async (tenantId, id) => {
+    if (!tenantId || !id) throw new Error('tenantId ve id gerekli')
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks/${id}/rotate-secret`)
+    return data
+  },
+
+  getWebhookQueue: async (tenantId, { limit } = {}) => {
+    if (!tenantId) throw new Error('tenantId gerekli')
+    const params = limit ? { limit } : undefined
+    const { data } = await apiClient.get(`/admin/tenants/${tenantId}/webhooks/queue`, { params })
+    return data
+  },
+
+  triggerTenantWebhooks: async (tenantId, payload = {}) => {
+    if (!tenantId) throw new Error('tenantId gerekli')
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks/trigger`, payload)
+    return data
+  },
+
+  sendTestWebhook: async (tenantId, id, payload = {}) => {
+    if (!tenantId || !id) throw new Error('tenantId ve id gerekli')
+    const body = payload && Object.keys(payload).length ? { payload } : {}
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks/${id}/test`, body)
+    return data
+  },
+
+  getDomainEventTypes: async () => {
+    const { data } = await apiClient.get('/admin/domain-event-types')
+    return data.types || []
   }
 }

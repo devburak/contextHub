@@ -167,7 +167,9 @@ module.exports = async function(fastify, opts) {
     try {
       const { id } = request.params;
 
-      await menuService.deleteMenu(request.tenantId, id);
+      const userId = request.user?._id?.toString() || request.user?.id || null;
+
+      await menuService.deleteMenu(request.tenantId, id, userId);
 
       reply.send({
         success: true,

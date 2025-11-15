@@ -1,6 +1,8 @@
 const { FormDefinition, FormResponse, FormVersion } = require('@contexthub/common');
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
+const { emitDomainEvent } = require('../lib/domainEvents');
+const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 
 const ObjectId = mongoose.Types.ObjectId;
 
@@ -71,6 +73,77 @@ async function generateUniqueSlug({ tenantId, baseSlug, excludeId }) {
   }
   
   return candidate;
+}
+
+function buildFormEventPayload(formDoc) {
+  if (!formDoc) {
+    return null;
+  }
+
+  const doc = typeof formDoc.toObject === 'function'
+    ? formDoc.toObject({ depopulate: true })
+    : formDoc;
+
+  const updatedAt = doc.updatedAt instanceof Date
+    ? doc.updatedAt.toISOString()
+    : new Date().toISOString();
+
+  return {
+    formId: doc._id ? doc._id.toString() : null,
+    slug: doc.slug,
+    status: doc.status,
+    version: doc.version,
+    visibility: doc.visibility,
+    title: doc.title,
+    submissionCount: doc.submissionCount ?? null,
+    updatedAt
+  };
+}
+
+async function recordFormEvent({
+  tenantId,
+  type,
+  form,
+  userId,
+  source = 'admin-ui',
+  payloadExtras = {},
+  metadataExtras = {}
+}) {
+  if (!tenantId || !type) {
+    return;
+  }
+
+  const normalizedUserId = userId ? userId.toString() : null;
+  const basePayload = buildFormEventPayload(form) || {};
+  const payload = { ...basePayload, ...(payloadExtras || {}) };
+
+  const metadata = {
+    source,
+    ...metadataExtras
+  };
+
+  if (!metadata.triggeredBy) {
+    metadata.triggeredBy = normalizedUserId ? 'user' : 'system';
+  }
+
+  if (normalizedUserId) {
+    metadata.userId = normalizedUserId;
+  }
+
+  Object.keys(metadata).forEach((key) => {
+    if (metadata[key] === undefined || metadata[key] === null) {
+      delete metadata[key];
+    }
+  });
+
+  try {
+    const eventId = await emitDomainEvent(tenantId, type, payload, metadata);
+    if (eventId) {
+      triggerWebhooksForTenant(tenantId);
+    }
+  } catch (error) {
+    console.error('[formService] Failed to emit domain event', { tenantId, type, error });
+  }
 }
 
 /**
@@ -237,6 +310,14 @@ async function create({ tenantId, data, userId }) {
   // Update form with version reference
   form.lastVersionId = version._id;
   await form.save();
+
+  await recordFormEvent({
+    tenantId,
+    type: 'form.created',
+    form,
+    userId,
+    source: 'admin-ui'
+  });
   
   return form;
 }
@@ -328,6 +409,14 @@ async function update({ tenantId, formId, data, userId }) {
   form.updatedBy = userId;
   form.lastVersionId = version._id;
   await form.save();
+
+  await recordFormEvent({
+    tenantId,
+    type: 'form.updated',
+    form,
+    userId,
+    source: 'admin-ui'
+  });
   
   return form;
 }
@@ -686,6 +775,34 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
       $set: { lastSubmissionAt: new Date() }
     }
   );
+  await recordFormEvent({
+    tenantId,
+    type: 'form.submitted',
+    form,
+    userId: metadata.userId,
+    source: metadata.source || 'form',
+    payloadExtras: {
+      response: {
+        responseId: response._id ? response._id.toString() : null,
+        status: response.status,
+        submittedAt: response.createdAt instanceof Date ? response.createdAt.toISOString() : new Date().toISOString(),
+        data: response.data,
+        locale: response.locale,
+        source: response.source,
+        userAgent: response.userAgent,
+        userEmail: response.userEmail,
+        userName: response.userName,
+        referrer: response.referrer,
+        device: response.device,
+        geo: response.geo,
+        ipHash: response.ip
+      }
+    },
+    metadataExtras: {
+      triggeredBy: metadata.userId ? 'user' : 'integration',
+      requestId: metadata.requestId
+    }
+  });
 
   return response;
 }

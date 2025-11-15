@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { fetchTenantLimits, updateTenantSubscription } from '../../lib/api/subscriptions.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
 import ApiTokenManager from '../../components/ApiTokenManager.jsx'
+import TenantTabs from '../../components/TenantTabs.jsx'
 
 const EMPTY_STATE = {
   smtp: {
@@ -318,20 +319,6 @@ export default function TenantSettings() {
     }
   }
 
-  const handleSecretChange = (event) => {
-    const value = event.target.value
-    setFormState((prev) => ({
-      ...prev,
-      webhook: {
-        ...prev.webhook,
-        secret: value
-      }
-    }))
-    if (value) {
-      setSecretFlags((prev) => ({ ...prev, webhookSecret: false }))
-    }
-  }
-
   const resetSmtpPassword = () => {
     setSecretFlags((prev) => ({ ...prev, smtpPassword: true }))
     setFormState((prev) => ({
@@ -340,18 +327,6 @@ export default function TenantSettings() {
         ...prev.smtp,
         password: '',
         hasPassword: false
-      }
-    }))
-  }
-
-  const resetWebhookSecret = () => {
-    setSecretFlags((prev) => ({ ...prev, webhookSecret: true }))
-    setFormState((prev) => ({
-      ...prev,
-      webhook: {
-        ...prev.webhook,
-        secret: '',
-        hasSecret: false
       }
     }))
   }
@@ -397,10 +372,12 @@ export default function TenantSettings() {
 
   return (
     <div className="space-y-6">
+      <TenantTabs active="settings" />
+
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Tenant Ayarları</h1>
         <p className="mt-2 text-sm text-gray-600">
-          SMTP, webhook, limitler ve özellikler gibi tenant düzeyindeki yapılandırmaları buradan yönetebilirsin.
+          SMTP, limitler ve özellikler gibi tenant düzeyindeki yapılandırmaları buradan yönetebilirsin.
         </p>
       </div>
 
@@ -604,62 +581,6 @@ export default function TenantSettings() {
                   className="font-medium text-blue-600 hover:text-blue-500"
                 >
                   Parolayı temizle
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
-          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Webhook Ayarları</h2>
-              <p className="text-sm text-gray-500">İçerik değişiklikleri gibi olayları dış sistemlere bildirmek için webhook URL ve gizli anahtarını ayarla.</p>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <span>Aktif</span>
-              <input
-                type="checkbox"
-                checked={formState.webhook.enabled}
-                onChange={handleCheckboxChange('webhook', 'enabled')}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-            </label>
-          </div>
-          <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Webhook URL</label>
-              <input
-                type="url"
-                value={formState.webhook.url}
-                onChange={handleInputChange('webhook', 'url')}
-                placeholder="https://example.com/webhooks/contexthub"
-                className={FIELD_INPUT_WITH_MARGIN_CLASS}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Gizli Anahtar</label>
-              <input
-                type="password"
-                value={formState.webhook.secret}
-                onChange={handleSecretChange}
-                placeholder={formState.webhook.hasSecret ? '••••••' : 'Yeni gizli anahtar girin'}
-                className={FIELD_INPUT_WITH_MARGIN_CLASS}
-              />
-              <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
-                <span>
-                  {secretFlags.webhookSecret
-                    ? 'Kaydedildiğinde gizli anahtar temizlenecek.'
-                    : formState.webhook.hasSecret
-                      ? 'Kaydetmediğin sürece mevcut gizli anahtar korunur.'
-                      : 'Gizli anahtar ayarlanmadı.'}
-                </span>
-                <button
-                  type="button"
-                  onClick={resetWebhookSecret}
-                  className="font-medium text-blue-600 hover:text-blue-500"
-                >
-                  Gizli anahtarı temizle
                 </button>
               </div>
             </div>

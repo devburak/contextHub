@@ -14,6 +14,7 @@ import TenantSelection from './pages/tenants/TenantSelection.jsx'
 import Tenants from './pages/tenants/Tenants.jsx'
 import CreateTenant from './pages/tenants/CreateTenant.jsx'
 import TenantSettings from './pages/tenants/TenantSettings.jsx'
+import TenantWebhooks from './pages/tenants/TenantWebhooks.jsx'
 import AcceptTransfer from './pages/tenants/AcceptTransfer.jsx'
 import MediaLibrary from './pages/media/Media.jsx'
 import Categories from './pages/categories/Categories.jsx'
@@ -312,6 +313,7 @@ function App() {
               <Route path="/varliklar" element={<Tenants />} />
               <Route path="/varliklar/yeni" element={<CreateTenant />} />
               <Route path="/varliklar/ayarlar" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_MANAGE}><TenantSettings /></PermissionRoute>} />
+              <Route path="/varliklar/webhooks" element={<PermissionRoute permissions={PERMISSIONS.TENANTS_MANAGE}><TenantWebhooks /></PermissionRoute>} />
               <Route path="/transfer-accept" element={<AcceptTransfer />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />

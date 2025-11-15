@@ -1,6 +1,8 @@
 const { Content, ContentVersion, Category, Tag } = require('@contexthub/common')
 const mongoose = require('mongoose')
 const galleryService = require('./galleryService')
+const { emitDomainEvent } = require('../lib/domainEvents')
+const { triggerWebhooksForTenant } = require('../lib/webhookTrigger')
 
 const ObjectId = mongoose.Types.ObjectId
 
@@ -116,6 +118,8 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
     status = 'draft',
     publishAt,
     authorName = '',
+    path = null,
+    locale = null,
   } = payload
 
   if (!title) {
@@ -171,6 +175,34 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
 
   document.lastVersionId = version._id
   await document.save()
+
+  try {
+    const eventPayload = {
+      contentId: document._id ? document._id.toString() : null,
+      slug: document.slug,
+      path,
+      locale,
+      status: document.status,
+      version: document.version,
+      updatedAt: document.updatedAt ? document.updatedAt.toISOString() : new Date().toISOString()
+    }
+
+    const metadata = {
+      triggeredBy: userId ? 'user' : 'system',
+      source: 'admin-ui'
+    }
+
+    if (userId) {
+      metadata.userId = userId.toString()
+    }
+
+    const eventId = await emitDomainEvent(tenantId, 'content.created', eventPayload, metadata)
+    if (eventId) {
+      triggerWebhooksForTenant(tenantId)
+    }
+  } catch (error) {
+    console.error('[domainEvents] Failed to emit event', error)
+  }
 
   return document.toObject()
 }
@@ -311,21 +343,78 @@ async function updateContent({ tenantId, contentId, userId, payload, featureFlag
   updated.lastVersionId = version._id
   await updated.save()
 
+  try {
+    const eventPayload = {
+      contentId: updated._id ? updated._id.toString() : null,
+      slug: updated.slug,
+      path: payload?.path ?? null,
+      locale: payload?.locale ?? null,
+      status: updated.status,
+      version: updated.version,
+      updatedAt: updated.updatedAt ? updated.updatedAt.toISOString() : new Date().toISOString()
+    }
+
+    const metadata = {
+      triggeredBy: userId ? 'user' : 'system',
+      source: 'admin-ui'
+    }
+
+    if (userId) {
+      metadata.userId = userId.toString()
+    }
+
+    const eventId = await emitDomainEvent(tenantId, 'content.updated', eventPayload, metadata)
+    if (eventId) {
+      triggerWebhooksForTenant(tenantId)
+    }
+  } catch (error) {
+    console.error('[domainEvents] Failed to emit event', error)
+  }
+
   return updated.toObject()
 }
 
-async function deleteContent({ tenantId, contentId }) {
+async function deleteContent({ tenantId, contentId, userId }) {
   if (!ObjectId.isValid(contentId)) {
     throw new Error('Invalid content id')
   }
 
-  const result = await Content.deleteOne({ _id: contentId, tenantId })
-  if (!result.deletedCount) {
+  const existing = await Content.findOne({ _id: contentId, tenantId })
+  if (!existing) {
     return { deleted: 0 }
   }
 
+  const result = await Content.deleteOne({ _id: contentId, tenantId })
+
   await ContentVersion.deleteMany({ tenantId, contentId })
   await galleryService.setGalleriesForContent({ tenantId, contentId, galleryIds: [] })
+
+  try {
+    const payload = {
+      contentId: existing._id ? existing._id.toString() : contentId,
+      slug: existing.slug,
+      status: existing.status,
+      version: existing.version,
+      deletedAt: new Date().toISOString()
+    }
+
+    const metadata = {
+      triggeredBy: userId ? 'user' : 'system',
+      source: 'admin-ui'
+    }
+
+    if (userId) {
+      metadata.userId = userId.toString()
+    }
+
+    const eventId = await emitDomainEvent(tenantId, 'content.deleted', payload, metadata)
+    if (eventId) {
+      triggerWebhooksForTenant(tenantId)
+    }
+  } catch (error) {
+    console.error('[domainEvents] Failed to emit event', error)
+  }
+
   return { deleted: result.deletedCount }
 }
 
@@ -857,6 +946,123 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
   }
 }
 
+async function publishDueScheduledContent(options = {}) {
+  const limit = Number.isFinite(options.limit) && options.limit > 0 ? options.limit : 50
+  const now = new Date()
+  const filter = {
+    status: 'scheduled',
+    publishAt: { $lte: now }
+  }
+
+  if (options.tenantId) {
+    if (options.tenantId instanceof ObjectId) {
+      filter.tenantId = options.tenantId
+    } else if (ObjectId.isValid(options.tenantId)) {
+      filter.tenantId = new ObjectId(options.tenantId)
+    } else {
+      throw new Error('Invalid tenantId provided to publishDueScheduledContent')
+    }
+  }
+
+  const dueContents = await Content.find(filter)
+    .sort({ publishAt: 1 })
+    .limit(limit)
+    .lean()
+
+  if (!dueContents.length) {
+    return { matched: 0, published: 0, eventsEmitted: 0 }
+  }
+
+  let published = 0
+  let eventsEmitted = 0
+  const affectedTenants = new Set()
+
+  for (const doc of dueContents) {
+    const publishDate = new Date()
+    const nextVersion = (doc.version || 0) + 1
+
+    const updated = await Content.findOneAndUpdate(
+      { _id: doc._id, status: 'scheduled' },
+      {
+        $set: {
+          status: 'published',
+          publishAt: null,
+          publishedAt: publishDate,
+          publishedBy: null,
+          version: nextVersion,
+          updatedBy: null
+        }
+      },
+      { new: true }
+    )
+
+    if (!updated) {
+      continue
+    }
+
+    const versionDoc = await ContentVersion.create({
+      tenantId: updated.tenantId,
+      contentId: updated._id,
+      version: nextVersion,
+      title: updated.title,
+      slug: updated.slug,
+      summary: updated.summary,
+      lexical: updated.lexical,
+      html: updated.html,
+      categories: updated.categories,
+      tags: updated.tags,
+      featuredMediaId: updated.featuredMediaId,
+      authorName: updated.authorName,
+      publishAt: null,
+      publishedAt: publishDate,
+      status: updated.status,
+      createdBy: updated.createdBy || null,
+      publishedBy: null
+    })
+
+    updated.lastVersionId = versionDoc._id
+    await updated.save()
+
+    published += 1
+    const tenantIdString = updated.tenantId?.toString()
+    if (tenantIdString) {
+      affectedTenants.add(tenantIdString)
+    }
+
+    if (tenantIdString) {
+      try {
+        await emitDomainEvent(tenantIdString, 'content.published', {
+          contentId: updated._id?.toString(),
+          slug: updated.slug,
+          status: updated.status,
+          version: updated.version,
+          publishedAt: publishDate.toISOString()
+        }, {
+          triggeredBy: 'system',
+          source: 'content-scheduler'
+        })
+        eventsEmitted += 1
+      } catch (error) {
+        console.error('[contentService] Failed to emit scheduled publish event', {
+          tenantId: tenantIdString,
+          contentId: updated._id?.toString(),
+          error
+        })
+      }
+    }
+  }
+
+  for (const tenantId of affectedTenants) {
+    triggerWebhooksForTenant(tenantId)
+  }
+
+  return {
+    matched: dueContents.length,
+    published,
+    eventsEmitted
+  }
+}
+
 module.exports = {
   createContent,
   updateContent,
@@ -870,4 +1076,5 @@ module.exports = {
   CONTENT_SCHEDULING_DISABLED_CODE,
   setContentGalleries,
   getArchiveStatistics,
+  publishDueScheduledContent,
 }

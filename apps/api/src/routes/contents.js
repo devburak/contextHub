@@ -238,6 +238,7 @@ async function contentRoutes(fastify) {
       const result = await contentService.deleteContent({
         tenantId: request.tenantId,
         contentId: request.params.id,
+        userId: request.user?._id?.toString() || request.user?.id || null
       })
       if (!result.deleted) {
         return reply.code(404).send({ error: 'ContentNotFound', message: 'Content not found' })
