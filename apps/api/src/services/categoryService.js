@@ -340,10 +340,89 @@ async function listCategories({ tenantId, flat = false, search, page, limit, ids
   return { categories, pagination }
 }
 
+async function mergeCategories({ tenantId, sourceId, targetId, userId }) {
+  if (!ObjectId.isValid(sourceId) || !ObjectId.isValid(targetId)) {
+    throw new Error('Invalid category id')
+  }
+
+  if (sourceId === targetId) {
+    throw new Error('Cannot merge a category into itself')
+  }
+
+  const [source, target] = await Promise.all([
+    Category.findOne({ _id: sourceId, tenantId }),
+    Category.findOne({ _id: targetId, tenantId })
+  ])
+
+  if (!source || !target) {
+    throw new Error('One or both categories not found')
+  }
+
+  // 1. Add target category to all contents that have the source category
+  // We use $addToSet to avoid duplicates if the content already has the target category
+  const Content = require('@contexthub/common').Content
+  const ContentVersion = require('@contexthub/common').ContentVersion
+
+  const contentFilter = { tenantId, categories: sourceId }
+  const contentAddResult = await Content.updateMany(
+    contentFilter,
+    {
+      $addToSet: { categories: targetId },
+      $set: { updatedBy: userId ? new ObjectId(userId) : undefined }
+    }
+  )
+
+  // 2. Remove source category from all contents
+  await Content.updateMany(
+    contentFilter,
+    {
+      $pull: { categories: sourceId },
+      $set: { updatedBy: userId ? new ObjectId(userId) : undefined }
+    }
+  )
+
+  // Also update versions (must be two passes to avoid conflicting modifiers)
+  const versionFilter = { tenantId, categories: sourceId }
+  await ContentVersion.updateMany(
+    versionFilter,
+    { $addToSet: { categories: targetId } }
+  )
+  await ContentVersion.updateMany(
+    versionFilter,
+    { $pull: { categories: sourceId } }
+  )
+
+  // 3. Move children of source category to target category
+  await Category.updateMany(
+    { tenantId, parentId: sourceId },
+    { $set: { parentId: targetId } }
+  )
+
+  // We need to re-calculate ancestors for moved children
+  // This might be expensive if there are many children, but usually categories are not that deep/many
+  const movedChildren = await Category.find({ tenantId, parentId: targetId })
+  for (const child of movedChildren) {
+    const { ancestors } = await resolveParent({ tenantId, parentId: targetId, categoryId: child._id })
+    child.ancestors = ancestors
+    await child.save()
+    await updateDescendantAncestors(child)
+  }
+
+  // 3. Delete the source category
+  await Category.deleteOne({ _id: sourceId, tenantId })
+
+  const updatedContents = typeof contentAddResult?.matchedCount === 'number'
+    ? contentAddResult.matchedCount
+    : (contentAddResult?.modifiedCount || 0)
+
+  return { success: true, updatedContents }
+}
+
 module.exports = {
   createCategory,
   updateCategory,
   deleteCategory,
   getCategory,
   listCategories,
+  mergeCategories,
 }

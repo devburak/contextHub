@@ -4,6 +4,7 @@ import { listContents } from '../../lib/api/contents'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { Link } from 'react-router-dom'
 import { searchTags } from '../../lib/api/tags'
+import { categoryAPI } from '../../lib/categoryAPI'
 import clsx from 'clsx'
 import { ChevronDownIcon } from '@heroicons/react/20/solid'
 
@@ -11,6 +12,7 @@ export default function ContentList() {
   const { token, activeTenantId } = useAuth()
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('')
+  const [category, setCategory] = useState('')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [tagInput, setTagInput] = useState('')
@@ -37,11 +39,12 @@ export default function ContentList() {
   }, [isTagDropdownOpen])
 
   const { data, isLoading, isError, refetch } = useQuery([
-    'contents', { tenant: activeTenantId, page, status, search: debouncedSearch, tag: selectedTag?._id || null }
+    'contents', { tenant: activeTenantId, page, status, category, search: debouncedSearch, tag: selectedTag?._id || null }
   ], () => listContents({
     page,
     filters: {
       status,
+      category,
       search: debouncedSearch,
       tag: selectedTag?._id || undefined,
     },
@@ -61,6 +64,20 @@ export default function ContentList() {
       keepPreviousData: true,
     }
   )
+
+  const categoryQuery = useQuery({
+    queryKey: ['categories', 'flat'],
+    queryFn: categoryAPI.listFlat,
+    enabled: !!token && !!activeTenantId,
+  })
+
+  const categoryOptions = useMemo(() => {
+    if (!categoryQuery.data) return []
+    return categoryQuery.data.map(cat => ({
+      value: cat._id,
+      label: `${'— '.repeat(cat.ancestors?.length || 0)}${cat.name}`
+    }))
+  }, [categoryQuery.data])
 
   const tagOptions = useMemo(() => tagQuery.data?.tags ?? [], [tagQuery.data])
 
@@ -82,6 +99,24 @@ export default function ContentList() {
               <option value="scheduled">Zamanlanmış</option>
               <option value="published">Yayında</option>
               <option value="archived">Arşiv</option>
+            </select>
+            <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Kategori</label>
+          <div className="relative mt-1 w-48">
+            <select
+              value={category}
+              onChange={(e) => { setCategory(e.target.value); setPage(1); }}
+              className={clsx(filterInputClass, 'appearance-none pr-9')}
+            >
+              <option value="">Hepsi</option>
+              {categoryOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
             <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>

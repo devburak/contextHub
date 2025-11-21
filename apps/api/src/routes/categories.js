@@ -188,6 +188,32 @@ async function categoryRoutes(fastify) {
       return reply.code(400).send({ error: 'CategoryDeleteFailed', message: error.message })
     }
   })
+  fastify.post('/categories/merge', {
+    preHandler: [authenticate, requireEditor],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          sourceId: { type: 'string' },
+          targetId: { type: 'string' },
+        },
+        required: ['sourceId', 'targetId'],
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await categoryService.mergeCategories({
+        tenantId: request.tenantId,
+        sourceId: request.body.sourceId,
+        targetId: request.body.targetId,
+        userId: request.user?._id?.toString(),
+      })
+      return reply.send(result)
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to merge categories')
+      return reply.code(400).send({ error: 'CategoryMergeFailed', message: error.message })
+    }
+  })
 }
 
 module.exports = categoryRoutes

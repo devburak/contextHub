@@ -32,4 +32,9 @@ export const categoryAPI = {
     })
     return response.data
   },
+
+  merge: async (sourceId, targetId) => {
+    const response = await apiClient.post('/categories/merge', { sourceId, targetId })
+    return response.data
+  },
 }
