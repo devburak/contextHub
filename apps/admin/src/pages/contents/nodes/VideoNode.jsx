@@ -1,4 +1,5 @@
 import { DecoratorNode } from 'lexical'
+import { detectVideoProvider } from '../../../utils/externalMedia.js'
 import VideoComponent from './VideoComponent.jsx'
 
 export class VideoNode extends DecoratorNode {
@@ -219,7 +220,10 @@ function convertVideoElement(domNode) {
     const src = domNode.getAttribute('src') || ''
     if (!src) return null
 
-    const { provider, providerId } = detectProviderFromUrl(src)
+    const { provider, providerId } = detectVideoProvider(src)
+    if (!provider) {
+      return null
+    }
     payload.url = src
     payload.externalUrl = src
     payload.provider = provider
@@ -246,25 +250,4 @@ function convertVideoElement(domNode) {
   return {
     node: $createVideoNode(payload),
   }
-}
-
-function detectProviderFromUrl(url) {
-  try {
-    const parsed = new URL(url)
-    const host = parsed.hostname || ''
-
-    if (host.includes('youtube.com') || host.includes('youtu.be')) {
-      const id = parsed.searchParams.get('v') || parsed.pathname.split('/').filter(Boolean).pop()
-      return { provider: 'youtube', providerId: id || null }
-    }
-
-    if (host.includes('vimeo.com')) {
-      const id = parsed.pathname.split('/').filter(Boolean).pop()
-      return { provider: 'vimeo', providerId: id || null }
-    }
-  } catch (error) {
-    // ignore parsing errors and fall back to generic payload
-  }
-
-  return { provider: null, providerId: null }
 }
