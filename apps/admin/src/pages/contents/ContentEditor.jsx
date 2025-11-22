@@ -33,6 +33,9 @@ import {
   REDO_COMMAND,
   SELECTION_CHANGE_COMMAND,
   UNDO_COMMAND,
+  ParagraphNode,
+  TextNode,
+  createEditor,
 } from 'lexical'
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
 import { $setBlocksType } from '@lexical/selection'
@@ -132,6 +135,23 @@ const styleObjectToString = (styles) =>
     .map(([key, value]) => `${key}: ${value}`)
     .join('; ')
 
+const unwrapElement = (element) => {
+  if (!element || !element.parentNode) return
+  const parent = element.parentNode
+  while (element.firstChild) {
+    parent.insertBefore(element.firstChild, element)
+  }
+  parent.removeChild(element)
+}
+
+const parseHtmlDocument = (htmlString) => {
+  if (typeof DOMParser === 'undefined') {
+    throw new Error('DOMParser is not available in this environment.')
+  }
+  const parser = new DOMParser()
+  return parser.parseFromString(htmlString || '<p></p>', 'text/html')
+}
+
 function formatDateTimeLocal(date = new Date()) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
     return ''
@@ -159,8 +179,12 @@ const toHexColor = (color) => {
 
 const sanitizeHtmlString = (rawHtml) => {
   if (!rawHtml || typeof rawHtml !== 'string') return ''
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(rawHtml, 'text/html')
+  const spanRemovedHtml = rawHtml
+    .replace(/<span[^>]*style="[^"]*white-space:\s*pre-wrap;?[^"]*"[^>]*>/gi, '')
+    .replace(/<span[^>]*>/gi, (match) => (match.includes('white-space') ? '' : match))
+    .replace(/<\/span>/gi, '')
+  const doc = parseHtmlDocument(spanRemovedHtml)
+  console.log('[Sanitize] Raw HTML before sanitizing:', rawHtml)
 
   doc.querySelectorAll('script').forEach((el) => el.remove())
   doc.body?.querySelectorAll('*').forEach((el) => {
@@ -172,11 +196,30 @@ const sanitizeHtmlString = (rawHtml) => {
       }
       if ((attrName === 'src' || attrName === 'href') && /^\s*javascript:/i.test(attr.value)) {
         el.removeAttribute(attr.name)
+        return
+      }
+      if (attrName === 'style') {
+        const styles = parseStyleString(attr.value)
+        if (styles['white-space']) {
+          delete styles['white-space']
+        }
+        const cleanedStyle = styleObjectToString(styles)
+        if (cleanedStyle) {
+          el.setAttribute('style', cleanedStyle)
+        } else {
+          el.removeAttribute('style')
+        }
       }
     })
   })
 
-  return doc.body?.innerHTML?.trim() || ''
+  doc.body?.querySelectorAll('span').forEach((span) => {
+    unwrapElement(span)
+  })
+
+  const sanitized = doc.body?.innerHTML?.trim() || ''
+  console.log('[Sanitize] Sanitized HTML:', sanitized)
+  return sanitized
 }
 
 // Lexical Playground inspired theme
@@ -218,10 +261,76 @@ const theme = {
 const initialConfig = {
   namespace: 'content-editor',
   theme,
-  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, GalleryNode, TableNode, TableRowNode, TableCellNode],
+  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, GalleryNode, TableNode, TableRowNode, TableCellNode, ParagraphNode, TextNode],
   onError(error) {
     console.error(error)
   },
+}
+
+const convertHtmlToLexicalContent = async (rawHtml) => {
+  const sanitizedHtml = sanitizeHtmlString(rawHtml || '<p></p>')
+  console.log('[HTML->Lexical] Sanitized HTML:', sanitizedHtml)
+  const htmlDocument = parseHtmlDocument(sanitizedHtml || '<p></p>')
+  const conversionEditor = createEditor({
+    namespace: `${initialConfig.namespace}-html-import`,
+    nodes: initialConfig.nodes,
+    theme: initialConfig.theme,
+    editable: false,
+  })
+
+  let lexicalJSON = INITIAL_EDITOR_STATE
+  let normalizedHtml = sanitizedHtml || '<p></p>'
+
+  const emptyState = conversionEditor.parseEditorState(INITIAL_EDITOR_STATE)
+  conversionEditor.setEditorState(emptyState)
+
+  await conversionEditor.update(() => {
+    const root = $getRoot()
+
+    // Convert root block-level nodes to a temporary artificial node to ensure inline nodes wrap properly
+    const nodes = $generateNodesFromDOM(conversionEditor, htmlDocument)
+    console.log('[HTML->Lexical] Generated nodes:', nodes)
+
+    const lexicalNodes = Array.isArray(nodes)
+      ? nodes
+        .map((node) => {
+          if (!node || typeof node.getType !== 'function') {
+            return null
+          }
+          if (node.getType && node.getType() === 'root') {
+            const children = node.getChildren()
+            if (!children.length) return null
+            const replacement = $createParagraphNode()
+            children.forEach((child) => replacement.append(child))
+            return replacement
+          }
+          return node
+        })
+        .filter((node) => Boolean(node) && typeof node.getType === 'function')
+      : []
+
+    console.log('[HTML->Lexical] Filtered lexical nodes:', lexicalNodes)
+
+    root.clear()
+    const nodesToAppend = lexicalNodes.length ? lexicalNodes : [$createParagraphNode()]
+    root.append(...nodesToAppend)
+
+    console.log('[HTML->Lexical] Root child count after import:', root.getChildrenSize?.())
+
+    // Generate HTML from the current state
+    normalizedHtml = $generateHtmlFromNodes(conversionEditor, null) || '<p></p>'
+  })
+
+  // IMPORTANT: Read state AFTER awaiting update completion
+  lexicalJSON = JSON.stringify(conversionEditor.getEditorState().toJSON())
+
+  console.log('[HTML->Lexical] Result JSON:', lexicalJSON)
+  console.log('[HTML->Lexical] Result JSON parsed:', JSON.parse(lexicalJSON))
+
+  return {
+    lexicalJSON,
+    normalizedHtml,
+  }
 }
 
 function Placeholder() {
@@ -291,43 +400,37 @@ export default function ContentEditor() {
   const textareaClass = inputClass
   const canUseHtmlMode = role === 'owner'
 
-  const syncPendingHtmlToEditor = useCallback(() => {
+  const syncPendingHtmlToEditor = useCallback(async () => {
     if (renderMode !== 'json') return
-    const editorInstance = editorRef.current
-    if (!editorInstance) return
     if (pendingHtmlSyncRef.current === null) return
 
     const htmlToImport = pendingHtmlSyncRef.current
-    const sanitizedHtml = sanitizeHtmlString(htmlToImport || '<p></p>')
-    const container = document.createElement('div')
-    container.innerHTML = sanitizedHtml || '<p></p>'
-
     pendingHtmlSyncRef.current = null
 
     try {
-      skipNextOnChangeRef.current = true
-      editorInstance.update(() => {
-        const root = $getRoot()
-        const nodes = $generateNodesFromDOM(editorInstance, container)
-        const lexicalNodes = Array.isArray(nodes)
-          ? nodes.filter((node) => node && typeof node.getType === 'function')
-          : []
+      const { lexicalJSON, normalizedHtml } = await convertHtmlToLexicalContent(htmlToImport)
+      setInitialEditorState(lexicalJSON)
+      setLatestEditorState(lexicalJSON)
+      setHtml(normalizedHtml || '<p></p>')
+      console.log('[HTML Sync] Updated state + html.', { lexicalJSON, normalizedHtml })
 
-        if (!lexicalNodes.length) {
-          if (sanitizedHtml.trim().length === 0) {
-            root.clear()
-            root.append($createParagraphNode())
+      if (editorRef.current) {
+        try {
+          const parsedState = editorRef.current.parseEditorState(lexicalJSON)
+          console.log('[HTML Sync] Parsed state isEmpty:', parsedState.isEmpty?.())
+          console.log('[HTML Sync] Parsed state nodeMap size:', parsedState._nodeMap?.size)
+          console.log('[HTML Sync] Parsed state JSON:', parsedState.toJSON())
+          if (!parsedState.isEmpty()) {
+            skipNextOnChangeRef.current = true
+            editorRef.current.setEditorState(parsedState)
+            console.log('[HTML Sync] Applied state directly to editor instance.')
+          } else {
+            console.warn('[HTML Sync] Parsed state is empty, skipping apply.')
           }
-          // If nothing valid to import, keep existing content
-          return
+        } catch (applyError) {
+          console.error('Editor state apply failed', applyError)
         }
-        root.clear()
-        root.append(...lexicalNodes)
-      })
-      const updatedStateJSON = JSON.stringify(editorInstance.getEditorState().toJSON())
-      setInitialEditorState(updatedStateJSON)
-      setLatestEditorState(updatedStateJSON)
-      setHtml(sanitizedHtml || '<p></p>')
+      }
     } catch (error) {
       console.error('HTML import failed', error)
       setSaveError('HTML içeriği editöre aktarılırken hata oluştu. Lütfen HTML\'i kontrol edin.')
@@ -819,9 +922,28 @@ export default function ContentEditor() {
       setSaveError('')
     }
 
+    let lexicalStateString = latestEditorState || INITIAL_EDITOR_STATE
+
+    if (renderMode === 'html') {
+      try {
+        const { lexicalJSON, normalizedHtml } = await convertHtmlToLexicalContent(html)
+        lexicalStateString = lexicalJSON
+        setLatestEditorState(lexicalJSON)
+        if (normalizedHtml !== html) {
+          setHtml(normalizedHtml)
+        }
+      } catch (conversionError) {
+        console.error('HTML to Lexical conversion failed', conversionError)
+        if (!silent) {
+          setSaveError('HTML içeriği Lexical formatına dönüştürülemedi. Lütfen HTML\'i kontrol edin.')
+        }
+        return null
+      }
+    }
+
     let parsedLexical
     try {
-      parsedLexical = JSON.parse(latestEditorState || INITIAL_EDITOR_STATE)
+      parsedLexical = JSON.parse(lexicalStateString || INITIAL_EDITOR_STATE)
     } catch (error) {
       console.error('Editor state parse failed, using fallback.', error)
       parsedLexical = JSON.parse(INITIAL_EDITOR_STATE)
@@ -857,7 +979,7 @@ export default function ContentEditor() {
       console.error('Save failed', err)
       throw err
     }
-  }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, tags, featuredMediaId, isNew, createMut, updateMut, id])
+  }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, tags, featuredMediaId, isNew, createMut, updateMut, id, renderMode])
 
   const onLexicalChange = useCallback((editorState, editor) => {
     editorState.read(() => {
@@ -3179,9 +3301,19 @@ function EditorStateHydrator({ stateJSON, skipNextOnChangeRef }) {
         return
       }
 
+      if (typeof parsedState.isEmpty === 'function' && parsedState.isEmpty()) {
+        try {
+          parsedState = editor.parseEditorState(INITIAL_EDITOR_STATE)
+        } catch (fallbackError) {
+          console.error('Editor state hydration fallback failed', fallbackError)
+          return
+        }
+      }
+
       skipNextOnChangeRef.current = true
       editor.setEditorState(parsedState)
       appliedStateRef.current = stateJSON
+      console.log('[Hydrator] Applied editor state', parsedState)
     })
   }, [editor, stateJSON, skipNextOnChangeRef])
 
@@ -3303,12 +3435,10 @@ function convertHTMLTableToLexicalTable(htmlTable, editor) {
       const cellContent = htmlCell.innerHTML.trim()
       if (cellContent) {
         try {
-          // Create a temporary div to parse cell content
-          const tempDiv = document.createElement('div')
-          tempDiv.innerHTML = cellContent
+          const tempDocument = parseHtmlDocument(cellContent)
 
           // Generate Lexical nodes from the HTML content
-          const nodes = $generateNodesFromDOM(editor, tempDiv)
+          const nodes = $generateNodesFromDOM(editor, tempDocument)
 
           // If we have nodes, append them to the cell
           if (nodes.length > 0) {
