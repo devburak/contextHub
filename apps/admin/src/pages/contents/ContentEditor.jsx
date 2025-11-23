@@ -184,7 +184,6 @@ const buildEmbedPayloadFromInput = (rawInput) => {
 
     return { src, attributes }
   } catch (error) {
-    console.warn('[EmbedDialog] Failed to parse iframe code', error)
     return null
   }
 }
@@ -221,7 +220,6 @@ const sanitizeHtmlString = (rawHtml) => {
     .replace(/<span[^>]*>/gi, (match) => (match.includes('white-space') ? '' : match))
     .replace(/<\/span>/gi, '')
   const doc = parseHtmlDocument(spanRemovedHtml)
-  console.log('[Sanitize] Raw HTML before sanitizing:', rawHtml)
 
   doc.querySelectorAll('script').forEach((el) => el.remove())
   doc.body?.querySelectorAll('*').forEach((el) => {
@@ -255,7 +253,6 @@ const sanitizeHtmlString = (rawHtml) => {
   })
 
   const sanitized = doc.body?.innerHTML?.trim() || ''
-  console.log('[Sanitize] Sanitized HTML:', sanitized)
   return sanitized
 }
 
@@ -306,7 +303,6 @@ const initialConfig = {
 
 const convertHtmlToLexicalContent = async (rawHtml) => {
   const sanitizedHtml = sanitizeHtmlString(rawHtml || '<p></p>')
-  console.log('[HTML->Lexical] Sanitized HTML:', sanitizedHtml)
   const htmlDocument = parseHtmlDocument(sanitizedHtml || '<p></p>')
   const conversionEditor = createEditor({
     namespace: `${initialConfig.namespace}-html-import`,
@@ -326,7 +322,6 @@ const convertHtmlToLexicalContent = async (rawHtml) => {
 
     // Convert root block-level nodes to a temporary artificial node to ensure inline nodes wrap properly
     const nodes = $generateNodesFromDOM(conversionEditor, htmlDocument)
-    console.log('[HTML->Lexical] Generated nodes:', nodes)
 
     const lexicalNodes = Array.isArray(nodes)
       ? nodes
@@ -346,13 +341,9 @@ const convertHtmlToLexicalContent = async (rawHtml) => {
         .filter((node) => Boolean(node) && typeof node.getType === 'function')
       : []
 
-    console.log('[HTML->Lexical] Filtered lexical nodes:', lexicalNodes)
-
     root.clear()
     const nodesToAppend = lexicalNodes.length ? lexicalNodes : [$createParagraphNode()]
     root.append(...nodesToAppend)
-
-    console.log('[HTML->Lexical] Root child count after import:', root.getChildrenSize?.())
 
     // Generate HTML from the current state
     normalizedHtml = $generateHtmlFromNodes(conversionEditor, null) || '<p></p>'
@@ -360,9 +351,6 @@ const convertHtmlToLexicalContent = async (rawHtml) => {
 
   // IMPORTANT: Read state AFTER awaiting update completion
   lexicalJSON = JSON.stringify(conversionEditor.getEditorState().toJSON())
-
-  console.log('[HTML->Lexical] Result JSON:', lexicalJSON)
-  console.log('[HTML->Lexical] Result JSON parsed:', JSON.parse(lexicalJSON))
 
   return {
     lexicalJSON,
@@ -450,20 +438,13 @@ export default function ContentEditor() {
       setInitialEditorState(lexicalJSON)
       setLatestEditorState(lexicalJSON)
       setHtml(normalizedHtml || '<p></p>')
-      console.log('[HTML Sync] Updated state + html.', { lexicalJSON, normalizedHtml })
 
       if (editorRef.current) {
         try {
           const parsedState = editorRef.current.parseEditorState(lexicalJSON)
-          console.log('[HTML Sync] Parsed state isEmpty:', parsedState.isEmpty?.())
-          console.log('[HTML Sync] Parsed state nodeMap size:', parsedState._nodeMap?.size)
-          console.log('[HTML Sync] Parsed state JSON:', parsedState.toJSON())
           if (!parsedState.isEmpty()) {
             skipNextOnChangeRef.current = true
             editorRef.current.setEditorState(parsedState)
-            console.log('[HTML Sync] Applied state directly to editor instance.')
-          } else {
-            console.warn('[HTML Sync] Parsed state is empty, skipping apply.')
           }
         } catch (applyError) {
           console.error('Editor state apply failed', applyError)
@@ -3277,10 +3258,7 @@ function FormattingDropdown() {
       key: 'highlight',
       label: 'Highlight',
       shortcut: '',
-      action: () => {
-        // Highlight functionality placeholder
-        console.log('Highlight selected')
-      }
+      action: () => { }
     },
     {
       key: 'clear',
@@ -3444,7 +3422,6 @@ function EditorStateHydrator({ stateJSON, skipNextOnChangeRef }) {
       skipNextOnChangeRef.current = true
       editor.setEditorState(parsedState)
       appliedStateRef.current = stateJSON
-      console.log('[Hydrator] Applied editor state', parsedState)
     })
   }, [editor, stateJSON, skipNextOnChangeRef])
 
@@ -3510,7 +3487,7 @@ function TablePastePlugin() {
           })
         })
       } catch (error) {
-        console.warn('Table paste failed:', error)
+        console.error('Table paste failed:', error)
       }
     }
 
