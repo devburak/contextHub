@@ -109,11 +109,11 @@ export default function GalleryComponent({
         <div className={clsx('my-4', isSelected && 'ring-2 ring-blue-500 rounded-lg p-1')}>
             <div className={gridClass}>
                 {galleryImages.map((img, index) => (
-                    <div key={index} className="relative aspect-video overflow-hidden rounded-lg bg-gray-100">
+                    <div key={index} className="relative aspect-video overflow-hidden rounded-lg bg-gray-100 flex items-center justify-center">
                         <img
                             src={img.src}
                             alt={img.altText || `Galeri görseli ${index + 1}`}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-contain"
                             draggable={false}
                             loading="lazy"
                         />

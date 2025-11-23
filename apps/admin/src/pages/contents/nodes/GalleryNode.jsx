@@ -47,6 +47,25 @@ export class GalleryNode extends DecoratorNode {
         })
     }
 
+    static importDOM() {
+        return {
+            div: (domNode) => {
+                if (!(domNode instanceof HTMLDivElement)) {
+                    return null
+                }
+
+                if (!domNode.classList.contains('editor-gallery')) {
+                    return null
+                }
+
+                return {
+                    conversion: convertGalleryElement,
+                    priority: 2,
+                }
+            },
+        }
+    }
+
     exportJSON() {
         return {
             type: 'gallery',
@@ -64,11 +83,19 @@ export class GalleryNode extends DecoratorNode {
                 ? 'grid-cols-1 sm:grid-cols-2'
                 : 'grid-cols-1'
             }`
+        element.setAttribute('data-lexical-gallery', 'true')
+        element.setAttribute('data-layout', this.__layout || '')
+
+        try {
+            element.setAttribute('data-images', encodeURIComponent(JSON.stringify(this.__images || [])))
+        } catch (error) {
+            console.warn('[GalleryNode] Failed to encode images for export', error)
+        }
 
         const images = Array.isArray(this.__images) ? this.__images : []
         images.forEach((image) => {
             const figure = document.createElement('figure')
-            figure.className = 'editor-gallery__item overflow-hidden rounded-lg bg-gray-100'
+            figure.className = 'editor-gallery__item flex items-center justify-center overflow-hidden rounded-lg bg-gray-100'
 
             const img = document.createElement('img')
             img.src = image.src
@@ -77,8 +104,9 @@ export class GalleryNode extends DecoratorNode {
             if (image.height) img.height = image.height
             img.loading = 'lazy'
             img.style.width = '100%'
-            img.style.height = '100%'
-            img.style.objectFit = 'cover'
+            img.style.height = 'auto'
+            img.style.objectFit = 'contain'
+            img.style.display = 'block'
 
             figure.appendChild(img)
             element.appendChild(figure)
@@ -149,4 +177,60 @@ export function $createGalleryNode({ images, layout }) {
 
 export function $isGalleryNode(node) {
     return node instanceof GalleryNode
+}
+
+function convertGalleryElement(domNode) {
+    const layoutFromClass = domNode.classList.contains('lg:grid-cols-3')
+        ? '3-columns'
+        : domNode.classList.contains('sm:grid-cols-2')
+            ? '2-columns'
+            : domNode.dataset.layout || '1-column'
+
+    const imagesFromData = parseImagesFromDataAttribute(domNode.getAttribute('data-images'))
+
+    const images = imagesFromData.length ? imagesFromData : extractImagesFromDom(domNode)
+    if (!images.length) {
+        return null
+    }
+
+    return {
+        node: $createGalleryNode({
+            images,
+            layout: layoutFromClass || getGalleryLayoutForCount(images.length),
+        }),
+    }
+}
+
+function parseImagesFromDataAttribute(dataAttr) {
+    if (!dataAttr) return []
+    try {
+        const decoded = decodeURIComponent(dataAttr)
+        const parsed = JSON.parse(decoded)
+        if (Array.isArray(parsed)) {
+            return parsed.filter((img) => img && typeof img.src === 'string' && img.src.trim())
+        }
+    } catch (error) {
+        console.warn('[GalleryNode] Failed to parse gallery data-images attribute', error)
+    }
+    return []
+}
+
+function extractImagesFromDom(domNode) {
+    const images = []
+    const imageElements = Array.from(domNode.querySelectorAll('img'))
+    imageElements.forEach((img) => {
+        const src = img.getAttribute('src') || ''
+        if (!src) return
+        const widthAttr = img.getAttribute('width') || img.style.width
+        const heightAttr = img.getAttribute('height') || img.style.height
+        const width = widthAttr ? parseInt(widthAttr, 10) || undefined : undefined
+        const height = heightAttr ? parseInt(heightAttr, 10) || undefined : undefined
+        images.push({
+            src,
+            altText: img.getAttribute('alt') || '',
+            width,
+            height,
+        })
+    })
+    return images
 }
