@@ -51,7 +51,8 @@ export function buildExternalEmbed(item) {
 export function isYouTubeUrl(value) {
   try {
     const parsed = new URL(value)
-    return /(^|\.)youtube\.com$/i.test(parsed.hostname) || /(^|\.)youtu\.be$/i.test(parsed.hostname)
+    const host = parsed.hostname.toLowerCase()
+    return isYouTubeHost(host)
   } catch (error) {
     return false
   }
@@ -60,10 +61,12 @@ export function isYouTubeUrl(value) {
 export function extractYouTubeId(value) {
   try {
     const parsed = new URL(value)
-    if (/youtu\.be$/i.test(parsed.hostname)) {
+    const host = parsed.hostname.toLowerCase()
+
+    if (host === 'youtu.be' || host.endsWith('.youtu.be')) {
       return parsed.pathname.split('/').filter(Boolean)[0] || null
     }
-    if (/youtube\.com$/i.test(parsed.hostname)) {
+    if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtube-nocookie.com' || host.endsWith('.youtube-nocookie.com')) {
       const idParam = parsed.searchParams.get('v')
       if (idParam) return idParam
       const segments = parsed.pathname.split('/').filter(Boolean)
@@ -105,4 +108,39 @@ export function extractVimeoId(value) {
 export function cleanVimeoId(value) {
   if (!value) return ''
   return value.replace(/[^a-zA-Z0-9]/g, '')
+}
+
+export function detectVideoProvider(value) {
+  if (!value) {
+    return { provider: null, providerId: null }
+  }
+
+  try {
+    if (isYouTubeUrl(value)) {
+      const id = cleanYouTubeId(extractYouTubeId(value) || '')
+      return { provider: 'youtube', providerId: id || null }
+    }
+
+    if (isVimeoUrl(value)) {
+      const id = cleanVimeoId(extractVimeoId(value) || '')
+      return { provider: 'vimeo', providerId: id || null }
+    }
+  } catch (error) {
+    return { provider: null, providerId: null }
+  }
+
+  return { provider: null, providerId: null }
+}
+
+function isYouTubeHost(host) {
+  if (!host) return false
+  const normalized = host.toLowerCase()
+  return (
+    normalized === 'youtube.com' ||
+    normalized.endsWith('.youtube.com') ||
+    normalized === 'youtube-nocookie.com' ||
+    normalized.endsWith('.youtube-nocookie.com') ||
+    normalized === 'youtu.be' ||
+    normalized.endsWith('.youtu.be')
+  )
 }

@@ -33,6 +33,9 @@ import {
   REDO_COMMAND,
   SELECTION_CHANGE_COMMAND,
   UNDO_COMMAND,
+  ParagraphNode,
+  TextNode,
+  createEditor,
 } from 'lexical'
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
 import { $setBlocksType } from '@lexical/selection'
@@ -63,8 +66,12 @@ import TableCellFocusPlugin from './plugins/TableCellFocusPlugin.jsx'
 import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
 import ImageHandlersPlugin from './plugins/ImageHandlersPlugin.jsx'
 import VideoPlugin, { INSERT_VIDEO_COMMAND } from './plugins/VideoPlugin.jsx'
+import EmbedPlugin, { INSERT_EMBED_COMMAND } from './plugins/EmbedPlugin.jsx'
+import GalleryPlugin, { INSERT_GALLERY_COMMAND } from './plugins/GalleryPlugin.jsx'
 import { ImageNode, $isImageNode } from './nodes/ImageNode.jsx'
 import { VideoNode } from './nodes/VideoNode.jsx'
+import { EmbedNode } from './nodes/EmbedNode.jsx'
+import { GalleryNode, getGalleryLayoutForCount } from './nodes/GalleryNode.jsx'
 import {
   TableNode,
   TableRowNode,
@@ -76,6 +83,7 @@ import {
 } from './nodes/TableNode.jsx'
 import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
+import { mediaToImagePayload } from './utils/mediaHelpers.js'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
 
 const DEFAULT_FONT_SIZE = 12
@@ -129,6 +137,57 @@ const styleObjectToString = (styles) =>
     .map(([key, value]) => `${key}: ${value}`)
     .join('; ')
 
+const unwrapElement = (element) => {
+  if (!element || !element.parentNode) return
+  const parent = element.parentNode
+  while (element.firstChild) {
+    parent.insertBefore(element.firstChild, element)
+  }
+  parent.removeChild(element)
+}
+
+const parseHtmlDocument = (htmlString) => {
+  if (typeof DOMParser === 'undefined') {
+    throw new Error('DOMParser is not available in this environment.')
+  }
+  const parser = new DOMParser()
+  return parser.parseFromString(htmlString || '<p></p>', 'text/html')
+}
+
+const buildEmbedPayloadFromInput = (rawInput) => {
+  const trimmed = (rawInput || '').trim()
+  if (!trimmed) return null
+
+  const looksLikeHtml = /<iframe[\s\S]*?>/i.test(trimmed)
+
+  if (!looksLikeHtml && !trimmed.startsWith('<')) {
+    return { src: trimmed, attributes: {} }
+  }
+
+  try {
+    const doc = parseHtmlDocument(trimmed)
+    const iframe = doc.querySelector('iframe')
+    if (!iframe) {
+      return null
+    }
+
+    const src = iframe.getAttribute('src')?.trim()
+    if (!src) {
+      return null
+    }
+
+    const attributes = {}
+    Array.from(iframe.attributes).forEach(({ name, value }) => {
+      if (!name) return
+      attributes[name.toLowerCase()] = value
+    })
+
+    return { src, attributes }
+  } catch (error) {
+    return null
+  }
+}
+
 function formatDateTimeLocal(date = new Date()) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
     return ''
@@ -156,8 +215,11 @@ const toHexColor = (color) => {
 
 const sanitizeHtmlString = (rawHtml) => {
   if (!rawHtml || typeof rawHtml !== 'string') return ''
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(rawHtml, 'text/html')
+  const spanRemovedHtml = rawHtml
+    .replace(/<span[^>]*style="[^"]*white-space:\s*pre-wrap;?[^"]*"[^>]*>/gi, '')
+    .replace(/<span[^>]*>/gi, (match) => (match.includes('white-space') ? '' : match))
+    .replace(/<\/span>/gi, '')
+  const doc = parseHtmlDocument(spanRemovedHtml)
 
   doc.querySelectorAll('script').forEach((el) => el.remove())
   doc.body?.querySelectorAll('*').forEach((el) => {
@@ -169,11 +231,29 @@ const sanitizeHtmlString = (rawHtml) => {
       }
       if ((attrName === 'src' || attrName === 'href') && /^\s*javascript:/i.test(attr.value)) {
         el.removeAttribute(attr.name)
+        return
+      }
+      if (attrName === 'style') {
+        const styles = parseStyleString(attr.value)
+        if (styles['white-space']) {
+          delete styles['white-space']
+        }
+        const cleanedStyle = styleObjectToString(styles)
+        if (cleanedStyle) {
+          el.setAttribute('style', cleanedStyle)
+        } else {
+          el.removeAttribute('style')
+        }
       }
     })
   })
 
-  return doc.body?.innerHTML?.trim() || ''
+  doc.body?.querySelectorAll('span').forEach((span) => {
+    unwrapElement(span)
+  })
+
+  const sanitized = doc.body?.innerHTML?.trim() || ''
+  return sanitized
 }
 
 // Lexical Playground inspired theme
@@ -215,10 +295,67 @@ const theme = {
 const initialConfig = {
   namespace: 'content-editor',
   theme,
-  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, TableNode, TableRowNode, TableCellNode],
+  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, EmbedNode, GalleryNode, TableNode, TableRowNode, TableCellNode, ParagraphNode, TextNode],
   onError(error) {
     console.error(error)
   },
+}
+
+const convertHtmlToLexicalContent = async (rawHtml) => {
+  const sanitizedHtml = sanitizeHtmlString(rawHtml || '<p></p>')
+  const htmlDocument = parseHtmlDocument(sanitizedHtml || '<p></p>')
+  const conversionEditor = createEditor({
+    namespace: `${initialConfig.namespace}-html-import`,
+    nodes: initialConfig.nodes,
+    theme: initialConfig.theme,
+    editable: false,
+  })
+
+  let lexicalJSON = INITIAL_EDITOR_STATE
+  let normalizedHtml = sanitizedHtml || '<p></p>'
+
+  const emptyState = conversionEditor.parseEditorState(INITIAL_EDITOR_STATE)
+  conversionEditor.setEditorState(emptyState)
+
+  await conversionEditor.update(() => {
+    const root = $getRoot()
+
+    // Convert root block-level nodes to a temporary artificial node to ensure inline nodes wrap properly
+    const nodes = $generateNodesFromDOM(conversionEditor, htmlDocument)
+
+    const lexicalNodes = Array.isArray(nodes)
+      ? nodes
+        .map((node) => {
+          if (!node || typeof node.getType !== 'function') {
+            return null
+          }
+          if (node.getType && node.getType() === 'root') {
+            const children = node.getChildren()
+            if (!children.length) return null
+            const replacement = $createParagraphNode()
+            children.forEach((child) => replacement.append(child))
+            return replacement
+          }
+          return node
+        })
+        .filter((node) => Boolean(node) && typeof node.getType === 'function')
+      : []
+
+    root.clear()
+    const nodesToAppend = lexicalNodes.length ? lexicalNodes : [$createParagraphNode()]
+    root.append(...nodesToAppend)
+
+    // Generate HTML from the current state
+    normalizedHtml = $generateHtmlFromNodes(conversionEditor, null) || '<p></p>'
+  })
+
+  // IMPORTANT: Read state AFTER awaiting update completion
+  lexicalJSON = JSON.stringify(conversionEditor.getEditorState().toJSON())
+
+  return {
+    lexicalJSON,
+    normalizedHtml,
+  }
 }
 
 function Placeholder() {
@@ -262,7 +399,7 @@ export default function ContentEditor() {
   const [versionActionError, setVersionActionError] = useState('')
   const [featuredMedia, setFeaturedMedia] = useState(null)
   const [featuredMediaId, setFeaturedMediaId] = useState(null)
-  const [mediaPickerState, setMediaPickerState] = useState({ open: false, mode: 'image', onSelect: null })
+  const [mediaPickerState, setMediaPickerState] = useState({ open: false, mode: 'image', onSelect: null, multiple: false })
   const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false)
   const [includeTableHeaders, setIncludeTableHeaders] = useState(false)
   const [editorAnchorElem, setEditorAnchorElem] = useState(null)
@@ -276,7 +413,8 @@ export default function ContentEditor() {
   const [isSlugAutoGenerated, setIsSlugAutoGenerated] = useState(true)
   const [slugValidationPending, setSlugValidationPending] = useState(false)
   const [fileLinkEditor, setFileLinkEditor] = useState({ open: false, url: '', name: '', download: false, linkKey: null, error: '' })
-  const [linkEditor, setLinkEditor] = useState({ open: false, url: '', text: '', newTab: true, linkKey: null, error: '' })
+  const [linkEditor, setLinkEditor] = useState({ open: false, url: '', text: '', newTab: true, linkKey: null, error: '', lockText: false, type: 'link' })
+  const [embedDialog, setEmbedDialog] = useState({ open: false, value: '', error: '' })
   const editorRef = useRef(null)
   const pendingHtmlSyncRef = useRef(null)
   const slugDebounceRef = useRef(null)
@@ -288,43 +426,30 @@ export default function ContentEditor() {
   const textareaClass = inputClass
   const canUseHtmlMode = role === 'owner'
 
-  const syncPendingHtmlToEditor = useCallback(() => {
+  const syncPendingHtmlToEditor = useCallback(async () => {
     if (renderMode !== 'json') return
-    const editorInstance = editorRef.current
-    if (!editorInstance) return
     if (pendingHtmlSyncRef.current === null) return
 
     const htmlToImport = pendingHtmlSyncRef.current
-    const sanitizedHtml = sanitizeHtmlString(htmlToImport || '<p></p>')
-    const container = document.createElement('div')
-    container.innerHTML = sanitizedHtml || '<p></p>'
-
     pendingHtmlSyncRef.current = null
 
     try {
-      skipNextOnChangeRef.current = true
-      editorInstance.update(() => {
-        const root = $getRoot()
-        const nodes = $generateNodesFromDOM(editorInstance, container)
-        const lexicalNodes = Array.isArray(nodes)
-          ? nodes.filter((node) => node && typeof node.getType === 'function')
-          : []
+      const { lexicalJSON, normalizedHtml } = await convertHtmlToLexicalContent(htmlToImport)
+      setInitialEditorState(lexicalJSON)
+      setLatestEditorState(lexicalJSON)
+      setHtml(normalizedHtml || '<p></p>')
 
-        if (!lexicalNodes.length) {
-          if (sanitizedHtml.trim().length === 0) {
-            root.clear()
-            root.append($createParagraphNode())
+      if (editorRef.current) {
+        try {
+          const parsedState = editorRef.current.parseEditorState(lexicalJSON)
+          if (!parsedState.isEmpty()) {
+            skipNextOnChangeRef.current = true
+            editorRef.current.setEditorState(parsedState)
           }
-          // If nothing valid to import, keep existing content
-          return
+        } catch (applyError) {
+          console.error('Editor state apply failed', applyError)
         }
-        root.clear()
-        root.append(...lexicalNodes)
-      })
-      const updatedStateJSON = JSON.stringify(editorInstance.getEditorState().toJSON())
-      setInitialEditorState(updatedStateJSON)
-      setLatestEditorState(updatedStateJSON)
-      setHtml(sanitizedHtml || '<p></p>')
+      }
     } catch (error) {
       console.error('HTML import failed', error)
       setSaveError('HTML içeriği editöre aktarılırken hata oluştu. Lütfen HTML\'i kontrol edin.')
@@ -346,20 +471,20 @@ export default function ContentEditor() {
   const normaliseIdList = useCallback((values = []) => (
     Array.isArray(values)
       ? values
-          .map((value) => {
-            if (!value) return null
-            if (typeof value === 'string') return value
-            if (typeof value === 'object') {
-              if (value._id) return String(value._id)
-              if (typeof value.toString === 'function') return value.toString()
-            }
-            try {
-              return String(value)
-            } catch (error) {
-              return null
-            }
-          })
-          .filter(Boolean)
+        .map((value) => {
+          if (!value) return null
+          if (typeof value === 'string') return value
+          if (typeof value === 'object') {
+            if (value._id) return String(value._id)
+            if (typeof value.toString === 'function') return value.toString()
+          }
+          try {
+            return String(value)
+          } catch (error) {
+            return null
+          }
+        })
+        .filter(Boolean)
       : []
   ), [])
 
@@ -628,15 +753,13 @@ export default function ContentEditor() {
     // 1. New content (isNew = true) AND slug is auto-generated, OR
     // 2. Slug is empty/cleared (regardless of isNew) - allow regeneration
     const shouldAutoUpdate = !title ? false : (isNew && isSlugAutoGenerated) || !slug
-    
+
     if (!shouldAutoUpdate) return
 
     // Clear previous debounce timer
     if (slugDebounceRef.current) {
       clearTimeout(slugDebounceRef.current)
     }
-
-    setSlugValidationPending(true)
 
     // Set new debounce timer (5 seconds)
     slugDebounceRef.current = setTimeout(async () => {
@@ -645,10 +768,11 @@ export default function ContentEditor() {
       setSlugError('')
 
       // Validate slug uniqueness with API
+      setSlugValidationPending(true)
       try {
-        const response = await checkSlugAvailability({ 
-          slug: computedSlug, 
-          id: isNew ? undefined : id 
+        const response = await checkSlugAvailability({
+          slug: computedSlug,
+          id: isNew ? undefined : id
         })
         if (!response.available) {
           setSlugError(`"${computedSlug}" zaten kullanılıyor. Lütfen farklı bir başlık seçin.`)
@@ -658,8 +782,9 @@ export default function ContentEditor() {
       } catch (err) {
         console.error('Slug validation error:', err)
         // Don't set error on network issues, just clear validation pending
+      } finally {
+        setSlugValidationPending(false)
       }
-      setSlugValidationPending(false)
     }, 5000) // 5 second debounce
 
     return () => {
@@ -673,20 +798,20 @@ export default function ContentEditor() {
   useEffect(() => {
     // Only validate slug for existing content when it's manually edited (not auto-generated)
     // AND slug is not empty (empty slug triggers auto-generation instead)
-    if (isNew || isSlugAutoGenerated || !slug) return
+    if (isSlugAutoGenerated || !slug) return
 
     // Clear previous debounce timer
     if (manualSlugDebounceRef.current) {
       clearTimeout(manualSlugDebounceRef.current)
     }
 
-    setSlugValidationPending(true)
-
     // Set new debounce timer (5 seconds)
     manualSlugDebounceRef.current = setTimeout(async () => {
       // Validate slug uniqueness with API
+      setSlugValidationPending(true)
+      const validationId = isNew ? undefined : id
       try {
-        const response = await checkSlugAvailability({ slug, id })
+        const response = await checkSlugAvailability({ slug, id: validationId })
         if (!response.available) {
           setSlugError(`"${slug}" zaten kullanılıyor. Lütfen farklı bir slug seçin.`)
         } else {
@@ -695,8 +820,9 @@ export default function ContentEditor() {
       } catch (err) {
         console.error('Slug validation error:', err)
         // Don't set error on network issues
+      } finally {
+        setSlugValidationPending(false)
       }
-      setSlugValidationPending(false)
     }, 5000) // 5 second debounce
 
     return () => {
@@ -816,9 +942,28 @@ export default function ContentEditor() {
       setSaveError('')
     }
 
+    let lexicalStateString = latestEditorState || INITIAL_EDITOR_STATE
+
+    if (renderMode === 'html') {
+      try {
+        const { lexicalJSON, normalizedHtml } = await convertHtmlToLexicalContent(html)
+        lexicalStateString = lexicalJSON
+        setLatestEditorState(lexicalJSON)
+        if (normalizedHtml !== html) {
+          setHtml(normalizedHtml)
+        }
+      } catch (conversionError) {
+        console.error('HTML to Lexical conversion failed', conversionError)
+        if (!silent) {
+          setSaveError('HTML içeriği Lexical formatına dönüştürülemedi. Lütfen HTML\'i kontrol edin.')
+        }
+        return null
+      }
+    }
+
     let parsedLexical
     try {
-      parsedLexical = JSON.parse(latestEditorState || INITIAL_EDITOR_STATE)
+      parsedLexical = JSON.parse(lexicalStateString || INITIAL_EDITOR_STATE)
     } catch (error) {
       console.error('Editor state parse failed, using fallback.', error)
       parsedLexical = JSON.parse(INITIAL_EDITOR_STATE)
@@ -854,7 +999,7 @@ export default function ContentEditor() {
       console.error('Save failed', err)
       throw err
     }
-  }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, tags, featuredMediaId, isNew, createMut, updateMut, id])
+  }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, tags, featuredMediaId, isNew, createMut, updateMut, id, renderMode])
 
   const onLexicalChange = useCallback((editorState, editor) => {
     editorState.read(() => {
@@ -1035,11 +1180,12 @@ export default function ContentEditor() {
       open: true,
       mode: options?.mode || 'image',
       onSelect: options?.onSelect || null,
+      multiple: Boolean(options?.multiple),
     })
   }, [])
 
   const closeMediaPicker = useCallback(() => {
-    setMediaPickerState((prev) => ({ ...prev, open: false, onSelect: null }))
+    setMediaPickerState((prev) => ({ ...prev, open: false, onSelect: null, multiple: false }))
   }, [])
 
   const handleFeaturedMediaSelect = (media) => {
@@ -1073,6 +1219,33 @@ export default function ContentEditor() {
     setDirty(true)
     setSaveError('')
   }, [renderMode, latestEditorState, canUseHtmlMode])
+
+  const openEmbedDialog = useCallback(() => {
+    setEmbedDialog({ open: true, value: '', error: '' })
+  }, [])
+
+  const closeEmbedDialog = useCallback(() => {
+    setEmbedDialog({ open: false, value: '', error: '' })
+  }, [])
+
+  const applyEmbedDialog = useCallback(() => {
+    const payload = buildEmbedPayloadFromInput(embedDialog.value)
+    if (!payload) {
+      setEmbedDialog((prev) => ({ ...prev, error: 'Geçerli bir iframe kodu veya URL girin.' }))
+      return
+    }
+
+    const editorInstance = editorRef.current
+    if (!editorInstance) {
+      setEmbedDialog((prev) => ({ ...prev, error: 'Editör hazır değil' }))
+      return
+    }
+
+    editorInstance.dispatchCommand(INSERT_EMBED_COMMAND, payload)
+    setEmbedDialog({ open: false, value: '', error: '' })
+    setDirty(true)
+    setSaveError('')
+  }, [embedDialog.value])
 
 
   const currentFeaturedMediaId = featuredMediaId
@@ -1195,627 +1368,628 @@ export default function ContentEditor() {
   return (
     <>
       <div className="grid grid-cols-1 gap-6 h-[calc(100vh-80px)]" style={{ gridTemplateColumns: sidebarOpen ? '1fr 300px' : '1fr' }}>
-      <div className="space-y-6 overflow-y-auto pr-4">
-        <section className={`${cardClass} p-6 space-y-5`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">Temel Bilgiler</h2>
-              <p className="text-sm text-gray-500">Başlık, slug ve özet ayarlarını düzenle.</p>
-            </div>
-            {!isNew && (
-              <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-                V{contentData?.version ?? 1}
-              </span>
-            )}
-          </div>
-
-          <div className="space-y-5">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700">Başlık</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => {
-                  setTitle(e.target.value)
-                  setDirty(true)
-                  setSaveError('')
-                  // For new content, slug will auto-update on title change
-                  // For existing content, slug doesn't auto-update
-                }}
-                className={inputClass}
-                placeholder="Başlık"
-              />
+        <div className="space-y-6 overflow-y-auto pr-4">
+          <section className={`${cardClass} p-6 space-y-5`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Temel Bilgiler</h2>
+                <p className="text-sm text-gray-500">Başlık, slug ve özet ayarlarını düzenle.</p>
+              </div>
+              {!isNew && (
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+                  V{contentData?.version ?? 1}
+                </span>
+              )}
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700">Slug</label>
-              <div className="relative">
+            <div className="space-y-5">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Başlık</label>
                 <input
                   type="text"
-                  value={slug}
+                  value={title}
                   onChange={(e) => {
-                    // Allow edits on existing content
-                    if (!isNew) {
+                    setTitle(e.target.value)
+                    setDirty(true)
+                    setSaveError('')
+                    // For new content, slug will auto-update on title change
+                    // For existing content, slug doesn't auto-update
+                  }}
+                  className={inputClass}
+                  placeholder="Başlık"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Slug</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={slug}
+                    onChange={(e) => {
                       const newSlug = e.target.value
                       setSlug(newSlug)
                       setDirty(true)
                       setSlugError('')
                       setSaveError('')
-                      
-                      // If slug is cleared (empty), allow auto-generation from title
+
                       if (!newSlug.trim()) {
                         setIsSlugAutoGenerated(true)
                       } else {
-                        // If slug has value, mark as manual edit
                         setIsSlugAutoGenerated(false)
                       }
-                    }
-                  }}
-                  disabled={isNew}
-                  className={clsx(inputClass, isNew && 'opacity-60 cursor-not-allowed bg-gray-100', slugError && 'border-red-300 focus:border-red-400 focus:ring-red-300')}
-                  placeholder={isNew ? 'Başlık değiştiğinde otomatik güncellenir' : 'ornek-slug'}
-                />
-                {isNew && (
-                  <div className="absolute right-3 top-3 text-amber-600">
-                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                )}
+                    }}
+                    disabled={slugValidationPending}
+                    className={clsx(
+                      inputClass,
+                      slugValidationPending && 'opacity-60 cursor-wait bg-gray-100',
+                      slugError && 'border-red-300 focus:border-red-400 focus:ring-red-300'
+                    )}
+                    placeholder={isNew ? 'Başlık değiştiğinde otomatik güncellenir' : 'ornek-slug'}
+                  />
+                  {isNew && (
+                    <div className="absolute right-3 top-3 text-amber-600">
+                      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                {slugValidationPending && <p className="mt-1 text-xs text-amber-600">Slug kontrol ediliyor...</p>}
+                {slugError && <p className="mt-1 text-xs text-red-600">{slugError}</p>}
+                {isNew && <p className="mt-1 text-xs text-gray-500">Başlık değiştiğinde slug otomatik olarak güncellenecektir</p>}
+                {!isNew && !slug && <p className="mt-1 text-xs text-gray-500">Slug silinirse başlık değişiminde otomatik olarak yeniden oluşturulur</p>}
               </div>
-              {slugValidationPending && <p className="mt-1 text-xs text-amber-600">Slug kontrol ediliyor...</p>}
-              {slugError && <p className="mt-1 text-xs text-red-600">{slugError}</p>}
-              {isNew && <p className="mt-1 text-xs text-gray-500">Başlık değiştiğinde slug otomatik olarak güncellenecektir</p>}
-              {!isNew && !slug && <p className="mt-1 text-xs text-gray-500">Slug silinirse başlık değişiminde otomatik olarak yeniden oluşturulur</p>}
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Özet</label>
+                <textarea
+                  rows={3}
+                  value={summary}
+                  onChange={(e) => {
+                    setSummary(e.target.value)
+                    setDirty(true)
+                    setSaveError('')
+                  }}
+                  className={textareaClass}
+                  placeholder="Kısa açıklama"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Kategoriler</label>
+                <CategoryMultiSelect
+                  selectedCategories={selectedCategoryRecords}
+                  onAdd={handleCategoryAdd}
+                  onRemove={handleCategoryRemove}
+                />
+              </div>
+
             </div>
+          </section>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700">Özet</label>
-              <textarea
-                rows={3}
-                value={summary}
-                onChange={(e) => {
-                  setSummary(e.target.value)
-                  setDirty(true)
-                  setSaveError('')
-                }}
-                className={textareaClass}
-                placeholder="Kısa açıklama"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700">Kategoriler</label>
-              <CategoryMultiSelect
-                selectedCategories={selectedCategoryRecords}
-                onAdd={handleCategoryAdd}
-                onRemove={handleCategoryRemove}
-              />
-            </div>
-
-          </div>
-        </section>
-
-        <section className={`${cardClass} space-y-4 p-6 flex flex-col h-full`}>
+          <section className={`${cardClass} space-y-4 p-6 flex flex-col h-full`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-gray-900">İçerik</h2>
                 </div>
-              {canUseHtmlMode && (
-                <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-gray-100 border border-gray-200">
-                  <span className="text-xs font-medium text-gray-600">Kaynak:</span>
-                  <button
-                    onClick={handleSwitchToEditor}
-                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
-                      renderMode === 'json'
+                {canUseHtmlMode && (
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-gray-100 border border-gray-200">
+                    <span className="text-xs font-medium text-gray-600">Kaynak:</span>
+                    <button
+                      onClick={handleSwitchToEditor}
+                      className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${renderMode === 'json'
                         ? 'bg-blue-100 text-blue-700'
                         : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                    }`}
-                    title={renderMode === 'json' ? 'JSON formatında düzenle' : 'JSON formatına geç'}
-                  >
-                    JSON
-                  </button>
-                  <button
-                    onClick={handleSwitchToHtml}
-                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
-                      renderMode === 'html'
+                        }`}
+                      title={renderMode === 'json' ? 'JSON formatında düzenle' : 'JSON formatına geç'}
+                    >
+                      JSON
+                    </button>
+                    <button
+                      onClick={handleSwitchToHtml}
+                      className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${renderMode === 'html'
                         ? 'bg-amber-100 text-amber-700'
                         : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                    }`}
-                    title={renderMode === 'html' ? 'HTML formatında düzenle' : 'HTML formatına geç'}
-                  >
-                    HTML
-                  </button>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-              title={sidebarOpen ? 'Sidebar\'ı kapat' : 'Sidebar\'ı aç'}
-            >
-              {sidebarOpen ? (
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7m0 0l-7 7m7-7H6" />
-                </svg>
-              ) : (
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 0l-7 7 7 7" />
-                </svg>
-              )}
-            </button>
-          </div>
-          <div className="flex-1 rounded-lg border border-gray-200 bg-white flex flex-col overflow-hidden">
-            {renderMode === 'json' || !canUseHtmlMode ? (
-              <LexicalComposer initialConfig={initialConfig}>
-                <Toolbar
-                  openMediaPicker={openMediaPicker}
-                  isTableSelectorOpen={isTableSelectorOpen}
-                  setIsTableSelectorOpen={setIsTableSelectorOpen}
-                  includeTableHeaders={includeTableHeaders}
-                  setIncludeTableHeaders={setIncludeTableHeaders}
-                  fileLinkEditor={fileLinkEditor}
-                  setFileLinkEditor={setFileLinkEditor}
-                  setLinkEditor={setLinkEditor}
-                />
-                <ImagePlugin />
-                <ImageHandlersPlugin openMediaPicker={openMediaPicker} />
-                <VideoPlugin />
-                <div className="relative flex-1 flex overflow-hidden flex-col" ref={editorContainerRef}>
-                  <RichTextPlugin
-                    contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-x-auto overflow-y-visible scroll-smooth" />}
-                    placeholder={<Placeholder />}
-                    ErrorBoundary={LexicalErrorBoundary}
-                  />
-                  <HistoryPlugin />
-                  <ListPlugin />
-                  <ListMaxIndentLevelPlugin maxDepth={4} />
-                  <LinkPlugin />
-                  <AutoLinkPlugin matchers={urlMatchers} />
-                  <CodeHighlightingPlugin />
-                  <EditorRefPlugin onReady={(editor) => {
-                    editorRef.current = editor
-                    syncPendingHtmlToEditor()
-                  }} />
-                  <EditorStateHydrator stateJSON={initialEditorState} skipNextOnChangeRef={skipNextOnChangeRef} />
-                  <OnChangePlugin onChange={onLexicalChange} />
-                  <TablePastePlugin />
-                  <TableCellFocusPlugin />
-                  {editorAnchorElem && <DraggableBlockPlugin anchorElem={editorAnchorElem} />}
-                  {editorAnchorElem && <TableActionMenuPlugin anchorElem={editorAnchorElem} />}
-                  {editorAnchorElem && <TableHoverActionsPlugin anchorElem={editorAnchorElem} />}
-                  {editorAnchorElem && <TableCellResizerPlugin anchorElem={editorAnchorElem} />}
-                  {editorAnchorElem && <TableSelectionPlugin anchorElem={editorAnchorElem} />}
-                  <FloatingTextFormatToolbarPlugin
-                    onOpenLinkModal={(payload) => setLinkEditor(payload)}
-                  />
-                </div>
-              </LexicalComposer>
-            ) : (
-              <textarea
-                value={html}
-                onChange={(e) => {
-                  setHtml(e.target.value)
-                  setDirty(true)
-                  setSaveError('')
-                }}
-                className="flex-1 px-4 py-3 outline-none font-mono text-sm resize-none border-none focus:ring-0"
-                placeholder="HTML içeriğini buraya yazın..."
-              />
-            )}
-          </div>
-        </section>
-
-      </div>
-
-      {sidebarOpen && (
-        <aside className="space-y-6 h-[calc(100vh-80px)] overflow-y-auto sticky top-16 pr-4 min-w-[300px]">
-          <section className={`${cardClass} space-y-4 p-5`}>
-          <h3 className="text-sm font-semibold text-gray-900">Yayınlama</h3>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700">Durum</label>
-            <select
-              value={status}
-              onChange={(e) => {
-                const nextStatus = e.target.value
-                if (nextStatus === 'scheduled' && !allowScheduling && status !== 'scheduled') {
-                  setSaveError('Bu tenant için içerik zamanlama özelliği kapalı.')
-                  return
-                }
-                setStatus(nextStatus)
-                setPublishAt((prev) => {
-                  if (nextStatus === 'scheduled') {
-                    return prev || formatDateTimeLocal()
-                  }
-                  if (nextStatus === 'published') {
-                    return prev || formatDateTimeLocal()
-                  }
-                  return prev
-                })
-                setDirty(true)
-                setSaveError('')
-              }}
-              className={inputClass}
-            >
-              {statusOptions.map((option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                  disabled={option.value === 'scheduled' && !allowScheduling && status !== 'scheduled'}
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {!allowScheduling && status !== 'scheduled' && (
-              <p className="mt-1 text-xs text-gray-500">Bu tenant için içerik zamanlama özelliği kapalı.</p>
-            )}
-            {!allowScheduling && status === 'scheduled' && (
-              <p className="mt-1 text-xs text-amber-600">
-                Zamanlama bu tenant için kapalı; mevcut içerik zamanlanmış durumda. Durumu değiştirdiğinizde yeniden zamanlayamazsınız.
-              </p>
-            )}
-          </div>
-          {(status === 'scheduled' || status === 'published') && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700">
-                {status === 'scheduled' ? 'Planlanan Yayın Tarihi' : 'Yayın Tarihi'}
-              </label>
-              <input
-                type="datetime-local"
-                value={publishAt}
-                onChange={(e) => {
-                  setPublishAt(e.target.value)
-                  setDirty(true)
-                  setSaveError('')
-                }}
-                className={inputClass}
-              />
-              {status === 'published' && (
-                <p className="mt-1 text-xs text-gray-500">Durum "Yayında" olduğunda tarih varsayılan olarak şuanı alır, dilerseniz düzenleyebilirsiniz.</p>
-              )}
-            </div>
-          )}
-        </section>
-        {!isNew && (
-          <section className={`${cardClass} space-y-4 p-5`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Bağlı Galeriler</h3>
-                <p className="text-xs text-gray-600">İçerikle ilişkilendirilecek galerileri seç.</p>
-              </div>
-              <a
-                href="/galeriler"
-                className="text-xs font-medium text-blue-600 hover:text-blue-500"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Galerileri yönet
-              </a>
-            </div>
-
-            <input
-              type="search"
-              placeholder="Galeri ara..."
-              value={gallerySearch}
-              onChange={(e) => setGallerySearch(e.target.value)}
-              className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-            />
-
-            {galleriesListQuery.isLoading ? (
-              <p className="text-sm text-gray-500">Galeriler yükleniyor...</p>
-            ) : availableGalleries.length === 0 ? (
-              <p className="text-sm text-gray-500">Aramana uyan galeri bulunamadı.</p>
-            ) : (
-              <div className="space-y-2">
-                {availableGalleries.map((gallery) => {
-                  const id = String(gallery.id || gallery._id)
-                  const checked = selectedGalleryIds.includes(id)
-                  return (
-                    <label
-                      key={id}
-                      className={clsx(
-                        'flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm shadow-sm',
-                        checked ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-blue-300'
-                      )}
+                        }`}
+                      title={renderMode === 'html' ? 'HTML formatında düzenle' : 'HTML formatına geç'}
                     >
-                      <div className="flex flex-col">
-                        <span className="font-medium">{gallery.title}</span>
-                        <span className="text-xs text-gray-500">{gallery.items?.length || 0} medya · {gallery.status === 'published' ? 'Yayında' : 'Taslak'}</span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        checked={checked}
-                        onChange={(e) => handleGalleryToggle(id, e.target.checked)}
-                      />
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-
-            {galleryError && <p className="text-xs text-red-600">{galleryError}</p>}
-
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={handleGallerySave}
-                disabled={isNew || !galleriesDirty || setGalleriesMut.isLoading}
-                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
-              >
-                {setGalleriesMut.isLoading ? 'Kaydediliyor...' : 'Bağlantıları Kaydet'}
-              </button>
-            </div>
-
-            {attachedGalleries.length > 0 && (
-              <div className="space-y-2 border-t border-gray-200 pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Bağlı galeriler</p>
-                <ul className="space-y-1 text-xs text-gray-600">
-                  {attachedGalleries.map((gallery) => (
-                    <li key={gallery.id || gallery._id} className="truncate">
-                      • {gallery.title}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-        )}
-        {isNew && (
-          <section className={`${cardClass} space-y-3 p-5`}>
-            <h3 className="text-sm font-semibold text-gray-900">Bağlı Galeriler</h3>
-            <p className="text-sm text-gray-600">
-              Galeri eklemek için önce içeriği kaydet. İçerik oluşturulduktan sonra galerileri bu panelden ilişkilendirebilirsin.
-            </p>
-          </section>
-        )}
-        <section className={`${cardClass} space-y-3 p-5`}>
-          <h3 className="text-sm font-semibold text-gray-900">Öne çıkan görsel</h3>
-          {featuredMedia ? (
-            <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <div className="h-24 w-24 flex-none overflow-hidden rounded-md bg-gray-100">
-                {featuredMediaThumbnail ? (
-                  <img
-                    src={featuredMediaThumbnail}
-                    alt={featuredMediaAlt}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-gray-300">
-                    <PhotoIcon className="h-8 w-8" />
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1 space-y-2">
-                <div>
-                  <p className="truncate text-sm font-medium text-gray-900">
-                    {featuredMedia.originalName || featuredMedia.fileName || 'Seçili görsel'}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {[featuredMedia.mimeType || 'Görsel', featuredMediaSizeKb ? `${featuredMediaSizeKb} KB` : null]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openMediaPicker({ mode: 'image', onSelect: handleFeaturedMediaSelect })}
-                    className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                  >
-                    Değiştir
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleFeaturedMediaRemove}
-                    className="inline-flex items-center rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
-                  >
-                    Kaldır
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => openMediaPicker({ mode: 'image', onSelect: handleFeaturedMediaSelect })}
-              className="flex w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600"
-            >
-              <PhotoIcon className="h-8 w-8" />
-              <span>Öne çıkan görsel seçin veya yükleyin</span>
-            </button>
-          )}
-        </section>
-
-        <section className={`${cardClass} space-y-3 p-5`}>
-          <h3 className="text-sm font-semibold text-gray-900">Etiketler</h3>
-          <TagSelector selectedTags={selectedTagRecords} onAdd={handleTagAdd} onRemove={handleTagRemove} />
-        </section>
-
-        <section className={`${cardClass} space-y-3 p-5`}>
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-gray-900">Sürümler</h3>
-            {!isNew && (
-              <div className="flex items-center gap-2">
-                {selectedVersionIds.length > 0 && (
-                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
-                    {selectedVersionIds.length}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={handleDeleteSelectedVersions}
-                  disabled={!selectedVersionIds.length || isDeletingVersions}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
-                  title="Seçili sürümleri sil"
-                >
-                  <TrashIcon className="h-4 w-4" aria-hidden="true" />
-                  <span className="sr-only">Seçili sürümleri sil</span>
-                </button>
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-                  {versionsData?.length || 0} kayıt
-                </span>
-              </div>
-            )}
-          </div>
-          {isNew && <div className="text-xs text-gray-500">Kaydedildikten sonra sürümler görünecek.</div>}
-          {!isNew && versionActionError && (
-            <div className="text-xs text-red-500">{versionActionError}</div>
-          )}
-          {!isNew && versionsData?.length === 0 && (
-            <div className="text-xs text-gray-500">Sürüm yok.</div>
-          )}
-          {!isNew && hasPublishedVersion && (
-            <div className="text-[11px] text-amber-600">⚠️ Yayındaki sürümleri de silebilirsiniz, ancak dikkatli olun.</div>
-          )}
-          <ul className="max-h-64 space-y-2 overflow-y-auto pr-1 text-xs">
-            {versionsData?.map((v) => {
-              const versionKey = String(v._id)
-              const active = selectedVersionId === versionKey
-              const checked = selectedVersionIds.includes(versionKey)
-              const createdDisplay = formatDateTime(v.createdAt || v.publishedAt)
-              const isPublished = v.status === 'published'
-              return (
-                <li key={versionKey}>
-                  <div
-                    className={clsx(
-                      'flex items-start gap-2 rounded border px-3 py-2 transition',
-                      active
-                        ? 'border-blue-300 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-200 hover:bg-blue-50'
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      aria-label={`Sürüm ${v.version} silme seçimi`}
-                      className="mt-1 h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-400"
-                      checked={checked}
-                      onChange={(event) => handleToggleVersionSelection(v, event.target.checked)}
-                      title={isPublished ? 'Bu sürüm yayında - silmek için onay gerekir' : undefined}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleSelectVersion(v)}
-                      className="flex-1 cursor-pointer bg-transparent text-left focus:outline-none"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold">#{v.version}</span>
-                        <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium">
-                          {statusLabels[v.status] || v.status}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-[11px]">{createdDisplay}</div>
+                      HTML
                     </button>
                   </div>
-                </li>
-              )
-            })}
-          </ul>
-          {previewVersion && (
-            <div className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-gray-900">Sürüm #{previewVersion.version}</p>
-                  <p className="text-[11px] text-gray-500">
-                    {formatDateTime(previewVersion.createdAt || previewVersion.publishedAt)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleApplyVersion}
-                  disabled={isSaving}
-                  className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
-                >
-                  Bu sürümü yükle
-                </button>
+                )}
               </div>
-              {previewVersion.summary && (
-                <p className="mt-2 text-gray-700">{previewVersion.summary}</p>
-              )}
-              {previewVersion.html && (
-                <div
-                  className="prose prose-sm mt-3 max-h-48 overflow-y-auto rounded bg-white p-3 text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: previewVersion.html }}
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                title={sidebarOpen ? 'Sidebar\'ı kapat' : 'Sidebar\'ı aç'}
+              >
+                {sidebarOpen ? (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7m0 0l-7 7m7-7H6" />
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 0l-7 7 7 7" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            <div className="flex-1 rounded-lg border border-gray-200 bg-white flex flex-col overflow-hidden">
+              {renderMode === 'json' || !canUseHtmlMode ? (
+                <LexicalComposer initialConfig={initialConfig}>
+                  <Toolbar
+                    openMediaPicker={openMediaPicker}
+                    isTableSelectorOpen={isTableSelectorOpen}
+                    setIsTableSelectorOpen={setIsTableSelectorOpen}
+                    includeTableHeaders={includeTableHeaders}
+                    setIncludeTableHeaders={setIncludeTableHeaders}
+                    fileLinkEditor={fileLinkEditor}
+                    setFileLinkEditor={setFileLinkEditor}
+                    setLinkEditor={setLinkEditor}
+                    onRequestEmbed={openEmbedDialog}
+                  />
+                  <ImagePlugin />
+                  <ImageHandlersPlugin openMediaPicker={openMediaPicker} />
+                  <VideoPlugin />
+                  <EmbedPlugin />
+                  <GalleryPlugin />
+                  <div className="relative flex-1 flex overflow-hidden flex-col" ref={editorContainerRef}>
+                    <RichTextPlugin
+                      contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-x-auto overflow-y-visible scroll-smooth" />}
+                      placeholder={<Placeholder />}
+                      ErrorBoundary={LexicalErrorBoundary}
+                    />
+                    <HistoryPlugin />
+                    <ListPlugin />
+                    <ListMaxIndentLevelPlugin maxDepth={4} />
+                    <LinkPlugin />
+                    <AutoLinkPlugin matchers={urlMatchers} />
+                    <CodeHighlightingPlugin />
+                    <EditorRefPlugin onReady={(editor) => {
+                      editorRef.current = editor
+                      syncPendingHtmlToEditor()
+                    }} />
+                    <EditorStateHydrator stateJSON={initialEditorState} skipNextOnChangeRef={skipNextOnChangeRef} />
+                    <OnChangePlugin onChange={onLexicalChange} />
+                    <TablePastePlugin />
+                    <TableCellFocusPlugin />
+                    {editorAnchorElem && <DraggableBlockPlugin anchorElem={editorAnchorElem} />}
+                    {editorAnchorElem && <TableActionMenuPlugin anchorElem={editorAnchorElem} />}
+                    {editorAnchorElem && <TableHoverActionsPlugin anchorElem={editorAnchorElem} />}
+                    {editorAnchorElem && <TableCellResizerPlugin anchorElem={editorAnchorElem} />}
+                    {editorAnchorElem && <TableSelectionPlugin anchorElem={editorAnchorElem} />}
+                    <FloatingTextFormatToolbarPlugin
+                      onOpenLinkModal={(payload) => setLinkEditor(payload)}
+                    />
+                  </div>
+                </LexicalComposer>
+              ) : (
+                <textarea
+                  value={html}
+                  onChange={(e) => {
+                    setHtml(e.target.value)
+                    setDirty(true)
+                    setSaveError('')
+                  }}
+                  className="flex-1 px-4 py-3 outline-none font-mono text-sm resize-none border-none focus:ring-0"
+                  placeholder="HTML içeriğini buraya yazın..."
                 />
               )}
             </div>
-          )}
-          {!!deletedVersionsData.length && (
-            <div className="border-t border-gray-200 pt-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-700">Silme geçmişi</h4>
-                <span className="text-[11px] text-gray-500">{deletedVersionsData.length} kayıt</span>
+          </section>
+
+        </div>
+
+        {sidebarOpen && (
+          <aside className="space-y-6 h-[calc(100vh-80px)] overflow-y-auto sticky top-16 pr-4 min-w-[300px]">
+            <section className={`${cardClass} space-y-4 p-5`}>
+              <h3 className="text-sm font-semibold text-gray-900">Yayınlama</h3>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Durum</label>
+                <select
+                  value={status}
+                  onChange={(e) => {
+                    const nextStatus = e.target.value
+                    if (nextStatus === 'scheduled' && !allowScheduling && status !== 'scheduled') {
+                      setSaveError('Bu tenant için içerik zamanlama özelliği kapalı.')
+                      return
+                    }
+                    setStatus(nextStatus)
+                    setPublishAt((prev) => {
+                      if (nextStatus === 'scheduled') {
+                        return prev || formatDateTimeLocal()
+                      }
+                      if (nextStatus === 'published') {
+                        return prev || formatDateTimeLocal()
+                      }
+                      return prev
+                    })
+                    setDirty(true)
+                    setSaveError('')
+                  }}
+                  className={inputClass}
+                >
+                  {statusOptions.map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      disabled={option.value === 'scheduled' && !allowScheduling && status !== 'scheduled'}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {!allowScheduling && status !== 'scheduled' && (
+                  <p className="mt-1 text-xs text-gray-500">Bu tenant için içerik zamanlama özelliği kapalı.</p>
+                )}
+                {!allowScheduling && status === 'scheduled' && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Zamanlama bu tenant için kapalı; mevcut içerik zamanlanmış durumda. Durumu değiştirdiğinizde yeniden zamanlayamazsınız.
+                  </p>
+                )}
               </div>
-              <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1 text-xs">
-                {deletedVersionsData.map((item) => {
-                  const deletedKey = String(item._id)
-                  const deletedByText = item.deletedByDisplayName
-                    || item.deletedBy?.name
-                    || item.deletedBy?.email
-                    || 'Bilinmeyen kullanıcı'
-                  return (
-                    <li key={deletedKey} className="rounded border border-rose-100 bg-rose-50 px-3 py-2 text-rose-700">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold">#{item.version}</span>
-                        <span className="text-[11px] text-rose-600">{formatDateTime(item.deletedAt)}</span>
+              {(status === 'scheduled' || status === 'published') && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700">
+                    {status === 'scheduled' ? 'Planlanan Yayın Tarihi' : 'Yayın Tarihi'}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={publishAt}
+                    onChange={(e) => {
+                      setPublishAt(e.target.value)
+                      setDirty(true)
+                      setSaveError('')
+                    }}
+                    className={inputClass}
+                  />
+                  {status === 'published' && (
+                    <p className="mt-1 text-xs text-gray-500">Durum "Yayında" olduğunda tarih varsayılan olarak şuanı alır, dilerseniz düzenleyebilirsiniz.</p>
+                  )}
+                </div>
+              )}
+            </section>
+            {!isNew && (
+              <section className={`${cardClass} space-y-4 p-5`}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Bağlı Galeriler</h3>
+                    <p className="text-xs text-gray-600">İçerikle ilişkilendirilecek galerileri seç.</p>
+                  </div>
+                  <a
+                    href="/galeriler"
+                    className="text-xs font-medium text-blue-600 hover:text-blue-500"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Galerileri yönet
+                  </a>
+                </div>
+
+                <input
+                  type="search"
+                  placeholder="Galeri ara..."
+                  value={gallerySearch}
+                  onChange={(e) => setGallerySearch(e.target.value)}
+                  className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                />
+
+                {galleriesListQuery.isLoading ? (
+                  <p className="text-sm text-gray-500">Galeriler yükleniyor...</p>
+                ) : availableGalleries.length === 0 ? (
+                  <p className="text-sm text-gray-500">Aramana uyan galeri bulunamadı.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {availableGalleries.map((gallery) => {
+                      const id = String(gallery.id || gallery._id)
+                      const checked = selectedGalleryIds.includes(id)
+                      return (
+                        <label
+                          key={id}
+                          className={clsx(
+                            'flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm shadow-sm',
+                            checked ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-blue-300'
+                          )}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{gallery.title}</span>
+                            <span className="text-xs text-gray-500">{gallery.items?.length || 0} medya · {gallery.status === 'published' ? 'Yayında' : 'Taslak'}</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={checked}
+                            onChange={(e) => handleGalleryToggle(id, e.target.checked)}
+                          />
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {galleryError && <p className="text-xs text-red-600">{galleryError}</p>}
+
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={handleGallerySave}
+                    disabled={isNew || !galleriesDirty || setGalleriesMut.isLoading}
+                    className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
+                  >
+                    {setGalleriesMut.isLoading ? 'Kaydediliyor...' : 'Bağlantıları Kaydet'}
+                  </button>
+                </div>
+
+                {attachedGalleries.length > 0 && (
+                  <div className="space-y-2 border-t border-gray-200 pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Bağlı galeriler</p>
+                    <ul className="space-y-1 text-xs text-gray-600">
+                      {attachedGalleries.map((gallery) => (
+                        <li key={gallery.id || gallery._id} className="truncate">
+                          • {gallery.title}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+            )}
+            {isNew && (
+              <section className={`${cardClass} space-y-3 p-5`}>
+                <h3 className="text-sm font-semibold text-gray-900">Bağlı Galeriler</h3>
+                <p className="text-sm text-gray-600">
+                  Galeri eklemek için önce içeriği kaydet. İçerik oluşturulduktan sonra galerileri bu panelden ilişkilendirebilirsin.
+                </p>
+              </section>
+            )}
+            <section className={`${cardClass} space-y-3 p-5`}>
+              <h3 className="text-sm font-semibold text-gray-900">Öne çıkan görsel</h3>
+              {featuredMedia ? (
+                <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="h-24 w-24 flex-none overflow-hidden rounded-md bg-gray-100">
+                    {featuredMediaThumbnail ? (
+                      <img
+                        src={featuredMediaThumbnail}
+                        alt={featuredMediaAlt}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-gray-300">
+                        <PhotoIcon className="h-8 w-8" />
                       </div>
-                      {item.title && (
-                        <div className="mt-1 text-[11px] text-rose-700">{item.title}</div>
-                      )}
-                      <div className="mt-1 text-[11px] text-rose-600">{deletedByText} tarafından silindi</div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div>
+                      <p className="truncate text-sm font-medium text-gray-900">
+                        {featuredMedia.originalName || featuredMedia.fileName || 'Seçili görsel'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {[featuredMedia.mimeType || 'Görsel', featuredMediaSizeKb ? `${featuredMediaSizeKb} KB` : null]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openMediaPicker({ mode: 'image', onSelect: handleFeaturedMediaSelect })}
+                        className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                      >
+                        Değiştir
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleFeaturedMediaRemove}
+                        className="inline-flex items-center rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        Kaldır
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openMediaPicker({ mode: 'image', onSelect: handleFeaturedMediaSelect })}
+                  className="flex w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600"
+                >
+                  <PhotoIcon className="h-8 w-8" />
+                  <span>Öne çıkan görsel seçin veya yükleyin</span>
+                </button>
+              )}
+            </section>
+
+            <section className={`${cardClass} space-y-3 p-5`}>
+              <h3 className="text-sm font-semibold text-gray-900">Etiketler</h3>
+              <TagSelector selectedTags={selectedTagRecords} onAdd={handleTagAdd} onRemove={handleTagRemove} />
+            </section>
+
+            <section className={`${cardClass} space-y-3 p-5`}>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-gray-900">Sürümler</h3>
+                {!isNew && (
+                  <div className="flex items-center gap-2">
+                    {selectedVersionIds.length > 0 && (
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
+                        {selectedVersionIds.length}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleDeleteSelectedVersions}
+                      disabled={!selectedVersionIds.length || isDeletingVersions}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Seçili sürümleri sil"
+                    >
+                      <TrashIcon className="h-4 w-4" aria-hidden="true" />
+                      <span className="sr-only">Seçili sürümleri sil</span>
+                    </button>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                      {versionsData?.length || 0} kayıt
+                    </span>
+                  </div>
+                )}
+              </div>
+              {isNew && <div className="text-xs text-gray-500">Kaydedildikten sonra sürümler görünecek.</div>}
+              {!isNew && versionActionError && (
+                <div className="text-xs text-red-500">{versionActionError}</div>
+              )}
+              {!isNew && versionsData?.length === 0 && (
+                <div className="text-xs text-gray-500">Sürüm yok.</div>
+              )}
+              {!isNew && hasPublishedVersion && (
+                <div className="text-[11px] text-amber-600">⚠️ Yayındaki sürümleri de silebilirsiniz, ancak dikkatli olun.</div>
+              )}
+              <ul className="max-h-64 space-y-2 overflow-y-auto pr-1 text-xs">
+                {versionsData?.map((v) => {
+                  const versionKey = String(v._id)
+                  const active = selectedVersionId === versionKey
+                  const checked = selectedVersionIds.includes(versionKey)
+                  const createdDisplay = formatDateTime(v.createdAt || v.publishedAt)
+                  const isPublished = v.status === 'published'
+                  return (
+                    <li key={versionKey}>
+                      <div
+                        className={clsx(
+                          'flex items-start gap-2 rounded border px-3 py-2 transition',
+                          active
+                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-200 hover:bg-blue-50'
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={`Sürüm ${v.version} silme seçimi`}
+                          className="mt-1 h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-400"
+                          checked={checked}
+                          onChange={(event) => handleToggleVersionSelection(v, event.target.checked)}
+                          title={isPublished ? 'Bu sürüm yayında - silmek için onay gerekir' : undefined}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSelectVersion(v)}
+                          className="flex-1 cursor-pointer bg-transparent text-left focus:outline-none"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold">#{v.version}</span>
+                            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium">
+                              {statusLabels[v.status] || v.status}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-[11px]">{createdDisplay}</div>
+                        </button>
+                      </div>
                     </li>
                   )
                 })}
               </ul>
-            </div>
-          )}
-        </section>
+              {previewVersion && (
+                <div className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-gray-900">Sürüm #{previewVersion.version}</p>
+                      <p className="text-[11px] text-gray-500">
+                        {formatDateTime(previewVersion.createdAt || previewVersion.publishedAt)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleApplyVersion}
+                      disabled={isSaving}
+                      className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
+                    >
+                      Bu sürümü yükle
+                    </button>
+                  </div>
+                  {previewVersion.summary && (
+                    <p className="mt-2 text-gray-700">{previewVersion.summary}</p>
+                  )}
+                  {previewVersion.html && (
+                    <div
+                      className="prose prose-sm mt-3 max-h-48 overflow-y-auto rounded bg-white p-3 text-gray-700"
+                      dangerouslySetInnerHTML={{ __html: previewVersion.html }}
+                    />
+                  )}
+                </div>
+              )}
+              {!!deletedVersionsData.length && (
+                <div className="border-t border-gray-200 pt-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-700">Silme geçmişi</h4>
+                    <span className="text-[11px] text-gray-500">{deletedVersionsData.length} kayıt</span>
+                  </div>
+                  <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1 text-xs">
+                    {deletedVersionsData.map((item) => {
+                      const deletedKey = String(item._id)
+                      const deletedByText = item.deletedByDisplayName
+                        || item.deletedBy?.name
+                        || item.deletedBy?.email
+                        || 'Bilinmeyen kullanıcı'
+                      return (
+                        <li key={deletedKey} className="rounded border border-rose-100 bg-rose-50 px-3 py-2 text-rose-700">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold">#{item.version}</span>
+                            <span className="text-[11px] text-rose-600">{formatDateTime(item.deletedAt)}</span>
+                          </div>
+                          {item.title && (
+                            <div className="mt-1 text-[11px] text-rose-700">{item.title}</div>
+                          )}
+                          <div className="mt-1 text-[11px] text-rose-600">{deletedByText} tarafından silindi</div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+            </section>
 
-        {!isNew && (
-          <section className={`${cardClass} space-y-3 p-5 border-2 border-rose-200`}>
-            <h3 className="text-sm font-semibold text-rose-900">Tehlikeli Bölge</h3>
-            <p className="text-xs text-gray-600">
-              Bu içeriği tüm sürümleriyle birlikte kalıcı olarak silin. Bu işlem geri alınamaz.
-            </p>
-            <button
-              type="button"
-              onClick={handleDeleteEntireContent}
-              disabled={isDeletingContent}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md border-2 border-rose-600 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50 disabled:opacity-40"
-            >
-              <TrashIcon className="h-4 w-4" aria-hidden="true" />
-              {isDeletingContent ? 'Siliniyor…' : 'Tüm İçeriği Sil'}
-            </button>
-          </section>
-        )}
-
-        <section className={`${cardClass} sticky top-4 space-y-3 p-5 shadow-md`}>
-          <div className="space-y-1 text-xs text-gray-500">
-            {dirty && !saveError && <p>Kaydedilmemiş değişiklikler var.</p>}
             {!isNew && (
-              <p>Son güncelleme: {formatDateTime(contentData?.updatedAt)}</p>
+              <section className={`${cardClass} space-y-3 p-5 border-2 border-rose-200`}>
+                <h3 className="text-sm font-semibold text-rose-900">Tehlikeli Bölge</h3>
+                <p className="text-xs text-gray-600">
+                  Bu içeriği tüm sürümleriyle birlikte kalıcı olarak silin. Bu işlem geri alınamaz.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDeleteEntireContent}
+                  disabled={isDeletingContent}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border-2 border-rose-600 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50 disabled:opacity-40"
+                >
+                  <TrashIcon className="h-4 w-4" aria-hidden="true" />
+                  {isDeletingContent ? 'Siliniyor…' : 'Tüm İçeriği Sil'}
+                </button>
+              </section>
             )}
-          </div>
-          <button
-            onClick={() => handleSave()}
-            disabled={(!dirty && !isNew) || isSaving}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
-          >
-            {isSaving ? 'Kaydediliyor…' : 'Kaydet'}
-          </button>
-          {saveError && (
-            <span className="text-xs text-red-500">{saveError}</span>
-          )}
-        </section>
-      </aside>
-      )}
+
+            <section className={`${cardClass} sticky top-4 space-y-3 p-5 shadow-md`}>
+              <div className="space-y-1 text-xs text-gray-500">
+                {dirty && !saveError && <p>Kaydedilmemiş değişiklikler var.</p>}
+                {!isNew && (
+                  <p>Son güncelleme: {formatDateTime(contentData?.updatedAt)}</p>
+                )}
+              </div>
+              <button
+                onClick={() => handleSave()}
+                disabled={(!dirty && !isNew) || isSaving}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
+              >
+                {isSaving ? 'Kaydediliyor…' : 'Kaydet'}
+              </button>
+              {saveError && (
+                <span className="text-xs text-red-500">{saveError}</span>
+              )}
+            </section>
+          </aside>
+        )}
       </div>
 
       <MediaPickerModal
         isOpen={mediaPickerState.open}
         mode={mediaPickerState.mode}
+        multiple={mediaPickerState.multiple}
         onClose={closeMediaPicker}
         onSelect={(item) => {
           mediaPickerState.onSelect?.(item)
@@ -1961,6 +2135,40 @@ export default function ContentEditor() {
                 className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow hover:bg-blue-700"
               >
                 Kaydet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {embedDialog.open && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-gray-900/40">
+          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl border border-gray-200">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Iframe embed</h3>
+            <p className="mb-3 text-xs text-gray-500">
+              YouTube/Vimeo dışındaki harita, form veya özel iframe kodlarını buraya yapıştırın. Sadece URL girmeniz de yeterli.
+            </p>
+            <textarea
+              value={embedDialog.value}
+              onChange={(event) => setEmbedDialog((prev) => ({ ...prev, value: event.target.value, error: '' }))}
+              className={`${textareaClass} h-36`}
+              rows={5}
+              placeholder={`https://... veya <iframe src="https://..." width="640" height="480"></iframe>`}
+            />
+            {embedDialog.error && <p className="mt-2 text-xs text-red-500">{embedDialog.error}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEmbedDialog}
+                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                İptal
+              </button>
+              <button
+                type="button"
+                onClick={applyEmbedDialog}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow hover:bg-blue-700"
+              >
+                Embed ekle
               </button>
             </div>
           </div>
@@ -2336,6 +2544,7 @@ function Toolbar({
   fileLinkEditor,
   setFileLinkEditor,
   setLinkEditor,
+  onRequestEmbed = null,
 }) {
   const [editor] = useLexicalComposerContext()
   const [formatState, setFormatState] = useState({
@@ -2355,6 +2564,12 @@ function Toolbar({
   const [isLinkActive, setIsLinkActive] = useState(false)
   const tableSelectorRef = useRef(null)
 
+  const handleEmbedButtonClick = useCallback(() => {
+    if (typeof onRequestEmbed === 'function') {
+      onRequestEmbed()
+    }
+  }, [onRequestEmbed])
+
   const handleInsertImage = useCallback(() => {
     if (typeof openMediaPicker !== 'function') {
       return
@@ -2362,30 +2577,27 @@ function Toolbar({
 
     openMediaPicker({
       mode: 'image',
-      onSelect: (media) => {
-        if (!media) return
-        const variants = Array.isArray(media.variants) ? media.variants : []
-        const preferredOrder = ['large', 'preview', 'optimized', 'original']
-        const variant = preferredOrder
-          .map((name) => variants.find((item) => item.name === name))
-          .find(Boolean) || variants[0]
+      multiple: true,
+      onSelect: (selection) => {
+        if (!selection) return
 
-        const src = variant?.url || media.url
-        if (!src) return
+        const list = Array.isArray(selection) ? selection : [selection]
+        const images = list.map((item) => mediaToImagePayload(item)).filter(Boolean)
 
-        const width = variant?.width || media.width
-        const height = variant?.height || media.height
-        const altText = media.altText || media.originalName || media.fileName || ''
+        if (!images.length) return
 
-        editor.dispatchCommand(INSERT_IMAGE_COMMAND, {
-          src,
-          altText,
-          width,
-          height,
-        })
+        if (images.length > 1) {
+          editor.dispatchCommand(INSERT_GALLERY_COMMAND, {
+            images,
+            layout: getGalleryLayoutForCount(images.length),
+          })
+          return
+        }
+
+        editor.dispatchCommand(INSERT_IMAGE_COMMAND, images[0])
       },
     })
-  }, [editor, openMediaPicker, setFileLinkEditor])
+  }, [editor, openMediaPicker])
 
   const handleInsertVideo = useCallback(() => {
     if (typeof openMediaPicker !== 'function') {
@@ -2835,6 +3047,9 @@ function Toolbar({
       <ToolbarButton title="Görsel ekle" onClick={handleInsertImage} />
       <ToolbarButton title="Video ekle" onClick={handleInsertVideo} />
       <ToolbarButton title="Dosya ekle" onClick={handleInsertFile} />
+      <ToolbarButton title="Embed iframe ekle" onClick={handleEmbedButtonClick}>
+        <IframeIcon />
+      </ToolbarButton>
       <div className="relative">
         <ToolbarButton
           title="Tablo ekle"
@@ -2969,6 +3184,26 @@ function ToolbarButton({ children, onClick, active = false, disabled = false, ti
   )
 }
 
+function IframeIcon({ className }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={clsx('pointer-events-none h-14 w-14', className)}
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" ry="2" />
+      <path d="M9 12h6" />
+      <path d="M7 9l-3 3 3 3" />
+      <path d="M17 9l3 3-3 3" />
+    </svg>
+  )
+}
+
 function Divider() {
   return <span className="editor-toolbar__divider" aria-hidden="true" />
 }
@@ -3023,10 +3258,7 @@ function FormattingDropdown() {
       key: 'highlight',
       label: 'Highlight',
       shortcut: '',
-      action: () => {
-        // Highlight functionality placeholder
-        console.log('Highlight selected')
-      }
+      action: () => { }
     },
     {
       key: 'clear',
@@ -3080,7 +3312,7 @@ function FormattingDropdown() {
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
-          buttonRef.current && !buttonRef.current.contains(event.target)) {
+        buttonRef.current && !buttonRef.current.contains(event.target)) {
         setIsOpen(false)
       }
     }
@@ -3178,6 +3410,15 @@ function EditorStateHydrator({ stateJSON, skipNextOnChangeRef }) {
         return
       }
 
+      if (typeof parsedState.isEmpty === 'function' && parsedState.isEmpty()) {
+        try {
+          parsedState = editor.parseEditorState(INITIAL_EDITOR_STATE)
+        } catch (fallbackError) {
+          console.error('Editor state hydration fallback failed', fallbackError)
+          return
+        }
+      }
+
       skipNextOnChangeRef.current = true
       editor.setEditorState(parsedState)
       appliedStateRef.current = stateJSON
@@ -3217,37 +3458,37 @@ function TablePastePlugin() {
 
   useEffect(() => {
     const handlePaste = (event) => {
-        const clipboardData = event.clipboardData
-        if (!clipboardData) return
+      const clipboardData = event.clipboardData
+      if (!clipboardData) return
 
-        const htmlData = clipboardData.getData('text/html')
-        if (!htmlData || !htmlData.includes('<table')) return
+      const htmlData = clipboardData.getData('text/html')
+      if (!htmlData || !htmlData.includes('<table')) return
 
-        // Check if HTML contains table elements
-        const tempDiv = document.createElement('div')
-        tempDiv.innerHTML = htmlData
-        const tables = tempDiv.querySelectorAll('table')
+      // Check if HTML contains table elements
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = htmlData
+      const tables = tempDiv.querySelectorAll('table')
 
-        if (tables.length === 0) return
+      if (tables.length === 0) return
 
-        event.preventDefault()
-        event.stopPropagation()
+      event.preventDefault()
+      event.stopPropagation()
 
-        try {
-          editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection)) return
+      try {
+        editor.update(() => {
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection)) return
 
-            tables.forEach(table => {
-              const lexicalTable = convertHTMLTableToLexicalTable(table, editor)
-              if (lexicalTable) {
-                $insertNodes([lexicalTable])
-              }
-            })
+          tables.forEach(table => {
+            const lexicalTable = convertHTMLTableToLexicalTable(table, editor)
+            if (lexicalTable) {
+              $insertNodes([lexicalTable])
+            }
           })
-        } catch (error) {
-          console.warn('Table paste failed:', error)
-        }
+        })
+      } catch (error) {
+        console.error('Table paste failed:', error)
+      }
     }
 
     // Add event listener to the editor's root element
@@ -3279,7 +3520,7 @@ function convertHTMLTableToLexicalTable(htmlTable, editor) {
     cells.forEach((htmlCell) => {
       // Check if cell is a header (th tag or strong content)
       const isHeader = htmlCell.tagName.toLowerCase() === 'th' ||
-                      htmlCell.querySelector('strong, b') !== null
+        htmlCell.querySelector('strong, b') !== null
 
       // Get colspan and rowspan if present
       const colSpan = parseInt(htmlCell.getAttribute('colspan') || '1', 10)
@@ -3302,12 +3543,10 @@ function convertHTMLTableToLexicalTable(htmlTable, editor) {
       const cellContent = htmlCell.innerHTML.trim()
       if (cellContent) {
         try {
-          // Create a temporary div to parse cell content
-          const tempDiv = document.createElement('div')
-          tempDiv.innerHTML = cellContent
+          const tempDocument = parseHtmlDocument(cellContent)
 
           // Generate Lexical nodes from the HTML content
-          const nodes = $generateNodesFromDOM(editor, tempDiv)
+          const nodes = $generateNodesFromDOM(editor, tempDocument)
 
           // If we have nodes, append them to the cell
           if (nodes.length > 0) {

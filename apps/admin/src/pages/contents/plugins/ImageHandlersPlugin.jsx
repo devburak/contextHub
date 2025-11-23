@@ -83,11 +83,13 @@ export default function ImageHandlersPlugin({ openMediaPicker }) {
     }
     editor._editorCallbacks.onInsertImage = handleInsertImage
     editor._editorCallbacks.onReplaceImage = handleReplaceImage
+    editor._editorCallbacks.openMediaPicker = openMediaPicker
 
     return () => {
       if (editor._editorCallbacks) {
         editor._editorCallbacks.onInsertImage = null
         editor._editorCallbacks.onReplaceImage = null
+        editor._editorCallbacks.openMediaPicker = null
       }
     }
   }, [editor, handleInsertImage, handleReplaceImage])

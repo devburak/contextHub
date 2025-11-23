@@ -35,6 +35,7 @@ export default function MediaPickerModal({
   onClose,
   onSelect,
   showUpload = true,
+  multiple = false,
 }) {
   const queryClient = useQueryClient()
   const searchInputRef = useRef(null)
@@ -42,12 +43,18 @@ export default function MediaPickerModal({
   const [search, setSearch] = useState(initialSearch)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
+  const [selectedItems, setSelectedItems] = useState([])
+  const [activeTab, setActiveTab] = useState('library') // 'library' or 'url'
+  const [videoUrl, setVideoUrl] = useState('')
   const debouncedSearch = useDebouncedValue(search, 400)
 
   useEffect(() => {
     if (!isOpen) {
       setSearch(initialSearch)
       setUploadError('')
+      setSelectedItems([])
+      setActiveTab('library')
+      setVideoUrl('')
     }
   }, [isOpen, initialSearch])
 
@@ -181,12 +188,72 @@ export default function MediaPickerModal({
         event.preventDefault()
         event.stopPropagation()
       }
-      if (onSelect) {
-        onSelect(item, event)
+
+      if (multiple) {
+        setSelectedItems((prev) => {
+          const exists = prev.some((i) => i._id === item._id)
+          if (exists) {
+            return prev.filter((i) => i._id !== item._id)
+          }
+          return [...prev, item]
+        })
+      } else {
+        if (onSelect) {
+          onSelect(item, event)
+        }
       }
     },
-    [onSelect]
+    [multiple, onSelect]
   )
+
+  const handleConfirmSelection = useCallback(() => {
+    if (onSelect) {
+      onSelect(selectedItems)
+    }
+  }, [onSelect, selectedItems])
+
+  const handleVideoUrlSubmit = useCallback(async () => {
+    if (!videoUrl) return
+
+    setIsUploading(true)
+    try {
+      let provider = 'other'
+      let providerId = null
+      let externalUrl = videoUrl
+
+      if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
+        provider = 'youtube'
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
+        const match = videoUrl.match(regExp)
+        providerId = (match && match[2].length === 11) ? match[2] : null
+      } else if (videoUrl.includes('vimeo.com')) {
+        provider = 'vimeo'
+        const regExp = /vimeo\.com\/(\d+)/
+        const match = videoUrl.match(regExp)
+        providerId = match ? match[1] : null
+      }
+
+      const media = await mediaAPI.createExternal({
+        url: videoUrl,
+        title: 'Video', // Kullanıcıdan başlık istenebilir veya otomatik çekilebilir
+        provider,
+        providerId,
+        altText: 'Video',
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+      queryClient.invalidateQueries({ queryKey })
+
+      if (onSelect) {
+        onSelect(media)
+      }
+    } catch (error) {
+      console.error('Video URL save failed', error)
+      setUploadError('Video eklenirken bir hata oluştu.')
+    } finally {
+      setIsUploading(false)
+    }
+  }, [videoUrl, onSelect, queryClient, queryKey])
 
   if (!isOpen) {
     return null
@@ -233,140 +300,217 @@ export default function MediaPickerModal({
                       Medya kütüphanesinden seçim yapabilir veya yeni dosya yükleyebilirsin.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-full p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                  >
-                    <span className="sr-only">Kapat</span>
-                    <XMarkIcon className="h-5 w-5" />
-                  </button>
-                </div>
-
-                <div className="space-y-4 px-6 py-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <div className="flex-1">
-                      <label htmlFor="media-picker-search" className="block text-sm font-medium text-gray-700">
-                        Ara
-                      </label>
-                      <input
-                        ref={searchInputRef}
-                        id="media-picker-search"
-                        type="search"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        placeholder={`${MODE_LABELS[mode] || 'Varlık'} ara`}
-                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-                      />
-                    </div>
-                    {showUpload && (
-                      <label className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer">
-                        <CloudArrowUpIcon className="h-5 w-5" aria-hidden="true" />
-                        <span>Dosya yükle</span>
-                        <input
-                          type="file"
-                          className="hidden"
-                          multiple
-                          onChange={(event) => {
-                            handleFiles(event.target.files)
-                            event.target.value = ''
-                          }}
-                        />
-                      </label>
+                  <div className="flex items-center gap-2">
+                    {mode === 'video' && (
+                      <div className="flex rounded-md bg-gray-100 p-1 mr-2">
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('library')}
+                          className={clsx(
+                            'rounded px-3 py-1.5 text-sm font-medium transition',
+                            activeTab === 'library' ? 'bg-white text-gray-900 shadow' : 'text-gray-500 hover:text-gray-700'
+                          )}
+                        >
+                          Kütüphane
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('url')}
+                          className={clsx(
+                            'rounded px-3 py-1.5 text-sm font-medium transition',
+                            activeTab === 'url' ? 'bg-white text-gray-900 shadow' : 'text-gray-500 hover:text-gray-700'
+                          )}
+                        >
+                          URL'den Ekle
+                        </button>
+                      </div>
+                    )}
+                    {multiple && selectedItems.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleConfirmSelection}
+                        className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                      >
+                        Seç ({selectedItems.length})
+                      </button>
                     )}
                     <button
                       type="button"
-                      onClick={() => mediaQuery.refetch()}
-                      className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      onClick={onClose}
+                      className="rounded-full p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
                     >
-                      <ArrowPathIcon className={clsx('h-5 w-5', mediaQuery.isFetching ? 'animate-spin' : '')} />
-                      Yenile
+                      <span className="sr-only">Kapat</span>
+                      <XMarkIcon className="h-5 w-5" />
                     </button>
                   </div>
+                </div>
 
-                  {uploadError && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
-                      {uploadError}
-                    </div>
-                  )}
-
-                  <div className="min-h-[260px] max-h-[500px] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    {mediaQuery.isLoading ? (
-                      <div className="text-sm text-gray-500">Dosyalar yükleniyor…</div>
-                    ) : items.length === 0 ? (
-                      <div className="text-sm text-gray-500">Sonuç bulunamadı.</div>
-                    ) : (
-                      <>
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                          {items.map((item) => {
-                          const isImage = item.mimeType?.startsWith('image/')
-                          const providerName = typeof item.provider === 'string' ? item.provider.toLowerCase() : ''
-                          const isVideo = item.mimeType?.startsWith('video/') || ['youtube', 'vimeo'].includes(providerName)
-                          const imageThumbnail = item.variants?.find((variant) => variant.name === 'thumbnail')?.url
-                          const thumbnail = isImage
-                            ? imageThumbnail || item.url
-                            : isVideo
-                              ? item.thumbnailUrl || imageThumbnail || null
-                              : null
-                          return (
-                            <button
-                              key={item._id}
-                              type="button"
-                              onClick={(event) => handleSelect(item, event)}
-                              className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-left shadow-sm transition hover:border-blue-300 hover:shadow"
-                            >
-                              <div className="relative aspect-video bg-gray-100">
-                                {isImage && thumbnail ? (
-                                  <img src={thumbnail} alt={item.altText || item.originalName} className="h-full w-full object-cover" />
-                                ) : isVideo && thumbnail ? (
-                                  <div className="relative h-full w-full">
-                                    <img src={thumbnail} alt={item.altText || item.originalName || item.fileName} className="h-full w-full object-cover" />
-                                    <PlayIcon className="absolute inset-0 m-auto h-10 w-10 text-white drop-shadow" />
-                                  </div>
-                                ) : isVideo ? (
-                                  <div className="flex h-full w-full items-center justify-center bg-black/10 text-gray-500">
-                                    <PlayIcon className="h-10 w-10" />
-                                  </div>
-                                ) : (
-                                  <div className="flex h-full w-full items-center justify-center text-gray-400">
-                                    <DocumentIcon className="h-10 w-10" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="space-y-1 px-3 py-2">
-                                <p className="truncate text-sm font-medium text-gray-900">
-                                  {item.originalName || item.fileName}
-                                </p>
-                                <p className="text-xs text-gray-500">{item.mimeType || 'Bilinmiyor'}</p>
-                                {isVideo && item.duration ? (
-                                  <p className="text-xs text-gray-500">{Math.round(item.duration)} sn</p>
-                                ) : null}
-                              </div>
-                            </button>
-                          )
-                        })}
+                <div className="space-y-4 px-6 py-5">
+                  {activeTab === 'library' ? (
+                    <>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <div className="flex-1">
+                          <label htmlFor="media-picker-search" className="block text-sm font-medium text-gray-700">
+                            Ara
+                          </label>
+                          <input
+                            ref={searchInputRef}
+                            id="media-picker-search"
+                            type="search"
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder={`${MODE_LABELS[mode] || 'Varlık'} ara`}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                          />
                         </div>
-                        {/* Infinite scroll trigger */}
-                        <div ref={loadMoreRef} className="py-4 text-center">
-                          {mediaQuery.isFetchingNextPage ? (
-                            <div className="text-sm text-gray-500">Daha fazla medya yükleniyor...</div>
-                          ) : mediaQuery.hasNextPage ? (
-                            <div className="text-sm text-gray-400">Aşağı kaydırarak daha fazla yükle</div>
-                          ) : (
-                            <div className="text-sm text-gray-400">Tüm medya dosyaları yüklendi</div>
-                          )}
+                        {showUpload && (
+                          <label className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer">
+                            <CloudArrowUpIcon className="h-5 w-5" aria-hidden="true" />
+                            <span>Dosya yükle</span>
+                            <input
+                              type="file"
+                              className="hidden"
+                              multiple
+                              onChange={(event) => {
+                                handleFiles(event.target.files)
+                                event.target.value = ''
+                              }}
+                            />
+                          </label>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => mediaQuery.refetch()}
+                          className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          <ArrowPathIcon className={clsx('h-5 w-5', mediaQuery.isFetching ? 'animate-spin' : '')} />
+                          Yenile
+                        </button>
+                      </div>
+
+                      {uploadError && (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+                          {uploadError}
                         </div>
-                      </>
-                    )}
-                  </div>
+                      )}
 
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>{totalCount} kayıt</span>
-                  </div>
+                      <div className="min-h-[260px] max-h-[500px] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        {mediaQuery.isLoading ? (
+                          <div className="text-sm text-gray-500">Dosyalar yükleniyor…</div>
+                        ) : items.length === 0 ? (
+                          <div className="text-sm text-gray-500">Sonuç bulunamadı.</div>
+                        ) : (
+                          <>
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                              {items.map((item) => {
+                                const isImage = item.mimeType?.startsWith('image/')
+                                const providerName = typeof item.provider === 'string' ? item.provider.toLowerCase() : ''
+                                const isVideo = item.mimeType?.startsWith('video/') || ['youtube', 'vimeo'].includes(providerName)
+                                const imageThumbnail = item.variants?.find((variant) => variant.name === 'thumbnail')?.url
+                                const thumbnail = isImage
+                                  ? imageThumbnail || item.url
+                                  : isVideo
+                                    ? item.thumbnailUrl || imageThumbnail || null
+                                    : null
 
-                  {isUploading && (
-                    <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">
-                      Dosya yükleniyor…
+                                const isSelected = multiple && selectedItems.some((i) => i._id === item._id)
+
+                                return (
+                                  <button
+                                    key={item._id}
+                                    type="button"
+                                    onClick={(event) => handleSelect(item, event)}
+                                    className={clsx(
+                                      'flex flex-col overflow-hidden rounded-lg border bg-white text-left shadow-sm transition hover:shadow',
+                                      isSelected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200 hover:border-blue-300'
+                                    )}
+                                  >
+                                    <div className="relative aspect-video bg-gray-100">
+                                      {isImage && thumbnail ? (
+                                        <img src={thumbnail} alt={item.altText || item.originalName} className="h-full w-full object-cover" />
+                                      ) : isVideo && thumbnail ? (
+                                        <div className="relative h-full w-full">
+                                          <img src={thumbnail} alt={item.altText || item.originalName || item.fileName} className="h-full w-full object-cover" />
+                                          <PlayIcon className="absolute inset-0 m-auto h-10 w-10 text-white drop-shadow" />
+                                        </div>
+                                      ) : isVideo ? (
+                                        <div className="flex h-full w-full items-center justify-center bg-black/10 text-gray-500">
+                                          <PlayIcon className="h-10 w-10" />
+                                        </div>
+                                      ) : (
+                                        <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                          <DocumentIcon className="h-10 w-10" />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="space-y-1 px-3 py-2">
+                                      <p className="truncate text-sm font-medium text-gray-900">
+                                        {item.originalName || item.fileName}
+                                      </p>
+                                      <p className="text-xs text-gray-500">{item.mimeType || 'Bilinmiyor'}</p>
+                                      {isVideo && item.duration ? (
+                                        <p className="text-xs text-gray-500">{Math.round(item.duration)} sn</p>
+                                      ) : null}
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            {/* Infinite scroll trigger */}
+                            <div ref={loadMoreRef} className="py-4 text-center">
+                              {mediaQuery.isFetchingNextPage ? (
+                                <div className="text-sm text-gray-500">Daha fazla medya yükleniyor...</div>
+                              ) : mediaQuery.hasNextPage ? (
+                                <div className="text-sm text-gray-400">Aşağı kaydırarak daha fazla yükle</div>
+                              ) : (
+                                <div className="text-sm text-gray-400">Tüm medya dosyaları yüklendi</div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>{totalCount} kayıt</span>
+                      </div>
+
+                      {isUploading && (
+                        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">
+                          Dosya yükleniyor…
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex flex-col gap-4 py-8">
+                      <div>
+                        <label htmlFor="video-url" className="block text-sm font-medium text-gray-700">
+                          Video URL
+                        </label>
+                        <div className="mt-1 flex rounded-md shadow-sm">
+                          <input
+                            type="text"
+                            name="video-url"
+                            id="video-url"
+                            className="block w-full flex-1 rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                            placeholder="https://www.youtube.com/watch?v=..."
+                            value={videoUrl}
+                            onChange={(e) => setVideoUrl(e.target.value)}
+                          />
+                        </div>
+                        <p className="mt-2 text-sm text-gray-500">
+                          YouTube veya Vimeo bağlantısı yapıştırın.
+                        </p>
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleVideoUrlSubmit}
+                          disabled={!videoUrl || isUploading}
+                          className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isUploading ? 'Ekleniyor...' : 'Ekle'}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

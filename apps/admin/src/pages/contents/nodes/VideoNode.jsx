@@ -1,4 +1,5 @@
 import { DecoratorNode } from 'lexical'
+import { detectVideoProvider } from '../../../utils/externalMedia.js'
 import VideoComponent from './VideoComponent.jsx'
 
 export class VideoNode extends DecoratorNode {
@@ -154,6 +155,26 @@ export class VideoNode extends DecoratorNode {
       videoElement.setAttribute('title', this.__title)
     }
 
+    // Preserve metadata for round-trip HTML <-> Lexical conversions
+    const dataAttributes = {
+      'data-lexical-video': 'true',
+      'data-provider': this.__provider || '',
+      'data-provider-id': this.__providerId || '',
+      'data-url': this.__url || '',
+      'data-external-url': this.__externalUrl || '',
+      'data-thumbnail': this.__thumbnailUrl || '',
+      'data-title': this.__title || '',
+      'data-caption': this.__caption || '',
+      'data-mime-type': this.__mimeType || '',
+      'data-duration': typeof this.__duration === 'number' ? String(this.__duration) : '',
+    }
+
+    Object.entries(dataAttributes).forEach(([name, value]) => {
+      if (value) {
+        videoElement.setAttribute(name, value)
+      }
+    })
+
     element.appendChild(videoElement)
 
     // Add caption if exists
@@ -215,56 +236,64 @@ export function $isVideoNode(node) {
 function convertVideoElement(domNode) {
   const payload = {}
 
+  const dataset = domNode.dataset || {}
+
   if (domNode instanceof HTMLIFrameElement) {
-    const src = domNode.getAttribute('src') || ''
+    const src = domNode.getAttribute('src') || dataset.url || dataset.externalUrl || ''
     if (!src) return null
 
-    const { provider, providerId } = detectProviderFromUrl(src)
+    const { provider, providerId } = readProviderData(domNode)
+    if (!provider) {
+      return null
+    }
     payload.url = src
-    payload.externalUrl = src
+    payload.externalUrl = dataset.externalUrl || src
     payload.provider = provider
     payload.providerId = providerId
-    payload.title = domNode.getAttribute('title') || ''
+    payload.title = domNode.getAttribute('title') || dataset.title || ''
   } else if (domNode instanceof HTMLVideoElement) {
     const src = domNode.getAttribute('src') ||
       domNode.querySelector('source')?.getAttribute('src') ||
+      dataset.url ||
+      dataset.externalUrl ||
       ''
     if (!src) return null
 
     payload.url = src
-    payload.externalUrl = src
-    payload.thumbnailUrl = domNode.getAttribute('poster') || null
-    payload.mimeType = domNode.getAttribute('type') || domNode.querySelector('source')?.getAttribute('type') || null
-    payload.title = domNode.getAttribute('title') || ''
+    payload.externalUrl = dataset.externalUrl || src
+    payload.thumbnailUrl = domNode.getAttribute('poster') || dataset.thumbnail || null
+    payload.mimeType = domNode.getAttribute('type') || domNode.querySelector('source')?.getAttribute('type') || dataset.mimeType || null
+    payload.title = domNode.getAttribute('title') || dataset.title || ''
+    payload.provider = dataset.provider || null
+    payload.providerId = dataset.providerId || null
   } else {
     return null
   }
 
   const captionElement = domNode.parentElement?.querySelector('.video-caption')
-  payload.caption = captionElement?.textContent?.trim() || ''
+  payload.caption = captionElement?.textContent?.trim() || dataset.caption || ''
+
+  if (typeof dataset.duration === 'string' && dataset.duration.trim() !== '') {
+    const parsedDuration = Number(dataset.duration)
+    if (!Number.isNaN(parsedDuration)) {
+      payload.duration = parsedDuration
+    }
+  }
 
   return {
     node: $createVideoNode(payload),
   }
 }
 
-function detectProviderFromUrl(url) {
-  try {
-    const parsed = new URL(url)
-    const host = parsed.hostname || ''
+function readProviderData(domNode) {
+  const dataset = domNode.dataset || {}
+  const dataProvider = dataset.provider || dataset.providerId ? dataset.provider : null
+  const dataProviderId = dataset.providerId || null
 
-    if (host.includes('youtube.com') || host.includes('youtu.be')) {
-      const id = parsed.searchParams.get('v') || parsed.pathname.split('/').filter(Boolean).pop()
-      return { provider: 'youtube', providerId: id || null }
-    }
-
-    if (host.includes('vimeo.com')) {
-      const id = parsed.pathname.split('/').filter(Boolean).pop()
-      return { provider: 'vimeo', providerId: id || null }
-    }
-  } catch (error) {
-    // ignore parsing errors and fall back to generic payload
+  if (dataProvider && dataProviderId) {
+    return { provider: dataProvider, providerId: dataProviderId }
   }
 
-  return { provider: null, providerId: null }
+  const src = domNode.getAttribute('src') || ''
+  return detectVideoProvider(src)
 }
