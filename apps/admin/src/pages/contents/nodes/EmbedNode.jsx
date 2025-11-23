@@ -1,5 +1,6 @@
 import { DecoratorNode } from 'lexical'
 import { detectVideoProvider } from '../../../utils/externalMedia.js'
+import { $createVideoNode } from './VideoNode.jsx'
 import EmbedComponent from './EmbedComponent.jsx'
 
 const ALLOWED_IFRAME_ATTRIBUTES = new Set([
@@ -136,9 +137,31 @@ function convertEmbedElement(domNode) {
     return null
   }
 
-  const { provider } = detectVideoProvider(src)
+  const dataset = domNode.dataset || {}
+  const { provider, providerId } = detectVideoProvider(src)
+
   if (provider) {
-    return null
+    const payload = {
+      url: dataset.url || src,
+      externalUrl: dataset.externalUrl || src,
+      provider: dataset.provider || provider,
+      providerId: dataset.providerId || providerId,
+      thumbnailUrl: dataset.thumbnail || null,
+      title: domNode.getAttribute('title') || dataset.title || '',
+      caption: dataset.caption || '',
+      mimeType: dataset.mimeType || null,
+    }
+
+    if (typeof dataset.duration === 'string' && dataset.duration.trim() !== '') {
+      const parsedDuration = Number(dataset.duration)
+      if (!Number.isNaN(parsedDuration)) {
+        payload.duration = parsedDuration
+      }
+    }
+
+    return {
+      node: $createVideoNode(payload),
+    }
   }
 
   const attributes = {}
