@@ -228,18 +228,32 @@ export default function GalleryManager() {
     setFormState((prev) => ({ ...prev, items: nextItems }))
   }
 
-  const handleMediaSelected = (media) => {
-    if (!media) return
+  const handleMediaSelected = (selection) => {
+    const selectedList = Array.isArray(selection) ? selection : [selection]
+    const nextItems = selectedList
+      .map((media) => {
+        if (!media) return null
+        const mediaId = media.id || media._id
+        if (!mediaId) return null
+        return {
+          mediaId,
+          title: media.originalName || media.title || '',
+          caption: '',
+          media,
+        }
+      })
+      .filter(Boolean)
+
+    if (!nextItems.length) {
+      setMediaPickerOpen(false)
+      return
+    }
+
     setFormState((prev) => ({
       ...prev,
       items: [
         ...prev.items,
-        {
-          mediaId: media.id || media._id,
-          title: media.originalName || '',
-          caption: '',
-          media,
-        }
+        ...nextItems
       ]
     }))
     setMediaPickerOpen(false)
@@ -473,6 +487,7 @@ export default function GalleryManager() {
       <MediaPickerModal
         isOpen={mediaPickerOpen}
         mode="any"
+        multiple
         onClose={() => setMediaPickerOpen(false)}
         onSelect={handleMediaSelected}
       />
