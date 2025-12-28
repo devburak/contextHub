@@ -14,10 +14,13 @@ const userSchema = new Schema({
   lastLoginAt: { type: Date },
   resetPasswordToken: { type: String },
   resetPasswordExpiresAt: { type: Date },
+  tokenVersion: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   updatedBy: { type: Schema.Types.ObjectId, ref: 'User' }
+}, {
+  skipTenantEnforcement: true
 });
 
 // Pre-save middleware to hash password and update updatedAt

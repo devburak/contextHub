@@ -1082,7 +1082,7 @@ export default function Dashboard() {
 
       {/* Kullanıcı Aktiviteleri */}
       <div className="mt-8">
-        <RecentActivities limit={15} />
+        <RecentActivities limit={15} activeTenantId={activeTenantId} />
       </div>
 
       {/* Plan Change Modal */}

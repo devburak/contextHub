@@ -8,6 +8,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const { database } = require('@contexthub/common');
 const roleService = require('./services/roleService');
+const tenantContext = require('@contexthub/common/src/tenantContext');
 const apiLogger = require('./middleware/apiLogger');
 const upstashClient = require('./lib/upstash');
 const localRedisClient = require('./lib/localRedis');
@@ -38,9 +39,9 @@ const jwtPlugin = fp(async function (app) {
   });
 });
 
-// Create the Fastify application
 async function buildServer() {
-  const app = fastify({ logger: true });
+  // trustProxy true ensures request.ip reflects real client IP when behind Nginx/ELB
+  const app = fastify({ logger: true, trustProxy: true });
 
   // Register Swagger for OpenAPI documentation
   await app.register(swagger, {
@@ -143,6 +144,11 @@ async function buildServer() {
     credentials: true
   });
   await app.register(jwtPlugin);
+
+  // Initialize async context per request for tenant scoping
+  app.addHook('onRequest', (request, reply, done) => {
+    tenantContext.run({}, done);
+  });
 
   // Register API logger middleware (logs all requests to Upstash Redis)
   // Using onResponse hook to ensure tenantContext has run first

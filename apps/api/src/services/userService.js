@@ -191,9 +191,17 @@ class UserService {
       updates.password = await bcrypt.hash(updates.password, 10);
     }
 
+    const updatePayload = {
+      $set: { ...updates, updatedAt: new Date() }
+    };
+
+    if (updates.password) {
+      updatePayload.$inc = { tokenVersion: 1 };
+    }
+
     const user = await User.findOneAndUpdate(
       { _id: userId, tenantId },
-      { ...updates, updatedAt: new Date() },
+      updatePayload,
       { new: true, runValidators: true }
     ).select('-password');
 
@@ -375,6 +383,7 @@ class UserService {
     }
 
     user.password = newPassword; // Model'de pre-save ile hash'lenecek
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
     return { success: true };

@@ -39,10 +39,11 @@ const formatRelativeTime = (date) => {
   }
 }
 
-export default function RecentActivities({ limit = 10 }) {
+export default function RecentActivities({ limit = 10, activeTenantId }) {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['recentActivities', limit],
-    queryFn: () => activitiesAPI.getRecentActivities(limit),
+    queryKey: ['recentActivities', limit, activeTenantId],
+    queryFn: () => activitiesAPI.getRecentActivities(limit, activeTenantId),
+    enabled: Boolean(activeTenantId),
     // Removed refetchInterval - activities will only update on manual refresh or page reload
   })
 

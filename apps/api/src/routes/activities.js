@@ -132,7 +132,10 @@ async function activityRoutes(fastify, options) {
   }, async function(request, reply) {
     try {
       const { limit = 10 } = request.query;
-      const tenantId = request.tenantId;
+      const tenantId = request.tenantId || request.user?.tenantId;
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'TenantMissing', message: 'tenantId is required' });
+      }
 
       const activities = await ActivityLog.find({ tenant: tenantId })
         .populate('user', 'firstName lastName email')

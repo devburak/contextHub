@@ -134,7 +134,20 @@ async function authRoutes(fastify, options) {
       
       return reply.send(result);
     } catch (error) {
-      return reply.code(401).send({ error: 'Authentication failed', message: error.message });
+      const statusCode = error.statusCode || 401;
+      const response = {
+        error: statusCode === 429 ? 'Too many attempts' : 'Authentication failed',
+        message: error.message
+      };
+
+      if (error.retryAfterSeconds) {
+        response.retryAfterSeconds = error.retryAfterSeconds;
+      }
+      if (error.blocked) {
+        response.blocked = true;
+      }
+
+      return reply.code(statusCode).send(response);
     }
   });
 
