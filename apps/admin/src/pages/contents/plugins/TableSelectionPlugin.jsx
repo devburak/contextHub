@@ -1,8 +1,16 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { $createParagraphNode } from 'lexical'
-import { useEffect, useState, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import {
+  $createParagraphNode,
+  $getNodeByKey,
+  COMMAND_PRIORITY_LOW,
+  KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
+} from 'lexical'
+import { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { mergeRegister } from '@lexical/utils'
+import {
+  ChevronDownIcon,
   Squares2X2Icon,
   TrashIcon,
   XMarkIcon
@@ -15,7 +23,7 @@ import {
   $getCellPosition
 } from '../nodes/TableNode.jsx'
 
-function TableSelectionPlugin({ anchorElem = document.body }) {
+function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
   const [editor] = useLexicalComposerContext()
   const [selectedCells, setSelectedCells] = useState(new Set())
   const [isSelecting, setIsSelecting] = useState(false)
@@ -24,9 +32,20 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
   const [currentTable, setCurrentTable] = useState(null)
   const [lastClickTime, setLastClickTime] = useState(0)
   const [lastClickedCell, setLastClickedCell] = useState(null)
+  const [selectionRect, setSelectionRect] = useState(null)
+  const [selectionToolbarPosition, setSelectionToolbarPosition] = useState(null)
+  const [selectedTableKey, setSelectedTableKey] = useState(null)
+  const [selectedTableRect, setSelectedTableRect] = useState(null)
+  const [tableToolbarPosition, setTableToolbarPosition] = useState(null)
+  const selectionToolbarRef = useRef(null)
+  const tableToolbarRef = useRef(null)
+  const notifySelectionChange = useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent('table-selection-change'))
+  }, [])
 
   // Clear all selection
-  const clearSelection = useCallback(() => {
+  const clearCellSelection = useCallback(() => {
     // Clear visual classes only in current table
     if (currentTable) {
       currentTable.querySelectorAll('.editor-table-cell.selected-cell').forEach(cell => {
@@ -34,11 +53,65 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
       })
     }
     setSelectedCells(new Set())
+    setSelectionRect(null)
+    setSelectionToolbarPosition(null)
     setIsSelecting(false)
     setSelectionStart(null)
     setDragCurrent(null)
     setCurrentTable(null)
-  }, [currentTable])
+    notifySelectionChange()
+  }, [currentTable, notifySelectionChange])
+
+  const clearTableSelection = useCallback(() => {
+    if (selectedTableKey) {
+      const tableElement = editor.getElementByKey(selectedTableKey)
+      tableElement?.classList.remove('table-selected')
+    }
+    setSelectedTableKey(null)
+    setSelectedTableRect(null)
+    setTableToolbarPosition(null)
+    notifySelectionChange()
+  }, [editor, selectedTableKey, notifySelectionChange])
+
+  const clearAllSelections = useCallback(() => {
+    clearCellSelection()
+    clearTableSelection()
+  }, [clearCellSelection, clearTableSelection])
+
+  const getTableKeyFromElement = useCallback((tableElement) => {
+    if (!tableElement) return null
+    let tableKey = null
+
+    editor.getEditorState().read(() => {
+      const nodeMap = editor.getEditorState()._nodeMap
+      for (const [key, node] of nodeMap) {
+        if ($isTableNode(node)) {
+          const domElement = editor.getElementByKey(key)
+          if (domElement === tableElement) {
+            tableKey = key
+            break
+          }
+        }
+      }
+    })
+
+    return tableKey
+  }, [editor])
+
+  const selectTable = useCallback((tableElement) => {
+    const tableKey = getTableKeyFromElement(tableElement)
+    if (!tableKey) return
+
+    if (selectedTableKey && selectedTableKey !== tableKey) {
+      const previousTable = editor.getElementByKey(selectedTableKey)
+      previousTable?.classList.remove('table-selected')
+    }
+
+    tableElement.classList.add('table-selected')
+    setSelectedTableKey(tableKey)
+    setSelectedTableRect(tableElement.getBoundingClientRect())
+    notifySelectionChange()
+  }, [editor, getTableKeyFromElement, selectedTableKey, notifySelectionChange])
 
   // Find cell coordinates in table
   const getCellCoordinates = useCallback((cellElement) => {
@@ -80,6 +153,35 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
     }
 
     return cells
+  }, [])
+
+  const updateSelectionRect = useCallback((cellsInRange) => {
+    if (!cellsInRange.length) {
+      setSelectionRect(null)
+      return
+    }
+
+    let top = Infinity
+    let left = Infinity
+    let right = -Infinity
+    let bottom = -Infinity
+
+    cellsInRange.forEach(cellElement => {
+      const rect = cellElement.getBoundingClientRect()
+      top = Math.min(top, rect.top)
+      left = Math.min(left, rect.left)
+      right = Math.max(right, rect.right)
+      bottom = Math.max(bottom, rect.bottom)
+    })
+
+    setSelectionRect({
+      top,
+      left,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+    })
   }, [])
 
   // Update visual selection
@@ -124,18 +226,28 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
     })
 
     setSelectedCells(cellKeys)
-  }, [editor, getCellsInRange, getCellCoordinates, currentTable])
+    updateSelectionRect(cellsInRange)
+    notifySelectionChange()
+  }, [editor, getCellsInRange, getCellCoordinates, currentTable, updateSelectionRect, notifySelectionChange])
 
   // Mouse event handlers
   const handleMouseDown = useCallback((event) => {
     const cellElement = event.target.closest('.editor-table-cell')
-    if (!cellElement) {
-      clearSelection()
+    const tableElement = event.target.closest('.editor-table')
+
+    if (!tableElement) {
+      clearAllSelections()
       return
     }
 
-    const tableElement = cellElement.closest('.editor-table')
-    if (!tableElement) return
+    if (!cellElement) {
+      clearCellSelection()
+      selectTable(tableElement)
+      event.preventDefault()
+      return
+    }
+
+    clearTableSelection()
 
     // Double-click detection
     const now = Date.now()
@@ -146,7 +258,7 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
 
     // Eğer double-click ise, seçimi temizle ve edit moduna geç
     if (isDoubleClick) {
-      clearSelection()
+      clearCellSelection()
       return
     }
 
@@ -162,7 +274,7 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
     updateSelection(coords, coords, tableElement)
 
     event.preventDefault()
-  }, [getCellCoordinates, updateSelection, clearSelection, lastClickTime, lastClickedCell])
+  }, [getCellCoordinates, updateSelection, clearCellSelection, clearTableSelection, clearAllSelections, selectTable, lastClickTime, lastClickedCell])
 
   const handleMouseEnter = useCallback((event) => {
     if (!isSelecting || !selectionStart || !currentTable) return
@@ -191,12 +303,7 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
     if (!rootElement) return
 
     const handleGlobalMouseDown = (event) => {
-      const isTableClick = event.target.closest('.editor-table')
-      if (!isTableClick) {
-        clearSelection()
-      } else {
-        handleMouseDown(event)
-      }
+      handleMouseDown(event)
     }
 
     const handleGlobalMouseUp = () => {
@@ -205,7 +312,7 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        clearSelection()
+        clearAllSelections()
       }
     }
 
@@ -220,7 +327,67 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
       document.removeEventListener('mouseup', handleGlobalMouseUp)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [editor, handleMouseDown, handleMouseEnter, handleMouseUp, clearSelection])
+  }, [editor, handleMouseDown, handleMouseEnter, handleMouseUp, clearAllSelections])
+
+  useEffect(() => {
+    if (!selectedTableKey) return
+
+    const updateTableRect = () => {
+      const tableElement = editor.getElementByKey(selectedTableKey)
+      if (tableElement) {
+        setSelectedTableRect(tableElement.getBoundingClientRect())
+      }
+    }
+
+    updateTableRect()
+
+    window.addEventListener('scroll', updateTableRect, true)
+    window.addEventListener('resize', updateTableRect)
+
+    return () => {
+      window.removeEventListener('scroll', updateTableRect, true)
+      window.removeEventListener('resize', updateTableRect)
+    }
+  }, [editor, selectedTableKey])
+
+  useLayoutEffect(() => {
+    if (!selectionRect || !selectionToolbarRef.current) {
+      setSelectionToolbarPosition(null)
+      return
+    }
+
+    const toolbarRect = selectionToolbarRef.current.getBoundingClientRect()
+    setSelectionToolbarPosition(getFloatingPosition(selectionRect, toolbarRect))
+  }, [selectionRect])
+
+  useLayoutEffect(() => {
+    if (!selectedTableRect || !tableToolbarRef.current) {
+      setTableToolbarPosition(null)
+      return
+    }
+
+    const toolbarRect = tableToolbarRef.current.getBoundingClientRect()
+    setTableToolbarPosition(getFloatingPosition(selectedTableRect, toolbarRect))
+  }, [selectedTableRect])
+
+  useEffect(() => {
+    if (!selectionRect) return
+
+    const updatePosition = () => {
+      if (!selectionToolbarRef.current) return
+      const toolbarRect = selectionToolbarRef.current.getBoundingClientRect()
+      setSelectionToolbarPosition(getFloatingPosition(selectionRect, toolbarRect))
+    }
+
+    window.addEventListener('scroll', updatePosition, true)
+    window.addEventListener('resize', updatePosition)
+
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
+    }
+  }, [selectionRect])
+
 
   // Actions
   const mergeCells = useCallback(() => {
@@ -243,8 +410,8 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
       }
     })
 
-    clearSelection()
-  }, [editor, selectedCells, clearSelection])
+    clearCellSelection()
+  }, [editor, selectedCells, clearCellSelection])
 
   const clearCellContent = useCallback(() => {
     editor.update(() => {
@@ -263,17 +430,114 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
         }
       })
     })
-    clearSelection()
-  }, [editor, selectedCells, clearSelection])
+    clearCellSelection()
+  }, [editor, selectedCells, clearCellSelection])
+
+  const toggleSelectionMenu = useCallback((event) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (!selectionToolbarRef.current) return
+
+    window.dispatchEvent(new CustomEvent('table-action-menu', {
+      detail: {
+        source: 'selection',
+        toggle: true,
+      }
+    }))
+  }, [])
+
+  useEffect(() => {
+    return mergeRegister(
+      editor.registerCommand(
+        KEY_BACKSPACE_COMMAND,
+        () => {
+          if (!selectedTableKey) return false
+          editor.update(() => {
+            const node = $getNodeByKey(selectedTableKey)
+            if ($isTableNode(node)) {
+              node.remove()
+            }
+          })
+          clearTableSelection()
+          return true
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      editor.registerCommand(
+        KEY_DELETE_COMMAND,
+        () => {
+          if (!selectedTableKey) return false
+          editor.update(() => {
+            const node = $getNodeByKey(selectedTableKey)
+            if ($isTableNode(node)) {
+              node.remove()
+            }
+          })
+          clearTableSelection()
+          return true
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+    )
+  }, [editor, selectedTableKey, clearTableSelection])
 
   return (
     <>
-      {selectedCells.size > 0 && (
-        <div className="table-selection-info">
+      {selectedTableKey && createPortal(
+        <div
+          ref={tableToolbarRef}
+          className="table-toolbar"
+          style={{
+            position: 'fixed',
+            top: `${tableToolbarPosition?.top ?? selectedTableRect?.top ?? 0}px`,
+            left: `${tableToolbarPosition?.left ?? selectedTableRect?.left ?? 0}px`,
+            visibility: tableToolbarPosition ? 'visible' : 'hidden',
+          }}
+        >
+          <span className="table-toolbar-label">Tablo seçildi</span>
+          <button
+            className="table-toolbar-btn danger"
+            onClick={() => {
+              editor.update(() => {
+                const node = $getNodeByKey(selectedTableKey)
+                if ($isTableNode(node)) {
+                  node.remove()
+                }
+              })
+              clearTableSelection()
+            }}
+            title="Tabloyu sil"
+          >
+            <TrashIcon className="w-4 h-4" />
+            Sil
+          </button>
+        </div>,
+        document.body,
+      )}
+      {selectedCells.size > 0 && createPortal(
+        <div
+          ref={selectionToolbarRef}
+          className="table-selection-info"
+          style={{
+            position: 'fixed',
+            top: `${selectionToolbarPosition?.top ?? selectionRect?.top ?? 0}px`,
+            left: `${selectionToolbarPosition?.left ?? selectionRect?.left ?? 0}px`,
+            visibility: selectionToolbarPosition ? 'visible' : 'hidden',
+          }}
+        >
           <div className="selection-count">
             {selectedCells.size} hücre seçili
           </div>
           <div className="selection-actions">
+            <button
+              className="selection-action-btn menu"
+              onClick={toggleSelectionMenu}
+              title="Biçimlendirme menüsünü aç"
+            >
+              <ChevronDownIcon className="w-4 h-4" />
+              Biçimlendir
+            </button>
             {selectedCells.size > 1 && (
               <button
                 className="selection-action-btn merge"
@@ -294,16 +558,34 @@ function TableSelectionPlugin({ anchorElem = document.body }) {
             </button>
             <button
               className="selection-action-btn cancel"
-              onClick={clearSelection}
+              onClick={clearCellSelection}
               title="Seçimi iptal et"
             >
               <XMarkIcon className="w-4 h-4" />
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )
 }
 
 export default TableSelectionPlugin
+
+const TOOLBAR_MARGIN = 8
+const TOOLBAR_GAP = 8
+
+function getFloatingPosition(targetRect, toolbarRect) {
+  const topPreferred = targetRect.top - toolbarRect.height - TOOLBAR_GAP
+  const top = topPreferred > TOOLBAR_MARGIN
+    ? topPreferred
+    : Math.min(targetRect.bottom + TOOLBAR_GAP, window.innerHeight - toolbarRect.height - TOOLBAR_MARGIN)
+
+  const left = Math.min(
+    Math.max(targetRect.left, TOOLBAR_MARGIN),
+    window.innerWidth - toolbarRect.width - TOOLBAR_MARGIN
+  )
+
+  return { top, left }
+}
