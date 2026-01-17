@@ -21,6 +21,48 @@ const {
   entryListQuerySchema
 } = require('../services/collectionValidation');
 
+const dataLabelsSchema = {
+  type: 'object',
+  description: 'Enum labels per field key. Values are locale maps or arrays for multi-select enums.',
+  additionalProperties: true
+};
+
+const collectionEntrySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    _id: { type: 'string' },
+    collectionKey: { type: 'string' },
+    slug: { type: 'string' },
+    status: { type: 'string', enum: ['draft', 'published', 'archived'] },
+    data: { type: 'object', additionalProperties: true },
+    dataLabels: dataLabelsSchema,
+    relations: { type: 'object', additionalProperties: true },
+    indexed: { type: 'object', additionalProperties: true },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' }
+  }
+};
+
+const collectionEntryListResponseSchema = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: collectionEntrySchema
+    },
+    pagination: {
+      type: 'object',
+      properties: {
+        page: { type: 'number' },
+        limit: { type: 'number' },
+        total: { type: 'number' },
+        pages: { type: 'number' }
+      }
+    }
+  }
+};
+
 function parseValidationError(validation) {
   return (validation.error?.issues || []).map((issue) => ({
     path: issue.path,
@@ -129,6 +171,16 @@ async function collectionRoutes(fastify) {
   fastify.get('/collections/:key/entries', {
     preHandler: [authenticate],
     schema: {
+      tags: ['collections'],
+      summary: 'List collection entries',
+      description: 'Enum fields include dataLabels with locale maps when available.',
+      params: {
+        type: 'object',
+        properties: {
+          key: { type: 'string' }
+        },
+        required: ['key']
+      },
       querystring: {
         type: 'object',
         properties: {
@@ -139,6 +191,9 @@ async function collectionRoutes(fastify) {
           sort: { type: 'string' },
           filter: { type: 'object' }
         }
+      },
+      response: {
+        200: collectionEntryListResponseSchema
       }
     }
   }, async (request, reply) => {

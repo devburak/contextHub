@@ -76,6 +76,92 @@ function ensureEnumValue(field, value) {
   return options.includes(value) ? value : undefined;
 }
 
+function resolveOptionLabel(option) {
+  if (!option) return undefined;
+  const rawLabel = option.label;
+
+  if (!rawLabel) return undefined;
+  if (typeof rawLabel === 'string') return rawLabel;
+
+  let label = rawLabel;
+  if (typeof label?.toObject === 'function') {
+    label = label.toObject();
+  } else if (label instanceof Map) {
+    label = Object.fromEntries(label.entries());
+  }
+
+  if (!label || typeof label !== 'object') return undefined;
+  return Object.keys(label).length ? label : undefined;
+}
+
+function buildEnumLabelIndex(collectionType) {
+  if (!collectionType) return new Map();
+  const source = typeof collectionType.toObject === 'function' ? collectionType.toObject() : collectionType;
+  const fields = source?.fields || [];
+  const enumIndex = new Map();
+
+  fields.forEach((field) => {
+    if (!field || field.type !== 'enum' || !field.key) return;
+    const optionIndex = new Map();
+    (field.options || []).forEach((option) => {
+      if (!option || option.value === undefined || option.value === null) return;
+      const label = resolveOptionLabel(option);
+      if (label !== undefined && label !== null) {
+        optionIndex.set(option.value, label);
+      }
+    });
+    if (optionIndex.size) {
+      enumIndex.set(field.key, optionIndex);
+    }
+  });
+
+  return enumIndex;
+}
+
+function buildEnumLabels(data, enumIndex) {
+  if (!data || typeof data !== 'object' || !enumIndex?.size) return undefined;
+  const labels = {};
+
+  enumIndex.forEach((optionIndex, fieldKey) => {
+    if (!Object.prototype.hasOwnProperty.call(data, fieldKey)) return;
+    const value = data[fieldKey];
+    if (value === undefined || value === null || value === '') return;
+
+    if (Array.isArray(value)) {
+      const mapped = value.map((item) => (optionIndex.has(item) ? optionIndex.get(item) : null));
+      const hasLabel = mapped.some((item) => item !== null && item !== undefined);
+      if (hasLabel) {
+        labels[fieldKey] = mapped;
+      }
+      return;
+    }
+
+    if (optionIndex.has(value)) {
+      labels[fieldKey] = optionIndex.get(value);
+    }
+  });
+
+  return Object.keys(labels).length ? labels : undefined;
+}
+
+function attachEnumLabels({ items, collectionType }) {
+  if (!items) return items;
+  const list = Array.isArray(items) ? items : [items];
+  if (!list.length) return items;
+
+  const enumIndex = buildEnumLabelIndex(collectionType);
+  if (!enumIndex.size) return items;
+
+  list.forEach((item) => {
+    const dataLabels = buildEnumLabels(item?.data, enumIndex);
+    if (dataLabels) {
+      item.dataLabels = dataLabels;
+    }
+  });
+
+  return Array.isArray(items) ? list : list[0];
+}
+
 function ensureGeoJson(value) {
   if (!value || typeof value !== 'object') return undefined;
   const { type, coordinates } = value;
@@ -384,6 +470,8 @@ async function listEntries({ tenantId, collectionKey, query }) {
     .limit(limit)
     .lean();
 
+  attachEnumLabels({ items, collectionType });
+
   return {
     items,
     pagination: {
@@ -520,6 +608,7 @@ function serializeEntry(doc) {
     slug: doc.slug,
     status: doc.status,
     data: doc.data,
+    dataLabels: doc.dataLabels,
     relations: doc.relations,
     indexed: doc.indexed,
     createdAt: doc.createdAt,
@@ -761,8 +850,9 @@ async function runCollectionQuery({ tenantId, payload }) {
   const selectList = Array.isArray(payload.select) && payload.select.length ? payload.select : null;
 
   if (!selectList) {
+    const itemsWithLabels = attachEnumLabels({ items, collectionType });
     return {
-      items: items.map(serializeEntry),
+      items: itemsWithLabels.map(serializeEntry),
       pagination: {
         total,
         limit,
@@ -957,5 +1047,6 @@ module.exports = {
   deleteEntry,
   getEntry,
   findEntryBySlug,
-  runCollectionQuery
+  runCollectionQuery,
+  attachEnumLabels
 };
