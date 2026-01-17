@@ -19,14 +19,21 @@ const DOMAIN_EVENT_TYPES = Object.freeze([
   'menu.updated',
   'menu.deleted',
   'tenantSettings.updated',
-  'media.updated'
+  'media.updated',
+  'collection.created',
+  'collection.updated',
+  'collection.entry.created',
+  'collection.entry.updated',
+  'collection.entry.deleted'
 ]);
 
 /**
  * Known event types emitted by the platform.
  * @typedef {'content.created' | 'content.updated' | 'content.published' | 'content.unpublished' | 'content.deleted' |
  * 'form.created' | 'form.updated' | 'form.submitted' | 'placement.created' | 'placement.updated' | 'placement.deleted' |
- * 'menu.created' | 'menu.updated' | 'menu.deleted' | 'tenantSettings.updated' | 'media.updated'} DomainEventType
+ * 'menu.created' | 'menu.updated' | 'menu.deleted' | 'tenantSettings.updated' | 'media.updated' |
+ * 'collection.created' | 'collection.updated' |
+ * 'collection.entry.created' | 'collection.entry.updated' | 'collection.entry.deleted'} DomainEventType
  */
 
 /**

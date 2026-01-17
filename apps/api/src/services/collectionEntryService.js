@@ -3,6 +3,8 @@ const { CollectionEntry, Media, Content } = require('@contexthub/common');
 const {
   getCollectionType
 } = require('./collectionTypeService');
+const { emitDomainEvent } = require('../lib/domainEvents');
+const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 
 const ObjectId = mongoose.Types.ObjectId;
 
@@ -283,6 +285,57 @@ function buildIndexedSnapshot(collectionType, data) {
   return snapshot;
 }
 
+function buildCollectionEntryEventPayload(entryDoc) {
+  if (!entryDoc) return null;
+  const doc = typeof entryDoc.toObject === 'function'
+    ? entryDoc.toObject({ depopulate: true })
+    : entryDoc;
+
+  const payload = {
+    entryId: doc._id ? doc._id.toString() : null,
+    collectionKey: doc.collectionKey,
+    slug: doc.slug,
+    status: doc.status,
+    data: doc.data,
+    relations: doc.relations,
+    indexed: doc.indexed,
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : undefined,
+    updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : new Date().toISOString()
+  };
+
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined || payload[key] === null) {
+      delete payload[key];
+    }
+  });
+
+  return payload;
+}
+
+async function emitCollectionEntryEvent({ tenantId, type, entry, userId }) {
+  if (!tenantId || !type || !entry) return;
+
+  const normalizedUserId = userId ? userId.toString() : null;
+  const metadata = {
+    triggeredBy: normalizedUserId ? 'user' : 'system',
+    source: 'admin-ui'
+  };
+
+  if (normalizedUserId) {
+    metadata.userId = normalizedUserId;
+  }
+
+  try {
+    const payload = buildCollectionEntryEventPayload(entry) || {};
+    const eventId = await emitDomainEvent(tenantId, type, payload, metadata);
+    if (eventId) {
+      triggerWebhooksForTenant(tenantId);
+    }
+  } catch (error) {
+    console.error('[collectionEntryService] Failed to emit domain event', { tenantId, type, error });
+  }
+}
+
 async function slugExists({ tenantId, collectionKey, slug, excludeId }) {
   const query = { tenantId, collectionKey, slug };
   if (excludeId) {
@@ -512,6 +565,13 @@ async function createEntry({ tenantId, collectionKey, payload, userId }) {
     updatedBy: toObjectId(userId)
   });
 
+  await emitCollectionEntryEvent({
+    tenantId,
+    type: 'collection.entry.created',
+    entry: doc,
+    userId
+  });
+
   return doc.toObject();
 }
 
@@ -571,15 +631,17 @@ async function updateEntry({ tenantId, collectionKey, entryId, payload, userId }
   existing.updatedBy = toObjectId(userId) || existing.updatedBy;
 
   await existing.save();
+  await emitCollectionEntryEvent({
+    tenantId,
+    type: 'collection.entry.updated',
+    entry: existing,
+    userId
+  });
   return existing.toObject();
 }
 
-async function deleteEntry({ tenantId, collectionKey, entryId }) {
-  if (!ObjectId.isValid(entryId)) {
-    const error = new Error('Invalid entry id');
-    error.code = 'InvalidEntryId';
-    throw error;
-  }
+async function deleteEntry({ tenantId, collectionKey, entryId, userId }) {
+  const entry = await getEntry({ tenantId, collectionKey, entryId });
 
   const result = await CollectionEntry.deleteOne({ tenantId, collectionKey, _id: entryId });
   if (!result.deletedCount) {
@@ -587,6 +649,13 @@ async function deleteEntry({ tenantId, collectionKey, entryId }) {
     error.code = 'EntryNotFound';
     throw error;
   }
+
+  await emitCollectionEntryEvent({
+    tenantId,
+    type: 'collection.entry.deleted',
+    entry,
+    userId
+  });
 }
 
 async function findEntryBySlug({ tenantId, collectionKey, slug, status = 'published' }) {

@@ -279,7 +279,8 @@ async function collectionRoutes(fastify) {
       await deleteEntry({
         tenantId: request.tenantId,
         collectionKey: request.params.key,
-        entryId: request.params.id
+        entryId: request.params.id,
+        userId: request.user?._id?.toString()
       });
       return reply.code(204).send();
     } catch (error) {
