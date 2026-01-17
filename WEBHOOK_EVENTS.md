@@ -50,6 +50,11 @@ A domain event is an immutable plain JavaScript object describing something that
 - `menu.deleted`
 - `tenantSettings.updated`
 - `media.updated`
+- `collection.created`
+- `collection.updated`
+- `collection.entry.created`
+- `collection.entry.updated`
+- `collection.entry.deleted`
 
 The `payload` structure is intentionally open so each feature team can include the minimum snapshot they need for replay (e.g., content ID, slug, version, diff, etc.).
 

@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const { CollectionType } = require('@contexthub/common');
+const { emitDomainEvent } = require('../lib/domainEvents');
+const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 
 const ObjectId = mongoose.Types.ObjectId;
 
@@ -19,6 +21,57 @@ function assertUniqueFieldKeys(fields = []) {
       throw error;
     }
     seen.add(field.key);
+  }
+}
+
+function buildCollectionEventPayload(collectionDoc) {
+  if (!collectionDoc) return null;
+  const doc = typeof collectionDoc.toObject === 'function'
+    ? collectionDoc.toObject({ depopulate: true })
+    : collectionDoc;
+
+  const payload = {
+    collectionId: doc._id ? doc._id.toString() : null,
+    key: doc.key,
+    name: doc.name,
+    description: doc.description,
+    fields: doc.fields,
+    settings: doc.settings,
+    status: doc.status,
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : undefined,
+    updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : new Date().toISOString()
+  };
+
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined || payload[key] === null) {
+      delete payload[key];
+    }
+  });
+
+  return payload;
+}
+
+async function emitCollectionEvent({ tenantId, type, collection, userId }) {
+  if (!tenantId || !type || !collection) return;
+
+  const normalizedUserId = userId ? userId.toString() : null;
+  const metadata = {
+    triggeredBy: normalizedUserId ? 'user' : 'system',
+    source: 'admin-ui'
+  };
+
+  if (normalizedUserId) {
+    metadata.userId = normalizedUserId;
+  }
+
+  try {
+    const payload = buildCollectionEventPayload(collection) || {};
+    const eventId = await emitDomainEvent(tenantId, type, payload, metadata);
+    if (eventId) {
+      triggerWebhooksForTenant(tenantId);
+    }
+  } catch (error) {
+    console.error('[collectionTypeService] Failed to emit domain event', { tenantId, type, error });
   }
 }
 
@@ -65,6 +118,12 @@ async function createCollectionType({ tenantId, payload, userId }) {
   });
 
   await doc.save();
+  await emitCollectionEvent({
+    tenantId,
+    type: 'collection.created',
+    collection: doc,
+    userId
+  });
   return doc.toObject();
 }
 
@@ -102,6 +161,12 @@ async function updateCollectionType({ tenantId, key, payload, userId }) {
 
   doc.updatedBy = toObjectId(userId) || doc.updatedBy;
   await doc.save();
+  await emitCollectionEvent({
+    tenantId,
+    type: 'collection.updated',
+    collection: doc,
+    userId
+  });
   return doc.toObject();
 }
 
