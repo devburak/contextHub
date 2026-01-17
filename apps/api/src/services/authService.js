@@ -5,6 +5,42 @@ const tenantService = require('./tenantService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { mailService } = require('./mailService');
+const loginRateLimiter = require('./loginRateLimiter');
+
+function extractClientIp(request) {
+  // Fastify will populate request.ips when trustProxy is enabled
+  if (Array.isArray(request?.ips) && request.ips.length) {
+    const candidate = request.ips.find(Boolean);
+    if (candidate) return candidate;
+  }
+
+  const xfwd = request?.headers?.['x-forwarded-for'];
+  if (xfwd && typeof xfwd === 'string') {
+    const forwardedIp = xfwd.split(',').map((ip) => ip.trim()).find(Boolean);
+    if (forwardedIp) return forwardedIp;
+  }
+
+  const xReal = request?.headers?.['x-real-ip'];
+  if (xReal) return xReal;
+
+  const cfIp = request?.headers?.['cf-connecting-ip'];
+  if (cfIp) return cfIp;
+
+  const forwardedHeader = request?.headers?.forwarded;
+  if (forwardedHeader && typeof forwardedHeader === 'string') {
+    const match = forwardedHeader.match(/for=([^;]+)/i);
+    if (match && match[1]) {
+      return match[1].replace(/["\[\]]/g, '');
+    }
+  }
+
+  return (
+    request?.ip ||
+    request?.socket?.remoteAddress ||
+    request?.raw?.socket?.remoteAddress ||
+    'unknown'
+  );
+}
 
 class AuthService {
   constructor(fastifyInstance) {
@@ -135,18 +171,62 @@ class AuthService {
   }
 
   async login(email, password, tenantId, request = null) {
+    const clientIp = extractClientIp(request);
+    const userAgent = request?.headers?.['user-agent'] || 'unknown';
+
+    const blockStatus = await loginRateLimiter.isBlocked(email, clientIp);
+    if (blockStatus.blocked) {
+      const shouldNotify = !blockStatus.retryAfterSeconds || blockStatus.retryAfterSeconds >= (loginRateLimiter.BLOCK_TTL_SECONDS - 5);
+
+      // Attempt to notify user if account exists
+      if (shouldNotify) {
+        try {
+          const existingUser = await User.findOne({ email });
+          if (existingUser) {
+            await mailService.sendLoginLimitExceededEmail(existingUser.email, { ip: clientIp, userAgent });
+          }
+        } catch (notifyError) {
+          console.error('Failed to notify user about login block:', notifyError);
+        }
+      }
+
+      const err = new Error('Çok fazla hatalı deneme yapıldı. Lütfen 1 saat sonra tekrar deneyin.');
+      err.statusCode = 429;
+      err.retryAfterSeconds = blockStatus.retryAfterSeconds || loginRateLimiter.BLOCK_TTL_SECONDS;
+      err.blocked = true;
+      err.clientIp = clientIp;
+      throw err;
+    }
+
     // Kullanıcıyı email'e göre bul
     const user = await User.findOne({ email });
 
     if (!user) {
+      await loginRateLimiter.recordFailedAttempt(email, clientIp);
       throw new Error('Invalid credentials');
     }
 
     // Şifre kontrolü
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      const attemptResult = await loginRateLimiter.recordFailedAttempt(email, clientIp);
+      if (attemptResult.blocked) {
+        try {
+          await mailService.sendLoginLimitExceededEmail(user.email, { ip: clientIp, userAgent });
+        } catch (mailError) {
+          console.error('Failed to send login limit email:', mailError);
+        }
+        const err = new Error('Çok fazla hatalı deneme yapıldı. Lütfen 1 saat sonra tekrar deneyin.');
+        err.statusCode = 429;
+        err.retryAfterSeconds = loginRateLimiter.BLOCK_TTL_SECONDS;
+        err.blocked = true;
+        throw err;
+      }
       throw new Error('Invalid credentials');
     }
+
+    // Başarılı girişte limit sıfırla
+    await loginRateLimiter.reset(email, clientIp);
 
     // Aktif membership'leri getir
     const memberships = await Membership.find({
@@ -175,6 +255,7 @@ class AuthService {
         {
           sub: user._id.toString(),
           email: user.email,
+          tokenVersion: user.tokenVersion ?? 0,
           role: null,
           roleId: null,
           tenantId: null,
@@ -243,6 +324,7 @@ class AuthService {
       {
         sub: user._id.toString(),
         email: user.email,
+        tokenVersion: user.tokenVersion ?? 0,
         role: payload.role,
         roleId: payload.roleMeta?.id ?? null,
         tenantId: payload.tenantId,
@@ -446,6 +528,13 @@ class AuthService {
         throw new Error('User not found');
       }
 
+       const currentTokenVersion = user.tokenVersion ?? 0;
+       const payloadTokenVersion = decoded.tokenVersion ?? 0;
+
+       if (payloadTokenVersion !== currentTokenVersion) {
+         throw new Error('Session is no longer valid, please login again');
+       }
+
       const membership = await Membership.findOne({ 
         userId: decoded.sub, 
         tenantId: decoded.tenantId, 
@@ -468,6 +557,7 @@ class AuthService {
         { 
           sub: user._id.toString(),
           email: user.email,
+          tokenVersion: currentTokenVersion,
           role: roleKey,
           roleId: roleDoc?._id?.toString() ?? null,
           tenantId: decoded.tenantId,
@@ -498,6 +588,7 @@ class AuthService {
 
     // Yeni şifre kaydet (model'de hash'lenecek)
     user.password = newPassword;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
     return { success: true };
@@ -625,12 +716,17 @@ class AuthService {
       user.lastName = lastName.trim();
     }
 
+    let passwordUpdated = false;
     if (typeof password === 'string' && password.trim()) {
       user.password = password.trim();
+      passwordUpdated = true;
     }
 
     user.status = 'active';
     user.isEmailVerified = true;
+    if (passwordUpdated) {
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+    }
     await user.save();
 
     const tenantId = membership.tenantId?.toString();
@@ -643,6 +739,7 @@ class AuthService {
       {
         sub: user._id.toString(),
         email: user.email,
+        tokenVersion: user.tokenVersion ?? 0,
         role: roleKey,
         roleId: roleDoc?._id?.toString() ?? null,
         tenantId,
@@ -738,6 +835,7 @@ class AuthService {
 
     // Yeni şifreyi kaydet
     user.password = newPassword; // Model'de pre-save ile hash'lenecek
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     user.resetPasswordToken = null;
     user.resetPasswordExpiresAt = null;
     await user.save();

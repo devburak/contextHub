@@ -52,6 +52,7 @@ export class TableNode extends ElementNode {
     const table = document.createElement('table')
     table.className = 'editor-table'
     table.setAttribute('data-lexical-table', 'true')
+    table.setAttribute('data-border-style', this.__borderStyle || 'solid')
 
     // Apply border styling
     if (this.__borderStyle === 'none') {
@@ -272,6 +273,9 @@ export class TableCellNode extends ElementNode {
     }
     if (this.__borderWidth && this.__borderColor && this.__borderStyle && this.__borderStyle !== 'none') {
       cell.style.setProperty('border', `${this.__borderWidth}px ${this.__borderStyle} ${this.__borderColor}`, 'important')
+      cell.setAttribute('data-border-explicit', 'true')
+    } else {
+      cell.removeAttribute('data-border-explicit')
     }
     if (this.__colSpan > 1) {
       cell.setAttribute('colspan', this.__colSpan.toString())
@@ -313,8 +317,10 @@ export class TableCellNode extends ElementNode {
         this.__borderStyle !== prevNode.__borderStyle) {
       if (this.__borderWidth && this.__borderColor && this.__borderStyle && this.__borderStyle !== 'none') {
         dom.style.setProperty('border', `${this.__borderWidth}px ${this.__borderStyle} ${this.__borderColor}`, 'important')
+        dom.setAttribute('data-border-explicit', 'true')
       } else {
         dom.style.removeProperty('border')
+        dom.removeAttribute('data-border-explicit')
       }
       needsUpdate = true
     }

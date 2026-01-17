@@ -1,4 +1,8 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../plugins/tenantPlugin');
+
+// Apply tenant enforcement globally (can be skipped per-schema with skipTenantEnforcement option)
+mongoose.plugin(tenantPlugin);
 
 // Model dosyalarını import edelim
 const Tenant = require('./Tenant');

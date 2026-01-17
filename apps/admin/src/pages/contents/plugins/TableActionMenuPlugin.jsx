@@ -1,6 +1,6 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { $getSelection, $isRangeSelection, $createParagraphNode } from 'lexical'
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ChevronDownIcon,
@@ -22,14 +22,26 @@ import {
   $unmergeCells
 } from '../nodes/TableNode.jsx'
 
-const SPACE = 4
+const SPACE = 6
+const BUTTON_SIZE = 20
+const VIEWPORT_MARGIN = 8
+const SUBMENU_WIDTH = 260
+const SELECTION_MENU_GAP = 8
 
-function TableActionMenuPlugin({ anchorElem = document.body }) {
+function TableActionMenuPlugin({ anchorElem: _anchorElem = document.body }) {
   const [editor] = useLexicalComposerContext()
   const menuRef = useRef(null)
   const [tableCellNode, setTableCellNode] = useState(null)
   const [showMenu, setShowMenu] = useState(false)
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
+  const [menuSource, setMenuSource] = useState('cell')
+  const menuSourceRef = useRef(menuSource)
+  const [menuAlignment, setMenuAlignment] = useState({
+    openLeft: false,
+    openUp: false,
+    submenuLeft: false,
+  })
+  const [selectionAnchorRect, setSelectionAnchorRect] = useState(null)
   const [selectedCells, setSelectedCells] = useState([])
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showRowHeightPicker, setShowRowHeightPicker] = useState(false)
@@ -114,26 +126,183 @@ function TableActionMenuPlugin({ anchorElem = document.body }) {
     })
   }, [editor])
 
-  const updateMenu = useCallback(() => {
-    const cellNode = findTableCellInSelection()
+  const getSelectedCellElements = useCallback(() => {
+    const rootElement = editor.getRootElement()
+    if (!rootElement) return []
+    return Array.from(rootElement.querySelectorAll('.editor-table-cell.selected-cell'))
+  }, [editor])
 
-    if (cellNode && cellNode !== tableCellNode) {
+  const getSelectionBoundingRect = useCallback((cellElements) => {
+    if (!cellElements.length) return null
+
+    let top = Infinity
+    let left = Infinity
+    let right = -Infinity
+    let bottom = -Infinity
+
+    cellElements.forEach((cell) => {
+      const rect = cell.getBoundingClientRect()
+      top = Math.min(top, rect.top)
+      left = Math.min(left, rect.left)
+      right = Math.max(right, rect.right)
+      bottom = Math.max(bottom, rect.bottom)
+    })
+
+    return { top, left, right, bottom }
+  }, [])
+
+  const getSelectionToolbarRect = useCallback(() => {
+    const selectionToolbar = document.querySelector('.table-selection-info')
+    if (!selectionToolbar) return null
+    return selectionToolbar.getBoundingClientRect()
+  }, [])
+
+  const getAnchorCellElement = useCallback((cellElements) => {
+    if (!cellElements.length) return null
+
+    let anchor = cellElements[0]
+    let anchorRect = anchor.getBoundingClientRect()
+
+    cellElements.forEach((cell) => {
+      const rect = cell.getBoundingClientRect()
+      if (rect.top < anchorRect.top || (rect.top === anchorRect.top && rect.left < anchorRect.left)) {
+        anchor = cell
+        anchorRect = rect
+      }
+    })
+
+    return anchor
+  }, [])
+
+  const getCellNodeFromElement = useCallback((cellElement) => {
+    if (!cellElement) return null
+    let foundNode = null
+
+    editor.getEditorState().read(() => {
+      const nodeMap = editor.getEditorState()._nodeMap
+      for (const [key, node] of nodeMap) {
+        if ($isTableCellNode(node)) {
+          const domElement = editor.getElementByKey(key)
+          if (domElement === cellElement) {
+            foundNode = node
+            break
+          }
+        }
+      }
+    })
+
+    return foundNode
+  }, [editor])
+
+  const updateMenu = useCallback(() => {
+    const activeSource = menuSourceRef.current
+
+    if (document.querySelector('.editor-table.table-selected')) {
+      setTableCellNode(null)
+      setShowMenu(false)
+      return
+    }
+
+    const selectedCellElements = getSelectedCellElements()
+    if (selectedCellElements.length > 0) {
+      const selectionRect = getSelectionBoundingRect(selectedCellElements)
+      if (!selectionRect) return
+
+      const anchorCell = getAnchorCellElement(selectedCellElements)
+      const anchorNode = getCellNodeFromElement(anchorCell)
+
+      if (!anchorNode) {
+        setTableCellNode(null)
+        setShowMenu(false)
+        return
+      }
+
+      if (activeSource === 'selection') {
+        const toolbarRect = getSelectionToolbarRect()
+        const anchorRect = toolbarRect || selectionRect
+        const viewportWidth = window.innerWidth
+
+        const left = Math.min(
+          Math.max(anchorRect.left, VIEWPORT_MARGIN),
+          viewportWidth - 240 - VIEWPORT_MARGIN,
+        )
+        const top = anchorRect.bottom + SELECTION_MENU_GAP
+
+        setSelectionAnchorRect(anchorRect)
+        setMenuPosition({ top, left })
+        setTableCellNode(anchorNode)
+        return
+      }
+
+      setSelectionAnchorRect(null)
+
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      const rect = selectionRect
+      const shouldPlaceLeft = rect.right + BUTTON_SIZE + SPACE > viewportWidth - VIEWPORT_MARGIN
+      const leftRaw = shouldPlaceLeft
+        ? rect.left - BUTTON_SIZE - SPACE
+        : rect.right + SPACE
+      const left = Math.min(
+        Math.max(leftRaw, VIEWPORT_MARGIN),
+        viewportWidth - BUTTON_SIZE - VIEWPORT_MARGIN,
+      )
+      const top = Math.min(
+        Math.max(rect.top, VIEWPORT_MARGIN),
+        viewportHeight - BUTTON_SIZE - VIEWPORT_MARGIN,
+      )
+
+      setMenuPosition({ top, left })
+      setTableCellNode(anchorNode)
+      return
+    }
+
+    if (activeSource === 'selection') {
+      setMenuSource('cell')
+      menuSourceRef.current = 'cell'
+      setSelectionAnchorRect(null)
+    }
+
+    const cellNode = findTableCellInSelection()
+    if (cellNode) {
       const cellElement = editor.getElementByKey(cellNode.getKey())
       if (cellElement) {
         const rect = cellElement.getBoundingClientRect()
-        const anchorRect = anchorElem.getBoundingClientRect()
+        const viewportWidth = window.innerWidth
+        const viewportHeight = window.innerHeight
+        const shouldPlaceLeft = rect.right + BUTTON_SIZE + SPACE > viewportWidth - VIEWPORT_MARGIN
+        const leftRaw = shouldPlaceLeft
+          ? rect.left - BUTTON_SIZE - SPACE
+          : rect.right + SPACE
+        const left = Math.min(
+          Math.max(leftRaw, VIEWPORT_MARGIN),
+          viewportWidth - BUTTON_SIZE - VIEWPORT_MARGIN,
+        )
+        const top = Math.min(
+          Math.max(rect.top, VIEWPORT_MARGIN),
+          viewportHeight - BUTTON_SIZE - VIEWPORT_MARGIN,
+        )
 
         setMenuPosition({
-          top: rect.top - anchorRect.top,
-          left: rect.right - anchorRect.left + SPACE
+          top,
+          left,
         })
         setTableCellNode(cellNode)
+        return
       }
-    } else if (!cellNode) {
-      setTableCellNode(null)
-      setShowMenu(false)
     }
-  }, [editor, anchorElem, findTableCellInSelection, tableCellNode])
+
+    setTableCellNode(null)
+    setShowMenu(false)
+  }, [
+    editor,
+    findTableCellInSelection,
+    getSelectedCellElements,
+    getSelectionBoundingRect,
+    getSelectionToolbarRect,
+    getAnchorCellElement,
+    getCellNodeFromElement,
+  ])
 
   useEffect(() => {
     return editor.registerUpdateListener(() => {
@@ -141,23 +310,90 @@ function TableActionMenuPlugin({ anchorElem = document.body }) {
     })
   }, [editor, updateMenu])
 
+  useEffect(() => {
+    const handleSelectionChange = () => updateMenu()
+    window.addEventListener('table-selection-change', handleSelectionChange)
+
+    return () => {
+      window.removeEventListener('table-selection-change', handleSelectionChange)
+    }
+  }, [updateMenu])
+
+  useEffect(() => {
+    const handleReposition = () => updateMenu()
+    window.addEventListener('scroll', handleReposition, true)
+    window.addEventListener('resize', handleReposition)
+
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true)
+      window.removeEventListener('resize', handleReposition)
+    }
+  }, [updateMenu])
+
+  useLayoutEffect(() => {
+    if (!showMenu || !menuRef.current) return
+
+    const menuRect = menuRef.current.getBoundingClientRect()
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+
+    if (menuSourceRef.current === 'selection' && selectionAnchorRect) {
+      let top = selectionAnchorRect.bottom + SELECTION_MENU_GAP
+      if (top + menuRect.height > viewportHeight - VIEWPORT_MARGIN) {
+        top = selectionAnchorRect.top - menuRect.height - SELECTION_MENU_GAP
+      }
+      top = Math.min(
+        Math.max(top, VIEWPORT_MARGIN),
+        viewportHeight - menuRect.height - VIEWPORT_MARGIN,
+      )
+
+      const left = Math.min(
+        Math.max(selectionAnchorRect.left, VIEWPORT_MARGIN),
+        viewportWidth - menuRect.width - VIEWPORT_MARGIN,
+      )
+
+      if (top !== menuPosition.top || left !== menuPosition.left) {
+        setMenuPosition({ top, left })
+      }
+
+      const submenuLeft = menuRect.right + SUBMENU_WIDTH > viewportWidth - VIEWPORT_MARGIN
+      setMenuAlignment((prev) => {
+        if (prev.openUp === false && prev.openLeft === false && prev.submenuLeft === submenuLeft) {
+          return prev
+        }
+        return { openUp: false, openLeft: false, submenuLeft }
+      })
+      return
+    }
+
+    let openUp = menuRect.bottom > viewportHeight - VIEWPORT_MARGIN
+    if (openUp && menuRect.top < VIEWPORT_MARGIN) {
+      openUp = false
+    }
+
+    let openLeft = menuRect.right > viewportWidth - VIEWPORT_MARGIN
+    if (openLeft && menuRect.left < VIEWPORT_MARGIN) {
+      openLeft = false
+    }
+
+    const submenuLeft = menuRect.right + SUBMENU_WIDTH > viewportWidth - VIEWPORT_MARGIN
+
+    setMenuAlignment((prev) => {
+      if (prev.openUp === openUp && prev.openLeft === openLeft && prev.submenuLeft === submenuLeft) {
+        return prev
+      }
+      return { openUp, openLeft, submenuLeft }
+    })
+  }, [showMenu, menuPosition, selectionAnchorRect])
+
   const getSelectedCells = useCallback(() => {
-    if (!tableCellNode) return []
-
-    // Find the current table element
-    const currentCellElement = editor.getElementByKey(tableCellNode.getKey())
-    if (!currentCellElement) return []
-
-    const currentTableElement = currentCellElement.closest('.editor-table')
-    if (!currentTableElement) return []
-
-    // Get selected cells only from the current table
-    const cells = currentTableElement.querySelectorAll('.editor-table-cell.selected-cell')
+    const selectedElements = getSelectedCellElements()
+    if (!selectedElements.length) return []
     const selectedNodes = []
 
     editor.getEditorState().read(() => {
       const nodeMap = editor.getEditorState()._nodeMap
-      Array.from(cells).forEach(cellElement => {
+      selectedElements.forEach(cellElement => {
         for (const [key, node] of nodeMap) {
           if ($isTableCellNode(node)) {
             const domElement = editor.getElementByKey(key)
@@ -171,21 +407,57 @@ function TableActionMenuPlugin({ anchorElem = document.body }) {
     })
 
     return selectedNodes
-  }, [editor, tableCellNode])
+  }, [editor, getSelectedCellElements])
 
   const handleMenuClick = useCallback((event) => {
     event.stopPropagation()
     const cells = getSelectedCells()
+    const currentSource = menuSource
     setSelectedCells(cells)
-    setShowMenu(!showMenu)
-  }, [showMenu, getSelectedCells])
+    setMenuSource('cell')
+    menuSourceRef.current = 'cell'
+    setShowMenu((prev) => (prev && currentSource === 'cell' ? !prev : true))
+    updateMenu()
+  }, [getSelectedCells, menuSource, updateMenu])
 
-  const closeMenu = useCallback(() => {
-    setShowMenu(false)
+  const resetSubmenus = useCallback(() => {
     setShowColorPicker(false)
     setShowRowHeightPicker(false)
     setShowBorderPicker(false)
   }, [])
+
+  const closeMenu = useCallback(() => {
+    setShowMenu(false)
+    resetSubmenus()
+  }, [resetSubmenus])
+
+  useEffect(() => {
+    menuSourceRef.current = menuSource
+  }, [menuSource])
+
+  useEffect(() => {
+    const handleMenuToggle = (event) => {
+      const detail = event?.detail || {}
+      const source = detail.source || 'selection'
+      const shouldToggle = detail.toggle === true
+
+      if (shouldToggle && showMenu && menuSource === source) {
+        closeMenu()
+        return
+      }
+
+      setMenuSource(source)
+      menuSourceRef.current = source
+      resetSubmenus()
+      setShowMenu(true)
+      updateMenu()
+    }
+
+    window.addEventListener('table-action-menu', handleMenuToggle)
+    return () => {
+      window.removeEventListener('table-action-menu', handleMenuToggle)
+    }
+  }, [showMenu, menuSource, closeMenu, resetSubmenus, updateMenu])
 
   const toggleColorPicker = useCallback((event) => {
     event.stopPropagation()
@@ -507,12 +779,19 @@ function TableActionMenuPlugin({ anchorElem = document.body }) {
     return null
   }
 
+  const menuClassName = [
+    'table-cell-action-button-container',
+    menuAlignment.openLeft ? 'is-menu-left' : '',
+    menuAlignment.openUp ? 'is-menu-up' : '',
+    menuAlignment.submenuLeft ? 'is-submenu-left' : '',
+    menuSource === 'selection' ? 'is-selection-source' : '',
+  ].filter(Boolean).join(' ')
+
   return createPortal(
     <div
-      ref={menuRef}
-      className="table-cell-action-button-container"
+      className={menuClassName}
       style={{
-        position: 'absolute',
+        position: 'fixed',
         top: `${menuPosition.top}px`,
         left: `${menuPosition.left}px`,
         zIndex: 20
@@ -527,7 +806,7 @@ function TableActionMenuPlugin({ anchorElem = document.body }) {
       </button>
 
       {showMenu && (
-        <div className="table-action-menu">
+        <div ref={menuRef} className="table-action-menu">
           {selectedCells.length > 1 && (
             <>
               <button
@@ -790,7 +1069,7 @@ function TableActionMenuPlugin({ anchorElem = document.body }) {
         </div>
       )}
     </div>,
-    anchorElem,
+    document.body,
   )
 }
 

@@ -137,7 +137,7 @@ async function tenantSettingsRoutes(fastify) {
   };
 
   fastify.get('/tenant-settings', {
-    preHandler: [authenticate, requirePermission([PERMISSIONS.TENANTS_VIEW, PERMISSIONS.TENANTS_MANAGE], { mode: 'any' })],
+    preHandler: [tenantContext, authenticate, requirePermission([PERMISSIONS.TENANTS_VIEW, PERMISSIONS.TENANTS_MANAGE], { mode: 'any' })],
     schema: {
       response: {
         200: {

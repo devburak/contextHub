@@ -90,8 +90,8 @@ export const activitiesAPI = {
   getActivities: (params) =>
     apiClient.get('/activities', { params }),
   
-  getRecentActivities: (limit = 10) => {
-    const tenantId = localStorage.getItem('tenantId')
+  getRecentActivities: (limit = 10, tenantIdOverride) => {
+    const tenantId = tenantIdOverride || localStorage.getItem('tenantId')
     return apiClient.get('/activities/recent', { 
       params: { limit, tenantId } 
     })

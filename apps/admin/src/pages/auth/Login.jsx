@@ -7,11 +7,42 @@ import { useAuth } from '../../contexts/AuthContext.jsx'
 import Footer from '../../components/Footer.jsx'
 import i18n from '../../i18n.js'
 
+function Countdown({ target, onExpired }) {
+  const [remaining, setRemaining] = useState(() => Math.max(target - Date.now(), 0))
+
+  useEffect(() => {
+    if (remaining <= 0) {
+      onExpired?.()
+      return
+    }
+
+    const interval = setInterval(() => {
+      setRemaining(Math.max(target - Date.now(), 0))
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [target, remaining, onExpired])
+
+  const minutes = Math.floor(remaining / 60000)
+  const seconds = Math.floor((remaining % 60000) / 1000)
+
+  return (
+    <span>
+      {minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
+    </span>
+  )
+}
+
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
+  const [lockUntil, setLockUntil] = useState(() => {
+    const stored = sessionStorage.getItem('login_lock_until')
+    return stored ? parseInt(stored, 10) : null
+  })
+  const [lockReason, setLockReason] = useState(() => sessionStorage.getItem('login_lock_reason') || '')
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -34,9 +65,44 @@ export default function Login() {
     }
   }, [location.state])
 
+  const isLocked = lockUntil && lockUntil > Date.now()
+
+  useEffect(() => {
+    if (lockUntil && lockUntil <= Date.now()) {
+      setLockUntil(null)
+      setLockReason('')
+      sessionStorage.removeItem('login_lock_until')
+      sessionStorage.removeItem('login_lock_reason')
+    }
+  }, [lockUntil])
+
+  useEffect(() => {
+    if (!lockUntil) return
+    const now = Date.now()
+    if (lockUntil <= now) {
+      setLockUntil(null)
+      setLockReason('')
+      sessionStorage.removeItem('login_lock_until')
+      sessionStorage.removeItem('login_lock_reason')
+      return
+    }
+    const timeout = setTimeout(() => {
+      setLockUntil(null)
+      setLockReason('')
+      sessionStorage.removeItem('login_lock_until')
+      sessionStorage.removeItem('login_lock_reason')
+    }, lockUntil - now)
+
+    return () => clearTimeout(timeout)
+  }, [lockUntil])
+
   const loginMutation = useMutation({
     mutationFn: () => authAPI.login(email, password),
     onSuccess: (response) => {
+      setLockUntil(null)
+      setLockReason('')
+      sessionStorage.removeItem('login_lock_until')
+      sessionStorage.removeItem('login_lock_reason')
       const data = response.data
       login(data)
 
@@ -47,12 +113,26 @@ export default function Login() {
       }
     },
     onError: (error) => {
-      console.error('Login failed:', error.response?.data?.message || error.message)
+      const retryAfter = error.response?.data?.retryAfterSeconds
+      const blocked = error.response?.data?.blocked
+      const message = error.response?.data?.message || error.message
+
+      if (blocked && retryAfter) {
+        const until = Date.now() + retryAfter * 1000
+        const reasonText = message || 'Çok fazla hatalı deneme tespit edildi. Lütfen daha sonra tekrar deneyin.'
+        setLockUntil(until)
+        setLockReason(reasonText)
+        sessionStorage.setItem('login_lock_until', String(until))
+        sessionStorage.setItem('login_lock_reason', reasonText)
+      }
+
+      console.error('Login failed:', message)
     },
   })
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    if (isLocked) return
     loginMutation.mutate()
   }
 
@@ -83,37 +163,39 @@ export default function Login() {
 
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
-              <div>
-                <label htmlFor="email" className="sr-only">
-                  E-posta Adresi
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="E-posta adresi"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="relative">
-                <label htmlFor="password" className="sr-only">
-                  Şifre
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Şifre"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+            <div>
+              <label htmlFor="email" className="sr-only">
+                E-posta Adresi
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="E-posta adresi"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isLocked}
+              />
+            </div>
+            <div className="relative">
+              <label htmlFor="password" className="sr-only">
+                Şifre
+              </label>
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                className="appearance-none rounded-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="Şifre"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLocked}
+              />
                 <button
                   type="button"
                   className="absolute inset-y-0 right-0 flex items-center pr-3 z-10"
@@ -140,13 +222,29 @@ export default function Login() {
             </div>
 
             <div>
-              <button
-                type="submit"
-                disabled={loginMutation.isPending}
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {loginMutation.isPending ? 'Giriş yapılıyor...' : 'Giriş Yap'}
-              </button>
+              {!isLocked ? (
+                <button
+                  type="submit"
+                  disabled={loginMutation.isPending}
+                  className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                  {loginMutation.isPending ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+                </button>
+              ) : (
+                <div className="w-full py-3 px-4 text-center rounded-md bg-red-50 text-red-700 border border-red-200 text-sm">
+                  {lockReason || 'Çok fazla hatalı deneme nedeniyle giriş geçici olarak devre dışı bırakıldı.'}
+                  {lockUntil && lockUntil > Date.now() && (
+                    <div className="mt-1 text-xs text-red-600">
+                      Tekrar deneme süresi: <Countdown target={lockUntil} onExpired={() => {
+                        setLockUntil(null)
+                        setLockReason('')
+                        sessionStorage.removeItem('login_lock_until')
+                        sessionStorage.removeItem('login_lock_reason')
+                      }} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="text-center">

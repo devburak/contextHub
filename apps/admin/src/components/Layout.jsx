@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon } from '@heroicons/react/24/outline'
-import { Link, useLocation, Outlet } from 'react-router-dom'
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
 import { PERMISSIONS } from '../constants/permissions.js'
@@ -10,6 +10,7 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { user, memberships, activeMembership, selectTenant, logout, hasPermission } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
 
   const navigation = useMemo(() => [
     {
@@ -385,6 +386,7 @@ export default function Layout() {
                         const membership = memberships.find((item) => item.tenantId === event.target.value)
                         if (membership) {
                           selectTenant(membership)
+                          navigate('/') // Force reload of context-sensitive data
                         }
                       }}
                       className="block w-full rounded-md border-gray-300 py-1.5 pl-3 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"

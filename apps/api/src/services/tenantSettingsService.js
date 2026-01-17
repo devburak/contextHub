@@ -1,4 +1,5 @@
 const { TenantSettings } = require('@contexthub/common');
+const { encryptSecret, decryptSecret, isEncrypted } = require('../utils/secretUtils');
 
 const DEFAULT_SETTINGS = Object.freeze({
   smtp: {
@@ -44,6 +45,38 @@ class TenantSettingsService {
     return this.#serialize(tenantId, doc);
   }
 
+  async getSmtpCredentials(tenantId) {
+    const doc = await TenantSettings.findOne({ tenantId })
+      .select('+smtp.password')
+      .lean();
+
+    if (!doc || !doc.smtp) {
+      return null;
+    }
+
+    let password = doc.smtp.password;
+
+    if (password) {
+      try {
+        password = isEncrypted(password) ? decryptSecret(password) : password;
+      } catch (error) {
+        console.error('[TenantSettings] SMTP parolası çözülemedi:', error.message);
+        throw error;
+      }
+    }
+
+    return {
+      enabled: doc.smtp.enabled ?? false,
+      host: doc.smtp.host,
+      port: doc.smtp.port,
+      secure: doc.smtp.secure,
+      username: doc.smtp.username,
+      password,
+      fromName: doc.smtp.fromName,
+      fromEmail: doc.smtp.fromEmail
+    };
+  }
+
   async upsertSettings(tenantId, payload = {}) {
     const doc = await TenantSettings.findOne({ tenantId })
       .select('+smtp.password +webhook.secret');
@@ -78,7 +111,7 @@ class TenantSettingsService {
         if (value === undefined) {
           target.smtp.password = undefined;
         } else {
-          target.smtp.password = value;
+          target.smtp.password = encryptSecret(value);
         }
       }
     }

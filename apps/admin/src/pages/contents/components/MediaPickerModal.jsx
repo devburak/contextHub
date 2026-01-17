@@ -170,7 +170,8 @@ export default function MediaPickerModal({
         queryClient.invalidateQueries({ queryKey })
 
         if (uploadedItems.length && onSelect) {
-          onSelect(uploadedItems[uploadedItems.length - 1])
+          const payload = multiple ? uploadedItems : uploadedItems[uploadedItems.length - 1]
+          onSelect(payload)
         }
       } catch (error) {
         console.error('Media upload failed', error)
@@ -179,7 +180,7 @@ export default function MediaPickerModal({
         setIsUploading(false)
       }
     },
-    [mode, onSelect, queryClient, queryKey]
+    [mode, multiple, onSelect, queryClient, queryKey]
   )
 
   const handleSelect = useCallback(

@@ -78,6 +78,7 @@ async function tenantRoutes(fastify) {
       const token = fastify.jwt.sign({
         sub: request.user._id.toString(),
         email: request.user.email,
+        tokenVersion: request.user.tokenVersion ?? 0,
         role: rolePayload?.key || membership.role,
         roleId: rolePayload?.id || null,
         tenantId: tenant._id.toString(),
@@ -182,6 +183,7 @@ async function tenantRoutes(fastify) {
             token: fastify.jwt.sign({
               sub: request.user._id.toString(),
               email: request.user.email,
+              tokenVersion: request.user.tokenVersion ?? 0,
               role: membership.role,
               roleId: membership.roleMeta?.id || null,
               tenantId: membership.tenantId,
@@ -269,6 +271,7 @@ async function tenantRoutes(fastify) {
       const token = fastify.jwt.sign({
         sub: request.user._id.toString(),
         email: request.user.email,
+        tokenVersion: request.user.tokenVersion ?? 0,
         role: rolePayload?.key || membership.role,
         roleId: rolePayload?.id || null,
         tenantId,

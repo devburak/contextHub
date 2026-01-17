@@ -35,24 +35,24 @@ class MailService {
    */
   async getTenantSmtpConfig(tenantId) {
     try {
-      const settings = await this.tenantSettingsService.getSettings(tenantId);
+      const smtp = await this.tenantSettingsService.getSmtpCredentials(tenantId);
 
-      if (!settings.smtp.enabled || !settings.smtp.host) {
+      if (!smtp || !smtp.enabled || !smtp.host) {
         return null;
       }
 
       const config = {
-        host: settings.smtp.host,
-        port: settings.smtp.port || 587,
-        secure: settings.smtp.secure || false,
-        from: `${settings.smtp.fromName || ''} <${settings.smtp.fromEmail}>`.trim(),
+        host: smtp.host,
+        port: smtp.port || 587,
+        secure: smtp.secure || false,
+        from: `${smtp.fromName || ''} <${smtp.fromEmail}>`.trim(),
       };
 
       // Add authentication if credentials are provided
-      if (settings.smtp.username && settings.smtp.password) {
+      if (smtp.username && smtp.password) {
         config.auth = {
-          user: settings.smtp.username,
-          pass: settings.smtp.password,
+          user: smtp.username,
+          pass: smtp.password,
         };
       }
 
@@ -247,6 +247,61 @@ class MailService {
       failed: 0,
       pending: 0,
     };
+  }
+
+  /**
+   * Notify user about excessive login attempts
+   */
+  async sendLoginLimitExceededEmail(email, { ip, userAgent } = {}) {
+    const subject = 'ContextHub - Şüpheli giriş denemesi';
+    const safeIp = ip || 'bilinmiyor';
+    const ua = userAgent || 'bilinmiyor';
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${subject}</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #111827; background: #f9fafb; padding: 20px; }
+          .card { background: #ffffff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); max-width: 640px; margin: 0 auto; }
+          .badge { display: inline-block; padding: 6px 10px; border-radius: 12px; background: #fef3c7; color: #92400e; font-weight: 600; font-size: 13px; }
+          .meta { margin: 12px 0; padding: 12px; background: #f3f4f6; border-radius: 8px; }
+          .meta strong { display: inline-block; width: 110px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="badge">Çok fazla hatalı giriş denemesi</div>
+          <p>Hesabınıza kısa süre içinde birden fazla başarısız giriş denemesi yapıldı. Hesabınız korunması için geçici olarak kilitlendi.</p>
+          <div class="meta">
+            <p><strong>IP Adresi:</strong> ${safeIp}</p>
+            <p><strong>Cihaz/Bilgi:</strong> ${ua}</p>
+            <p><strong>Zaman:</strong> ${new Date().toLocaleString()}</p>
+          </div>
+          <p>Eğer bu denemeleri siz yapmadıysanız, şifrenizi değiştirmenizi ve iki faktörlü doğrulamayı etkinleştirmenizi öneririz.</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const textContent = `
+Çok fazla hatalı giriş denemesi
+
+IP Adresi: ${safeIp}
+Cihaz/Bilgi: ${ua}
+Zaman: ${new Date().toLocaleString()}
+
+Eğer bu denemeleri siz yapmadıysanız, şifrenizi değiştirin ve iki faktörlü doğrulamayı etkinleştirin.
+    `;
+
+    await this.sendMail({
+      to: email,
+      subject,
+      html: htmlContent,
+      text: textContent
+    });
   }
 
   /**

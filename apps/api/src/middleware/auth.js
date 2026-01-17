@@ -1,6 +1,7 @@
 const { User, Membership, rbac, ApiToken } = require('@contexthub/common');
 const roleService = require('../services/roleService');
 const crypto = require('crypto');
+const tenantContextStore = require('@contexthub/common/src/tenantContext');
 
 const { getRoleLevel, ROLE_KEYS } = rbac;
 
@@ -33,6 +34,11 @@ async function tenantContext(request, reply) {
   // }
 
   if (!tenantId) {
+    // If request has Authorization header, let authenticate middleware derive tenantId from token
+    if (request.headers.authorization) {
+      return;
+    }
+
     return reply.code(400).send({
       error: 'Tenant ID required',
       message: 'Please provide tenantId in query params or X-Tenant-ID header'
@@ -40,6 +46,7 @@ async function tenantContext(request, reply) {
   }
 
   request.tenantId = tenantId;
+  tenantContextStore.setContext({ tenantId });
 }
 
 // API Token Authentication - token'dan tenant ID'yi otomatik alır
@@ -119,6 +126,11 @@ async function authenticateApiToken(request, reply) {
       };
     }
 
+    tenantContextStore.setContext({
+      tenantId: request.tenantId,
+      userId: request.user?._id?.toString?.()
+    });
+
   } catch (err) {
     return reply.code(401).send({
       error: 'Authentication failed',
@@ -149,7 +161,13 @@ async function authenticate(request, reply) {
 
     // Token'dan user bilgisini al
     const userId = request.user.sub;
-    const tenantId = request.tenantId;
+    // Prefer explicit tenantId from header/query or context; do not rely on token claim
+    const tenantId = request.tenantId || request.headers['x-tenant-id'] || request.query?.tenantId;
+    if (tenantId) {
+      request.tenantId = tenantId;
+    } else {
+      return reply.code(400).send({ error: 'Tenant ID required', message: 'Please provide tenantId in query params or X-Tenant-ID header' });
+    }
 
     if (!userId) {
       return reply.code(401).send({ error: 'Invalid token', message: 'User ID not found in token' });
@@ -159,6 +177,13 @@ async function authenticate(request, reply) {
     const user = await User.findOne({ _id: userId }).select('-password');
     if (!user) {
       return reply.code(401).send({ error: 'User not found', message: 'User does not exist' });
+    }
+
+    const payloadTokenVersion = request.user?.tokenVersion ?? 0;
+    const currentTokenVersion = user.tokenVersion ?? 0;
+
+    if (payloadTokenVersion !== currentTokenVersion) {
+      return reply.code(401).send({ error: 'Session expired', message: 'Please login again' });
     }
 
     // User'ın bu tenant'taki membership'ini kontrol et
@@ -189,6 +214,10 @@ async function authenticate(request, reply) {
     request.userPermissions = permissions;
     request.userPermissionSet = new Set(permissions);
     request.authType = 'jwt';
+    tenantContextStore.setContext({
+      tenantId,
+      userId: user._id?.toString?.()
+    });
 
   } catch (err) {
     return reply.code(401).send({ error: 'Authentication failed', message: err.message });
@@ -213,8 +242,16 @@ async function authenticateWithoutTenant(request, reply) {
       return reply.code(401).send({ error: 'User not found', message: 'User does not exist' });
     }
 
+    const payloadTokenVersion = request.user?.tokenVersion ?? 0;
+    const currentTokenVersion = user.tokenVersion ?? 0;
+
+    if (payloadTokenVersion !== currentTokenVersion) {
+      return reply.code(401).send({ error: 'Session expired', message: 'Please login again' });
+    }
+
     // Request'e user bilgisini ekle (tenant kontrolü yapma)
     request.user = user;
+    tenantContextStore.setContext({ userId: user._id?.toString?.() });
 
   } catch (err) {
     return reply.code(401).send({ error: 'Authentication failed', message: err.message });
@@ -252,6 +289,11 @@ function requirePermission(requiredPermissions, options = {}) {
     : [requiredPermissions].filter(Boolean);
 
   return async function(request, reply) {
+    // Owners bypass permission checks
+    if (request.userRole === 'owner') {
+      return;
+    }
+
     if (!request.userPermissionSet) {
       request.userPermissionSet = new Set(request.userPermissions || []);
     }
