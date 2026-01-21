@@ -638,6 +638,255 @@ Eğer bu denemeleri siz yapmadıysanız, şifrenizi değiştirin ve iki faktörl
       return false;
     }
   }
+
+  /**
+   * Send password change confirmation email
+   * @param {string} recipientEmail
+   * @param {string} userName
+   * @param {Object} metadata - { ipAddress, userAgent, timestamp }
+   */
+  async sendPasswordChangeEmail(recipientEmail, userName, metadata = {}) {
+    try {
+      const { ipAddress, userAgent, timestamp } = metadata;
+      const resetUrl = `${process.env.ADMIN_URL || 'http://localhost:3100'}/forgot-password`;
+      const subject = 'ContextHub - Şifreniz Değiştirildi';
+
+      const formattedDate = timestamp
+        ? new Date(timestamp).toLocaleString('tr-TR', {
+            dateStyle: 'long',
+            timeStyle: 'short'
+          })
+        : new Date().toLocaleString('tr-TR', {
+            dateStyle: 'long',
+            timeStyle: 'short'
+          });
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${subject}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #10b981; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+            .button { background-color: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+            .warning-box { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px; }
+            .info-box { background-color: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 15px; margin: 20px 0; border-radius: 4px; }
+            .footer { margin-top: 30px; text-align: center; color: #6b7280; font-size: 14px; }
+            .detail-row { display: flex; margin: 5px 0; }
+            .detail-label { font-weight: bold; min-width: 100px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🔒 Şifre Değişikliği Onayı</h1>
+            </div>
+            <div class="content">
+              <p>Merhaba ${userName || ''},</p>
+
+              <p>Hesabınızın şifresi başarıyla değiştirildi.</p>
+
+              <div class="info-box">
+                <strong>📋 İşlem Detayları:</strong>
+                <div style="margin-top: 10px;">
+                  <div class="detail-row">
+                    <span class="detail-label">Tarih:</span>
+                    <span>${formattedDate}</span>
+                  </div>
+                  ${ipAddress ? `
+                  <div class="detail-row">
+                    <span class="detail-label">IP Adresi:</span>
+                    <span>${ipAddress}</span>
+                  </div>
+                  ` : ''}
+                  ${userAgent ? `
+                  <div class="detail-row">
+                    <span class="detail-label">Cihaz:</span>
+                    <span>${userAgent.substring(0, 100)}${userAgent.length > 100 ? '...' : ''}</span>
+                  </div>
+                  ` : ''}
+                </div>
+              </div>
+
+              <div class="warning-box">
+                <strong>⚠️ Güvenlik Uyarısı:</strong>
+                <p style="margin: 10px 0 0 0;">Bu şifre değişikliğini siz yapmadıysanız, hesabınız tehlike altında olabilir. Lütfen hemen şifrenizi sıfırlayın:</p>
+                <div style="text-align: center; margin-top: 15px;">
+                  <a href="${resetUrl}" class="button">Şifremi Sıfırla</a>
+                </div>
+              </div>
+
+              <p>Bu işlemi siz yaptıysanız, herhangi bir işlem yapmanıza gerek yoktur.</p>
+
+              <p>İyi günler!<br>
+              ContextHub Ekibi</p>
+            </div>
+            <div class="footer">
+              <p>Bu e-posta otomatik olarak gönderilmiştir.</p>
+              <p>Güvenlik sorunlarınız için: support@ctxhub.net</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const textContent = `
+        Şifre Değişikliği Onayı
+
+        Merhaba ${userName || ''},
+
+        Hesabınızın şifresi başarıyla değiştirildi.
+
+        İŞLEM DETAYLARI:
+        Tarih: ${formattedDate}
+        ${ipAddress ? `IP Adresi: ${ipAddress}` : ''}
+        ${userAgent ? `Cihaz: ${userAgent.substring(0, 100)}` : ''}
+
+        ⚠️ GÜVENLİK UYARISI:
+        Bu şifre değişikliğini siz yapmadıysanız, hesabınız tehlike altında olabilir.
+        Lütfen hemen şifrenizi sıfırlayın: ${resetUrl}
+
+        Bu işlemi siz yaptıysanız, herhangi bir işlem yapmanıza gerek yoktur.
+
+        İyi günler!
+        ContextHub Ekibi
+
+        Güvenlik sorunlarınız için: support@ctxhub.net
+      `;
+
+      await this.sendMail({
+        to: recipientEmail,
+        subject,
+        html: htmlContent,
+        text: textContent
+      });
+
+      console.log(`Password change confirmation email sent to ${recipientEmail}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to send password change email:', {
+        email: recipientEmail,
+        error: error.message
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Send email verification email for new registrations
+   * @param {string} recipientEmail
+   * @param {string} userName
+   * @param {string} verificationToken
+   */
+  async sendEmailVerificationEmail(recipientEmail, userName, verificationToken) {
+    try {
+      const verificationUrl = `${process.env.ADMIN_URL || 'http://localhost:3100'}/verify-email?token=${verificationToken}`;
+      const subject = 'ContextHub - E-posta Adresinizi Doğrulayın';
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${subject}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #3b82f6; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+            .button { background-color: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; font-weight: bold; }
+            .info-box { background-color: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 15px; margin: 20px 0; border-radius: 4px; }
+            .warning-box { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px; }
+            .footer { margin-top: 30px; text-align: center; color: #6b7280; font-size: 14px; }
+            .link-box { background-color: #f3f4f6; padding: 10px; border-radius: 4px; font-family: monospace; word-break: break-all; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✉️ E-posta Doğrulama</h1>
+            </div>
+            <div class="content">
+              <p>Merhaba ${userName || ''},</p>
+
+              <p>ContextHub'a hoş geldiniz! Hesabınızı aktifleştirmek için lütfen e-posta adresinizi doğrulayın.</p>
+
+              <div style="text-align: center;">
+                <a href="${verificationUrl}" class="button">E-posta Adresimi Doğrula</a>
+              </div>
+
+              <p><small>Eğer buton çalışmıyorsa, aşağıdaki bağlantıyı tarayıcınıza kopyalayın:</small></p>
+              <div class="link-box">
+                ${verificationUrl}
+              </div>
+
+              <div class="info-box">
+                <strong>⏰ Önemli:</strong>
+                <p style="margin: 10px 0 0 0;">Bu doğrulama bağlantısı <strong>6 saat</strong> geçerlidir. Süre dolduğunda yeni bir doğrulama e-postası talep edebilirsiniz.</p>
+              </div>
+
+              <div class="warning-box">
+                <strong>⚠️ Güvenlik Uyarısı:</strong>
+                <p style="margin: 10px 0 0 0;">Bu hesabı siz oluşturmadıysanız, bu e-postayı görmezden gelin. Hesap doğrulanmadan aktif olmayacaktır.</p>
+              </div>
+
+              <p>Sorularınız için bize ulaşabilirsiniz.</p>
+
+              <p>İyi günler!<br>
+              ContextHub Ekibi</p>
+            </div>
+            <div class="footer">
+              <p>Bu e-posta otomatik olarak gönderilmiştir.</p>
+              <p>Destek için: support@ctxhub.net</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const textContent = `
+        E-posta Doğrulama
+
+        Merhaba ${userName || ''},
+
+        ContextHub'a hoş geldiniz! Hesabınızı aktifleştirmek için lütfen e-posta adresinizi doğrulayın.
+
+        Doğrulama bağlantısı:
+        ${verificationUrl}
+
+        ⏰ ÖNEMLİ:
+        Bu doğrulama bağlantısı 6 saat geçerlidir. Süre dolduğunda yeni bir doğrulama e-postası talep edebilirsiniz.
+
+        ⚠️ GÜVENLİK UYARISI:
+        Bu hesabı siz oluşturmadıysanız, bu e-postayı görmezden gelin. Hesap doğrulanmadan aktif olmayacaktır.
+
+        İyi günler!
+        ContextHub Ekibi
+
+        Destek için: support@ctxhub.net
+      `;
+
+      await this.sendMail({
+        to: recipientEmail,
+        subject,
+        html: htmlContent,
+        text: textContent
+      });
+
+      console.log(`Email verification email sent to ${recipientEmail}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to send email verification email:', {
+        email: recipientEmail,
+        error: error.message
+      });
+      return false;
+    }
+  }
 }
 
 // Singleton instance

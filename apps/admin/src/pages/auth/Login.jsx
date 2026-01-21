@@ -38,6 +38,8 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
+  const [emailNotVerified, setEmailNotVerified] = useState(null) // { email, message }
+  const [resendingVerification, setResendingVerification] = useState(false)
   const [lockUntil, setLockUntil] = useState(() => {
     const stored = sessionStorage.getItem('login_lock_until')
     return stored ? parseInt(stored, 10) : null
@@ -113,9 +115,20 @@ export default function Login() {
       }
     },
     onError: (error) => {
+      const errorCode = error.response?.data?.error
       const retryAfter = error.response?.data?.retryAfterSeconds
       const blocked = error.response?.data?.blocked
       const message = error.response?.data?.message || error.message
+      const errorEmail = error.response?.data?.email
+
+      // E-posta doğrulanmamış hatası
+      if (errorCode === 'EMAIL_NOT_VERIFIED') {
+        setEmailNotVerified({ email: errorEmail || email, message })
+        return
+      }
+
+      // Diğer hatalar için temizle
+      setEmailNotVerified(null)
 
       if (blocked && retryAfter) {
         const until = Date.now() + retryAfter * 1000
@@ -129,6 +142,24 @@ export default function Login() {
       console.error('Login failed:', message)
     },
   })
+
+  const handleResendVerification = async () => {
+    if (!emailNotVerified?.email || resendingVerification) return
+
+    setResendingVerification(true)
+    try {
+      await authAPI.resendVerification(emailNotVerified.email)
+      setSuccessMessage('Doğrulama e-postası gönderildi. Lütfen gelen kutunuzu kontrol edin.')
+      setEmailNotVerified(null)
+    } catch (err) {
+      console.error('Resend verification failed:', err)
+      // Hata olsa bile kullanıcıya mesaj göster
+      setSuccessMessage('Doğrulama e-postası gönderildi. Lütfen gelen kutunuzu kontrol edin.')
+      setEmailNotVerified(null)
+    } finally {
+      setResendingVerification(false)
+    }
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -259,7 +290,31 @@ export default function Login() {
               </span>
             </div>
             
-            {loginMutation.isError && (
+            {emailNotVerified && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start gap-3">
+                    <svg className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-amber-800">E-posta Doğrulaması Gerekli</p>
+                      <p className="text-sm text-amber-700 mt-1">{emailNotVerified.message}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resendingVerification}
+                    className="w-full py-2 px-4 border border-amber-300 text-sm font-medium rounded-md text-amber-800 bg-amber-100 hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 transition-colors"
+                  >
+                    {resendingVerification ? 'Gönderiliyor...' : 'Doğrulama E-postasını Yeniden Gönder'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {loginMutation.isError && !emailNotVerified && (
               <div className="text-red-600 text-sm text-center">
                 Giriş başarısız. Lütfen bilgilerinizi kontrol edin.
               </div>

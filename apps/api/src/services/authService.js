@@ -228,6 +228,15 @@ class AuthService {
     // Başarılı girişte limit sıfırla
     await loginRateLimiter.reset(email, clientIp);
 
+    // E-posta doğrulama kontrolü
+    if (!user.isEmailVerified) {
+      const err = new Error('Lütfen önce e-posta adresinizi doğrulayın. Doğrulama e-postası gelen kutunuzda olmalı.');
+      err.statusCode = 403;
+      err.code = 'EMAIL_NOT_VERIFIED';
+      err.email = user.email;
+      throw err;
+    }
+
     // Aktif membership'leri getir
     const memberships = await Membership.find({
       userId: user._id,
@@ -449,13 +458,21 @@ class AuthService {
       await tenant.save();
     }
 
+    // E-posta doğrulama token'ı oluştur (6 saat geçerli)
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenHash = await bcrypt.hash(verificationToken, 10);
+    const verificationTokenExpiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6 saat
+
     // Kullanıcı oluştur (tenant olmadan da olabilir)
     const user = new User({
       email,
       password, // Model'de hash'lenecek
       firstName,
       lastName,
-      tenantId: tenant?._id // Opsiyonel
+      tenantId: tenant?._id, // Opsiyonel
+      isEmailVerified: false,
+      emailVerificationToken: verificationTokenHash,
+      emailVerificationTokenExpiresAt: verificationTokenExpiresAt
     });
     await user.save();
 
@@ -476,30 +493,30 @@ class AuthService {
       tenantId: tenant?._id,
       action: 'user.register',
       description: `${user.firstName} ${user.lastName} kayıt oldu`,
-      metadata: { 
-        email: user.email, 
+      metadata: {
+        email: user.email,
         withTenant: !!tenant,
-        tenantName: tenant?.name 
+        tenantName: tenant?.name
       },
       request
     });
 
-    // Welcome email gönder
+    // E-posta doğrulama e-postası gönder
     try {
-      await mailService.sendWelcomeEmail(
-        {
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName
-        },
-        tenant ? {
-          id: tenant._id,
-          name: tenant.name,
-          slug: tenant.slug
-        } : null
+      const emailSent = await mailService.sendEmailVerificationEmail(
+        user.email,
+        `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        verificationToken
       );
+
+      if (!emailSent) {
+        console.warn('[AuthService] Email verification email could not be sent:', {
+          userId: user._id.toString(),
+          email: user.email
+        });
+      }
     } catch (error) {
-      console.error('Failed to send welcome email:', error);
+      console.error('Failed to send email verification email:', error);
       // Email hatası kayıt işlemini durdurmaz
     }
 
@@ -514,7 +531,8 @@ class AuthService {
         id: tenant._id,
         name: tenant.name,
         slug: tenant.slug
-      } : null
+      } : null,
+      emailVerificationRequired: true
     };
   }
 
@@ -851,6 +869,126 @@ class AuthService {
 
     console.log(`Password reset successfully for user ${user.email}`);
     return { message: 'Password reset successfully' };
+  }
+
+  async verifyEmail(token, request = null) {
+    if (!token) {
+      throw new Error('Doğrulama token\'ı gereklidir');
+    }
+
+    // Token ile kullanıcıyı bul (password reset benzeri mantık)
+    const users = await User.find({
+      emailVerificationToken: { $exists: true, $ne: null },
+      emailVerificationTokenExpiresAt: { $gt: new Date() }
+    });
+
+    let user = null;
+    for (const u of users) {
+      const isValid = await bcrypt.compare(token, u.emailVerificationToken);
+      if (isValid) {
+        user = u;
+        break;
+      }
+    }
+
+    if (!user) {
+      throw new Error('Geçersiz veya süresi dolmuş doğrulama bağlantısı');
+    }
+
+    // Zaten doğrulanmışsa
+    if (user.isEmailVerified) {
+      return { message: 'E-posta adresi zaten doğrulanmış', alreadyVerified: true };
+    }
+
+    // E-posta doğrula
+    user.isEmailVerified = true;
+    user.emailVerificationToken = null;
+    user.emailVerificationTokenExpiresAt = null;
+    await user.save();
+
+    // Activity log
+    await this.logActivity({
+      userId: user._id,
+      action: 'user.email.verified',
+      description: `${user.firstName} ${user.lastName} e-posta adresini doğruladı`,
+      metadata: { email: user.email },
+      request
+    });
+
+    // Welcome email gönder (doğrulama sonrası)
+    try {
+      await mailService.sendWelcomeEmail(
+        {
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName
+        },
+        null // Tenant bilgisi şu an için null
+      );
+    } catch (error) {
+      console.error('Failed to send welcome email after verification:', error);
+    }
+
+    console.log(`Email verified successfully for user ${user.email}`);
+    return { message: 'E-posta adresiniz başarıyla doğrulandı', verified: true };
+  }
+
+  async resendVerificationEmail(email, request = null) {
+    if (!email) {
+      throw new Error('E-posta adresi gereklidir');
+    }
+
+    // Kullanıcıyı bul
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      // Güvenlik için her zaman başarılı gibi görün (email enumeration önleme)
+      console.log(`Verification email requested for non-existent email: ${email}`);
+      return { message: 'Eğer bu e-posta adresi kayıtlıysa, doğrulama bağlantısı gönderilecektir' };
+    }
+
+    // Zaten doğrulanmışsa
+    if (user.isEmailVerified) {
+      throw new Error('E-posta adresi zaten doğrulanmış');
+    }
+
+    // Yeni token oluştur (6 saat geçerli)
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenHash = await bcrypt.hash(verificationToken, 10);
+    const verificationTokenExpiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
+
+    user.emailVerificationToken = verificationTokenHash;
+    user.emailVerificationTokenExpiresAt = verificationTokenExpiresAt;
+    await user.save();
+
+    // Activity log
+    await this.logActivity({
+      userId: user._id,
+      action: 'user.email.verification.resend',
+      description: `${user.firstName} ${user.lastName} yeni doğrulama e-postası talep etti`,
+      metadata: { email: user.email },
+      request
+    });
+
+    // Doğrulama e-postası gönder
+    try {
+      const emailSent = await mailService.sendEmailVerificationEmail(
+        user.email,
+        `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        verificationToken
+      );
+
+      if (!emailSent) {
+        console.warn('[AuthService] Resend verification email could not be sent:', {
+          userId: user._id.toString(),
+          email: user.email
+        });
+      }
+    } catch (error) {
+      console.error('Failed to resend email verification email:', error);
+    }
+
+    return { message: 'Doğrulama e-postası gönderildi' };
   }
 }
 
