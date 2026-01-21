@@ -1,6 +1,7 @@
-const { User, Membership, rbac, mongoose } = require('@contexthub/common');
+const { User, Membership, rbac, mongoose, ActivityLog } = require('@contexthub/common');
 const bcrypt = require('bcryptjs');
 const roleService = require('./roleService');
+const { mailService } = require('./mailService');
 
 const { ROLE_KEYS } = rbac;
 
@@ -371,10 +372,10 @@ class UserService {
     return await bcrypt.compare(password, user.password);
   }
 
-  async changePassword(userId, tenantId, currentPassword, newPassword) {
+  async changePassword(userId, tenantId, currentPassword, newPassword, request = null) {
     // tenantId artık opsiyonel, sadece userId ile bul
     const user = await User.findOne({ _id: userId });
-    
+
     if (!user) {
       throw new Error('User not found');
     }
@@ -387,6 +388,53 @@ class UserService {
     user.password = newPassword; // Model'de pre-save ile hash'lenecek
     user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
+
+    // Activity log kaydı
+    try {
+      const logData = {
+        user: userId,
+        action: 'user.password.change',
+        description: 'User changed their password'
+      };
+
+      if (tenantId) {
+        logData.tenant = tenantId;
+      }
+
+      if (request) {
+        logData.ipAddress = request.ip || request.headers?.['x-forwarded-for'] || request.socket?.remoteAddress;
+        logData.userAgent = request.headers?.['user-agent'];
+      }
+
+      await ActivityLog.create(logData);
+    } catch (logError) {
+      console.error('[UserService] Failed to log password change activity:', logError.message);
+    }
+
+    // E-posta bildirimi (hata olsa bile şifre değişikliği başarılı)
+    try {
+      const emailSent = await mailService.sendPasswordChangeEmail(user.email, user.name || user.firstName, {
+        ipAddress: request?.ip || request?.headers?.['x-forwarded-for'],
+        userAgent: request?.headers?.['user-agent'],
+        timestamp: new Date()
+      });
+
+      if (!emailSent) {
+        console.warn('[UserService] Password change email could not be sent:', {
+          userId: user._id.toString(),
+          email: user.email,
+          reason: 'SMTP error or invalid email configuration'
+        });
+      }
+    } catch (emailError) {
+      // E-posta hatası loga yazılır ama işlem başarılı sayılır
+      console.warn('[UserService] Password change email failed:', {
+        userId: user._id.toString(),
+        email: user.email,
+        error: emailError.message,
+        reason: 'SMTP error or invalid/unverified email'
+      });
+    }
 
     return { success: true };
   }

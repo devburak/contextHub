@@ -566,13 +566,14 @@ async function userRoutes(fastify, options) {
   }, async function(request, reply) {
     try {
       const { currentPassword, newPassword } = request.body;
-      
-      // tenantId parametresini kaldırdık
+
+      // tenantId parametresini kaldırdık, request'i e-posta bildirimi için iletiyoruz
       await userService.changePassword(
         request.user._id,
         null, // tenantId artık null
         currentPassword,
-        newPassword
+        newPassword,
+        request // IP ve userAgent için request nesnesini ilet
       );
 
       return reply.send({ message: 'Password changed successfully' });

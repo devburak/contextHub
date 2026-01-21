@@ -136,7 +136,9 @@ async function authRoutes(fastify, options) {
     } catch (error) {
       const statusCode = error.statusCode || 401;
       const response = {
-        error: statusCode === 429 ? 'Too many attempts' : 'Authentication failed',
+        error: error.code === 'EMAIL_NOT_VERIFIED'
+          ? 'EMAIL_NOT_VERIFIED'
+          : (statusCode === 429 ? 'Too many attempts' : 'Authentication failed'),
         message: error.message
       };
 
@@ -145,6 +147,9 @@ async function authRoutes(fastify, options) {
       }
       if (error.blocked) {
         response.blocked = true;
+      }
+      if (error.code === 'EMAIL_NOT_VERIFIED' && error.email) {
+        response.email = error.email;
       }
 
       return reply.code(statusCode).send(response);
@@ -392,13 +397,91 @@ async function authRoutes(fastify, options) {
       const { token, password } = request.body;
       await authService.resetPassword(token, password, request);
       
-      return reply.send({ 
-        message: 'Password reset successfully' 
+      return reply.send({
+        message: 'Password reset successfully'
       });
     } catch (error) {
-      return reply.code(400).send({ 
-        error: 'PasswordResetFailed', 
-        message: error.message 
+      return reply.code(400).send({
+        error: 'PasswordResetFailed',
+        message: error.message
+      });
+    }
+  });
+
+  // POST /auth/verify-email - E-posta doğrulama
+  fastify.post('/auth/verify-email', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          token: { type: 'string', minLength: 1 }
+        },
+        required: ['token']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            message: { type: 'string' },
+            verified: { type: 'boolean' },
+            alreadyVerified: { type: 'boolean' }
+          }
+        },
+        400: {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const result = await authService.verifyEmail(request.body.token, request);
+      return reply.send(result);
+    } catch (error) {
+      return reply.code(400).send({
+        error: 'EmailVerificationFailed',
+        message: error.message
+      });
+    }
+  });
+
+  // POST /auth/resend-verification - Doğrulama e-postasını yeniden gönder
+  fastify.post('/auth/resend-verification', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' }
+        },
+        required: ['email']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            message: { type: 'string' }
+          }
+        },
+        400: {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const result = await authService.resendVerificationEmail(request.body.email, request);
+      return reply.send(result);
+    } catch (error) {
+      return reply.code(400).send({
+        error: 'ResendVerificationFailed',
+        message: error.message
       });
     }
   });
