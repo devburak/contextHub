@@ -23,6 +23,16 @@ export const userAPI = {
         ? lastLoginDate.toISOString()
         : null
 
+      const lastInvitedAtDate = user.lastInvitedAt ? new Date(user.lastInvitedAt) : null
+      const inviteExpiresAtDate = user.inviteTokenExpiresAt ? new Date(user.inviteTokenExpiresAt) : null
+
+      const lastInvitedAt = lastInvitedAtDate && !Number.isNaN(lastInvitedAtDate.getTime())
+        ? lastInvitedAtDate.toISOString()
+        : null
+      const inviteExpiresAt = inviteExpiresAtDate && !Number.isNaN(inviteExpiresAtDate.getTime())
+        ? inviteExpiresAtDate.toISOString()
+        : null
+
       return {
         id: user.id || user._id || '',
         email: user.email || '',
@@ -32,7 +42,9 @@ export const userAPI = {
         role: user.role || 'viewer',
         status: user.status || 'active',
         createdAt,
-        lastLoginAt
+        lastLoginAt,
+        lastInvitedAt,
+        inviteExpiresAt
       }
     })
 
@@ -193,9 +205,18 @@ export const userAPI = {
 
   // Sahiplik devri talebi gönder
   requestOwnershipTransfer: async (tenantId, { email, password }) => {
-    const { data } = await apiClient.post(`/tenants/${tenantId}/transfer-ownership`, { 
-      email, 
-      password 
+    const { data } = await apiClient.post(`/tenants/${tenantId}/transfer-ownership`, {
+      email,
+      password
+    })
+    return data
+  },
+
+  // Şifre değiştir
+  changePassword: async ({ currentPassword, newPassword }) => {
+    const { data } = await apiClient.put('/users/me/password', {
+      currentPassword,
+      newPassword
     })
     return data
   }

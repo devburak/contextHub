@@ -411,6 +411,136 @@ async function webhookRoutes(fastify) {
       return handleServiceError(reply, error);
     }
   });
+
+  // ===== BULK OPERASYONLAR =====
+
+  // Tüm başarısız işleri yeniden kuyruğa al
+  fastify.post('/admin/tenants/:tenantId/webhooks/queue/retry-all', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.TENANTS_MANAGE)],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' }
+        },
+        required: ['tenantId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            ok: { type: 'boolean' },
+            matched: { type: 'number' },
+            retried: { type: 'number' }
+          }
+        }
+      }
+    }
+  }, async function bulkRetryAllHandler(request, reply) {
+    const { tenantId } = request.params;
+    try {
+      const result = await webhookService.bulkRetryAllFailed(tenantId);
+      return { ok: true, ...result };
+    } catch (error) {
+      return handleServiceError(reply, error);
+    }
+  });
+
+  // Tüm başarısız işleri sil
+  fastify.delete('/admin/tenants/:tenantId/webhooks/queue/failed', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.TENANTS_MANAGE)],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' }
+        },
+        required: ['tenantId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            ok: { type: 'boolean' },
+            deleted: { type: 'number' }
+          }
+        }
+      }
+    }
+  }, async function bulkDeleteAllHandler(request, reply) {
+    const { tenantId } = request.params;
+    try {
+      const result = await webhookService.bulkDeleteAllFailed(tenantId);
+      return { ok: true, ...result };
+    } catch (error) {
+      return handleServiceError(reply, error);
+    }
+  });
+
+  // Belirli bir webhook için başarısız işleri yeniden kuyruğa al
+  fastify.post('/admin/tenants/:tenantId/webhooks/:id/queue/retry', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.TENANTS_MANAGE)],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' },
+          id: { type: 'string' }
+        },
+        required: ['tenantId', 'id']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            ok: { type: 'boolean' },
+            matched: { type: 'number' },
+            retried: { type: 'number' }
+          }
+        }
+      }
+    }
+  }, async function bulkRetryByWebhookHandler(request, reply) {
+    const { tenantId, id } = request.params;
+    try {
+      const result = await webhookService.bulkRetryByWebhook(tenantId, id);
+      return { ok: true, ...result };
+    } catch (error) {
+      return handleServiceError(reply, error);
+    }
+  });
+
+  // Belirli bir webhook için başarısız işleri sil
+  fastify.delete('/admin/tenants/:tenantId/webhooks/:id/queue/failed', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.TENANTS_MANAGE)],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' },
+          id: { type: 'string' }
+        },
+        required: ['tenantId', 'id']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            ok: { type: 'boolean' },
+            deleted: { type: 'number' }
+          }
+        }
+      }
+    }
+  }, async function bulkDeleteByWebhookHandler(request, reply) {
+    const { tenantId, id } = request.params;
+    try {
+      const result = await webhookService.bulkDeleteByWebhook(tenantId, id);
+      return { ok: true, ...result };
+    } catch (error) {
+      return handleServiceError(reply, error);
+    }
+  });
 }
 
 module.exports = webhookRoutes;

@@ -140,7 +140,9 @@ class UserService {
                 status: '$status',
                 role: '$role',
                 createdAt: '$user.createdAt',
-                lastLoginAt: '$user.lastLoginAt'
+                lastLoginAt: '$user.lastLoginAt',
+                lastInvitedAt: '$lastInvitedAt',
+                inviteTokenExpiresAt: '$inviteTokenExpiresAt'
               }
             }
           ],

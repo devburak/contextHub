@@ -15,7 +15,7 @@ export default function Profile() {
   const { updateUserProfile, roleMeta, permissions, logout, memberships } = useAuth()
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  
+
   // Görevi bırakma state'leri
   const [leavingMembership, setLeavingMembership] = useState(null)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -23,6 +23,13 @@ export default function Profile() {
   const [password, setPassword] = useState('')
   const [transferEmail, setTransferEmail] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // Şifre değiştirme state'leri
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['currentUser'],
@@ -185,9 +192,47 @@ export default function Profile() {
   const closeModals = () => {
     setShowPasswordModal(false)
     setShowTransferModal(false)
+    setShowChangePasswordModal(false)
     setPassword('')
     setTransferEmail('')
     setLeavingMembership(null)
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+  }
+
+  const handleChangePassword = async () => {
+    if (!currentPassword.trim()) {
+      toast.error('Lütfen mevcut şifrenizi girin')
+      return
+    }
+    if (!newPassword.trim()) {
+      toast.error('Lütfen yeni şifrenizi girin')
+      return
+    }
+    if (newPassword.length < 6) {
+      toast.error('Yeni şifre en az 6 karakter olmalıdır')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('Yeni şifreler eşleşmiyor')
+      return
+    }
+
+    setIsChangingPassword(true)
+    try {
+      await userAPI.changePassword({
+        currentPassword,
+        newPassword
+      })
+      toast.success('Şifreniz başarıyla değiştirildi')
+      closeModals()
+    } catch (error) {
+      const message = error?.response?.data?.error || error?.response?.data?.message || 'Şifre değiştirilemedi'
+      toast.error(message)
+    } finally {
+      setIsChangingPassword(false)
+    }
   }
 
   const renderPermissions = (list = []) => {
@@ -268,26 +313,33 @@ export default function Profile() {
                 </form>
               )}
             </div>
-          </div>
 
-          <div className="space-y-6">
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+            {/* Şifre Değiştir Bölümü */}
+            <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                <h2 className="text-sm font-medium text-gray-700">Aktif Rol</h2>
+                <h2 className="text-sm font-medium text-gray-700">Şifre Değiştir</h2>
               </div>
-              <div className="space-y-4 p-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{roleMeta?.name || currentMembership?.role || 'Bilinmiyor'}</p>
-                  <p className="text-xs text-gray-500">Seviye: {roleMeta?.level ?? currentMembership?.level ?? '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Yetkiler</p>
-                  {renderPermissions(permissions || currentMembership?.permissions)}
+              <div className="p-6">
+                <p className="text-sm text-gray-600">
+                  Hesabınızın güvenliği için şifrenizi düzenli olarak değiştirmenizi öneririz.
+                </p>
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowChangePasswordModal(true)}
+                    className="inline-flex items-center rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500"
+                  >
+                    <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                    Şifremi Değiştir
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+            {/* Varlık Üyeliklerim - Şifre Değiştir altına taşındı */}
+            <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
                 <h2 className="text-sm font-medium text-gray-700">Varlık Üyeliklerim</h2>
               </div>
@@ -297,7 +349,7 @@ export default function Profile() {
                   // Backend'den gelen ownerCount'u kullan
                   const ownerCount = membership.ownerCount || 0
                   const hasOtherOwners = isOwner && ownerCount > 1
-                  
+
                   return (
                     <div
                       key={membership.id || `${membership.tenantId}-${membership.role}`}
@@ -344,6 +396,24 @@ export default function Profile() {
                 {!data?.allMemberships?.length && (
                   <div className="p-4 text-sm text-gray-500">Hiç varlık üyeliğiniz bulunmuyor.</div>
                 )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                <h2 className="text-sm font-medium text-gray-700">Aktif Rol</h2>
+              </div>
+              <div className="space-y-4 p-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{roleMeta?.name || currentMembership?.role || 'Bilinmiyor'}</p>
+                  <p className="text-xs text-gray-500">Seviye: {roleMeta?.level ?? currentMembership?.level ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Yetkiler</p>
+                  {renderPermissions(permissions || currentMembership?.permissions)}
+                </div>
               </div>
             </div>
           </div>
@@ -527,6 +597,85 @@ export default function Profile() {
                   className="inline-flex items-center rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-50"
                 >
                   {isProcessing ? 'Gönderiliyor...' : 'Devir Talebi Gönder'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Şifre Değiştirme Modal */}
+      {showChangePasswordModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={closeModals}></div>
+
+            <div className="relative w-full max-w-md transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
+              <div className="bg-white px-6 py-5">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                  </div>
+                  <div className="ml-4 flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">Şifre Değiştir</h3>
+                    <p className="mt-2 text-sm text-gray-600">
+                      Güvenliğiniz için güçlü bir şifre seçin.
+                    </p>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Mevcut Şifre</label>
+                        <input
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          placeholder="Mevcut şifreniz"
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Yeni Şifre</label>
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="En az 6 karakter"
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Yeni Şifre (Tekrar)</label>
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
+                          placeholder="Yeni şifrenizi tekrar girin"
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeModals}
+                  disabled={isChangingPassword}
+                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  İptal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleChangePassword}
+                  disabled={isChangingPassword || !currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()}
+                  className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isChangingPassword ? 'Değiştiriliyor...' : 'Şifreyi Değiştir'}
                 </button>
               </div>
             </div>

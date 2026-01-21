@@ -85,5 +85,30 @@ export const tenantAPI = {
   getDomainEventTypes: async () => {
     const { data } = await apiClient.get('/admin/domain-event-types')
     return data.types || []
+  },
+
+  // Bulk operasyonlar
+  bulkRetryAllFailed: async (tenantId) => {
+    if (!tenantId) throw new Error('tenantId gerekli')
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks/queue/retry-all`)
+    return data
+  },
+
+  bulkDeleteAllFailed: async (tenantId) => {
+    if (!tenantId) throw new Error('tenantId gerekli')
+    const { data } = await apiClient.delete(`/admin/tenants/${tenantId}/webhooks/queue/failed`)
+    return data
+  },
+
+  bulkRetryByWebhook: async (tenantId, webhookId) => {
+    if (!tenantId || !webhookId) throw new Error('tenantId ve webhookId gerekli')
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks/${webhookId}/queue/retry`)
+    return data
+  },
+
+  bulkDeleteByWebhook: async (tenantId, webhookId) => {
+    if (!tenantId || !webhookId) throw new Error('tenantId ve webhookId gerekli')
+    const { data } = await apiClient.delete(`/admin/tenants/${tenantId}/webhooks/${webhookId}/queue/failed`)
+    return data
   }
 }
