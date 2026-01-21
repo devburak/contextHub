@@ -145,6 +145,39 @@ async function buildServer() {
   });
   await app.register(jwtPlugin);
 
+  // Block direct IP access - requests must come through domain
+  // This prevents bots/scanners hitting the server directly
+  const ALLOWED_HOSTS = new Set(
+    (process.env.ALLOWED_HOSTS || 'api.ctxhub.net,localhost').split(',').map(h => h.trim().toLowerCase())
+  );
+  const IP_REGEX = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
+
+  app.addHook('onRequest', (request, reply, done) => {
+    const host = (request.headers.host || '').split(':')[0].toLowerCase();
+
+    // Allow health checks and internal routes
+    if (request.url === '/health' || request.url === '/ready') {
+      return done();
+    }
+
+    // Block if host is an IP address (not domain)
+    if (IP_REGEX.test(host)) {
+      request.log.warn({ host, ip: request.ip, url: request.url }, 'Blocked direct IP access');
+      return reply.code(403).send({ error: 'Direct IP access not allowed' });
+    }
+
+    // Block if host is not in allowed list (optional, can be disabled)
+    if (ALLOWED_HOSTS.size > 0 && !ALLOWED_HOSTS.has(host) && host !== 'localhost' && host !== '127.0.0.1') {
+      // Log but don't block for now - can be enabled by setting STRICT_HOST_CHECK=true
+      if (process.env.STRICT_HOST_CHECK === 'true') {
+        request.log.warn({ host, ip: request.ip, url: request.url }, 'Blocked unknown host');
+        return reply.code(403).send({ error: 'Unknown host' });
+      }
+    }
+
+    done();
+  });
+
   // Initialize async context per request for tenant scoping
   app.addHook('onRequest', (request, reply, done) => {
     tenantContext.run({}, done);
