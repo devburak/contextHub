@@ -216,6 +216,7 @@ export default function TenantWebhooks() {
   const pendingDomainEvents = queueData?.domainEvents?.items || []
   const pendingOutboxItems = queueData?.outbox?.pendingItems || []
   const failedOutboxItems = queueData?.outbox?.failedItems || []
+  const deadOutboxItems = queueData?.outbox?.deadItems || []
   const formatDateTime = (value) => {
     if (!value) return '-'
     try {
@@ -347,6 +348,30 @@ export default function TenantWebhooks() {
     }
   })
 
+  const bulkRetryAllMutation = useMutation({
+    mutationFn: () => tenantAPI.bulkRetryAllFailed(tenantId),
+    onSuccess: (result) => {
+      toast.success(`${result.retried ?? 0} iş yeniden kuyruğa alındı`)
+      queueQuery.refetch()
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.error || 'İşlem başarısız'
+      toast.error(message)
+    }
+  })
+
+  const bulkDeleteAllMutation = useMutation({
+    mutationFn: () => tenantAPI.bulkDeleteAllFailed(tenantId),
+    onSuccess: (result) => {
+      toast.success(`${result.deleted ?? 0} başarısız iş silindi`)
+      queueQuery.refetch()
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.error || 'İşlem başarısız'
+      toast.error(message)
+    }
+  })
+
   const handleManualTrigger = () => {
     triggerMutation.mutate()
   }
@@ -357,6 +382,18 @@ export default function TenantWebhooks() {
   }
 
   const refreshQueue = () => queueQuery.refetch()
+
+  const handleBulkRetryAll = () => {
+    if (window.confirm('Tüm başarısız işler yeniden kuyruğa alınacak. Devam edilsin mi?')) {
+      bulkRetryAllMutation.mutate()
+    }
+  }
+
+  const handleBulkDeleteAll = () => {
+    if (window.confirm('Tüm başarısız ve dead işler silinecek. Bu işlem geri alınamaz. Devam edilsin mi?')) {
+      bulkDeleteAllMutation.mutate()
+    }
+  }
 
   const isTestingWebhook = (webhookId) => testMutation.isPending && testMutation.variables?.id === webhookId
 
@@ -393,6 +430,26 @@ export default function TenantWebhooks() {
             >
               {triggerMutation.isPending ? 'Çalıştırılıyor...' : 'Bekleyenleri Çalıştır'}
             </button>
+            {((queueData?.outbox?.totalFailed ?? 0) > 0 || (queueData?.outbox?.totalDead ?? 0) > 0) && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleBulkRetryAll}
+                  disabled={bulkRetryAllMutation.isPending}
+                  className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+                >
+                  {bulkRetryAllMutation.isPending ? 'İşleniyor...' : 'Tümünü Yeniden Dene'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkDeleteAll}
+                  disabled={bulkDeleteAllMutation.isPending}
+                  className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-60"
+                >
+                  {bulkDeleteAllMutation.isPending ? 'Siliniyor...' : 'Başarısızları Sil'}
+                </button>
+              </>
+            )}
           </div>
         </div>
         {queueQuery.isError ? (
@@ -436,7 +493,10 @@ export default function TenantWebhooks() {
                 <div className="text-right">
                   <p className="text-xl font-semibold text-gray-900">{queueData?.outbox?.totalPending ?? 0}</p>
                   {(queueData?.outbox?.totalFailed ?? 0) > 0 && (
-                    <p className="text-xs font-semibold text-red-500">Başarısız: {queueData?.outbox?.totalFailed ?? 0}</p>
+                    <p className="text-xs font-semibold text-amber-600">Başarısız: {queueData?.outbox?.totalFailed ?? 0}</p>
+                  )}
+                  {(queueData?.outbox?.totalDead ?? 0) > 0 && (
+                    <p className="text-xs font-semibold text-red-600">Dead: {queueData?.outbox?.totalDead ?? 0}</p>
                   )}
                 </div>
               </div>
@@ -465,7 +525,7 @@ export default function TenantWebhooks() {
                   </div>
                 </div>
                 <div>
-                  <div className="flex items-center justify-between text-xs font-medium text-red-600">
+                  <div className="flex items-center justify-between text-xs font-medium text-amber-600">
                     <span>Başarısız işler (yeniden denenecek)</span>
                     <span>{failedOutboxItems.length}</span>
                   </div>
@@ -474,10 +534,40 @@ export default function TenantWebhooks() {
                       <p className="text-sm text-gray-500">Kuyrukta başarısız iş bulunmuyor.</p>
                     ) : (
                       failedOutboxItems.map((item) => (
-                        <div key={item.id || item.eventId} className="rounded-md border border-red-100 bg-red-50/60 p-3">
-                          <p className="text-sm font-medium text-red-800">{item.type}</p>
+                        <div key={item.id || item.eventId} className="rounded-md border border-amber-100 bg-amber-50/60 p-3">
+                          <p className="text-sm font-medium text-amber-800">{item.type}</p>
+                          <p className="text-xs text-amber-700">
+                            Son deneme: {formatDateTime(item.updatedAt)} · Retry: {item.retryCount ?? 0}
+                            {item.errorType && <span className="ml-1">· Tip: {item.errorType}</span>}
+                            {item.lastHttpStatus && <span className="ml-1">· HTTP: {item.lastHttpStatus}</span>}
+                          </p>
+                          {item.nextRetryAt && (
+                            <p className="text-xs text-amber-600">Sonraki deneme: {formatDateTime(item.nextRetryAt)}</p>
+                          )}
+                          {item.lastError && (
+                            <p className="mt-1 text-xs text-amber-600">Hata: {item.lastError}</p>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between text-xs font-medium text-red-700">
+                    <span>Dead işler (kalıcı hata, yeniden denenmeyecek)</span>
+                    <span>{deadOutboxItems.length}</span>
+                  </div>
+                  <div className="mt-2 max-h-40 space-y-3 overflow-y-auto">
+                    {deadOutboxItems.length === 0 ? (
+                      <p className="text-sm text-gray-500">Kuyrukta dead iş bulunmuyor.</p>
+                    ) : (
+                      deadOutboxItems.map((item) => (
+                        <div key={item.id || item.eventId} className="rounded-md border border-red-200 bg-red-50 p-3">
+                          <p className="text-sm font-medium text-red-900">{item.type}</p>
                           <p className="text-xs text-red-700">
                             Son deneme: {formatDateTime(item.updatedAt)} · Retry: {item.retryCount ?? 0}
+                            {item.errorType && <span className="ml-1">· Tip: {item.errorType}</span>}
+                            {item.lastHttpStatus && <span className="ml-1">· HTTP: {item.lastHttpStatus}</span>}
                           </p>
                           {item.lastError && (
                             <p className="mt-1 text-xs text-red-600">Hata: {item.lastError}</p>

@@ -6,6 +6,7 @@ import { ArrowLeftIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outlin
 import { userAPI } from '../../lib/userAPI.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { roleAPI } from '../../lib/roleAPI.js'
+import { useAuth } from '../../contexts/AuthContext.jsx'
 
 // Utility function to mask personal data (KVKK/GDPR compliant)
 const maskPersonalData = (text) => {
@@ -18,6 +19,7 @@ export default function CreateUser() {
   const queryClient = useQueryClient()
   const { t } = useTranslation()
   const toast = useToast()
+  const { role: currentUserRole } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   
   // Wizard state
@@ -86,8 +88,13 @@ export default function CreateUser() {
         key: role.key,
         name: role.name || role.key,
       }))
-      .filter((role) => role.key)
-  }, [rolesResponse])
+      .filter((role) => {
+        if (!role.key) return false
+        // Owner rolünü sadece mevcut kullanıcı owner ise göster
+        if (role.key === 'owner' && currentUserRole !== 'owner') return false
+        return true
+      })
+  }, [rolesResponse, currentUserRole])
 
   useEffect(() => {
     if (availableRoles.length === 0) {

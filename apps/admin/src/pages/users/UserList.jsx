@@ -195,6 +195,7 @@ export default function UserList() {
           onChange={(e) => setRoleFilter(e.target.value)}
         >
           <option value="all">Tüm Roller</option>
+          <option value="owner">Sahip</option>
           <option value="admin">Yönetici</option>
           <option value="editor">Editör</option>
           <option value="viewer">Görüntüleyici</option>
@@ -278,41 +279,54 @@ export default function UserList() {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              {(() => {
-                                const statusInfo = STATUS_PRESENTATION[user.status] || STATUS_PRESENTATION.inactive
-                                return (
-                                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusInfo.className}`}>
-                                    {user.status === 'active' ? (
-                                      <CheckBadgeIcon className="h-3.5 w-3.5" />
-                                    ) : user.status === 'pending' ? (
-                                      <ArrowPathIcon className="h-3.5 w-3.5" />
-                                    ) : (
-                                      <XCircleIcon className="h-3.5 w-3.5" />
-                                    )}
-                                    {statusInfo.label}
-                                  </span>
-                                )
-                              })()}
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                {(() => {
+                                  const statusInfo = STATUS_PRESENTATION[user.status] || STATUS_PRESENTATION.inactive
+                                  return (
+                                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusInfo.className}`}>
+                                      {user.status === 'active' ? (
+                                        <CheckBadgeIcon className="h-3.5 w-3.5" />
+                                      ) : user.status === 'pending' ? (
+                                        <ArrowPathIcon className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <XCircleIcon className="h-3.5 w-3.5" />
+                                      )}
+                                      {statusInfo.label}
+                                    </span>
+                                  )
+                                })()}
 
-                              {user.status === 'active' && (
-                                <button
-                                  onClick={() => handleToggleStatus(user.id)}
-                                  disabled={toggleStatusMutation.isPending}
-                                  className="text-xs font-medium text-gray-500 hover:text-gray-700"
-                                >
-                                  Pasifleştir
-                                </button>
-                              )}
+                                {user.status === 'active' && (
+                                  <button
+                                    onClick={() => handleToggleStatus(user.id)}
+                                    disabled={toggleStatusMutation.isPending}
+                                    className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                                  >
+                                    Pasifleştir
+                                  </button>
+                                )}
 
-                              {user.status === 'inactive' && (
-                                <button
-                                  onClick={() => handleToggleStatus(user.id)}
-                                  disabled={toggleStatusMutation.isPending}
-                                  className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                                >
-                                  Aktifleştir
-                                </button>
+                                {user.status === 'inactive' && (
+                                  <button
+                                    onClick={() => handleToggleStatus(user.id)}
+                                    disabled={toggleStatusMutation.isPending}
+                                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                                  >
+                                    Aktifleştir
+                                  </button>
+                                )}
+                              </div>
+                              {/* Davet bilgileri - pending veya inactive için */}
+                              {(user.status === 'pending' || user.status === 'inactive') && user.lastInvitedAt && (
+                                <div className="text-xs text-gray-500">
+                                  <span>Davet: {new Date(user.lastInvitedAt).toLocaleDateString('tr-TR')}</span>
+                                  {user.inviteExpiresAt && (
+                                    <span className={`ml-2 ${new Date(user.inviteExpiresAt) < new Date() ? 'text-red-500' : 'text-gray-400'}`}>
+                                      {new Date(user.inviteExpiresAt) < new Date() ? '(Süresi doldu)' : `(${new Date(user.inviteExpiresAt).toLocaleDateString('tr-TR')} tarihine kadar)`}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </td>

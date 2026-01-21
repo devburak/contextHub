@@ -2,7 +2,13 @@ const crypto = require('node:crypto');
 const { fetch } = require('undici');
 const { Webhook, DOMAIN_EVENT_TYPES, mongoose } = require('@contexthub/common');
 const { runTenantWebhookPipeline } = require('../lib/webhookTrigger');
-const { signPayload } = require('../lib/webhookDispatcher');
+const {
+  signPayload,
+  retryAllFailedJobs,
+  deleteAllFailedJobs,
+  retryJobsByWebhookId,
+  deleteJobsByWebhookId
+} = require('../lib/webhookDispatcher');
 
 const webhookServiceDeps = {
   fetch,
@@ -231,12 +237,17 @@ function mapOutboxDoc(doc) {
   if (!doc) return null;
   return {
     id: doc._id ? doc._id.toString() : null,
+    webhookId: doc.webhookId ? doc.webhookId.toString() : null,
     eventId: doc.eventId,
     type: doc.type,
     status: doc.status,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     lastError: doc.lastError || null,
+    errorType: doc.errorType || null,
+    lastHttpStatus: doc.lastHttpStatus || null,
+    lastDurationMs: doc.lastDurationMs || null,
+    nextRetryAt: doc.nextRetryAt || null,
     retryCount: doc.retryCount || 0
   };
 }
@@ -249,21 +260,26 @@ async function getWebhookQueueStatus(tenantId, options = {}) {
   const outboxCollection = db.collection('WebhookOutbox');
   const pendingFilter = { tenantId: normalizedTenantId, status: 'pending' };
   const failedFilter = { tenantId: normalizedTenantId, status: 'failed' };
+  const deadFilter = { tenantId: normalizedTenantId, status: 'dead' };
 
   const [
     eventCount,
     outboxPendingCount,
     outboxFailedCount,
+    outboxDeadCount,
     eventDocs,
     outboxPendingDocs,
-    outboxFailedDocs
+    outboxFailedDocs,
+    outboxDeadDocs
   ] = await Promise.all([
     eventsCollection.countDocuments(pendingFilter),
     outboxCollection.countDocuments(pendingFilter),
     outboxCollection.countDocuments(failedFilter),
+    outboxCollection.countDocuments(deadFilter),
     eventsCollection.find(pendingFilter).sort({ createdAt: 1 }).limit(limit).toArray(),
     outboxCollection.find(pendingFilter).sort({ createdAt: 1 }).limit(limit).toArray(),
-    outboxCollection.find(failedFilter).sort({ updatedAt: -1 }).limit(limit).toArray()
+    outboxCollection.find(failedFilter).sort({ updatedAt: -1 }).limit(limit).toArray(),
+    outboxCollection.find(deadFilter).sort({ updatedAt: -1 }).limit(limit).toArray()
   ]);
 
   return {
@@ -274,8 +290,10 @@ async function getWebhookQueueStatus(tenantId, options = {}) {
     outbox: {
       totalPending: outboxPendingCount,
       totalFailed: outboxFailedCount,
+      totalDead: outboxDeadCount,
       pendingItems: outboxPendingDocs.map(mapOutboxDoc),
-      failedItems: outboxFailedDocs.map(mapOutboxDoc)
+      failedItems: outboxFailedDocs.map(mapOutboxDoc),
+      deadItems: outboxDeadDocs.map(mapOutboxDoc)
     }
   };
 }
@@ -394,6 +412,44 @@ function __setWebhookServiceDeps(overrides = {}) {
   webhookServiceDeps.signPayload = overrides.signPayload || signPayload;
 }
 
+/**
+ * Tenant'ın tüm başarısız webhook işlerini yeniden kuyruğa al
+ */
+async function bulkRetryAllFailed(tenantId) {
+  const normalizedTenantId = ensureTenantId(tenantId);
+  return retryAllFailedJobs(normalizedTenantId);
+}
+
+/**
+ * Tenant'ın tüm başarısız webhook işlerini sil
+ */
+async function bulkDeleteAllFailed(tenantId) {
+  const normalizedTenantId = ensureTenantId(tenantId);
+  return deleteAllFailedJobs(normalizedTenantId);
+}
+
+/**
+ * Belirli bir webhook için başarısız işleri yeniden kuyruğa al
+ */
+async function bulkRetryByWebhook(tenantId, webhookId) {
+  const normalizedTenantId = ensureTenantId(tenantId);
+  if (!webhookId) {
+    throw new Error('webhookId is required');
+  }
+  return retryJobsByWebhookId(normalizedTenantId, webhookId);
+}
+
+/**
+ * Belirli bir webhook için başarısız işleri sil
+ */
+async function bulkDeleteByWebhook(tenantId, webhookId, options = {}) {
+  const normalizedTenantId = ensureTenantId(tenantId);
+  if (!webhookId) {
+    throw new Error('webhookId is required');
+  }
+  return deleteJobsByWebhookId(normalizedTenantId, webhookId, options);
+}
+
 module.exports = {
   createWebhook,
   deleteWebhook,
@@ -404,5 +460,10 @@ module.exports = {
   sendTestWebhook,
   triggerTenantWebhooks,
   updateWebhook,
+  // Bulk operasyonlar
+  bulkRetryAllFailed,
+  bulkDeleteAllFailed,
+  bulkRetryByWebhook,
+  bulkDeleteByWebhook,
   __setWebhookServiceDeps
 };

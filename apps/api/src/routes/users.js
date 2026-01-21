@@ -636,7 +636,15 @@ async function userRoutes(fastify, options) {
   }, async function(request, reply) {
     try {
       const { email, role } = request.body;
-      
+
+      // Owner rolü ile davet sadece mevcut owner yapabilir
+      if (role === 'owner' && request.userRole !== 'owner') {
+        return reply.code(403).send({
+          error: 'PermissionDenied',
+          message: 'Sadece sahipler (owner) başka bir kullanıcıyı sahip olarak davet edebilir'
+        });
+      }
+
       const authService = new AuthService(fastify);
 
       const result = await authService.inviteUser(
