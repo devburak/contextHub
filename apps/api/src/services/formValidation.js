@@ -189,6 +189,8 @@ const formSettingsSchema = z.object({
   enableFileUpload: z.boolean().default(false),
   maxFileSize: z.number().positive('Maksimum dosya boyutu pozitif bir sayı olmalıdır').optional(),
   allowedFileTypes: z.array(z.string()).optional(),
+  enableNotifications: z.boolean().optional(),
+  notificationEmails: z.array(z.string().email('Geçersiz e-posta adresi')).optional(),
   emailNotifications: emailNotificationsSchema,
   webhooks: webhooksSchema
 }).optional();
