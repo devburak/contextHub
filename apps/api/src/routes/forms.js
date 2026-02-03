@@ -80,7 +80,7 @@ async function formRoutes(fastify) {
           slug: { type: 'string' },
           description: { type: ['string', 'object'] },
           fields: { type: 'array' },
-          settings: { type: 'object' },
+          settings: { type: 'object', additionalProperties: true },
           visibility: { type: 'string', enum: ['public', 'authenticated'] }
         },
         required: ['title']
@@ -195,7 +195,7 @@ async function formRoutes(fastify) {
           slug: { type: 'string' },
           description: { type: ['string', 'object'] },
           fields: { type: 'array' },
-          settings: { type: 'object' },
+          settings: { type: 'object', additionalProperties: true },
           visibility: { type: 'string', enum: ['public', 'authenticated'] },
           status: { type: 'string', enum: ['draft', 'published', 'archived'] }
         }
@@ -222,6 +222,13 @@ async function formRoutes(fastify) {
           message: 'Formda hata var. Lütfen aşağıdaki alanları kontrol edin.',
           details: errorDetails
         });
+      }
+
+      if (process.env.DEBUG_FORM_SETTINGS === 'true') {
+        request.log.info({
+          rawSettings: request.body?.settings,
+          parsedSettings: validation.data?.settings
+        }, 'Form settings debug');
       }
 
       const form = await formService.update({
