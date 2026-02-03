@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { userAPI } from '../../lib/userAPI.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
@@ -12,7 +12,8 @@ export default function Profile() {
   const toast = useToast()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { updateUserProfile, roleMeta, permissions, logout, memberships } = useAuth()
+  const { user, updateUserProfile, roleMeta, permissions, logout, memberships } = useAuth()
+  const location = useLocation()
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
 
@@ -43,6 +44,15 @@ export default function Profile() {
       console.log('All memberships:', data.allMemberships)
     }
   }, [data])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const force = params.get('forcePasswordChange') === '1'
+
+    if (force || user?.mustChangePassword) {
+      setShowChangePasswordModal(true)
+    }
+  }, [location.search, user?.mustChangePassword])
 
   const profile = data?.user
   const currentMembership = data?.currentMembership
@@ -226,6 +236,9 @@ export default function Profile() {
         newPassword
       })
       toast.success('Şifreniz başarıyla değiştirildi')
+      if (profile) {
+        updateUserProfile({ ...profile, mustChangePassword: false })
+      }
       closeModals()
     } catch (error) {
       const message = error?.response?.data?.error || error?.response?.data?.message || 'Şifre değiştirilemedi'

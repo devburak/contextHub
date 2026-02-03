@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const { emitDomainEvent } = require('../lib/domainEvents');
 const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
+const { mailService } = require('./mailService');
+const tenantSettingsService = require('./tenantSettingsService');
 
 const ObjectId = mongoose.Types.ObjectId;
 
@@ -37,6 +39,159 @@ function slugify(value) {
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+function isValidEmail(value) {
+  return typeof value === 'string' && EMAIL_REGEX.test(value.trim());
+}
+
+function getI18nValue(value, locale = 'tr') {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    return value[locale]
+      || value.tr
+      || value.en
+      || Object.values(value)[0]
+      || '';
+  }
+  return '';
+}
+
+function formatFieldValue(value) {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) {
+    return value.map(item => formatFieldValue(item)).filter(Boolean).join(', ');
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function resolveRecipientsFromForm({ form, data = {}, recipients = [] }) {
+  const resolved = new Set();
+  const fieldMap = new Map();
+  (form.fields || []).forEach((field) => {
+    fieldMap.set(field.id, field);
+  });
+
+  recipients
+    .filter(Boolean)
+    .map((item) => String(item).trim())
+    .filter(Boolean)
+    .forEach((recipient) => {
+      const fieldMatch = recipient.match(/^\{field:(.+)\}$/);
+      if (fieldMatch) {
+        const fieldId = fieldMatch[1];
+        const field = fieldMap.get(fieldId);
+        if (!field) return;
+        const fieldValue = data?.[field.name];
+        if (Array.isArray(fieldValue)) {
+          fieldValue.forEach((val) => {
+            if (isValidEmail(val)) resolved.add(val.trim());
+            if (typeof val === 'string' && val.includes(',') || typeof val === 'string' && val.includes(';')) {
+              val.split(/[;,]+/).map(v => v.trim()).filter(Boolean).forEach((v) => {
+                if (isValidEmail(v)) resolved.add(v);
+              });
+            }
+          });
+        } else if (typeof fieldValue === 'string') {
+          if (isValidEmail(fieldValue)) {
+            resolved.add(fieldValue.trim());
+          } else if (fieldValue.includes(',') || fieldValue.includes(';')) {
+            fieldValue.split(/[;,]+/).map(v => v.trim()).filter(Boolean).forEach((v) => {
+              if (isValidEmail(v)) resolved.add(v);
+            });
+          }
+        }
+        return;
+      }
+
+      if (isValidEmail(recipient)) {
+        resolved.add(recipient.trim());
+      }
+    });
+
+  return Array.from(resolved);
+}
+
+function buildSubmissionEmail({ form, data, locale, submittedAt }) {
+  const title = extractTitle(form.title);
+  const formattedDate = submittedAt instanceof Date
+    ? submittedAt.toLocaleString('tr-TR')
+    : new Date().toLocaleString('tr-TR');
+
+  const sortedFields = [...(form.fields || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+  const rows = sortedFields
+    .map((field) => {
+      if (!field || !field.name) return null;
+      const value = data?.[field.name];
+      if (value === undefined || value === null || value === '') return null;
+      const label = getI18nValue(field.label, locale) || field.name;
+      const formattedValue = formatFieldValue(value);
+      if (!formattedValue) return null;
+      return { label, value: formattedValue };
+    })
+    .filter(Boolean);
+
+  const htmlRows = rows.length
+    ? rows.map((item) => `
+        <tr>
+          <td style="padding: 8px 12px; border: 1px solid #e5e7eb; font-weight: 600; background: #f9fafb; width: 220px;">${escapeHtml(item.label)}</td>
+          <td style="padding: 8px 12px; border: 1px solid #e5e7eb;">${escapeHtml(item.value)}</td>
+        </tr>
+      `).join('')
+    : `<tr><td colspan="2" style="padding: 12px; border: 1px solid #e5e7eb;">Yanıt verisi bulunamadı.</td></tr>`;
+
+  const textRows = rows.length
+    ? rows.map((item) => `- ${item.label}: ${item.value}`).join('\n')
+    : 'Yanıt verisi bulunamadı.';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>${escapeHtml(title)}</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 24px; color: #111827;">
+      <div style="max-width: 720px; margin: 0 auto; background: #ffffff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden;">
+        <div style="padding: 24px; border-bottom: 1px solid #e5e7eb;">
+          <h2 style="margin: 0 0 8px; font-size: 20px;">${escapeHtml(title)}</h2>
+          <p style="margin: 0; color: #6b7280;">Yeni form gönderimi alındı.</p>
+        </div>
+        <div style="padding: 24px;">
+          <p style="margin: 0 0 16px;"><strong>Gönderim Tarihi:</strong> ${escapeHtml(formattedDate)}</p>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb;">
+            <tbody>
+              ${htmlRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `${title}\nYeni form gönderimi alındı.\nGönderim Tarihi: ${formattedDate}\n\n${textRows}`;
+
+  return { html, text };
 }
 
 /**
@@ -98,6 +253,27 @@ function buildFormEventPayload(formDoc) {
     submissionCount: doc.submissionCount ?? null,
     updatedAt
   };
+}
+
+function normalizeFormSettings(settings = {}) {
+  const normalized = { ...settings };
+  const legacyEnabled = settings.enableNotifications;
+  const legacyRecipients = Array.isArray(settings.notificationEmails) ? settings.notificationEmails : [];
+
+  const emailNotifications = {
+    ...(settings.emailNotifications || {})
+  };
+
+  if (emailNotifications.enabled === undefined && legacyEnabled !== undefined) {
+    emailNotifications.enabled = Boolean(legacyEnabled);
+  }
+
+  if ((!Array.isArray(emailNotifications.recipients) || emailNotifications.recipients.length === 0) && legacyRecipients.length > 0) {
+    emailNotifications.recipients = legacyRecipients;
+  }
+
+  normalized.emailNotifications = emailNotifications;
+  return normalized;
 }
 
 async function recordFormEvent({
@@ -523,6 +699,8 @@ async function getById({ tenantId, formId, populateFields = false }) {
   if (!form) {
     throw new Error('Form not found');
   }
+
+  form.settings = normalizeFormSettings(form.settings || {});
   
   return form;
 }
@@ -541,6 +719,8 @@ async function getBySlug({ tenantId, slug, populateFields = false }) {
   if (!form) {
     throw new Error('Form not found');
   }
+
+  form.settings = normalizeFormSettings(form.settings || {});
   
   return form;
 }
@@ -803,6 +983,69 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
       requestId: metadata.requestId
     }
   });
+
+  // Send email notifications if enabled
+  try {
+    const emailSettings = form.settings?.emailNotifications || {};
+    const legacyEnabled = form.settings?.enableNotifications;
+    const legacyRecipients = form.settings?.notificationEmails || [];
+    const notificationsEnabled = emailSettings.enabled ?? legacyEnabled;
+    const recipientSource = Array.isArray(emailSettings.recipients) && emailSettings.recipients.length > 0
+      ? emailSettings.recipients
+      : legacyRecipients;
+
+    if (notificationsEnabled && recipientSource.length > 0) {
+      const recipients = resolveRecipientsFromForm({
+        form,
+        data,
+        recipients: recipientSource
+      });
+
+      if (recipients.length > 0) {
+        const locale = response.locale || metadata.locale || 'tr';
+        const { html, text } = buildSubmissionEmail({
+          form,
+          data,
+          locale,
+          submittedAt: response.createdAt
+        });
+
+        const defaultSubject = locale?.startsWith('tr')
+          ? 'Yeni form gönderimi'
+          : 'New form submission';
+
+        const subject = (emailSettings.subject && emailSettings.subject.trim())
+          ? emailSettings.subject.trim()
+          : `${defaultSubject} - ${extractTitle(form.title)}`;
+
+        let replyTo = emailSettings.replyTo?.trim();
+
+        if (!replyTo) {
+          try {
+            const smtpSettings = await tenantSettingsService.getSmtpCredentials(tenantId);
+            replyTo = smtpSettings?.fromEmail || undefined;
+          } catch (error) {
+            replyTo = undefined;
+          }
+        }
+
+        await mailService.sendMail({
+          to: recipients.join(', '),
+          subject,
+          html,
+          text,
+          replyTo
+        }, tenantId);
+
+        await FormResponse.updateOne(
+          { _id: response._id },
+          { $set: { notificationSent: true, notificationSentAt: new Date() } }
+        );
+      }
+    }
+  } catch (error) {
+    console.error('[formService] Failed to send form notification email:', error);
+  }
 
   return response;
 }

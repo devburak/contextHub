@@ -24,16 +24,32 @@ class RoleService {
     }
 
     for (const roleDef of DEFAULT_ROLES) {
-      await Role.findOneAndUpdate(
-        { tenantId: null, key: roleDef.key },
-        {
-          ...roleDef,
-          tenantId: null,
-          isSystem: true,
-          isDefault: true
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      try {
+        await Role.findOneAndUpdate(
+          { tenantId: null, key: roleDef.key },
+          {
+            ...roleDef,
+            tenantId: null,
+            isSystem: true,
+            isDefault: true
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (error) {
+        if (error?.code === 11000) {
+          await Role.updateOne(
+            { tenantId: null, key: roleDef.key },
+            {
+              ...roleDef,
+              tenantId: null,
+              isSystem: true,
+              isDefault: true
+            }
+          );
+          continue;
+        }
+        throw error;
+      }
     }
   }
 
@@ -42,6 +58,7 @@ class RoleService {
   }
 
   async listRoles(tenantId) {
+    await this.ensureSystemRoles();
     const [systemRoles, tenantRoles] = await Promise.all([
       this.getSystemRoles(),
       tenantId ? Role.find({ tenantId }).sort({ level: -1, key: 1 }) : []
@@ -80,6 +97,27 @@ class RoleService {
     const systemRole = await Role.findOne({ tenantId: null, key: normalizedKey });
     if (systemRole) {
       return systemRole;
+    }
+
+    const defaultRole = DEFAULT_ROLES.find((role) => role.key === normalizedKey);
+    if (defaultRole && Role?.db && Role.db.readyState === 1) {
+      try {
+        return await Role.findOneAndUpdate(
+          { tenantId: null, key: normalizedKey },
+          {
+            ...defaultRole,
+            tenantId: null,
+            isSystem: true,
+            isDefault: true
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (error) {
+        if (error?.code === 11000) {
+          return await Role.findOne({ tenantId: null, key: normalizedKey });
+        }
+        throw error;
+      }
     }
 
     return null;

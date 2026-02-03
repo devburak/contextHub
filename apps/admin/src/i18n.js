@@ -66,6 +66,8 @@ const resources = {
       'user.create_success_named': '{{name}} kullanıcısı başarıyla oluşturuldu.',
       'user.invite_existing': '{{email}} zaten kayıtlı. Davet gönderildi.',
       'user.invite_existing_generic': 'Kullanıcı zaten kayıtlı. Davet gönderildi.',
+      'user.invite_existing_member': '{{email}} zaten bu varlıkta yetkili. Rol güncellendi.',
+      'user.invite_existing_member_generic': 'Kullanıcı zaten bu varlıkta yetkili. Rol güncellendi.',
       'user.create_error': 'Kullanıcı oluşturulamadı. Lütfen bilgileri kontrol edin.',
       'user.invite_error': 'Kullanıcı daveti gönderilemedi.',
       'user.roles_load_error': 'Roller yüklenemedi. Lütfen sayfayı yenileyin.',
@@ -106,7 +108,7 @@ const resources = {
       'role.admin': 'Yönetici',
       'status.active': 'Aktif',
       'status.inactive': 'Pasif',
-      'status.pending': 'Davet Bekliyor',
+      'status.pending': 'Beklemede',
       
       // Common
       'common.loading': 'Yükleniyor...',
@@ -186,6 +188,8 @@ const resources = {
       'user.create_success_named': 'User {{name}} was created successfully.',
       'user.invite_existing': '{{email}} is already registered. Invitation sent.',
       'user.invite_existing_generic': 'User already exists. Invitation sent.',
+      'user.invite_existing_member': '{{email}} already belongs to this tenant. Role updated.',
+      'user.invite_existing_member_generic': 'User already belongs to this tenant. Role updated.',
       'user.create_error': 'Could not create the user. Please check the details.',
       'user.invite_error': 'User invitation could not be sent.',
       'user.roles_load_error': 'Roles could not be loaded. Please refresh the page.',

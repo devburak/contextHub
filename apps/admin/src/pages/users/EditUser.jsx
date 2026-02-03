@@ -1,21 +1,21 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { userAPI } from '../../lib/userAPI.js'
 import { roleAPI } from '../../lib/roleAPI.js'
+import { useAuth } from '../../contexts/AuthContext.jsx'
+import { PERMISSIONS } from '../../constants/permissions.js'
 
 export default function EditUser() {
   const { id } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [showPassword, setShowPassword] = useState(false)
+  const { hasPermission, role: currentUserRole } = useAuth()
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
     username: '',
-    password: '',
     role: 'viewer',
     status: 'active'
   })
@@ -50,14 +50,17 @@ export default function EditUser() {
 
   const user = useMemo(() => userResponse?.user ?? null, [userResponse])
 
+  const currentStatus = user?.membership?.status || formData.status
+  const canManageUsers = currentUserRole === 'owner' || hasPermission(PERMISSIONS.USERS_MANAGE)
+  const canAssignRole = currentUserRole === 'owner' || hasPermission(PERMISSIONS.USERS_ASSIGN_ROLE)
+  const effectiveRole = user?.membership?.role || user?.role || formData.role
+  const isOwnerMember = effectiveRole === 'owner'
+  const canDetachUser = canManageUsers && !isOwnerMember
+
   // Kullanıcı güncelleme
   const updateUserMutation = useMutation({
-    mutationFn: async ({ profile, role }) => {
+    mutationFn: async ({ role }) => {
       const updates = {}
-
-      if (profile && Object.keys(profile).length > 0) {
-        updates.profile = await userAPI.updateUser(id, profile)
-      }
 
       if (role) {
         updates.role = await userAPI.updateUserRole(id, role)
@@ -75,6 +78,28 @@ export default function EditUser() {
     },
   })
 
+  const toggleStatusMutation = useMutation({
+    mutationFn: () => userAPI.toggleUserStatus(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['users'])
+      queryClient.invalidateQueries(['user', id])
+    },
+    onError: (error) => {
+      console.error('Kullanıcı durumu güncelleme hatası:', error.response?.data?.message || error.message)
+    }
+  })
+
+  const detachUserMutation = useMutation({
+    mutationFn: () => userAPI.deleteUser(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['users'])
+      navigate('/users')
+    },
+    onError: (error) => {
+      console.error('Kullanıcı tenant bağlantısı kaldırma hatası:', error.response?.data?.message || error.message)
+    }
+  })
+
   // Form verilerini kullanıcı bilgileriyle doldur
   useEffect(() => {
     if (user && !isInitialized) {
@@ -83,7 +108,6 @@ export default function EditUser() {
         lastName: user.lastName || '',
         email: user.email || '',
         username: user.username || user.email?.split('@')[0] || '',
-        password: '', // Şifre güvenlik için boş bırakılır
         role: user.membership?.role || user.role || availableRoles[0]?.key || 'viewer',
         status: user.status || user.membership?.status || 'active'
       })
@@ -107,44 +131,9 @@ export default function EditUser() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const profilePayload = {}
-
-    if (user) {
-      if (formData.firstName !== user.firstName) {
-        profilePayload.firstName = formData.firstName
-      }
-
-      if (formData.lastName !== user.lastName) {
-        profilePayload.lastName = formData.lastName
-      }
-
-      if (formData.email !== user.email) {
-        profilePayload.email = formData.email
-      }
-
-      if (formData.username !== user.username) {
-        profilePayload.username = formData.username
-      }
-
-      if (formData.status !== (user.status || user.membership?.status)) {
-        profilePayload.status = formData.status
-      }
-    } else {
-      profilePayload.firstName = formData.firstName
-      profilePayload.lastName = formData.lastName
-      profilePayload.email = formData.email
-      profilePayload.username = formData.username
-      profilePayload.status = formData.status
-    }
-
-    if (formData.password) {
-      profilePayload.password = formData.password
-    }
-
     const roleChanged = formData.role && formData.role !== initialRole
 
     updateUserMutation.mutate({
-      profile: profilePayload,
       role: roleChanged ? formData.role : null,
     })
   }
@@ -213,9 +202,9 @@ export default function EditUser() {
                 name="firstName"
                 id="firstName"
                 required
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600 shadow-sm sm:text-sm"
                 value={formData.firstName}
-                onChange={handleChange}
+                readOnly
               />
             </div>
 
@@ -229,9 +218,9 @@ export default function EditUser() {
                 name="lastName"
                 id="lastName"
                 required
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600 shadow-sm sm:text-sm"
                 value={formData.lastName}
-                onChange={handleChange}
+                readOnly
               />
             </div>
 
@@ -245,9 +234,9 @@ export default function EditUser() {
                 name="email"
                 id="email"
                 required
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600 shadow-sm sm:text-sm"
                 value={formData.email}
-                onChange={handleChange}
+                readOnly
               />
             </div>
 
@@ -261,40 +250,14 @@ export default function EditUser() {
                 name="username"
                 id="username"
                 required
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600 shadow-sm sm:text-sm"
                 value={formData.username}
-                onChange={handleChange}
+                readOnly
               />
             </div>
 
-            {/* Password */}
-            <div className="col-span-6 sm:col-span-3">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Yeni Şifre
-              </label>
-              <p className="text-xs text-gray-500 mb-1">Boş bırakırsanız şifre değişmez</p>
-              <div className="mt-1 relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  id="password"
-                  placeholder="Yeni şifre (opsiyonel)"
-                  className="block w-full rounded-md border border-gray-300 px-3 py-2 pr-10 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                  value={formData.password}
-                  onChange={handleChange}
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 z-10"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeSlashIcon className="h-5 w-5 text-gray-500 hover:text-gray-700 transition-colors" />
-                  ) : (
-                    <EyeIcon className="h-5 w-5 text-gray-500 hover:text-gray-700 transition-colors" />
-                  )}
-                </button>
-              </div>
+            <div className="col-span-6 rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              Kullanıcı bilgileri yalnızca kullanıcının kendisi tarafından değiştirilebilir.
             </div>
 
             {/* Role */}
@@ -308,7 +271,7 @@ export default function EditUser() {
                 className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                 value={formData.role}
                 onChange={handleChange}
-                disabled={rolesLoading}
+                disabled={rolesLoading || !canAssignRole}
               >
                 {availableRoles.length > 0 ? (
                   availableRoles.map((role) => (
@@ -333,25 +296,49 @@ export default function EditUser() {
 
             {/* Status */}
             <div className="col-span-6 sm:col-span-3">
-              <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700">
                 Durum
               </label>
-              <select
-                id="status"
-                name="status"
-                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                value={formData.status}
-                onChange={handleChange}
-              >
-                <option value="active">Aktif</option>
-                <option value="inactive">Pasif</option>
-              </select>
+              <div className="mt-1 flex items-center gap-3">
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                  {currentStatus === 'active' ? 'Aktif' : currentStatus === 'inactive' ? 'Pasif' : currentStatus}
+                </span>
+                {canManageUsers && (
+                  <button
+                    type="button"
+                    onClick={() => toggleStatusMutation.mutate()}
+                    disabled={toggleStatusMutation.isPending}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                  >
+                    {currentStatus === 'active' ? 'Pasif yap' : 'Aktif yap'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Form Actions */}
         <div className="flex justify-end gap-3">
+          {canManageUsers && isOwnerMember && (
+            <div className="mr-auto text-xs text-gray-500 self-center">
+              Sahip rolündeki kullanıcılar varlık ilişkisini yalnızca kendi profillerinden kaldırabilir.
+            </div>
+          )}
+          {canDetachUser && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Bu kullanıcının varlıkla ilişkisini kesmek istediğinize emin misiniz?')) {
+                  detachUserMutation.mutate()
+                }
+              }}
+              disabled={detachUserMutation.isPending}
+              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+            >
+              Varlıkla ilişkisini kes
+            </button>
+          )}
           <button
             type="button"
             onClick={() => navigate('/users')}
@@ -361,7 +348,7 @@ export default function EditUser() {
           </button>
           <button
             type="submit"
-            disabled={updateUserMutation.isPending}
+            disabled={updateUserMutation.isPending || !canAssignRole}
             className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
             {updateUserMutation.isPending ? 'Güncelleniyor...' : 'Değişiklikleri Kaydet'}

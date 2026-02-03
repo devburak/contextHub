@@ -1,4 +1,4 @@
-const { User, Membership, rbac, mongoose, ActivityLog } = require('@contexthub/common');
+const { User, Membership, Tenant, rbac, mongoose, ActivityLog } = require('@contexthub/common');
 const bcrypt = require('bcryptjs');
 const roleService = require('./roleService');
 const { mailService } = require('./mailService');
@@ -13,7 +13,8 @@ class UserService {
       password, // Model'de pre-save middleware ile hash'lenecek
       firstName,
       lastName,
-      tenantId
+      tenantId,
+      mustChangePassword: true
     });
 
     await user.save();
@@ -189,6 +190,12 @@ class UserService {
   }
 
   async updateUser(userId, tenantId, updates) {
+    if (Object.prototype.hasOwnProperty.call(updates, 'password')) {
+      const error = new Error('Password can only be changed by the user');
+      error.code = 'PASSWORD_UPDATE_NOT_ALLOWED';
+      throw error;
+    }
+
     // Şifre güncelleniyorsa hash'le
     if (updates.password) {
       updates.password = await bcrypt.hash(updates.password, 10);
@@ -211,7 +218,7 @@ class UserService {
     return user;
   }
 
-  async detachUserFromTenant(userId, tenantId) {
+  async detachUserFromTenant(userId, tenantId, options = {}) {
     const membership = await Membership.findOne({ userId, tenantId });
 
     if (!membership) {
@@ -219,25 +226,52 @@ class UserService {
     }
 
     if (membership.role === ROLE_KEYS.OWNER) {
-      const otherOwnerExists = await Membership.exists({
-        tenantId,
-        role: membership.role,
-        status: 'active',
-        userId: { $ne: userId }
-      });
-
-      if (!otherOwnerExists) {
-        const error = new Error('Tenant için en az bir aktif sahibi bırakmalısınız.');
-        error.code = 'LAST_OWNER';
-        throw error;
-      }
+      const error = new Error('Sahip rolündeki kullanıcıların varlık ilişkisi yalnızca kendi profillerinden kaldırılabilir.');
+      error.code = 'OWNER_DETACH_NOT_ALLOWED';
+      throw error;
     }
+
+    const removedAt = new Date();
 
     await Membership.deleteOne({ _id: membership._id });
 
+    const sendEmail = options?.sendEmail !== false;
+    if (sendEmail) {
+      try {
+        const [user, tenant] = await Promise.all([
+          User.findById(membership.userId).select('email firstName lastName'),
+          tenantId ? Tenant.findById(tenantId).select('name slug') : null
+        ]);
+
+        if (user?.email) {
+          const removedBy = options?.removedBy;
+          const removedByName = removedBy
+            ? [removedBy.firstName, removedBy.lastName].filter(Boolean).join(' ') || removedBy.email
+            : null;
+
+          const tenantData = tenant
+            ? {
+                id: tenant._id.toString(),
+                name: tenant.name,
+                slug: tenant.slug
+              }
+            : null;
+
+          await mailService.sendTenantAccessRemovedEmail(
+            user.email,
+            tenantData,
+            removedByName,
+            removedAt
+          );
+        }
+      } catch (error) {
+        console.error('Failed to send tenant access removed email:', error);
+      }
+    }
+
     return {
       status: membership.status,
-      removedAt: new Date()
+      removedAt
     };
   }
 
@@ -387,6 +421,7 @@ class UserService {
 
     user.password = newPassword; // Model'de pre-save ile hash'lenecek
     user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.mustChangePassword = false;
     await user.save();
 
     // Activity log kaydı

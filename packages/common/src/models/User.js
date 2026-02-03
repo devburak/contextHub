@@ -16,6 +16,7 @@ const userSchema = new Schema({
   lastLoginAt: { type: Date },
   resetPasswordToken: { type: String },
   resetPasswordExpiresAt: { type: Date },
+  mustChangePassword: { type: Boolean, default: false },
   tokenVersion: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },

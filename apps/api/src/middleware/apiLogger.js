@@ -1,4 +1,7 @@
-const upstashClient = require('../lib/upstash');
+const usageRedis = require('../lib/usageRedis');
+const { getHalfDayPeriod } = require('../services/apiUsageService');
+
+const HALF_DAY_TTL_SECONDS = 60 * 60 * 72; // 72 hours
 
 /**
  * Middleware to log API requests to Upstash Redis
@@ -13,52 +16,21 @@ async function apiLogger(request, reply) {
     return;
   }
 
-  // Skip if Upstash is not enabled
-  if (!upstashClient.isEnabled()) {
+  // Skip if usage logging is disabled
+  if (!usageRedis.isEnabled()) {
     return;
   }
 
   try {
-    // Extract request information
-    const endpoint = request.routeOptions?.url || request.url.split('?')[0];
-    const method = request.method;
-    const ip = request.headers['x-forwarded-for'] || 
-               request.headers['x-real-ip'] || 
-               request.socket.remoteAddress || 
-               'unknown';
-    const userAgent = request.headers['user-agent'] || 'unknown';
-    
-    // Get tenantId and userId from request (should be set by auth middleware now)
     const tenantId = request.tenantId || request.user?.tenantId || null;
-    const userId = request.user?.id || null;
-    
-    // Get response info
-    const statusCode = reply.statusCode;
-    const responseTime = reply.getResponseTime ? reply.getResponseTime() : 0;
+    const normalizedTenantId = tenantId || 'system';
+    const { periodKey } = getHalfDayPeriod(new Date());
+    const key = `api:count:12h:${normalizedTenantId}:${periodKey}`;
 
-    console.log('[APILogger] Logging request:', {
-      endpoint,
-      tenantId: tenantId || 'system',
-      userId,
-      statusCode,
-      hasTenantId: !!tenantId,
-      requestTenantId: request.tenantId,
-      userTenantId: request.user?.tenantId,
-    });
-
-    // Log to Upstash asynchronously (don't block response)
+    // Log to Redis asynchronously (don't block response)
     setImmediate(() => {
-      upstashClient.logRequest({
-        tenantId,
-        userId,
-        endpoint,
-        method,
-        ip,
-        userAgent,
-        statusCode,
-        responseTime,
-      }).catch(error => {
-        console.error('Failed to log API request:', error);
+      usageRedis.incr(key, HALF_DAY_TTL_SECONDS).catch(error => {
+        console.error('Failed to log API usage:', error);
       });
     });
   } catch (error) {

@@ -398,6 +398,47 @@ class UpstashClient {
       };
     }
   }
+
+  /**
+   * Cleanup legacy API log keys (api:log:* and api:endpoint:*)
+   */
+  async cleanupLegacyLogs(options = {}) {
+    if (!this.isEnabled()) {
+      return { deleted: 0, skipped: true };
+    }
+
+    const patterns = options.patterns || ['api:log:*', 'api:endpoint:*'];
+    const count = options.count || 500;
+    const maxKeys = options.maxKeys || 5000;
+    let deleted = 0;
+
+    try {
+      for (const pattern of patterns) {
+        let cursor = 0;
+        do {
+          const result = await this.client.scan(cursor, { match: pattern, count });
+          const nextCursor = Array.isArray(result) ? result[0] : result?.cursor;
+          const keys = Array.isArray(result) ? result[1] : result?.keys;
+
+          cursor = Number(nextCursor || 0);
+
+          if (Array.isArray(keys) && keys.length) {
+            await this.client.del(...keys);
+            deleted += keys.length;
+          }
+
+          if (deleted >= maxKeys) {
+            return { deleted, capped: true };
+          }
+        } while (cursor !== 0);
+      }
+    } catch (error) {
+      console.error('[Upstash] Failed to cleanup legacy logs:', error);
+      return { deleted, error: error.message };
+    }
+
+    return { deleted };
+  }
 }
 
 // Singleton instance

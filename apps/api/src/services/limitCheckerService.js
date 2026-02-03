@@ -1,5 +1,5 @@
 const localRedisClient = require('../lib/localRedis');
-const upstashClient = require('../lib/upstash');
+const apiUsageService = require('./apiUsageService');
 const Tenant = require('@contexthub/common/src/models/Tenant');
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan'); // Pre-load for populate
 const Membership = require('@contexthub/common/src/models/Membership');
@@ -82,22 +82,16 @@ class LimitCheckerService {
         remaining = await localRedisClient.getRequestQuota(tenantId);
       }
 
-      // If not in cache, calculate from Upstash
+      // If not in cache, calculate from MongoDB (half-day usage aggregation)
       if (remaining === null) {
-        console.log(`[LimitChecker] Request quota not cached, calculating from Upstash`);
-        
-        if (upstashClient.isEnabled()) {
-          const stats = await upstashClient.getApiStats(tenantId);
-          const currentUsage = stats.monthly || 0;
-          remaining = Math.max(0, limits.monthlyRequestLimit - currentUsage);
-          
-          // Cache the remaining quota
-          if (localRedisClient.isEnabled()) {
-            await localRedisClient.cacheRequestQuota(tenantId, remaining, 3600); // 1 hour TTL
-          }
-        } else {
-          // No usage tracking available, allow
-          remaining = limits.monthlyRequestLimit;
+        console.log(`[LimitChecker] Request quota not cached, calculating from MongoDB`);
+
+        const currentUsage = await apiUsageService.getMonthlyUsage(tenantId);
+        remaining = Math.max(0, limits.monthlyRequestLimit - currentUsage);
+
+        // Cache the remaining quota
+        if (localRedisClient.isEnabled()) {
+          await localRedisClient.cacheRequestQuota(tenantId, remaining, 3600); // 1 hour TTL
         }
       }
 

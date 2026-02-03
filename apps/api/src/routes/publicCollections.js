@@ -1,6 +1,7 @@
 const {
   tenantContext
 } = require('../middleware/auth');
+const { checkRequestLimit } = require('../middleware/requestLimitGuard');
 const {
   listEntries,
   findEntryBySlug,
@@ -214,6 +215,7 @@ function sanitiseEntry(entry) {
 
 async function publicCollectionRoutes(fastify) {
   fastify.addHook('preHandler', tenantContext);
+  fastify.addHook('preHandler', checkRequestLimit);
 
   fastify.get('/public/collections/:key', {
     schema: {

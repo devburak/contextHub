@@ -1,4 +1,5 @@
 const { tenantContext } = require('../middleware/auth');
+const { checkRequestLimit } = require('../middleware/requestLimitGuard');
 const formService = require('../services/formService');
 const crypto = require('crypto');
 
@@ -82,8 +83,12 @@ async function validateApiKey(request, reply) {
     });
   }
 
+  const scopes = Array.isArray(apiToken.scopes) && apiToken.scopes.length
+    ? apiToken.scopes
+    : ['read'];
+
   // Check if token has write scope
-  if (apiToken.scopes && !apiToken.scopes.includes('write')) {
+  if (!scopes.includes('write')) {
     return reply.code(403).send({
       error: 'InsufficientPermissions',
       message: 'API key does not have write permission'
@@ -97,6 +102,10 @@ async function validateApiKey(request, reply) {
   // Set tenant ID from API token
   request.tenantId = apiToken.tenantId.toString();
   request.apiToken = apiToken;
+
+  if (await checkRequestLimit(request, reply)) {
+    return;
+  }
 }
 
 /**
@@ -105,6 +114,7 @@ async function validateApiKey(request, reply) {
 async function publicFormRoutes(fastify) {
   // Apply tenant context to all routes (will be skipped if API key is used)
   fastify.addHook('preHandler', tenantContext);
+  fastify.addHook('preHandler', checkRequestLimit);
 
   /**
    * GET /api/public/forms/:slug
@@ -245,6 +255,11 @@ async function publicFormRoutes(fastify) {
       delete formObj.webhooks;
       delete formObj.submissionCount;
       delete formObj.version;
+      if (formObj.settings) {
+        delete formObj.settings.emailNotifications;
+        delete formObj.settings.notificationEmails;
+        delete formObj.settings.enableNotifications;
+      }
 
       // Rename _id to id for consistency
       formObj.id = formObj._id;

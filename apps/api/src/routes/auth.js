@@ -29,6 +29,7 @@ async function authRoutes(fastify, options) {
                 email: { type: 'string' },
                 firstName: { type: 'string' },
                 lastName: { type: 'string' },
+                mustChangePassword: { type: 'boolean' },
                 role: { type: 'string' },
                 permissions: {
                   type: 'array',
@@ -278,6 +279,7 @@ async function authRoutes(fastify, options) {
                 email: { type: 'string' },
                 firstName: { type: 'string' },
                 lastName: { type: 'string' },
+                mustChangePassword: { type: 'boolean' },
                 role: { type: 'string' },
                 permissions: {
                   type: 'array',

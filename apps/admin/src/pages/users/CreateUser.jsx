@@ -20,6 +20,7 @@ export default function CreateUser() {
   const { t } = useTranslation()
   const toast = useToast()
   const { role: currentUserRole } = useAuth()
+  const isOwner = currentUserRole === 'owner'
   const [showPassword, setShowPassword] = useState(false)
   
   // Wizard state
@@ -115,29 +116,37 @@ export default function CreateUser() {
 
   const createUserMutation = useMutation({
     mutationFn: (data) => {
-      // Mevcut kullanıcı ise invite endpoint'ini kullan
-      if (userExists) {
-        console.log('[CreateUser] Inviting existing user:', { email: data.email, role: data.role })
-        return userAPI.inviteUser({
-          email: data.email,
-          role: data.role
-        })
+      const invitePayload = {
+        email: data.email,
+        role: data.role
       }
-      // Yeni kullanıcı ise create endpoint'ini kullan
-      console.log('[CreateUser] Creating new user:', data)
-      return userAPI.createUser(data)
+
+      if (!userExists) {
+        if (data.firstName) invitePayload.firstName = data.firstName
+        if (data.lastName) invitePayload.lastName = data.lastName
+        if (isOwner && data.password) invitePayload.password = data.password
+      }
+
+      console.log('[CreateUser] Inviting user:', invitePayload)
+      return userAPI.inviteUser(invitePayload)
     },
     onSuccess: (data, variables) => {
-      const invite = data?.invite
+      const invite = data?.invite || data?.invitation
       const displayName = [variables?.firstName, variables?.lastName]
         .filter(Boolean)
         .join(' ')
         .trim()
-      const inviteExpiresAt = invite?.invitation?.expiresAt
-        ? new Date(invite.invitation.expiresAt).toLocaleString('tr-TR')
+      const inviteExpiresAtRaw = invite?.expiresAt || invite?.invitation?.expiresAt
+      const inviteExpiresAt = inviteExpiresAtRaw
+        ? new Date(inviteExpiresAtRaw).toLocaleString('tr-TR')
         : null
 
-      if (invite) {
+      if (data?.type === 'existing_member') {
+        const memberMessage = variables?.email
+          ? t('user.invite_existing_member', { email: variables.email })
+          : t('user.invite_existing_member_generic')
+        toast.info(memberMessage)
+      } else if (invite) {
         const inviteMessage = data?.message
           || (variables?.email
             ? t('user.invite_existing', { email: variables.email })
@@ -348,7 +357,7 @@ export default function CreateUser() {
               />
             </div>
 
-            {/* Kullanıcı adı ve şifre sadece yeni kullanıcı için */}
+            {/* Kullanıcı adı sadece yeni kullanıcı için */}
             {!userExists && (
               <>
                 <div className="md:col-span-2">
@@ -367,35 +376,43 @@ export default function CreateUser() {
                   />
                 </div>
 
-                <div>
-                  <label htmlFor="password" className="label">
-                    {t('user.wizard.default_password')}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      id="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      className="input-with-icon"
-                      placeholder={t('user.password')}
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-0 flex items-center pr-3"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? (
-                        <EyeSlashIcon className="h-4 w-4 text-gray-400 hover:text-gray-600" />
-                      ) : (
-                        <EyeIcon className="h-4 w-4 text-gray-400 hover:text-gray-600" />
-                      )}
-                    </button>
+                {isOwner ? (
+                  <div>
+                    <label htmlFor="password" className="label">
+                      {t('user.wizard.default_password')}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        id="password"
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        className="input-with-icon"
+                        placeholder={t('user.password')}
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 flex items-center pr-3"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? (
+                          <EyeSlashIcon className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                        ) : (
+                          <EyeIcon className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                        )}
+                      </button>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Kullanıcı ilk girişte şifresini değiştirmek zorunda kalacaktır.
+                    </p>
                   </div>
-                  <p className="mt-1 text-sm text-gray-500">{t('user.wizard.default_password_hint')}</p>
-                </div>
+                ) : (
+                  <div className="md:col-span-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    Şifre yalnızca sahip tarafından belirlenebilir. Kullanıcı davet linkinden kendi şifresini oluşturacaktır.
+                  </div>
+                )}
               </>
             )}
 

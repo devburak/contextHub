@@ -235,6 +235,22 @@ async function start() {
   
   // Initialize Local Redis client for limit caching
   await localRedisClient.initialize();
+
+  // Cleanup legacy API log keys on startup
+  setImmediate(async () => {
+    try {
+      if (upstashClient.isEnabled()) {
+        const result = await upstashClient.cleanupLegacyLogs();
+        console.log('[Server] Upstash legacy log cleanup result:', result);
+      }
+      if (localRedisClient.isEnabled()) {
+        const result = await localRedisClient.cleanupLegacyLogs();
+        console.log('[Server] Local Redis legacy log cleanup result:', result);
+      }
+    } catch (error) {
+      console.error('[Server] Legacy log cleanup failed:', error.message);
+    }
+  });
   
   // Pre-populate limits cache on startup
   if (localRedisClient.isEnabled()) {

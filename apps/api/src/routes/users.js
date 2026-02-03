@@ -183,6 +183,13 @@ async function userRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
+      if (request.userRole !== 'owner') {
+        return reply.code(403).send({
+          error: 'OnlyOwner',
+          message: 'Only tenant owners can create users with passwords. Please invite the user instead.'
+        });
+      }
+
       const {
         email,
         password,
@@ -199,16 +206,27 @@ async function userRoutes(fastify, options) {
         const authService = new AuthService(fastify);
 
         try {
-          const invite = await authService.inviteUser(
+          const inviteResult = await authService.inviteUser(
             email,
             request.tenantId,
             normalizedRole,
             request.user?._id ?? null
           );
 
+          const message = (() => {
+            if (inviteResult.type === 'existing_member') {
+              return 'User already belongs to this tenant. Role updated if needed.';
+            }
+            if (inviteResult.type === 'existing_user_reinvited') {
+              return 'Invitation re-sent to existing user';
+            }
+            return 'Invitation sent to existing user';
+          })();
+
           return reply.code(200).send({
-            invite,
-            message: 'Invitation sent to existing user'
+            invite: inviteResult.invitation || null,
+            type: inviteResult.type,
+            message
           });
         } catch (inviteError) {
           if (inviteError.message === 'User already has access to this tenant') {
@@ -281,6 +299,20 @@ async function userRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
+      if (request.user?._id?.toString?.() !== request.params.id?.toString?.()) {
+        return reply.code(403).send({
+          error: 'ProfileUpdateNotAllowed',
+          message: 'Kullanıcı bilgileri yalnızca kullanıcının kendisi tarafından değiştirilebilir.'
+        });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(request.body || {}, 'password')) {
+        return reply.code(403).send({
+          error: 'PasswordUpdateNotAllowed',
+          message: 'Users can only change their own passwords'
+        });
+      }
+
       const user = await userService.updateUser(
         request.params.id, 
         request.tenantId, 
@@ -326,7 +358,11 @@ async function userRoutes(fastify, options) {
         return reply.code(400).send({ error: 'Cannot delete yourself' });
       }
 
-      const result = await userService.detachUserFromTenant(request.params.id, request.tenantId);
+      const result = await userService.detachUserFromTenant(
+        request.params.id,
+        request.tenantId,
+        { removedBy: request.user }
+      );
 
       if (!result) {
         return reply.code(404).send({ error: 'User membership not found' });
@@ -338,6 +374,12 @@ async function userRoutes(fastify, options) {
         removedAt: result.removedAt
       });
     } catch (error) {
+      if (error.code === 'OWNER_DETACH_NOT_ALLOWED') {
+        return reply.code(403).send({ error: 'OwnerDetachNotAllowed', message: error.message });
+      }
+      if (error.code === 'LAST_OWNER') {
+        return reply.code(400).send({ error: 'LastOwnerRestriction', message: error.message });
+      }
       return reply.code(500).send({ error: 'Internal server error', message: error.message });
     }
   });
@@ -487,7 +529,8 @@ async function userRoutes(fastify, options) {
           email: request.user.email,
           firstName: request.user.firstName,
           lastName: request.user.lastName,
-          lastLoginAt: request.user.lastLoginAt
+          lastLoginAt: request.user.lastLoginAt,
+          mustChangePassword: Boolean(request.user.mustChangePassword)
         },
         currentMembership: activeMembership,
         allMemberships: memberships
@@ -622,7 +665,10 @@ async function userRoutes(fastify, options) {
         type: 'object',
         properties: {
           email: { type: 'string', format: 'email' },
-          role: { type: 'string' }
+          role: { type: 'string' },
+          firstName: { type: 'string' },
+          lastName: { type: 'string' },
+          password: { type: 'string', minLength: 6 }
         },
         required: ['email', 'role']
       },
@@ -636,7 +682,7 @@ async function userRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
-      const { email, role } = request.body;
+      const { email, role, firstName, lastName, password } = request.body;
 
       // Owner rolü ile davet sadece mevcut owner yapabilir
       if (role === 'owner' && request.userRole !== 'owner') {
@@ -646,16 +692,41 @@ async function userRoutes(fastify, options) {
         });
       }
 
+      if (password && request.userRole !== 'owner') {
+        return reply.code(403).send({
+          error: 'PermissionDenied',
+          message: 'Sadece sahipler (owner) davet için şifre belirleyebilir'
+        });
+      }
+
       const authService = new AuthService(fastify);
 
       const result = await authService.inviteUser(
         email,
         request.tenantId,
         role,
-        request.user._id
+        request.user._id,
+        {
+          firstName,
+          lastName,
+          password
+        }
       );
 
-      return reply.code(201).send(result);
+      const message = (() => {
+        if (result.type === 'existing_member') {
+          return 'User already belongs to this tenant. Role updated if needed.';
+        }
+        if (result.type === 'existing_user_reinvited') {
+          return 'Invitation re-sent to existing user';
+        }
+        return 'Invitation sent to user';
+      })();
+
+      return reply.code(201).send({
+        ...result,
+        message
+      });
     } catch (error) {
       return reply.code(400).send({ error: error.message });
     }
