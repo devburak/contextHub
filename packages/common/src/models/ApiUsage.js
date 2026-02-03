@@ -12,10 +12,10 @@ const apiUsageSchema = new mongoose.Schema({
     index: true,
   },
   
-  // Period type: 'daily', 'weekly', 'monthly'
+  // Period type: 'halfday', 'daily', 'weekly', 'monthly'
   period: {
     type: String,
-    enum: ['daily', 'weekly', 'monthly'],
+    enum: ['halfday', 'daily', 'weekly', 'monthly'],
     required: true,
     index: true,
   },
@@ -24,7 +24,7 @@ const apiUsageSchema = new mongoose.Schema({
   periodKey: {
     type: String,
     required: true,
-    // Examples: '2025-10-08' (daily), '2025-W41' (weekly), '2025-10' (monthly)
+    // Examples: '2025-10-08T00' (halfday), '2025-10-08' (daily), '2025-W41' (weekly), '2025-10' (monthly)
   },
   
   // Start and end dates of the period
@@ -85,6 +85,8 @@ apiUsageSchema.index({ tenantId: 1, period: 1, periodKey: 1 }, { unique: true })
 
 // Index for date range queries
 apiUsageSchema.index({ startDate: 1, endDate: 1 });
+// Optimized index for tenant + period + range queries
+apiUsageSchema.index({ tenantId: 1, period: 1, startDate: 1 });
 
 // Static method to get usage for billing
 apiUsageSchema.statics.getUsageForBilling = async function(tenantId, startDate, endDate) {

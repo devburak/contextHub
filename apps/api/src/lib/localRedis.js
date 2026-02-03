@@ -265,6 +265,107 @@ class LocalRedisClient {
   }
 
   /**
+   * Set request limit exceeded flag for a tenant
+   * @param {string} tenantId - Tenant ID
+   * @param {object} payload - Flag payload
+   */
+  async setRequestLimitFlag(tenantId, payload) {
+    if (!this.isEnabled()) {
+      return false;
+    }
+
+    try {
+      const key = `limit:tenant:${tenantId}:requests:exceeded`;
+      await this.client.set(key, JSON.stringify(payload));
+      return true;
+    } catch (error) {
+      console.error('[LocalRedis] Failed to set request limit flag:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Get request limit exceeded flag for a tenant
+   * @param {string} tenantId - Tenant ID
+   * @returns {object|null}
+   */
+  async getRequestLimitFlag(tenantId) {
+    if (!this.isEnabled()) {
+      return null;
+    }
+
+    try {
+      const key = `limit:tenant:${tenantId}:requests:exceeded`;
+      const value = await this.client.get(key);
+      return value ? JSON.parse(value) : null;
+    } catch (error) {
+      console.error('[LocalRedis] Failed to get request limit flag:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Clear request limit exceeded flag for a tenant
+   * @param {string} tenantId - Tenant ID
+   */
+  async clearRequestLimitFlag(tenantId) {
+    if (!this.isEnabled()) {
+      return false;
+    }
+
+    try {
+      const key = `limit:tenant:${tenantId}:requests:exceeded`;
+      await this.client.del(key);
+      return true;
+    } catch (error) {
+      console.error('[LocalRedis] Failed to clear request limit flag:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Cleanup legacy API log keys
+   * @param {object} options
+   */
+  async cleanupLegacyLogs(options = {}) {
+    if (!this.isEnabled()) {
+      return { deleted: 0, skipped: true };
+    }
+
+    const patterns = options.patterns || ['api:log:*', 'api:endpoint:*'];
+    const count = options.count || 500;
+    const maxKeys = options.maxKeys || 5000;
+
+    let deleted = 0;
+
+    try {
+      for (const pattern of patterns) {
+        const iterator = this.client.scanIterator({ MATCH: pattern, COUNT: count });
+        for await (const key of iterator) {
+          if (Array.isArray(key)) {
+            if (key.length === 0) {
+              continue;
+            }
+            await this.client.del(...key);
+            deleted += key.length;
+          } else if (key) {
+            await this.client.del(key);
+            deleted += 1;
+          }
+          if (deleted >= maxKeys) {
+            return { deleted, capped: true };
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[LocalRedis] Failed to cleanup legacy logs:', error.message);
+      return { deleted, error: error.message };
+    }
+
+    return { deleted };
+  }
+
+  /**
    * Close the Redis connection
    */
   async close() {

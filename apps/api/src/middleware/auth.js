@@ -2,8 +2,37 @@ const { User, Membership, rbac, ApiToken } = require('@contexthub/common');
 const roleService = require('../services/roleService');
 const crypto = require('crypto');
 const tenantContextStore = require('@contexthub/common/src/tenantContext');
+const { checkRequestLimit } = require('./requestLimitGuard');
 
-const { getRoleLevel, ROLE_KEYS } = rbac;
+const {
+  getRoleLevel,
+  ROLE_KEYS,
+  DEFAULT_ROLES,
+  expandPermissions,
+  filterPermissionsByScopes,
+  normalizeScopes
+} = rbac;
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH']);
+
+const resolveTokenScopes = (scopes) => {
+  const normalized = normalizeScopes(scopes);
+  return normalized.length ? normalized : ['read'];
+};
+
+const scopeAllowsMethod = (method, scopeSet) => {
+  if (SAFE_METHODS.has(method)) {
+    return scopeSet.has('read') || scopeSet.has('write') || scopeSet.has('delete');
+  }
+  if (WRITE_METHODS.has(method)) {
+    return scopeSet.has('write');
+  }
+  if (method === 'DELETE') {
+    return scopeSet.has('delete');
+  }
+  return scopeSet.has('write');
+};
 
 // Tenant context middleware - URL'den veya header'dan tenant bilgisini alır
 async function tenantContext(request, reply) {
@@ -100,12 +129,34 @@ async function authenticateApiToken(request, reply) {
     request.tenantId = apiToken.tenantId.toString();
     request.apiToken = apiToken;
     request.authType = 'api_token';
-    request.tokenScopes = apiToken.scopes || [];
+    const effectiveScopes = resolveTokenScopes(apiToken.scopes || []);
+    request.tokenScopes = effectiveScopes;
+
+    if (await checkRequestLimit(request, reply)) {
+      return;
+    }
 
     // API token'ın role'ünü ve level'ını set et
     const tokenRole = apiToken.role || 'editor'; // Default: editor
     request.userRole = tokenRole;
     request.roleLevel = getRoleLevel(tokenRole);
+
+    const scopeSet = new Set(effectiveScopes);
+    if (!scopeAllowsMethod(request.method, scopeSet)) {
+      return reply.code(403).send({
+        error: 'InsufficientPermissions',
+        message: 'API token scope does not allow this action'
+      });
+    }
+
+    const roleDoc = await roleService.resolveRole({ tenantId: request.tenantId, roleKey: tokenRole });
+    const fallbackRole = DEFAULT_ROLES.find((role) => role.key === tokenRole);
+    const rolePermissions = roleDoc?.permissions || fallbackRole?.permissions || [];
+    const expandedPermissions = expandPermissions(rolePermissions);
+    const scopedPermissions = filterPermissionsByScopes(expandedPermissions, effectiveScopes);
+    const normalizedPermissions = expandPermissions(scopedPermissions);
+    request.userPermissions = normalizedPermissions;
+    request.userPermissionSet = new Set(normalizedPermissions);
 
     // API token için user context'i oluştur
     // Token'ı oluşturan user varsa onu kullan, yoksa minimal context oluştur
@@ -200,6 +251,10 @@ async function authenticate(request, reply) {
       });
     }
 
+    if (await checkRequestLimit(request, reply)) {
+      return;
+    }
+
     const { role: roleDoc, permissions } = await roleService.ensureRoleReference(membership, tenantId);
 
     const roleKey = roleDoc?.key || membership.role || ROLE_KEYS.VIEWER;
@@ -212,7 +267,7 @@ async function authenticate(request, reply) {
     request.role = roleDoc ? roleService.formatRole(roleDoc) : null;
     request.roleLevel = roleLevel;
     request.userPermissions = permissions;
-    request.userPermissionSet = new Set(permissions);
+    request.userPermissionSet = new Set(expandPermissions(permissions));
     request.authType = 'jwt';
     tenantContextStore.setContext({
       tenantId,
@@ -295,7 +350,7 @@ function requirePermission(requiredPermissions, options = {}) {
     }
 
     if (!request.userPermissionSet) {
-      request.userPermissionSet = new Set(request.userPermissions || []);
+      request.userPermissionSet = new Set(expandPermissions(request.userPermissions || []));
     }
 
     const userPermissions = request.userPermissionSet;

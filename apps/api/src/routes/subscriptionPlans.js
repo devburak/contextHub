@@ -1,4 +1,5 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
+const apiUsageService = require('../services/apiUsageService');
 const { tenantContext, authenticateWithoutTenant } = require('../middleware/auth');
 
 /**
@@ -274,6 +275,13 @@ async function subscriptionPlanRoutes(fastify) {
       const localRedisClient = require('../lib/localRedis');
       await localRedisClient.invalidateTenantCache(tenantId);
 
+      // Refresh monthly request limit flag (limit may have changed)
+      try {
+        await apiUsageService.refreshMonthlyLimitFlag(tenantId);
+      } catch (error) {
+        console.warn('[Tenant] Failed to refresh limit flag:', error.message);
+      }
+
       return reply.send({
         message: 'Tenant subscription updated successfully',
         tenant: {
@@ -420,17 +428,13 @@ async function subscriptionPlanRoutes(fastify) {
       ]);
       const storageUsed = mediaAgg.length > 0 ? mediaAgg[0].totalSize : 0;
 
-      // Get monthly requests from Upstash (current month)
-      const upstashClient = require('../lib/upstash');
+      // Get monthly requests from MongoDB (current month, half-day usage aggregation)
       let monthlyRequests = 0;
-      
-      if (upstashClient.isEnabled()) {
-        try {
-          const stats = await upstashClient.getApiStats(userTenantId);
-          monthlyRequests = stats.monthly || 0;
-        } catch (error) {
-          console.warn('[TenantLimits] Failed to get request stats:', error.message);
-        }
+
+      try {
+        monthlyRequests = await apiUsageService.getMonthlyUsage(userTenantId);
+      } catch (error) {
+        console.warn('[TenantLimits] Failed to get request stats:', error.message);
       }
 
       // Calculate usage percentages and remaining

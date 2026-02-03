@@ -57,7 +57,7 @@ const roleSchema = new Schema({
     ref: 'User',
     default: null
   }
-});
+}, { skipTenantEnforcement: true });
 
 roleSchema.index({ tenantId: 1, key: 1 }, { unique: true });
 roleSchema.index({ tenantId: 1, level: -1 });

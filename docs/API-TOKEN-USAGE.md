@@ -27,6 +27,7 @@ API Token'ları, ContextHub API'sine erişim için kullanılan güvenli, uzun ö
      - `read`: İçerik okuma yetkisi
      - `write`: İçerik oluşturma ve güncelleme yetkisi
      - `delete`: İçerik silme yetkisi
+     - **Not**: Scope seçilmezse varsayılan `read` olarak kabul edilir.
    - **Geçerlilik Süresi**:
      - 30 Gün
      - 90 Gün
@@ -419,6 +420,43 @@ Rate limit aşıldığında:
   "message": "Rate limit exceeded",
   "retryAfter": 3600
 }
+```
+
+Aylık istek limiti aşıldığında:
+```json
+{
+  "error": "RequestLimitExceeded",
+  "message": "Aylık API isteği limiti aşıldı. Lütfen paketinizi yükseltin veya yeni dönemi bekleyin.",
+  "messages": {
+    "tr": "Aylık API isteği limiti aşıldı. Lütfen paketinizi yükseltin veya yeni dönemi bekleyin.",
+    "en": "Monthly API request limit exceeded. Please upgrade your plan or wait for the next billing cycle."
+  },
+  "limit": 10000,
+  "usage": 10000,
+  "periodKey": "2026-02",
+  "resetAt": "2026-03-01T00:00:00.000Z"
+}
+```
+
+## API Usage Sync (Cron)
+
+Bu uç, 12 saatlik kullanım verisini Redis'ten MongoDB'ye taşır ve limit flag'lerini günceller. Üretimde `CRON_SECRET_TOKEN` zorunludur.
+
+**Örnek cURL**
+```bash
+curl -X POST \"https://api.contexthub.com/api/api-usage-sync/trigger\" \\
+  -H \"x-cron-secret: YOUR_SECRET\" \\
+  -H \"Content-Type: application/json\"
+```
+
+**Örnek cron (UTC, 00:00 ve 12:00)**
+```cron
+0 0,12 * * * curl -sS -X POST \"https://api.contexthub.com/api/api-usage-sync/trigger\" -H \"x-cron-secret: YOUR_SECRET\"
+```
+
+**Örnek cron (UTC, 4 saatte bir)**
+```cron
+0 */4 * * * curl -sS -X POST \"https://api.contexthub.com/api/api-usage-sync/trigger\" -H \"x-cron-secret: YOUR_SECRET\"
 ```
 
 ## SSS (Sık Sorulan Sorular)

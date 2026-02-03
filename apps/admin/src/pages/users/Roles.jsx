@@ -5,7 +5,13 @@ import { PlusIcon, PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outli
 import { roleAPI } from '../../lib/roleAPI.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useToast } from '../../contexts/ToastContext.jsx'
-import { PERMISSIONS, PERMISSION_GROUPS } from '../../constants/permissions.js'
+import {
+  PERMISSIONS,
+  PERMISSION_GROUPS,
+  expandPermissions,
+  stripManagePermissions,
+  normalizePermissionsForSave
+} from '../../constants/permissions.js'
 import { PERMISSION_LABELS, PERMISSION_GROUP_LABELS } from '../../constants/permissionLabels.js'
 import { ROLE_LEVELS, ROLE_LEVEL_MAP, ROLE_LABELS } from '../../constants/roles.js'
 
@@ -17,8 +23,14 @@ const slugifyKey = (value = '') => value
   .replace(/^-+|-+$/g, '')
   .replace(/-{2,}/g, '-')
 
+const preparePermissions = (permissions = []) => stripManagePermissions(expandPermissions(permissions))
+
 const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmitting }) => {
   const isEdit = mode === 'edit'
+  const initialPermissions = useMemo(
+    () => preparePermissions(initialRole?.permissions || []),
+    [initialRole]
+  )
   const { register, handleSubmit, watch, setValue } = useForm({
     defaultValues: {
       name: initialRole?.name || '',
@@ -26,7 +38,7 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
       description: initialRole?.description || '',
       baseRoleKey: initialRole?.roleMeta?.key || '',
       level: initialRole?.level ?? ROLE_LEVEL_MAP.editor,
-      permissions: initialRole?.permissions ? [...initialRole.permissions] : []
+      permissions: initialPermissions
     }
   })
 
@@ -40,6 +52,19 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
     setValue('permissions', next, { shouldDirty: true })
   }
 
+  const toggleGroup = (groupPermissions = []) => {
+    const next = new Set(selectedPermissions)
+    const allSelected = groupPermissions.every((permission) => next.has(permission))
+
+    if (allSelected) {
+      groupPermissions.forEach((permission) => next.delete(permission))
+    } else {
+      groupPermissions.forEach((permission) => next.add(permission))
+    }
+
+    setValue('permissions', Array.from(next), { shouldDirty: true })
+  }
+
   const handleBaseRoleChange = (event) => {
     const key = event.target.value
     setValue('baseRoleKey', key)
@@ -47,7 +72,7 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
     const baseRole = systemRoles.find((role) => role.key === key)
     if (baseRole) {
       setValue('level', baseRole.level)
-      setValue('permissions', [...(baseRole.permissions || [])])
+      setValue('permissions', preparePermissions(baseRole.permissions || []), { shouldDirty: true })
     }
   }
 
@@ -163,8 +188,17 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
           <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
             {Object.entries(PERMISSION_GROUPS).map(([groupKey, permissions]) => (
               <fieldset key={groupKey} className="border border-gray-200 rounded-md p-3">
-                <legend className="text-sm font-semibold text-gray-700">
-                  {PERMISSION_GROUP_LABELS[groupKey] || groupKey}
+                <legend className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-700">
+                  <span>{PERMISSION_GROUP_LABELS[groupKey] || groupKey}</span>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(permissions)}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                  >
+                    {permissions.every((permission) => selectedPermissions.includes(permission))
+                      ? 'Temizle'
+                      : 'Tümünü seç'}
+                  </button>
                 </legend>
                 <div className="mt-2 space-y-2">
                   {permissions.map((permission) => (
@@ -189,11 +223,12 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
 }
 
 const summarizePermissions = (permissions = []) => {
-  if (!permissions.length) return '0 yetki'
-  if (permissions.length <= 3) {
-    return permissions.map((permission) => PERMISSION_LABELS[permission] || permission).join(', ')
+  const expanded = preparePermissions(permissions)
+  if (!expanded.length) return '0 yetki'
+  if (expanded.length <= 3) {
+    return expanded.map((permission) => PERMISSION_LABELS[permission] || permission).join(', ')
   }
-  return `${permissions.length} yetki`
+  return `${expanded.length} yetki`
 }
 
 export default function Roles() {
@@ -213,6 +248,7 @@ export default function Roles() {
 
   const [formState, setFormState] = useState({ mode: null, role: null })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [expandedRoleIds, setExpandedRoleIds] = useState(() => new Set())
 
   const handleCreate = () => {
     setFormState({ mode: 'create', role: null })
@@ -230,20 +266,22 @@ export default function Roles() {
     try {
       setIsSubmitting(true)
       if (formState.mode === 'edit' && formState.role) {
+        const permissions = normalizePermissionsForSave(values.permissions)
         await roleAPI.updateRole(formState.role.id, {
           name: values.name,
           description: values.description,
           level: values.level,
-          permissions: values.permissions
+          permissions
         })
         toast.success('Rol güncellendi')
       } else {
+        const permissions = normalizePermissionsForSave(values.permissions)
         await roleAPI.createRole({
           name: values.name,
           key: values.key,
           description: values.description,
           level: values.level,
-          permissions: values.permissions,
+          permissions,
           baseRoleKey: values.baseRoleKey || undefined
         })
         toast.success('Rol oluşturuldu')
@@ -272,6 +310,31 @@ export default function Roles() {
       const message = error?.response?.data?.message || 'Rol silinemedi'
       toast.error(message)
     }
+  }
+
+  const toggleExpanded = (roleId) => {
+    setExpandedRoleIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(roleId)) {
+        next.delete(roleId)
+      } else {
+        next.add(roleId)
+      }
+      return next
+    })
+  }
+
+  const groupPermissions = (permissions = []) => {
+    const expanded = preparePermissions(permissions)
+    if (!expanded.length) return []
+
+    const permissionSet = new Set(expanded)
+    return Object.entries(PERMISSION_GROUPS)
+      .map(([groupKey, groupPermissions]) => ({
+        groupKey,
+        permissions: groupPermissions.filter((permission) => permissionSet.has(permission))
+      }))
+      .filter((group) => group.permissions.length > 0)
   }
 
   return (
@@ -332,52 +395,100 @@ export default function Roles() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
-              {roles.map((role) => (
-                <tr key={role.id}>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                    {role.name}
-                    {role.isSystem && (
-                      <span className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-                        Sistem
-                      </span>
+              {roles.map((role) => {
+                const isExpanded = expandedRoleIds.has(role.id)
+                const groupedPermissions = groupPermissions(role.permissions)
+                const permissionsSummary = summarizePermissions(role.permissions)
+                return (
+                  <>
+                    <tr key={role.id}>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                        {role.name}
+                        {role.isSystem && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                            Sistem
+                          </span>
+                        )}
+                        {role.isDefault && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                            Temel
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">{role.key}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {ROLE_LABELS[role.key] || role.level}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {role.tenantId ? 'Tenant' : 'Global'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        <div className="flex items-center gap-2">
+                          <span>{permissionsSummary}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(role.id)}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                          >
+                            {isExpanded ? 'Gizle' : 'Detay'}
+                          </button>
+                        </div>
+                      </td>
+                      {canManageRoles && (
+                        <td className="px-4 py-3 text-right text-sm font-medium">
+                          <div className="flex justify-end gap-3 text-blue-600">
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(role)}
+                              className="inline-flex items-center gap-1 hover:text-blue-800 disabled:text-gray-300"
+                              disabled={role.isSystem}
+                            >
+                              <PencilSquareIcon className="h-4 w-4" />
+                              Düzenle
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(role)}
+                              className="inline-flex items-center gap-1 text-red-600 hover:text-red-800 disabled:text-gray-300"
+                              disabled={role.isSystem}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                              Sil
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                    {isExpanded && (
+                      <tr className="bg-gray-50">
+                        <td
+                          className="px-4 py-4 text-sm text-gray-600"
+                          colSpan={canManageRoles ? 6 : 5}
+                        >
+                          {groupedPermissions.length ? (
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                              {groupedPermissions.map((group) => (
+                                <div key={group.groupKey}>
+                                  <p className="text-xs font-semibold text-gray-700">
+                                    {PERMISSION_GROUP_LABELS[group.groupKey] || group.groupKey}
+                                  </p>
+                                  <p className="mt-1 text-xs text-gray-500">
+                                    {group.permissions
+                                      .map((permission) => PERMISSION_LABELS[permission] || permission)
+                                      .join(', ')}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-500">Bu rolde atanmış izin yok.</p>
+                          )}
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{role.key}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {ROLE_LABELS[role.key] || role.level}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {role.tenantId ? 'Tenant' : 'Global'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {summarizePermissions(role.permissions)}
-                  </td>
-                  {canManageRoles && (
-                    <td className="px-4 py-3 text-right text-sm font-medium">
-                      <div className="flex justify-end gap-3 text-blue-600">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(role)}
-                          className="inline-flex items-center gap-1 hover:text-blue-800 disabled:text-gray-300"
-                          disabled={role.isSystem}
-                        >
-                          <PencilSquareIcon className="h-4 w-4" />
-                          Düzenle
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(role)}
-                          className="inline-flex items-center gap-1 text-red-600 hover:text-red-800 disabled:text-gray-300"
-                          disabled={role.isSystem}
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                          Sil
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
+                  </>
+                )
+              })}
             </tbody>
           </table>
         </div>

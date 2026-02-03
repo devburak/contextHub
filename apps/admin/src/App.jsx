@@ -32,7 +32,7 @@ import { ToastProvider } from './contexts/ToastContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
 import { PermissionRoute } from './components/PermissionRoute.jsx'
-import { PERMISSIONS } from './constants/permissions.js'
+import { PERMISSIONS, expandPermissions } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
 import ApiDocs from './pages/ApiDocs.jsx'
 import i18n from './i18n.js'
@@ -199,7 +199,7 @@ function App() {
     if (collected.size === 0 && activeMembership?.role === 'owner') {
       Object.values(PERMISSIONS).forEach((permission) => collected.add(permission))
     }
-    return Array.from(collected)
+    return expandPermissions(Array.from(collected))
   }, [activeMembership])
 
   const hasPermission = useCallback((permissionsInput, options = {}) => {

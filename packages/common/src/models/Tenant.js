@@ -72,6 +72,13 @@ tenantSchema.index({ status: 1 });
 
 // === INSTANCE METHODS ===
 
+const LIMIT_USAGE_KEY_MAP = {
+  userLimit: 'userCount',
+  ownerLimit: 'ownerCount',
+  storageLimit: 'storageBytes',
+  monthlyRequestLimit: 'monthlyRequests',
+};
+
 /**
  * Get effective limit for a specific metric
  * Priority: customLimits > plan limits > default
@@ -112,8 +119,8 @@ tenantSchema.methods.hasReachedLimit = async function(limitType) {
     return false;
   }
   
-  const usageKey = limitType.replace('Limit', 's'); // userLimit -> users, storageLimit -> storageBytes
-  const currentValue = this.currentUsage?.[usageKey] || 0;
+  const usageKey = LIMIT_USAGE_KEY_MAP[limitType];
+  const currentValue = usageKey ? (this.currentUsage?.[usageKey] || 0) : 0;
   
   return currentValue >= limit;
 };
@@ -129,8 +136,8 @@ tenantSchema.methods.wouldExceedLimit = async function(limitType, additionalValu
     return false;
   }
   
-  const usageKey = limitType.replace('Limit', '');
-  const currentValue = this.currentUsage?.[usageKey] || 0;
+  const usageKey = LIMIT_USAGE_KEY_MAP[limitType];
+  const currentValue = usageKey ? (this.currentUsage?.[usageKey] || 0) : 0;
   
   return (currentValue + additionalValue) > limit;
 };
@@ -146,8 +153,8 @@ tenantSchema.methods.getRemainingQuota = async function(limitType) {
     return Infinity;
   }
   
-  const usageKey = limitType.replace('Limit', '');
-  const currentValue = this.currentUsage?.[usageKey] || 0;
+  const usageKey = LIMIT_USAGE_KEY_MAP[limitType];
+  const currentValue = usageKey ? (this.currentUsage?.[usageKey] || 0) : 0;
   
   return Math.max(0, limit - currentValue);
 };

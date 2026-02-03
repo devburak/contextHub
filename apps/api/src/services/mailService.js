@@ -777,6 +777,74 @@ Eğer bu denemeleri siz yapmadıysanız, şifrenizi değiştirin ve iki faktörl
   }
 
   /**
+   * Send tenant access removed notification email
+   */
+  async sendTenantAccessRemovedEmail(recipientEmail, tenantData = null, removedByName = null, removedAt = null) {
+    try {
+      const tenantName = tenantData?.name || 'ContextHub';
+      const subject = `${tenantName} - Varlık erişiminiz kaldırıldı`;
+      const removedByLabel = removedByName ? `${removedByName} tarafından` : 'bir yönetici tarafından';
+      const formattedDate = (removedAt instanceof Date ? removedAt : new Date()).toLocaleString('tr-TR', {
+        dateStyle: 'long',
+        timeStyle: 'short'
+      });
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${subject}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #111827; background: #f9fafb; padding: 20px; }
+            .card { background: #ffffff; border-radius: 10px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); max-width: 640px; margin: 0 auto; }
+            .badge { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-weight: 600; font-size: 12px; }
+            .meta { margin-top: 12px; padding: 12px; background: #f3f4f6; border-radius: 8px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="badge">Varlık erişimi kaldırıldı</div>
+            <h2 style="margin: 16px 0 8px;">Bu varlıkla ilişkiniz kaldırılmıştır</h2>
+            <p>${tenantName} varlığına erişiminiz ${removedByLabel} kaldırıldı.</p>
+            <p><strong>Kaldırılma Tarihi:</strong> ${formattedDate}</p>
+            ${tenantData?.slug ? `
+              <div class="meta">
+                <p><strong>Varlık:</strong> ${tenantName}</p>
+                <p><strong>Slug:</strong> ${tenantData.slug}</p>
+              </div>
+            ` : ''}
+            <p>Bir hata olduğunu düşünüyorsanız varlık yöneticisi ile iletişime geçiniz.</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const textContent = `
+Bu varlıkla ilişkiniz kaldırılmıştır
+
+${tenantName} varlığına erişiminiz ${removedByLabel} kaldırıldı.
+Kaldırılma Tarihi: ${formattedDate}
+${tenantData?.slug ? `Varlık: ${tenantName}\nSlug: ${tenantData.slug}\n` : ''}
+Bir hata olduğunu düşünüyorsanız varlık yöneticisi ile iletişime geçiniz.
+      `;
+
+      await this.sendMail({
+        to: recipientEmail,
+        subject,
+        html: htmlContent,
+        text: textContent
+      }, tenantData?.id || tenantData?._id);
+
+      console.log(`Tenant access removed email sent to ${recipientEmail}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to send tenant access removed email:', error);
+      return false;
+    }
+  }
+
+  /**
    * Send email verification email for new registrations
    * @param {string} recipientEmail
    * @param {string} userName

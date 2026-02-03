@@ -13,6 +13,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { userAPI } from '../../lib/userAPI.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
+import { useAuth } from '../../contexts/AuthContext.jsx'
+import { PERMISSIONS } from '../../constants/permissions.js'
 
 const ROLE_PRESENTATION = {
   owner: { className: 'bg-red-100 text-red-800', label: 'Sahip' },
@@ -25,7 +27,7 @@ const ROLE_PRESENTATION = {
 const STATUS_PRESENTATION = {
   active: { label: 'Aktif', className: 'bg-green-50 text-green-700 ring-green-200' },
   inactive: { label: 'Pasif', className: 'bg-gray-50 text-gray-600 ring-gray-200' },
-  pending: { label: 'Davet Bekliyor', className: 'bg-amber-50 text-amber-700 ring-amber-200' }
+  pending: { label: 'Beklemede', className: 'bg-amber-50 text-amber-700 ring-amber-200' }
 }
 
 export default function UserList() {
@@ -34,6 +36,9 @@ export default function UserList() {
   const [roleFilter, setRoleFilter] = useState('all')
   const queryClient = useQueryClient()
   const toast = useToast()
+  const { hasPermission, role: currentUserRole } = useAuth()
+  const canManageUsers = currentUserRole === 'owner' || hasPermission(PERMISSIONS.USERS_MANAGE)
+  const canInviteUsers = currentUserRole === 'owner' || hasPermission(PERMISSIONS.USERS_INVITE)
 
   // Kullanıcıları getir
   const { data: users, isLoading, error } = useQuery({
@@ -185,7 +190,7 @@ export default function UserList() {
           <option value="all">Tüm Durumlar</option>
           <option value="active">Aktif</option>
           <option value="inactive">Pasif</option>
-          <option value="pending">Davet Bekliyor</option>
+          <option value="pending">Beklemede</option>
         </select>
 
         {/* Role Filter */}
@@ -240,6 +245,7 @@ export default function UserList() {
                   ) : (
                     filteredUsers.map((user) => {
                       const roleInfo = ROLE_PRESENTATION[user.role] || ROLE_PRESENTATION.viewer
+                      const isOwnerUser = user.role === 'owner'
                       const createdAtDate = user.createdAt ? new Date(user.createdAt) : null
                       const createdAtLabel = createdAtDate && !Number.isNaN(createdAtDate.getTime())
                         ? createdAtDate.toLocaleDateString('tr-TR')
@@ -297,7 +303,7 @@ export default function UserList() {
                                   )
                                 })()}
 
-                                {user.status === 'active' && (
+                                {user.status === 'active' && canManageUsers && (
                                   <button
                                     onClick={() => handleToggleStatus(user.id)}
                                     disabled={toggleStatusMutation.isPending}
@@ -307,7 +313,7 @@ export default function UserList() {
                                   </button>
                                 )}
 
-                                {user.status === 'inactive' && (
+                                {user.status === 'inactive' && canManageUsers && (
                                   <button
                                     onClick={() => handleToggleStatus(user.id)}
                                     disabled={toggleStatusMutation.isPending}
@@ -335,13 +341,15 @@ export default function UserList() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <div className="flex items-center justify-end gap-2">
-                              <Link
-                                to={`/users/${user.id}/edit`}
-                                className="text-blue-600 hover:text-blue-900"
-                              >
-                                <PencilIcon className="h-4 w-4" />
-                              </Link>
-                              {(user.status === 'pending' || user.status === 'inactive') && (
+                              {canManageUsers && (
+                                <Link
+                                  to={`/users/${user.id}/edit`}
+                                  className="text-blue-600 hover:text-blue-900"
+                                >
+                                  <PencilIcon className="h-4 w-4" />
+                                </Link>
+                              )}
+                              {(user.status === 'pending' || user.status === 'inactive') && canInviteUsers && (
                                 <button
                                   onClick={() => handleReinviteUser(user)}
                                   disabled={reinviteUserMutation.isPending}
@@ -351,13 +359,15 @@ export default function UserList() {
                                   Daveti Yenile
                                 </button>
                               )}
-                              <button
-                                onClick={() => handleDeleteUser(user)}
-                                disabled={deleteUserMutation.isPending}
-                                className="text-red-600 hover:text-red-900"
-                              >
-                                <TrashIcon className="h-4 w-4" />
-                              </button>
+                              {canManageUsers && !isOwnerUser && (
+                                <button
+                                  onClick={() => handleDeleteUser(user)}
+                                  disabled={deleteUserMutation.isPending}
+                                  className="text-red-600 hover:text-red-900"
+                                >
+                                  <TrashIcon className="h-4 w-4" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

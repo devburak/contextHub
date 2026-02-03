@@ -108,6 +108,11 @@ export default function Login() {
       const data = response.data
       login(data)
 
+      if (data.user?.mustChangePassword) {
+        navigate('/profile?forcePasswordChange=1')
+        return
+      }
+
       if (data.requiresTenantSelection) {
         navigate('/select-tenant')
       } else {

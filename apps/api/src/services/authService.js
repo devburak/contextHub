@@ -281,7 +281,8 @@ class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           role: null,
-          permissions: []
+          permissions: [],
+          mustChangePassword: Boolean(user.mustChangePassword)
         },
         memberships: [],
         requiresTenantSelection: true,
@@ -385,7 +386,8 @@ class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           role: payload.role,
-          permissions: payload.permissions
+          permissions: payload.permissions,
+          mustChangePassword: Boolean(user.mustChangePassword)
         },
         memberships: membershipResponses,
         activeMembership: {
@@ -423,7 +425,8 @@ class AuthService {
         id: user._id,
         email: user.email,
         firstName: user.firstName,
-        lastName: user.lastName
+        lastName: user.lastName,
+        mustChangePassword: Boolean(user.mustChangePassword)
       },
       memberships: membershipResponses
     };
@@ -612,17 +615,31 @@ class AuthService {
     return { success: true };
   }
 
-  async inviteUser(email, tenantId, role, invitedBy) {
+  async inviteUser(email, tenantId, role, invitedBy, options = {}) {
     // Kullanıcının zaten mevcut olup olmadığını kontrol et
     const existingUser = await User.findOne({ email });
+    const {
+      firstName,
+      lastName,
+      password: providedPassword
+    } = options;
 
-    const resolvedRole = await roleService.resolveRole({ tenantId, roleKey: role });
+    let resolvedRole = await roleService.resolveRole({ tenantId, roleKey: role });
+
+    if (!resolvedRole) {
+      await roleService.ensureSystemRoles();
+      resolvedRole = await roleService.resolveRole({ tenantId, roleKey: role });
+    }
 
     if (!resolvedRole) {
       throw new Error('Role not found');
     }
     
     if (existingUser) {
+      if (providedPassword) {
+        throw new Error('Password cannot be set for existing users');
+      }
+
       // Kullanıcı varsa sadece membership ekle
       const existingMembership = await Membership.findOne({ 
         userId: existingUser._id, 
@@ -630,7 +647,40 @@ class AuthService {
       });
 
       if (existingMembership) {
-        throw new Error('User already has access to this tenant');
+        // Active membership: update role if needed and return success
+        if (existingMembership.status === 'active') {
+          let updated = false;
+          if (existingMembership.role !== resolvedRole.key) {
+            existingMembership.role = resolvedRole.key;
+            existingMembership.roleId = resolvedRole._id;
+            existingMembership.updatedBy = invitedBy || existingMembership.updatedBy;
+            await existingMembership.save();
+            updated = true;
+          }
+
+          return {
+            type: 'existing_member',
+            membershipId: existingMembership._id,
+            status: existingMembership.status,
+            role: existingMembership.role,
+            updated,
+          };
+        }
+
+        // Pending/inactive membership: re-issue invitation with updated role
+        existingMembership.role = resolvedRole.key;
+        existingMembership.roleId = resolvedRole._id;
+        existingMembership.invitedBy = invitedBy || existingMembership.invitedBy;
+        await existingMembership.save();
+
+        const invitation = await this.issueInvitation({ membership: existingMembership, tenantId, invitedBy });
+
+        return {
+          type: 'existing_user_reinvited',
+          userId: existingUser._id,
+          membershipId: existingMembership._id,
+          invitation,
+        };
       }
 
       const membership = new Membership({
@@ -654,16 +704,17 @@ class AuthService {
     } else {
       // Yeni kullanıcı için invitation oluştur
       // Bu durumda gerçek projede email gönderme logic'i olacak
-      const tempPassword = Math.random().toString(36).slice(-8);
+      const tempPassword = providedPassword || Math.random().toString(36).slice(-8);
       
       const user = new User({
         email,
         password: tempPassword,
-        firstName: email.split('@')[0], // Geçici
-        lastName: 'User', // Geçici
+        firstName: firstName?.trim() || email.split('@')[0], // Geçici
+        lastName: lastName?.trim() || 'User', // Geçici
         tenantId,
         status: 'inactive',
-        isEmailVerified: false
+        isEmailVerified: false,
+        mustChangePassword: Boolean(providedPassword)
       });
       await user.save();
 
@@ -744,6 +795,7 @@ class AuthService {
     user.isEmailVerified = true;
     if (passwordUpdated) {
       user.tokenVersion = (user.tokenVersion || 0) + 1;
+      user.mustChangePassword = false;
     }
     await user.save();
 
@@ -774,7 +826,8 @@ class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: roleKey,
-        permissions
+        permissions,
+        mustChangePassword: Boolean(user.mustChangePassword)
       },
       membership: {
         id: activatedMembership._id.toString(),
@@ -854,6 +907,7 @@ class AuthService {
     // Yeni şifreyi kaydet
     user.password = newPassword; // Model'de pre-save ile hash'lenecek
     user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.mustChangePassword = false;
     user.resetPasswordToken = null;
     user.resetPasswordExpiresAt = null;
     await user.save();
