@@ -276,6 +276,23 @@ function normalizeFormSettings(settings = {}) {
   return normalized;
 }
 
+function applyEmailNotificationCompatibility(settings = {}) {
+  const normalized = { ...settings };
+  const emailNotifications = normalized.emailNotifications;
+
+  if (emailNotifications && typeof emailNotifications === 'object') {
+    if (typeof emailNotifications.enabled === 'boolean') {
+      normalized.enableNotifications = emailNotifications.enabled;
+    }
+
+    if (Array.isArray(emailNotifications.recipients)) {
+      normalized.notificationEmails = emailNotifications.recipients;
+    }
+  }
+
+  return normalized;
+}
+
 async function recordFormEvent({
   tenantId,
   type,
@@ -457,13 +474,15 @@ async function create({ tenantId, data, userId }) {
   const normalizedFields = normalizeFields(fields);
   
   // Create form
+  const normalizedSettings = applyEmailNotificationCompatibility(settings || {});
+
   const form = new FormDefinition({
     tenantId,
     title,
     slug: uniqueSlug,
     description: description || {},
     fields: normalizedFields,
-    settings: settings || {},
+    settings: normalizedSettings,
     visibility: visibility || 'public',
     status: 'draft',
     version: 1,
@@ -540,7 +559,8 @@ async function update({ tenantId, formId, data, userId }) {
   
   // Update settings
   if (settings !== undefined) {
-    form.settings = { ...form.settings, ...settings };
+    const compatibleSettings = applyEmailNotificationCompatibility(settings || {});
+    form.settings = { ...form.settings, ...compatibleSettings };
     hasChanges = true;
   }
   
