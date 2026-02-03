@@ -75,6 +75,7 @@ async function formRoutes(fastify) {
     schema: {
       body: {
         type: 'object',
+        additionalProperties: true,
         properties: {
           title: { type: ['string', 'object'] },
           slug: { type: 'string' },
@@ -190,6 +191,7 @@ async function formRoutes(fastify) {
       },
       body: {
         type: 'object',
+        additionalProperties: true,
         properties: {
           title: { type: ['string', 'object'] },
           slug: { type: 'string' },

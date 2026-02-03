@@ -474,7 +474,9 @@ async function create({ tenantId, data, userId }) {
   const normalizedFields = normalizeFields(fields);
   
   // Create form
-  const normalizedSettings = applyEmailNotificationCompatibility(settings || {});
+  const normalizedSettings = applyEmailNotificationCompatibility(
+    normalizeFormSettings(settings || {})
+  );
 
   const form = new FormDefinition({
     tenantId,
@@ -559,8 +561,11 @@ async function update({ tenantId, formId, data, userId }) {
   
   // Update settings
   if (settings !== undefined) {
-    const compatibleSettings = applyEmailNotificationCompatibility(settings || {});
-    form.settings = { ...form.settings, ...compatibleSettings };
+    const normalizedSettings = applyEmailNotificationCompatibility(
+      normalizeFormSettings(settings || {})
+    );
+    form.settings = { ...form.settings, ...normalizedSettings };
+    form.markModified('settings');
     hasChanges = true;
   }
   
