@@ -212,12 +212,18 @@ async function authenticate(request, reply) {
 
     // Token'dan user bilgisini al
     const userId = request.user.sub;
-    // Prefer explicit tenantId from header/query or context; do not rely on token claim
-    const tenantId = request.tenantId || request.headers['x-tenant-id'] || request.query?.tenantId;
-    if (tenantId) {
-      request.tenantId = tenantId;
+    // Prefer explicit tenantId from header/query; fallback to token claim if missing
+    const providedTenantId = request.tenantId || request.headers['x-tenant-id'] || request.query?.tenantId;
+    const tokenTenantId = request.user?.tenantId || request.user?.tenant_id || request.user?.tenant;
+    if (providedTenantId) {
+      request.tenantId = providedTenantId;
+    } else if (tokenTenantId) {
+      request.tenantId = tokenTenantId;
     } else {
-      return reply.code(400).send({ error: 'Tenant ID required', message: 'Please provide tenantId in query params or X-Tenant-ID header' });
+      return reply.code(400).send({
+        error: 'Tenant ID required',
+        message: 'Please provide tenantId in query params, X-Tenant-ID header, or include tenantId in the JWT'
+      });
     }
 
     if (!userId) {
@@ -236,6 +242,8 @@ async function authenticate(request, reply) {
     if (payloadTokenVersion !== currentTokenVersion) {
       return reply.code(401).send({ error: 'Session expired', message: 'Please login again' });
     }
+
+    const tenantId = request.tenantId;
 
     // User'ın bu tenant'taki membership'ini kontrol et
     const membership = await Membership.findOne({
