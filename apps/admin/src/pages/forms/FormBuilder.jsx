@@ -110,12 +110,38 @@ export default function FormBuilder() {
   // Initialize form data when editing
   useEffect(() => {
     if (form) {
+      // Default values for emailNotifications to prevent undefined issues
+      const defaultEmailNotifications = {
+        enabled: false,
+        recipients: [],
+        subject: '',
+        replyTo: '',
+      };
+
+      // Default values for webhooks
+      const defaultWebhooks = {
+        enabled: false,
+        url: '',
+        events: ['submission.created'],
+      };
+
       setFormData({
         title: form.title,
         description: form.description || { tr: '', en: '' },
         slug: form.slug,
         fields: form.fields || [],
-        settings: form.settings || formData.settings,
+        settings: {
+          ...formData.settings,
+          ...form.settings,
+          emailNotifications: {
+            ...defaultEmailNotifications,
+            ...(form.settings?.emailNotifications || {}),
+          },
+          webhooks: {
+            ...defaultWebhooks,
+            ...(form.settings?.webhooks || {}),
+          },
+        },
       });
     }
   }, [form]);
@@ -241,12 +267,28 @@ export default function FormBuilder() {
     setHasUnsavedChanges(true);
   };
 
-  // Handle settings update
+  // Handle settings update with deep merge for nested objects
   const handleSettingsUpdate = (updates) => {
-    setFormData(prev => ({
-      ...prev,
-      settings: { ...prev.settings, ...updates },
-    }));
+    setFormData(prev => {
+      const newSettings = { ...prev.settings };
+
+      Object.keys(updates).forEach(key => {
+        if (typeof updates[key] === 'object' && updates[key] !== null && !Array.isArray(updates[key])) {
+          // Deep merge for nested objects like emailNotifications, webhooks
+          newSettings[key] = {
+            ...(prev.settings[key] || {}),
+            ...updates[key],
+          };
+        } else {
+          newSettings[key] = updates[key];
+        }
+      });
+
+      return {
+        ...prev,
+        settings: newSettings,
+      };
+    });
     setHasUnsavedChanges(true);
   };
 

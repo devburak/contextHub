@@ -39,18 +39,23 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
     if (keys.length === 1) {
       onSettingsUpdate({ [keys[0]]: value });
     } else if (keys.length === 2) {
+      // Ensure parent object exists with fallback to empty object
+      const parentObj = settings[keys[0]] || {};
       onSettingsUpdate({
         [keys[0]]: {
-          ...settings[keys[0]],
+          ...parentObj,
           [keys[1]]: value,
         },
       });
     } else if (keys.length === 3) {
+      // Ensure both parent and nested objects exist with fallbacks
+      const parentObj = settings[keys[0]] || {};
+      const nestedObj = parentObj[keys[1]] || {};
       onSettingsUpdate({
         [keys[0]]: {
-          ...settings[keys[0]],
+          ...parentObj,
           [keys[1]]: {
-            ...settings[keys[0]]?.[keys[1]],
+            ...nestedObj,
             [keys[2]]: value,
           },
         },
@@ -484,13 +489,68 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Yanıt Adresi (Reply-To)
                   </label>
-                  <input
-                    type="email"
-                    value={settings.emailNotifications.replyTo || ''}
-                    onChange={(e) => handleSettingChange('emailNotifications.replyTo', e.target.value)}
-                    placeholder="Boş bırakılırsa tenant ayarlarından alınır"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                  />
+
+                  {/* Form alanlarından e-posta seçimi for Reply-To */}
+                  {emailFields.length > 0 && (
+                    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-md">
+                      <p className="text-xs font-medium text-green-900 mb-2">
+                        Form Alanından Yanıt Adresi:
+                      </p>
+                      <div className="space-y-2">
+                        {emailFields.map((field) => {
+                          const fieldRef = `{field:${field.id}}`;
+                          const isSelected = settings.emailNotifications?.replyTo === fieldRef;
+                          return (
+                            <label key={field.id} className="flex items-center">
+                              <input
+                                type="radio"
+                                name="replyToSource"
+                                checked={isSelected}
+                                onChange={() => handleSettingChange('emailNotifications.replyTo', fieldRef)}
+                                className="border-gray-300 text-indigo-600 focus:ring-indigo-500 mr-2"
+                              />
+                              <span className="text-sm text-gray-700">
+                                {typeof field.label === 'string'
+                                  ? field.label
+                                  : field.label?.[selectedLanguage] || field.label?.tr || field.label?.en || 'E-posta Alanı'}
+                              </span>
+                              <span className="ml-2 text-xs text-gray-500">
+                                (Kullanıcının girdiği e-posta)
+                              </span>
+                            </label>
+                          );
+                        })}
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="replyToSource"
+                            checked={!settings.emailNotifications?.replyTo?.startsWith('{field:')}
+                            onChange={() => handleSettingChange('emailNotifications.replyTo', '')}
+                            className="border-gray-300 text-indigo-600 focus:ring-indigo-500 mr-2"
+                          />
+                          <span className="text-sm text-gray-700">Sabit e-posta adresi kullan</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sabit e-posta input - sadece form alanı seçili değilse göster */}
+                  {!settings.emailNotifications?.replyTo?.startsWith('{field:') && (
+                    <input
+                      type="email"
+                      value={settings.emailNotifications?.replyTo || ''}
+                      onChange={(e) => handleSettingChange('emailNotifications.replyTo', e.target.value)}
+                      placeholder="Boş bırakılırsa tenant ayarlarından alınır"
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    />
+                  )}
+
+                  {settings.emailNotifications?.replyTo?.startsWith('{field:') && (
+                    <p className="text-sm text-green-600 bg-green-50 p-2 rounded">
+                      Yanıt adresi olarak kullanıcının form alanına girdiği e-posta kullanılacak.
+                    </p>
+                  )}
+
                   <p className="mt-1 text-sm text-gray-500">
                     Opsiyonel. Boş bırakılırsa tenant ayarlarındaki varsayılan e-posta kullanılır.
                   </p>

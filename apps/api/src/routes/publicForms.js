@@ -11,6 +11,46 @@ const RATE_LIMIT_MAX = 10; // Max 10 submissions per minute per IP
 const rateLimitBuckets = new Map();
 
 /**
+ * Duplicate submission prevention
+ * Prevents the same form data being submitted twice within a short window
+ */
+const DUPLICATE_WINDOW_MS = 10 * 1000; // 10 seconds
+const recentSubmissions = new Map();
+
+/**
+ * Generate a hash for form submission data
+ */
+function generateSubmissionHash(formId, data, ip) {
+  const content = JSON.stringify({ formId, data, ip });
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * Check if this is a duplicate submission
+ * Returns true if duplicate, false if new submission
+ */
+function isDuplicateSubmission(formId, data, ip) {
+  const hash = generateSubmissionHash(formId, data, ip);
+  const now = Date.now();
+
+  // Clean up old entries
+  for (const [key, timestamp] of recentSubmissions.entries()) {
+    if (now - timestamp > DUPLICATE_WINDOW_MS) {
+      recentSubmissions.delete(key);
+    }
+  }
+
+  // Check if this submission was recently made
+  if (recentSubmissions.has(hash)) {
+    return true;
+  }
+
+  // Record this submission
+  recentSubmissions.set(hash, now);
+  return false;
+}
+
+/**
  * Enforce rate limiting for form submissions
  */
 function enforceRateLimit(tenantId, identifier = 'anonymous') {
@@ -394,6 +434,15 @@ async function publicFormRoutes(fastify) {
         return reply.code(400).send({
           error: 'InvalidData',
           message: 'Form data is required and must be an object'
+        });
+      }
+
+      // Check for duplicate submission (same data within 10 seconds)
+      if (isDuplicateSubmission(request.params.formId, data, ip)) {
+        request.log.warn({ formId: request.params.formId, ip }, 'Duplicate form submission detected');
+        return reply.code(409).send({
+          error: 'DuplicateSubmission',
+          message: 'This form was already submitted. Please wait before submitting again.'
         });
       }
 
