@@ -564,8 +564,26 @@ async function update({ tenantId, formId, data, userId }) {
     const normalizedSettings = applyEmailNotificationCompatibility(
       normalizeFormSettings(settings || {})
     );
-    form.settings = { ...form.settings, ...normalizedSettings };
+
+    // Deep merge settings, especially for nested objects like emailNotifications
+    const mergedSettings = { ...form.settings.toObject?.() || form.settings };
+
+    Object.keys(normalizedSettings).forEach(key => {
+      if (typeof normalizedSettings[key] === 'object' && normalizedSettings[key] !== null && !Array.isArray(normalizedSettings[key])) {
+        // Deep merge for nested objects like emailNotifications, webhooks
+        mergedSettings[key] = {
+          ...(mergedSettings[key] || {}),
+          ...normalizedSettings[key],
+        };
+      } else {
+        mergedSettings[key] = normalizedSettings[key];
+      }
+    });
+
+    form.settings = mergedSettings;
     form.markModified('settings');
+    form.markModified('settings.emailNotifications');
+    form.markModified('settings.webhooks');
     hasChanges = true;
   }
   
@@ -1011,6 +1029,13 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
 
   // Send email notifications if enabled
   try {
+    // Re-fetch response to check if notification was already sent (prevents duplicate emails)
+    const freshResponse = await FormResponse.findById(response._id).lean();
+    if (freshResponse?.notificationSent) {
+      console.log(`[formService] Email notification already sent for response ${response._id}, skipping`);
+      return response;
+    }
+
     const emailSettings = form.settings?.emailNotifications || {};
     const legacyEnabled = form.settings?.enableNotifications;
     const legacyRecipients = form.settings?.notificationEmails || [];
@@ -1045,6 +1070,22 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
 
         let replyTo = emailSettings.replyTo?.trim();
 
+        // Resolve replyTo from form field if it's a field reference
+        if (replyTo && replyTo.startsWith('{field:') && replyTo.endsWith('}')) {
+          const fieldId = replyTo.slice(7, -1); // Extract field ID from {field:xxx}
+          const field = form.fields.find(f => f.id === fieldId);
+          if (field) {
+            const fieldValue = data?.[field.name];
+            if (fieldValue && isValidEmail(fieldValue)) {
+              replyTo = fieldValue.trim();
+            } else {
+              replyTo = undefined; // Invalid or empty email from form field
+            }
+          } else {
+            replyTo = undefined; // Field not found
+          }
+        }
+
         if (!replyTo) {
           try {
             const smtpSettings = await tenantSettingsService.getSmtpCredentials(tenantId);
@@ -1054,6 +1095,19 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
           }
         }
 
+        // Use atomic update to prevent race conditions - mark as sending first
+        const updateResult = await FormResponse.updateOne(
+          { _id: response._id, notificationSent: { $ne: true } },
+          { $set: { notificationSent: true, notificationSentAt: new Date() } }
+        );
+
+        // If no document was modified, another process already sent the email
+        if (updateResult.modifiedCount === 0) {
+          console.log(`[formService] Email notification already being sent for response ${response._id}, skipping`);
+          return response;
+        }
+
+        // Now send the email
         await mailService.sendMail({
           to: recipients.join(', '),
           subject,
@@ -1062,14 +1116,20 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
           replyTo
         }, tenantId);
 
-        await FormResponse.updateOne(
-          { _id: response._id },
-          { $set: { notificationSent: true, notificationSentAt: new Date() } }
-        );
+        console.log(`[formService] Email notification sent for response ${response._id}`);
       }
     }
   } catch (error) {
     console.error('[formService] Failed to send form notification email:', error);
+    // If email sending failed, reset the notificationSent flag so it can be retried
+    try {
+      await FormResponse.updateOne(
+        { _id: response._id },
+        { $set: { notificationSent: false, notificationError: error.message } }
+      );
+    } catch (resetError) {
+      console.error('[formService] Failed to reset notificationSent flag:', resetError);
+    }
   }
 
   return response;

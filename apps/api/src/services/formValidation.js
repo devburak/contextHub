@@ -123,22 +123,35 @@ const emailNotificationsSchema = z.object({
     )
   ).optional(),
   subject: z.string().optional(),
-  replyTo: z.union([z.string().email('Geçersiz yanıt e-posta adresi'), z.literal('')]).optional()
+  replyTo: z.string().refine(
+    (val) => {
+      if (!val || val === '') return true; // Empty is allowed
+      // Form field reference: {field:fieldId}
+      if (val.startsWith('{field:') && val.endsWith('}')) {
+        return true;
+      }
+      // Normal email validation
+      return z.string().email().safeParse(val).success;
+    },
+    {
+      message: 'Geçersiz yanıt e-posta adresi veya form alanı referansı'
+    }
+  ).optional()
 }).optional().refine(
   (data) => {
     // Eğer enabled false ise validation yapma
     if (!data || !data.enabled) return true;
-    
+
     // Enabled true ise recipients zorunlu ve en az 1 email içermeli
     if (!data.recipients || data.recipients.length === 0) {
       return false;
     }
-    
-    // replyTo varsa ve boş string değilse email formatında olmalı
-    if (data.replyTo && data.replyTo !== '') {
+
+    // replyTo varsa, boş string değilse ve form field reference değilse email formatında olmalı
+    if (data.replyTo && data.replyTo !== '' && !data.replyTo.startsWith('{field:')) {
       return z.string().email().safeParse(data.replyTo).success;
     }
-    
+
     return true;
   },
   {
