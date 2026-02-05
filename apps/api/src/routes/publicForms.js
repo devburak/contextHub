@@ -1,6 +1,7 @@
 const { tenantContext } = require('../middleware/auth');
 const { checkRequestLimit } = require('../middleware/requestLimitGuard');
 const formService = require('../services/formService');
+const localRedisClient = require('../lib/localRedis');
 const crypto = require('crypto');
 
 /**
@@ -10,28 +11,95 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX = 10; // Max 10 submissions per minute per IP
 const rateLimitBuckets = new Map();
 
+const RATE_LIMIT_PREFIX = 'form:ratelimit';
+const DUPLICATE_PREFIX = 'form:duplicate';
+const COOLDOWN_PREFIX = 'form:cooldown';
+
 /**
  * Duplicate submission prevention
  * Prevents the same form data being submitted twice within a short window
  */
-const DUPLICATE_WINDOW_MS = 10 * 1000; // 10 seconds
+const DUPLICATE_WINDOW_MS = 30 * 1000; // 30 seconds (increased from 10)
 const recentSubmissions = new Map();
 
 /**
- * Generate a hash for form submission data
+ * Client-based submission cooldown
+ * Prevents rapid successive submissions from the same client to the same form
+ * Uses a combination of IP + User-Agent + Accept-Language to identify clients
+ * This helps distinguish different users behind the same IP (shared hosting, NAT, etc.)
+ * Default is 60 seconds, but can be configured per-form via settings.submissionCooldownSeconds
  */
-function generateSubmissionHash(formId, data, ip) {
-  const content = JSON.stringify({ formId, data, ip });
+const DEFAULT_CLIENT_COOLDOWN_MS = 60 * 1000; // Default 1 minute cooldown per client per form
+const clientFormCooldowns = new Map();
+
+/**
+ * Submission fingerprinting for detecting similar submissions
+ * Uses client identifier instead of just IP to allow different users behind same IP
+ * Even if data is slightly different, detect patterns from the same client
+ */
+const FINGERPRINT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_SUBMISSIONS_PER_FINGERPRINT = 3; // Max 3 similar submissions in 5 minutes per client
+const submissionFingerprints = new Map();
+
+function getRedisClient() {
+  return localRedisClient.isEnabled() ? localRedisClient.getClient() : null;
+}
+
+function toSeconds(ms) {
+  return Math.max(1, Math.ceil(ms / 1000));
+}
+
+/**
+ * Generate a client identifier that combines multiple signals
+ * This helps distinguish different users behind the same IP
+ * @param {string} ip - Client IP address
+ * @param {string} userAgent - User-Agent header
+ * @param {string} acceptLanguage - Accept-Language header
+ * @returns {string} - Hashed client identifier
+ */
+function generateClientId(ip, userAgent, acceptLanguage) {
+  // Normalize user agent - remove version numbers to group similar browsers
+  const normalizedUA = (userAgent || 'unknown')
+    .replace(/[\d.]+/g, 'X') // Replace version numbers
+    .substring(0, 100); // Limit length
+
+  // Use first language preference only
+  const lang = (acceptLanguage || 'unknown').split(',')[0].split(';')[0].trim();
+
+  const content = `${ip}:${normalizedUA}:${lang}`;
+  return crypto.createHash('sha256').update(content).digest('hex').substring(0, 16);
+}
+
+/**
+ * Generate a hash for form submission data
+ * @param {string} formId - Form ID
+ * @param {object} data - Form submission data
+ * @param {string} clientId - Client identifier
+ * @returns {string} - SHA256 hash
+ */
+function generateSubmissionHash(formId, data, clientId) {
+  const content = JSON.stringify({ formId, data, clientId });
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
 /**
  * Check if this is a duplicate submission
  * Returns true if duplicate, false if new submission
+ * @param {string} formId - Form ID
+ * @param {object} data - Form submission data
+ * @param {string} clientId - Client identifier (IP or clientId hash)
+ * @returns {boolean}
  */
-function isDuplicateSubmission(formId, data, ip) {
-  const hash = generateSubmissionHash(formId, data, ip);
+async function isDuplicateSubmission(formId, data, clientId) {
+  const hash = generateSubmissionHash(formId, data, clientId);
   const now = Date.now();
+
+  const redisClient = getRedisClient();
+  if (redisClient) {
+    const key = `${DUPLICATE_PREFIX}:${hash}`;
+    const result = await redisClient.set(key, '1', { NX: true, EX: toSeconds(DUPLICATE_WINDOW_MS) });
+    return result === null;
+  }
 
   // Clean up old entries
   for (const [key, timestamp] of recentSubmissions.entries()) {
@@ -51,12 +119,141 @@ function isDuplicateSubmission(formId, data, ip) {
 }
 
 /**
+ * Check and enforce client-based cooldown for a specific form
+ * @param {string} formId - Form ID
+ * @param {string} clientId - Client identifier (generated from IP + UA + lang)
+ * @returns {{ allowed: boolean, remainingMs: number }}
+ */
+async function checkClientFormCooldown(formId, clientId) {
+  const key = `${formId}:${clientId}`;
+  const now = Date.now();
+
+  const redisClient = getRedisClient();
+  if (redisClient) {
+    const redisKey = `${COOLDOWN_PREFIX}:${key}`;
+    const ttl = await redisClient.ttl(redisKey);
+    if (ttl > 0) {
+      return { allowed: false, remainingMs: ttl * 1000 };
+    }
+    return { allowed: true, remainingMs: 0 };
+  }
+
+  // Clean up old entries (run periodically)
+  if (clientFormCooldowns.size > 1000) {
+    for (const [k, expiresAt] of clientFormCooldowns.entries()) {
+      if (now > expiresAt) {
+        clientFormCooldowns.delete(k);
+      }
+    }
+  }
+
+  const expiresAt = clientFormCooldowns.get(key);
+  if (expiresAt && now < expiresAt) {
+    return { allowed: false, remainingMs: expiresAt - now };
+  }
+
+  return { allowed: true, remainingMs: 0 };
+}
+
+/**
+ * Set client-based cooldown after successful submission
+ * @param {string} formId - Form ID
+ * @param {string} clientId - Client identifier
+ * @param {number} cooldownMs - Cooldown duration in milliseconds
+ */
+async function setClientFormCooldown(formId, clientId, cooldownMs = DEFAULT_CLIENT_COOLDOWN_MS) {
+  const key = `${formId}:${clientId}`;
+  const redisClient = getRedisClient();
+  if (redisClient) {
+    const ttl = Math.max(0, Number.isFinite(cooldownMs) ? cooldownMs : DEFAULT_CLIENT_COOLDOWN_MS);
+    if (ttl <= 0) {
+      return;
+    }
+    await redisClient.set(`${COOLDOWN_PREFIX}:${key}`, '1', { NX: true, EX: toSeconds(ttl) });
+    return;
+  }
+
+  clientFormCooldowns.set(key, Date.now() + cooldownMs);
+}
+
+/**
+ * Generate a fingerprint for submission pattern detection
+ * Creates a normalized hash that ignores minor variations in data
+ * Uses clientId instead of just IP to distinguish users behind same IP
+ * @param {string} formId - Form ID
+ * @param {string} clientId - Client identifier
+ * @param {object} data - Form submission data
+ * @returns {string} - Fingerprint hash
+ */
+function generateSubmissionFingerprint(formId, clientId, data) {
+  // Extract field names (structure) and approximate data length
+  const fieldNames = Object.keys(data || {}).sort().join(',');
+  const dataLengthBucket = Math.floor(JSON.stringify(data).length / 100) * 100; // Round to nearest 100
+  const content = `${formId}:${clientId}:${fieldNames}:${dataLengthBucket}`;
+  return crypto.createHash('md5').update(content).digest('hex');
+}
+
+/**
+ * Check submission fingerprint for pattern-based rate limiting
+ * @param {string} formId - Form ID
+ * @param {string} clientId - Client identifier
+ * @param {object} data - Form submission data
+ * @returns {{ allowed: boolean, count: number }}
+ */
+function checkSubmissionFingerprint(formId, clientId, data) {
+  const fingerprint = generateSubmissionFingerprint(formId, clientId, data);
+  const now = Date.now();
+
+  // Clean up old entries (run periodically)
+  if (submissionFingerprints.size > 1000) {
+    for (const [key, entry] of submissionFingerprints.entries()) {
+      if (now - entry.firstSeen > FINGERPRINT_WINDOW_MS) {
+        submissionFingerprints.delete(key);
+      }
+    }
+  }
+
+  const entry = submissionFingerprints.get(fingerprint);
+  if (entry) {
+    if (entry.count >= MAX_SUBMISSIONS_PER_FINGERPRINT) {
+      return { allowed: false, count: entry.count };
+    }
+    entry.count += 1;
+    return { allowed: true, count: entry.count };
+  }
+
+  // New fingerprint
+  submissionFingerprints.set(fingerprint, { firstSeen: now, count: 1 });
+  return { allowed: true, count: 1 };
+}
+
+/**
  * Enforce rate limiting for form submissions
  */
-function enforceRateLimit(tenantId, identifier = 'anonymous') {
+async function enforceRateLimit(tenantId, identifier = 'anonymous') {
   const key = `${tenantId}:${identifier}`;
   const now = Date.now();
   const bucket = rateLimitBuckets.get(key);
+
+  const redisClient = getRedisClient();
+  if (redisClient) {
+    const ttlSeconds = toSeconds(RATE_LIMIT_WINDOW_MS);
+    const redisKey = `${RATE_LIMIT_PREFIX}:${key}`;
+    const count = await redisClient.incr(redisKey);
+    if (count === 1) {
+      await redisClient.expire(redisKey, ttlSeconds);
+    }
+    if (count > RATE_LIMIT_MAX) {
+      const ttl = await redisClient.ttl(redisKey);
+      const retryAfter = ttl > 0 ? ttl : ttlSeconds;
+      const error = new Error('Rate limit exceeded');
+      error.code = 'RateLimitExceeded';
+      error.statusCode = 429;
+      error.retryAfter = retryAfter;
+      throw error;
+    }
+    return;
+  }
 
   if (!bucket || bucket.resetAt < now) {
     rateLimitBuckets.set(key, {
@@ -412,10 +609,18 @@ async function publicFormRoutes(fastify) {
       // If validation failed, reply was already sent
       if (reply.sent) return;
 
-      // Check rate limiting
+      // Extract client identification signals
       const ip = request.ip || request.headers['x-forwarded-for'] || 'unknown';
+      const userAgent = request.headers['user-agent'] || '';
+      const acceptLanguage = request.headers['accept-language'] || '';
+
+      // Generate client identifier (combines IP + User-Agent + Language)
+      // This helps distinguish different users behind the same IP (shared hosting, NAT, etc.)
+      const clientId = generateClientId(ip, userAgent, acceptLanguage);
+
+      // Check rate limiting (still IP-based for general abuse prevention)
       try {
-        enforceRateLimit(request.tenantId, ip);
+        await enforceRateLimit(request.tenantId, ip);
       } catch (error) {
         request.log.warn({ err: error }, 'Form submission rate limit exceeded');
         return reply
@@ -437,12 +642,52 @@ async function publicFormRoutes(fastify) {
         });
       }
 
-      // Check for duplicate submission (same data within 10 seconds)
-      if (isDuplicateSubmission(request.params.formId, data, ip)) {
-        request.log.warn({ formId: request.params.formId, ip }, 'Duplicate form submission detected');
+      // Check for duplicate submission (same data within 30 seconds)
+      // Uses clientId to allow different users behind same IP
+      if (await isDuplicateSubmission(request.params.formId, data, clientId)) {
+        request.log.warn({ formId: request.params.formId, clientId }, 'Duplicate form submission detected');
         return reply.code(409).send({
           error: 'DuplicateSubmission',
           message: 'This form was already submitted. Please wait before submitting again.'
+        });
+      }
+
+      // Check client-based cooldown (configurable per-form, default 1 minute)
+      // Uses clientId instead of just IP to allow different users behind same IP
+      const cooldownCheck = await checkClientFormCooldown(request.params.formId, clientId);
+      if (!cooldownCheck.allowed) {
+        const remainingSec = Math.ceil(cooldownCheck.remainingMs / 1000);
+        request.log.warn({ formId: request.params.formId, clientId, remainingSec }, 'Client cooldown active');
+        return reply
+          .code(429)
+          .header('Retry-After', remainingSec)
+          .send({
+            error: 'CooldownActive',
+            message: `Please wait ${remainingSec} seconds before submitting again.`
+          });
+      }
+
+      // Check submission fingerprint (pattern-based rate limiting)
+      // Uses clientId to allow different users behind same IP
+      const fingerprintCheck = checkSubmissionFingerprint(request.params.formId, clientId, data);
+      if (!fingerprintCheck.allowed) {
+        request.log.warn({ formId: request.params.formId, clientId, count: fingerprintCheck.count }, 'Fingerprint rate limit exceeded');
+        return reply.code(429).send({
+          error: 'TooManySubmissions',
+          message: 'Too many similar submissions detected. Please try again later.'
+        });
+      }
+
+      // Get form to check settings and for later use
+      const form = await formService.getById({
+        tenantId: request.tenantId,
+        formId: request.params.formId
+      });
+
+      if (!form || form.status !== 'published') {
+        return reply.code(404).send({
+          error: 'FormNotFound',
+          message: 'Form not found or not available'
         });
       }
 
@@ -463,11 +708,12 @@ async function publicFormRoutes(fastify) {
         metadata
       });
 
-      // Get form for success message
-      const form = await formService.getById({
-        tenantId: request.tenantId,
-        formId: request.params.formId
-      });
+      // Set client cooldown after successful submission (use form-specific cooldown if configured)
+      const formCooldownSeconds = form.settings?.submissionCooldownSeconds;
+      const cooldownMs = (typeof formCooldownSeconds === 'number' && formCooldownSeconds >= 0)
+        ? formCooldownSeconds * 1000
+        : DEFAULT_CLIENT_COOLDOWN_MS;
+      await setClientFormCooldown(request.params.formId, clientId, cooldownMs);
 
       return reply.code(201).send({
         success: true,
