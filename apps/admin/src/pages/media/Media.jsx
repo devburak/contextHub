@@ -874,6 +874,7 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                                   src={externalEmbed.src}
                                   title={item.originalName || item.fileName || 'Video'}
                                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  referrerPolicy="strict-origin-when-cross-origin"
                                   allowFullScreen
                                   className="h-full w-full border-0"
                                 />

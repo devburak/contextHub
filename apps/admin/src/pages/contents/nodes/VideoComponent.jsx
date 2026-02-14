@@ -173,6 +173,7 @@ function VideoComponent({
                   src={embed.src}
                   title={mediaTitle}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  referrerPolicy="strict-origin-when-cross-origin"
                   allowFullScreen
                   className="h-full w-full border-0"
                 />

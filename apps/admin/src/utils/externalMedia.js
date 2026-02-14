@@ -21,7 +21,7 @@ export function buildExternalEmbed(item) {
       }
       return {
         type: 'iframe',
-        src: `https://www.youtube-nocookie.com/embed/${videoId}`,
+        src: buildYouTubeEmbedUrl(videoId),
       }
     }
 
@@ -143,4 +143,28 @@ function isYouTubeHost(host) {
     normalized === 'youtu.be' ||
     normalized.endsWith('.youtu.be')
   )
+}
+
+function buildYouTubeEmbedUrl(videoId) {
+  const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`)
+  embedUrl.searchParams.set('rel', '0')
+  embedUrl.searchParams.set('modestbranding', '1')
+  embedUrl.searchParams.set('playsinline', '1')
+
+  const origin = getRuntimeOrigin()
+  if (origin) {
+    embedUrl.searchParams.set('enablejsapi', '1')
+    embedUrl.searchParams.set('origin', origin)
+    embedUrl.searchParams.set('widget_referrer', origin)
+  }
+
+  return embedUrl.toString()
+}
+
+function getRuntimeOrigin() {
+  if (typeof window === 'undefined' || !window.location || !window.location.origin) {
+    return ''
+  }
+
+  return window.location.origin
 }
