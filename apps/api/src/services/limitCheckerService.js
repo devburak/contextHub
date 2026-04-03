@@ -82,7 +82,7 @@ class LimitCheckerService {
         remaining = await localRedisClient.getRequestQuota(tenantId);
       }
 
-      // If not in cache, calculate from MongoDB (half-day usage aggregation)
+      // If not in cache, calculate from MongoDB + pending 4-hour deltas
       if (remaining === null) {
         console.log(`[LimitChecker] Request quota not cached, calculating from MongoDB`);
 

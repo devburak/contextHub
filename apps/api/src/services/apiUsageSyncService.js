@@ -1,33 +1,32 @@
-const usageRedis = require('../lib/usageRedis');
 const localRedisClient = require('../lib/localRedis');
 const ApiUsage = require('@contexthub/common/src/models/ApiUsage');
 const ApiUsageSyncState = require('@contexthub/common/src/models/ApiUsageSyncState');
 const Tenant = require('@contexthub/common/src/models/Tenant');
 const apiUsageService = require('./apiUsageService');
 
-/**
- * API Usage Sync Service
- * Syncs 12-hour usage data from Redis to MongoDB and cleans up Redis keys
- */
+const SYNC_LOCK_KEY = 'usage:sync:4hour';
+const SYNC_LOCK_TTL_SECONDS = 5 * 60;
+
 class ApiUsageSyncService {
-  async getPendingPeriods(targetPeriod, options = {}) {
-    const { force = false, includeCurrent = false } = options;
-
-    if (force && includeCurrent) {
-      return [targetPeriod];
-    }
-
-    const state = await ApiUsageSyncState.findOne({ key: apiUsageService.HALF_DAY_PERIOD }).lean();
+  async getLastClosedPeriodEnd() {
+    const state = await ApiUsageSyncState.findOne({ key: apiUsageService.FOUR_HOUR_PERIOD }).lean();
     let lastEnd = state?.lastPeriodEnd ? new Date(state.lastPeriodEnd) : null;
 
     if (!lastEnd || Number.isNaN(lastEnd.getTime())) {
-      const lastRecord = await ApiUsage.findOne({ period: apiUsageService.HALF_DAY_PERIOD })
+      const lastRecord = await ApiUsage.findOne({ period: apiUsageService.FOUR_HOUR_PERIOD })
         .sort({ endDate: -1 })
         .lean();
       lastEnd = lastRecord?.endDate ? new Date(lastRecord.endDate) : null;
     }
 
-    if (!lastEnd || Number.isNaN(lastEnd.getTime())) {
+    return lastEnd && !Number.isNaN(lastEnd.getTime()) ? lastEnd : null;
+  }
+
+  async getClosedPeriodsToSync(now = new Date()) {
+    const targetPeriod = apiUsageService.getPreviousFourHourPeriod(now);
+    const lastEnd = await this.getLastClosedPeriodEnd();
+
+    if (!lastEnd) {
       return [targetPeriod];
     }
 
@@ -39,7 +38,7 @@ class ApiUsageSyncService {
     let cursor = new Date(lastEnd.getTime() + 1);
 
     while (cursor <= targetPeriod.endDate) {
-      const period = apiUsageService.getHalfDayPeriod(cursor);
+      const period = apiUsageService.getFourHourPeriod(cursor);
       periods.push(period);
       cursor = new Date(period.endExclusive.getTime());
     }
@@ -47,109 +46,144 @@ class ApiUsageSyncService {
     return periods;
   }
 
-  /**
-   * Sync half-day usage data (run every 12 hours at 00:00 and 12:00 UTC)
-   */
-  async syncHalfDayUsage(options = {}) {
-    console.log('[ApiUsageSync] Starting half-day sync...');
+  async syncFourHourUsage(options = {}) {
+    console.log('[ApiUsageSync] Starting 4-hour usage sync...');
 
-    const redisEnabled = usageRedis.isEnabled();
-    if (!redisEnabled) {
-      console.warn('[ApiUsageSync] Usage Redis is not enabled, skipping Redis transfer');
+    if (!localRedisClient.isEnabled()) {
+      console.warn('[ApiUsageSync] Local Redis is not enabled, skipping usage sync');
+      return {
+        success: true,
+        processed: 0,
+        saved: 0,
+        deleted: 0,
+        errors: 0,
+        flushedCalls: 0,
+        redisEnabled: false,
+        skipped: true,
+        reason: 'redis_unavailable',
+        periodKeys: [],
+        tenants: [],
+      };
+    }
+
+    const lockToken = await localRedisClient.acquireLock(SYNC_LOCK_KEY, SYNC_LOCK_TTL_SECONDS);
+    if (!lockToken) {
+      return {
+        success: true,
+        processed: 0,
+        saved: 0,
+        deleted: 0,
+        errors: 0,
+        flushedCalls: 0,
+        redisEnabled: true,
+        skipped: true,
+        reason: 'sync_in_progress',
+        periodKeys: [],
+        tenants: [],
+      };
     }
 
     try {
       const now = new Date();
-      const includeCurrent = options.force === true;
-      const targetPeriod = includeCurrent
-        ? apiUsageService.getHalfDayPeriod(now)
-        : apiUsageService.getPreviousHalfDayPeriod(now);
+      const includeCurrent = options.includeCurrent !== false;
+      const closedPeriods = await this.getClosedPeriodsToSync(now);
+      const currentPeriod = apiUsageService.getFourHourPeriod(now);
+      const periods = includeCurrent
+        ? [...closedPeriods, currentPeriod]
+        : [...closedPeriods];
+      const uniquePeriods = periods.filter((period, index, list) =>
+        list.findIndex(item => item.periodKey === period.periodKey) === index
+      );
 
-      const resetResult = await apiUsageService.resetMonthlyUsageIfNeeded(now);
-
-      const periods = await this.getPendingPeriods(targetPeriod, {
-        force: options.force,
-        includeCurrent,
-      });
-      if (!periods.length) {
+      if (!uniquePeriods.length) {
         return {
           success: true,
-          message: 'No new periods to sync',
           processed: 0,
           saved: 0,
-          errors: 0,
           deleted: 0,
-          redisEnabled,
-          resetResult,
+          errors: 0,
+          flushedCalls: 0,
+          redisEnabled: true,
           periodKeys: [],
           tenants: [],
         };
       }
 
-      console.log('[ApiUsageSync] Syncing half-day data for periods:', periods.map(p => p.periodKey));
-
       const tenants = await Tenant.find({}, '_id').lean();
-      const tenantIds = [...tenants.map(t => t._id.toString()), 'system'];
-      const tenantsToRefresh = new Set();
-
+      const tenantIds = tenants.map(item => item._id.toString());
+      const touchedTenants = new Set();
       const results = {
         processed: 0,
         saved: 0,
-        errors: 0,
         deleted: 0,
-        redisEnabled,
-        resetResult,
-        periodKeys: periods.map(p => p.periodKey),
+        errors: 0,
+        flushedCalls: 0,
+        redisEnabled: true,
+        periodKeys: uniquePeriods.map(period => period.periodKey),
         tenants: [],
       };
 
-      for (const period of periods) {
+      for (const period of uniquePeriods) {
+        const isClosedPeriod = period.endExclusive <= now;
+
         for (const tenantId of tenantIds) {
           try {
-            if (redisEnabled) {
-              const redisKey = `api:count:12h:${tenantId}:${period.periodKey}`;
-              const count = await usageRedis.get(redisKey);
+            const counter = await localRedisClient.getUsageCounter(tenantId, period.periodKey);
+            if (!counter) {
+              results.processed++;
+              continue;
+            }
 
-              if (count && count > 0) {
-                const totalCalls = parseInt(count, 10);
-                const mongoTenantId = tenantId === 'system' ? null : tenantId;
-
-                if (mongoTenantId) {
-                  const existing = await ApiUsage.findOneAndUpdate(
-                    {
-                      tenantId: mongoTenantId,
-                      period: apiUsageService.HALF_DAY_PERIOD,
-                      periodKey: period.periodKey,
-                    },
-                    {
-                      $set: {
-                        startDate: period.startDate,
-                        endDate: period.endDate,
-                        totalCalls,
-                        syncedAt: new Date(),
-                        redisKeys: [{ key: redisKey, value: totalCalls }],
-                      },
-                    },
-                    {
-                      upsert: true,
-                      new: false,
-                    }
-                  );
-
-                  const previousTotal = existing?.totalCalls || 0;
-                  const delta = totalCalls - previousTotal;
-                  await apiUsageService.incrementMonthlyUsage(tenantId, period.startDate, delta);
-                  tenantsToRefresh.add(tenantId);
-                  results.saved++;
+            if (counter.pending > 0) {
+              await ApiUsage.findOneAndUpdate(
+                {
+                  tenantId,
+                  period: apiUsageService.FOUR_HOUR_PERIOD,
+                  periodKey: period.periodKey,
+                },
+                {
+                  $inc: { totalCalls: counter.pending },
+                  $set: {
+                    startDate: period.startDate,
+                    endDate: period.endDate,
+                    syncedAt: new Date(),
+                    redisKeys: [{
+                      key: localRedisClient.getUsageCounterKey(tenantId, period.periodKey),
+                      value: counter.count,
+                    }],
+                  },
+                  $setOnInsert: {
+                    period: apiUsageService.FOUR_HOUR_PERIOD,
+                    periodKey: period.periodKey,
+                  },
+                },
+                {
+                  upsert: true,
+                  new: true,
                 }
+              );
 
-                results.tenants.push({ tenantId, periodKey: period.periodKey, totalCalls });
-              }
+              await localRedisClient.setUsageFlushedCount(
+                tenantId,
+                period.periodKey,
+                counter.count,
+                apiUsageService.USAGE_KEY_TTL_SECONDS
+              );
 
-              if (count !== null) {
-                const deleted = await usageRedis.del(redisKey);
-                results.deleted += Number(deleted || 0);
-              }
+              results.saved++;
+              results.flushedCalls += counter.pending;
+              touchedTenants.add(tenantId);
+              results.tenants.push({
+                tenantId,
+                periodKey: period.periodKey,
+                count: counter.count,
+                pending: counter.pending,
+              });
+            }
+
+            if (isClosedPeriod) {
+              await localRedisClient.deleteUsageCounter(tenantId, period.periodKey);
+              results.deleted++;
             }
 
             results.processed++;
@@ -160,40 +194,43 @@ class ApiUsageSyncService {
         }
       }
 
-      for (const tenantId of tenantsToRefresh) {
-        try {
-          await apiUsageService.refreshMonthlyLimitFlag(tenantId, now);
-        } catch (error) {
-          console.error(`[ApiUsageSync] Failed to refresh limit flag for tenant ${tenantId}:`, error);
-          results.errors++;
-        }
-      }
-
-      if (redisEnabled) {
-        const lastPeriod = periods[periods.length - 1];
+      if (closedPeriods.length > 0) {
+        const lastClosedPeriod = closedPeriods[closedPeriods.length - 1];
         await ApiUsageSyncState.findOneAndUpdate(
-          { key: apiUsageService.HALF_DAY_PERIOD },
+          { key: apiUsageService.FOUR_HOUR_PERIOD },
           {
             $set: {
-              lastPeriodKey: lastPeriod.periodKey,
-              lastPeriodEnd: lastPeriod.endDate,
+              lastPeriodKey: lastClosedPeriod.periodKey,
+              lastPeriodEnd: lastClosedPeriod.endDate,
             },
           },
           { upsert: true, new: true }
         );
       }
 
-      console.log('[ApiUsageSync] Half-day sync completed:', results);
+      for (const tenantId of touchedTenants) {
+        try {
+          await apiUsageService.refreshMonthlyLimitFlag(tenantId, now);
+        } catch (error) {
+          console.error(`[ApiUsageSync] Failed to refresh request state for tenant ${tenantId}:`, error);
+          results.errors++;
+        }
+      }
+
+      console.log('[ApiUsageSync] 4-hour sync completed:', results);
       return { success: true, ...results };
     } catch (error) {
-      console.error('[ApiUsageSync] Half-day sync failed:', error);
+      console.error('[ApiUsageSync] 4-hour sync failed:', error);
       return { success: false, error: error.message };
+    } finally {
+      await localRedisClient.releaseLock(SYNC_LOCK_KEY, lockToken);
     }
   }
 
-  /**
-   * Run scheduled sync (half-day)
-   */
+  async syncHalfDayUsage(options = {}) {
+    return this.syncFourHourUsage(options);
+  }
+
   async runScheduledSync(options = {}) {
     const now = new Date();
     const results = {
@@ -202,8 +239,11 @@ class ApiUsageSyncService {
     };
 
     console.log('[ApiUsageSync] Running scheduled sync check...');
-    const halfDayResult = await this.syncHalfDayUsage(options);
-    results.executed.push({ type: 'halfday', ...halfDayResult });
+
+    const syncResult = await this.syncFourHourUsage({
+      includeCurrent: options.includeCurrent !== false,
+    });
+    results.executed.push({ type: '4hour', ...syncResult });
 
     await this.refreshLimitsCache();
 
@@ -211,13 +251,7 @@ class ApiUsageSyncService {
     return results;
   }
 
-  /**
-   * Refresh tenant limits cache in local Redis
-   * Called after each sync to update request quotas
-   */
   async refreshLimitsCache() {
-    console.log('[ApiUsageSync] Refreshing limits cache...');
-
     if (!localRedisClient.isEnabled()) {
       console.warn('[ApiUsageSync] Local Redis not enabled, skipping cache refresh');
       return;
@@ -225,9 +259,11 @@ class ApiUsageSyncService {
 
     try {
       const limitCheckerService = require('./limitCheckerService');
-      await limitCheckerService.refreshAllLimitsCache();
-
-      console.log('[ApiUsageSync] Limits cache refreshed successfully');
+      await Promise.all([
+        limitCheckerService.refreshAllLimitsCache(),
+        apiUsageService.refreshAllTenantRequestStates(),
+      ]);
+      console.log('[ApiUsageSync] Limits and request states refreshed successfully');
     } catch (error) {
       console.error('[ApiUsageSync] Failed to refresh limits cache:', error);
     }

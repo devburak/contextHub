@@ -428,7 +428,7 @@ async function subscriptionPlanRoutes(fastify) {
       ]);
       const storageUsed = mediaAgg.length > 0 ? mediaAgg[0].totalSize : 0;
 
-      // Get monthly requests from MongoDB (current month, half-day usage aggregation)
+      // Get monthly requests from MongoDB + pending 4-hour deltas
       let monthlyRequests = 0;
 
       try {

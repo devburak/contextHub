@@ -1,40 +1,35 @@
-const usageRedis = require('../lib/usageRedis');
-const { getHalfDayPeriod } = require('../services/apiUsageService');
+const localRedisClient = require('../lib/localRedis');
+const { getFourHourPeriod, USAGE_KEY_TTL_SECONDS } = require('../services/apiUsageService');
 
-const HALF_DAY_TTL_SECONDS = 60 * 60 * 72; // 72 hours
-
-/**
- * Middleware to log API requests to Upstash Redis
- * Tracks: endpoint, tenantId, userId, IP, timestamp, response time
- * 
- * This runs on onResponse hook to ensure tenantContext has already set request.tenantId
- */
-async function apiLogger(request, reply) {
-  // Skip logging for health check and static files
+async function apiLogger(request) {
   const skipPaths = ['/health', '/favicon.ico', '/robots.txt'];
   if (skipPaths.some(path => request.url.startsWith(path))) {
     return;
   }
 
-  // Skip if usage logging is disabled
-  if (!usageRedis.isEnabled()) {
+  if (request.requestLimitExceeded) {
+    return;
+  }
+
+  if (!localRedisClient.isEnabled()) {
     return;
   }
 
   try {
     const tenantId = request.tenantId || request.user?.tenantId || null;
-    const normalizedTenantId = tenantId || 'system';
-    const { periodKey } = getHalfDayPeriod(new Date());
-    const key = `api:count:12h:${normalizedTenantId}:${periodKey}`;
+    if (!tenantId) {
+      return;
+    }
 
-    // Log to Redis asynchronously (don't block response)
+    const { periodKey } = getFourHourPeriod(new Date());
+
     setImmediate(() => {
-      usageRedis.incr(key, HALF_DAY_TTL_SECONDS).catch(error => {
-        console.error('Failed to log API usage:', error);
+      localRedisClient.incrementUsageCounter(tenantId, periodKey, USAGE_KEY_TTL_SECONDS).catch((error) => {
+        console.error('[ApiLogger] Failed to increment usage counter:', error.message);
       });
     });
   } catch (error) {
-    console.error('[APILogger] Error in apiLogger:', error);
+    console.error('[ApiLogger] Error:', error.message);
   }
 }
 

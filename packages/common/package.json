@@ -21,6 +21,6 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "micromatch": "^4.0.8",
-    "mongoose": "^7.5.0"
+    "mongoose": "^7.8.9"
   }
 }

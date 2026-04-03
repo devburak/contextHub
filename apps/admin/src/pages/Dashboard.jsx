@@ -594,15 +594,19 @@ export default function Dashboard() {
                       apiStats?.enabled ? (
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-500">Bugün:</span>
-                            <span className="font-semibold">{formatNumber(apiStats.today)}</span>
+                            <span className="text-sm text-gray-500">4 Saat:</span>
+                            <span className="font-semibold">{formatNumber(apiStats.fourHour ?? 0)}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-500">Haftalık:</span>
+                            <span className="text-sm text-gray-500">Gunluk:</span>
+                            <span className="font-semibold">{formatNumber(apiStats.daily ?? apiStats.today ?? 0)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-500">Haftalik:</span>
                             <span className="font-semibold text-blue-600">{formatNumber(apiStats.weekly)}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-500">Aylık:</span>
+                            <span className="text-sm text-gray-500">Aylik:</span>
                             <span className="font-semibold text-purple-600">{formatNumber(apiStats.monthly)}</span>
                           </div>
                         </div>
@@ -945,15 +949,19 @@ export default function Dashboard() {
                         apiStats?.enabled ? (
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-500">Bugün:</span>
-                              <span className="font-semibold">{formatNumber(apiStats.today)}</span>
+                              <span className="text-sm text-gray-500">4 Saat:</span>
+                              <span className="font-semibold">{formatNumber(apiStats.fourHour ?? 0)}</span>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-500">Haftalık:</span>
+                              <span className="text-sm text-gray-500">Gunluk:</span>
+                              <span className="font-semibold">{formatNumber(apiStats.daily ?? apiStats.today ?? 0)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-500">Haftalik:</span>
                               <span className="font-semibold text-blue-600">{formatNumber(apiStats.weekly)}</span>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-500">Aylık:</span>
+                              <span className="text-sm text-gray-500">Aylik:</span>
                               <span className="font-semibold text-purple-600">{formatNumber(apiStats.monthly)}</span>
                             </div>
                           </div>

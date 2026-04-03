@@ -1,88 +1,56 @@
-const upstashClient = require('./upstash');
 const localRedisClient = require('./localRedis');
 
-const PROVIDER = (process.env.API_USAGE_REDIS_PROVIDER || 'upstash').toLowerCase();
-const SUPPORTED = new Set(['upstash', 'local']);
-let lastWarningAt = 0;
-
-function warnThrottled(message) {
-  const now = Date.now();
-  if (now - lastWarningAt > 60000) {
-    console.warn(message);
-    lastWarningAt = now;
-  }
-}
-
-function resolveProvider() {
-  if (!SUPPORTED.has(PROVIDER)) {
-    warnThrottled(`[UsageRedis] Unsupported provider: ${PROVIDER}. Expected one of: upstash, local.`);
-    return null;
-  }
-
-  if (PROVIDER === 'local') {
-    if (!localRedisClient.isEnabled()) {
-      warnThrottled('[UsageRedis] Local Redis not enabled; usage logging is disabled.');
-      return null;
-    }
-    return { name: 'local', client: localRedisClient.getClient() };
-  }
-
-  if (!upstashClient.isEnabled()) {
-    warnThrottled('[UsageRedis] Upstash not enabled; usage logging is disabled.');
-    return null;
-  }
-
-  return { name: 'upstash', client: upstashClient.getClient() };
-}
-
 function getProviderName() {
-  return PROVIDER;
+  return 'local';
 }
 
 function isEnabled() {
-  return !!resolveProvider();
+  return localRedisClient.isEnabled();
+}
+
+function getClient() {
+  return localRedisClient.getClient();
 }
 
 async function incr(key, ttlSeconds) {
-  const provider = resolveProvider();
-  if (!provider) {
+  if (!isEnabled()) {
     return null;
   }
 
-  const newValue = await provider.client.incr(key);
-  if (ttlSeconds && Number(newValue) === 1) {
-    await provider.client.expire(key, ttlSeconds);
+  const value = await localRedisClient.getClient().incr(key);
+  if (ttlSeconds && Number(value) === 1) {
+    await localRedisClient.getClient().expire(key, ttlSeconds);
   }
-  return Number(newValue);
+  return Number(value);
 }
 
 async function get(key) {
-  const provider = resolveProvider();
-  if (!provider) {
+  if (!isEnabled()) {
     return null;
   }
 
-  const value = await provider.client.get(key);
-  if (value === null || value === undefined) {
-    return null;
-  }
-
-  return parseInt(String(value), 10);
+  return localRedisClient.getClient().get(key);
 }
 
 async function del(key) {
-  const provider = resolveProvider();
-  if (!provider) {
+  if (!isEnabled()) {
     return null;
   }
 
-  return provider.client.del(key);
+  return localRedisClient.getClient().del(key);
 }
 
 module.exports = {
   getProviderName,
   isEnabled,
+  getClient,
   incr,
   get,
   del,
+  incrementUsageCounter: (...args) => localRedisClient.incrementUsageCounter(...args),
+  getUsageCounter: (...args) => localRedisClient.getUsageCounter(...args),
+  setUsageFlushedCount: (...args) => localRedisClient.setUsageFlushedCount(...args),
+  deleteUsageCounter: (...args) => localRedisClient.deleteUsageCounter(...args),
+  acquireLock: (...args) => localRedisClient.acquireLock(...args),
+  releaseLock: (...args) => localRedisClient.releaseLock(...args),
 };
