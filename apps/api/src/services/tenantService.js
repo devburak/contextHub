@@ -1,5 +1,6 @@
 const { Tenant, Membership, User, rbac } = require('@contexthub/common');
 const roleService = require('./roleService');
+const tenantSubscriptionService = require('./tenantSubscriptionService');
 const { mailService } = require('./mailService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -52,10 +53,11 @@ class TenantService {
     const tenant = new Tenant({
       name,
       slug: finalSlug,
-      plan,
+      plan: 'free',
       status: 'active',
       createdBy: ownerId
     });
+    await tenantSubscriptionService.applyPlanToTenant(tenant, plan);
     await tenant.save();
 
     const ownerRole = await roleService.resolveRole({ tenantId: tenant._id, roleKey: ROLE_KEYS.OWNER })

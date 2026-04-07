@@ -1,5 +1,5 @@
 const { Media, Tenant } = require('@contexthub/common')
-const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
+const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3')
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner')
 const sharp = require('sharp')
 const crypto = require('crypto')
@@ -61,6 +61,30 @@ const EXTERNAL_FOLDER = 'external'
 const OEMBED_USER_AGENT = process.env.MEDIA_OEMBED_USER_AGENT
   || 'ContextHubMediaFetcher/1.0 (+https://github.com/contexthub)'
 
+const MIME_BY_EXTENSION = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  avif: 'image/avif',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  zip: 'application/zip',
+  rar: 'application/vnd.rar',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+}
+
 function parseVariantConfig(input) {
   if (!input) return null
   const variants = input.split(',')
@@ -120,6 +144,352 @@ function buildPublicUrl(key) {
 function ensureKeyMatchesTenant(key, tenantSlug) {
   if (!key.startsWith(`${tenantSlug}/`)) {
     throw new Error('Provided key does not match tenant slug')
+  }
+}
+
+function splitStorageKey(key) {
+  const segments = String(key || '').split('/').filter(Boolean)
+  const tenantSlug = segments[0] || null
+  const folderSegments = segments.slice(1, -1)
+  const folder = folderSegments.join('/')
+  const fileName = segments[segments.length - 1] || null
+
+  return {
+    tenantSlug,
+    folder,
+    fileName,
+    extension: fileName ? path.extname(fileName).replace(/^\./, '').toLowerCase() || null : null,
+  }
+}
+
+function parseVariantKey(key) {
+  const parts = splitStorageKey(key)
+  const match = String(parts.fileName || '').match(/^(.*)__([a-z0-9-]+)\.webp$/i)
+  if (!match) {
+    return null
+  }
+
+  return {
+    folder: parts.folder,
+    baseStem: match[1],
+    variantName: match[2],
+  }
+}
+
+function deriveVariantPrefix(key) {
+  const variant = parseVariantKey(key)
+  if (variant) {
+    return variant.folder ? `${variant.folder}/${variant.baseStem}` : variant.baseStem
+  }
+
+  const parts = splitStorageKey(key)
+  const stem = path.parse(parts.fileName || '').name
+  if (!stem) {
+    return null
+  }
+
+  return parts.folder ? `${parts.folder}/${stem}` : stem
+}
+
+function inferMimeTypeFromFileName(fileName, fallback = 'application/octet-stream') {
+  const extension = path.extname(String(fileName || '')).replace(/^\./, '').toLowerCase()
+  return MIME_BY_EXTENSION[extension] || fallback
+}
+
+function normaliseMatchValue(value = '') {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '')
+    .toLowerCase()
+}
+
+function deriveKeyFromPublicUrl(sourceUrl, tenantSlug) {
+  if (!sourceUrl) {
+    return null
+  }
+
+  try {
+    const parsedSource = new URL(sourceUrl)
+    const parsedPublic = new URL(PUBLIC_DOMAIN)
+    if (parsedSource.host !== parsedPublic.host) {
+      return null
+    }
+
+    const key = parsedSource.pathname.replace(/^\/+/, '')
+    if (!key.startsWith(`${tenantSlug}/`)) {
+      return null
+    }
+
+    return key
+  } catch (_) {
+    return null
+  }
+}
+
+function extractSourceUrlHints(sourceUrl, tenantSlug) {
+  if (!sourceUrl) {
+    return {
+      sourceUrl: null,
+      directKeyCandidate: null,
+      fileName: null,
+      normalizedFileName: null,
+      normalizedStem: null,
+      extension: null,
+      year: null,
+      month: null,
+    }
+  }
+
+  let pathname = ''
+  try {
+    const parsed = new URL(sourceUrl)
+    pathname = decodeURIComponent(parsed.pathname || '')
+  } catch (_) {
+    pathname = String(sourceUrl || '')
+  }
+
+  const fileName = path.basename(pathname || '')
+  const stem = path.parse(fileName).name
+  const uploadsMatch = pathname.match(/\/wp-content\/uploads\/(\d{4})\/(\d{2})\/([^/]+)$/i)
+    || pathname.match(/\/(\d{4})\/(\d{2})\/([^/]+)$/)
+
+  return {
+    sourceUrl,
+    directKeyCandidate: deriveKeyFromPublicUrl(sourceUrl, tenantSlug),
+    fileName: fileName || null,
+    normalizedFileName: fileName ? normaliseMatchValue(fileName) : null,
+    normalizedStem: stem ? normaliseMatchValue(stem) : null,
+    extension: fileName ? path.extname(fileName).replace(/^\./, '').toLowerCase() || null : null,
+    year: uploadsMatch ? uploadsMatch[1] : null,
+    month: uploadsMatch ? uploadsMatch[2] : null,
+  }
+}
+
+async function listObjectsByPrefix(prefix, { maxKeys = 250 } = {}) {
+  const contents = []
+  let continuationToken
+
+  while (contents.length < maxKeys) {
+    const command = new ListObjectsV2Command({
+      Bucket: BUCKET,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+      MaxKeys: Math.min(100, maxKeys - contents.length),
+    })
+
+    const response = await s3Client.send(command)
+    contents.push(...(response.Contents || []))
+
+    if (!response.IsTruncated || !response.NextContinuationToken) {
+      break
+    }
+
+    continuationToken = response.NextContinuationToken
+  }
+
+  return contents
+}
+
+async function headObjectNullable(key) {
+  try {
+    return await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }))
+  } catch (error) {
+    if (error?.$metadata?.httpStatusCode === 404 || error?.name === 'NotFound') {
+      return null
+    }
+    throw error
+  }
+}
+
+function buildResolutionPrefixes(hints, tenantSlug) {
+  const prefixes = []
+  if (hints.year && hints.month) {
+    prefixes.push(`${tenantSlug}/${hints.year}/${hints.month}/`)
+  }
+  if (hints.year) {
+    prefixes.push(`${tenantSlug}/${hints.year}/`)
+  }
+  prefixes.push(`${tenantSlug}/`)
+  return Array.from(new Set(prefixes))
+}
+
+function scoreExistingObjectMatch(item, hints) {
+  const key = item?.Key || ''
+  const parts = splitStorageKey(key)
+  const fileName = parts.fileName || ''
+  const stem = path.parse(fileName).name
+  const normalizedFileName = normaliseMatchValue(fileName)
+  const normalizedStem = normaliseMatchValue(stem)
+
+  let score = 0
+
+  if (hints.fileName && fileName === hints.fileName) {
+    score += 120
+  } else if (hints.normalizedFileName && normalizedFileName === hints.normalizedFileName) {
+    score += 100
+  }
+
+  if (hints.extension && parts.extension === hints.extension) {
+    score += 25
+  }
+
+  if (hints.normalizedStem) {
+    if (normalizedStem === hints.normalizedStem) {
+      score += 60
+    } else if (normalizedStem.startsWith(hints.normalizedStem) || hints.normalizedStem.startsWith(normalizedStem)) {
+      score += 30
+    } else if (normalizedStem.includes(hints.normalizedStem) || hints.normalizedStem.includes(normalizedStem)) {
+      score += 15
+    }
+  }
+
+  if (hints.year && key.includes(`/${hints.year}/`)) {
+    score += 10
+  }
+
+  if (hints.year && hints.month && key.includes(`/${hints.year}/${hints.month}/`)) {
+    score += 20
+  }
+
+  if (fileName.includes('__')) {
+    score -= 15
+  }
+
+  return score
+}
+
+async function resolveOriginalKeyForMatch(key) {
+  const variant = parseVariantKey(key)
+  if (!variant) {
+    return key
+  }
+
+  const parts = splitStorageKey(key)
+  const prefixBase = variant.folder ? `${variant.folder}/${variant.baseStem}` : variant.baseStem
+  const prefix = `${parts.tenantSlug}/${prefixBase}`
+  const objects = await listObjectsByPrefix(prefix, { maxKeys: 50 })
+
+  const original = objects
+    .map((item) => item.Key)
+    .filter(Boolean)
+    .filter((candidateKey) => !candidateKey.includes('__'))
+    .sort((left, right) => left.length - right.length)[0]
+
+  return original || key
+}
+
+function buildVariantRecordFromObject(item) {
+  const key = item?.Key
+  const parsed = parseVariantKey(key)
+  if (!parsed) {
+    return null
+  }
+
+  return {
+    name: parsed.variantName,
+    key,
+    url: buildPublicUrl(key),
+    width: null,
+    height: null,
+    size: Number(item.Size || 0) || null,
+    mimeType: 'image/webp',
+    format: 'webp',
+    checksum: null,
+    transforms: [],
+  }
+}
+
+async function collectExistingVariants(key) {
+  const parts = splitStorageKey(key)
+  const prefixPart = deriveVariantPrefix(key)
+  if (!parts.tenantSlug || !prefixPart) {
+    return []
+  }
+
+  const prefix = `${parts.tenantSlug}/${prefixPart}`
+  const objects = await listObjectsByPrefix(prefix, { maxKeys: 100 })
+  const variants = objects
+    .map((item) => buildVariantRecordFromObject(item))
+    .filter(Boolean)
+
+  const priority = { thumbnail: 0, medium: 1, large: 2 }
+  variants.sort((left, right) => (priority[left.name] ?? 50) - (priority[right.name] ?? 50))
+  return variants
+}
+
+async function resolveExistingStorageKey({ tenantSlug, key, sourceUrl }) {
+  if (key) {
+    ensureKeyMatchesTenant(key, tenantSlug)
+    const head = await headObjectNullable(key)
+    if (!head) {
+      throw new Error('Provided storage key was not found in R2')
+    }
+
+    return {
+      key: await resolveOriginalKeyForMatch(key),
+      matchedBy: 'provided-key',
+      score: 999,
+      sourceHints: extractSourceUrlHints(sourceUrl, tenantSlug),
+    }
+  }
+
+  const hints = extractSourceUrlHints(sourceUrl, tenantSlug)
+  if (hints.directKeyCandidate) {
+    const directHead = await headObjectNullable(hints.directKeyCandidate)
+    if (directHead) {
+      return {
+        key: await resolveOriginalKeyForMatch(hints.directKeyCandidate),
+        matchedBy: 'public-url-key',
+        score: 950,
+        sourceHints: hints,
+      }
+    }
+  }
+
+  if (!hints.fileName) {
+    throw new Error('Unable to derive a file name from sourceUrl')
+  }
+
+  const candidates = []
+  for (const prefix of buildResolutionPrefixes(hints, tenantSlug)) {
+    const maxKeys = prefix === `${tenantSlug}/` ? 500 : 250
+    const objects = await listObjectsByPrefix(prefix, { maxKeys })
+    for (const item of objects) {
+      const score = scoreExistingObjectMatch(item, hints)
+      if (score > 0) {
+        candidates.push({
+          key: item.Key,
+          score,
+          prefix,
+        })
+      }
+    }
+  }
+
+  candidates.sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score
+    }
+    return String(left.key || '').localeCompare(String(right.key || ''))
+  })
+
+  const top = candidates[0]
+  const second = candidates[1]
+
+  if (!top || top.score < 60) {
+    throw new Error('No confident existing storage object matched sourceUrl')
+  }
+
+  if (second && second.key !== top.key && second.score === top.score) {
+    throw new Error('Existing storage match is ambiguous')
+  }
+
+  return {
+    key: await resolveOriginalKeyForMatch(top.key),
+    matchedBy: top.prefix === `${tenantSlug}/` ? 'source-url-fuzzy-tenant' : 'source-url-fuzzy-prefix',
+    score: top.score,
+    sourceHints: hints,
   }
 }
 
@@ -470,6 +840,109 @@ async function completeUpload({
     createdBy: userId,
     updatedBy: userId,
   })
+
+  return document.toObject()
+}
+
+async function registerExistingMedia({
+  tenantId,
+  userId,
+  key,
+  sourceUrl,
+  originalName,
+  providedMimeType,
+  providedSize,
+  altText,
+  caption,
+  description,
+  tags,
+}) {
+  if (!key && !sourceUrl) {
+    throw new Error('key or sourceUrl is required')
+  }
+
+  const tenant = await Tenant.findById(tenantId)
+  if (!tenant) {
+    throw new Error('Tenant not found')
+  }
+
+  const resolution = await resolveExistingStorageKey({
+    tenantSlug: tenant.slug,
+    key,
+    sourceUrl,
+  })
+
+  const resolvedKey = resolution.key
+  ensureKeyMatchesTenant(resolvedKey, tenant.slug)
+
+  const head = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET, Key: resolvedKey }))
+  const parts = splitStorageKey(resolvedKey)
+  const fileName = parts.fileName
+
+  if (!fileName) {
+    throw new Error('Resolved storage key does not contain a file name')
+  }
+
+  const mimeType = head.ContentType || providedMimeType || inferMimeTypeFromFileName(fileName)
+  const variants = mimeType.startsWith('image/')
+    ? await collectExistingVariants(resolvedKey)
+    : []
+
+  const update = {
+    $set: {
+      tenantId,
+      tenantSlug: tenant.slug,
+      sourceType: 'upload',
+      provider: null,
+      providerId: null,
+      externalUrl: null,
+      thumbnailUrl: null,
+      duration: null,
+      key: resolvedKey,
+      bucket: BUCKET,
+      url: buildPublicUrl(resolvedKey),
+      folder: parts.folder || 'legacy',
+      fileName,
+      originalName: originalName || fileName,
+      extension: parts.extension,
+      mimeType,
+      size: Number(head.ContentLength || providedSize || 0) || null,
+      width: null,
+      height: null,
+      checksum: null,
+      etag: head.ETag ? String(head.ETag).replace(/"/g, '') : null,
+      status: 'active',
+      isPublic: true,
+      variants,
+      altText: altText || '',
+      caption: caption || '',
+      description: description || '',
+      tags: normaliseTags(tags),
+      metadata: {
+        storageClass: head.StorageClass || 'STANDARD',
+        lastModified: head.LastModified,
+        source: 'existing-storage-recovery',
+        recovery: {
+          matchedBy: resolution.matchedBy,
+          score: resolution.score,
+          sourceUrl: sourceUrl || null,
+          sourceFileName: resolution.sourceHints?.fileName || null,
+        },
+      },
+      updatedBy: userId ? new ObjectId(userId) : null,
+      updatedAt: new Date(),
+    },
+    $setOnInsert: {
+      createdBy: userId ? new ObjectId(userId) : null,
+      createdAt: new Date(),
+    },
+  }
+
+  const document = await Media.findOneAndUpdate(
+    { tenantId, key: resolvedKey },
+    update,
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  )
 
   return document.toObject()
 }
@@ -829,6 +1302,7 @@ async function bulkTagMedia({ tenantId, mediaIds = [], tags = [], mode = 'add', 
 module.exports = {
   generatePresignedUpload,
   completeUpload,
+  registerExistingMedia,
   createExternalMedia,
   listMedia,
   updateMediaMetadata,
