@@ -1,9 +1,6 @@
 const apiUsageSyncService = require('../services/apiUsageSyncService');
+const usageRedis = require('../lib/usageRedis');
 
-/**
- * API Usage Sync Routes
- * Endpoints to manually trigger data sync from Redis to MongoDB
- */
 async function apiUsageSyncRoutes(fastify) {
   function requireCronSecret(request, reply, done) {
     const secretToken = process.env.CRON_SECRET_TOKEN;
@@ -30,46 +27,31 @@ async function apiUsageSyncRoutes(fastify) {
   }
 
   fastify.addHook('preHandler', requireCronSecret);
-  
-  /**
-   * POST /api-usage-sync/trigger
-   * Manually trigger scheduled sync (half-day)
-   *
-   * This endpoint should be called by external cron service at 00:00 and 12:00 UTC
-   */
+
   fastify.post('/api-usage-sync/trigger', {
     schema: {
       querystring: {
         type: 'object',
         properties: {
+          includeCurrent: { type: 'boolean' },
           force: { type: 'boolean' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            timestamp: { type: 'string' },
-            executed: { type: 'array' },
-          },
         },
       },
     },
   }, async function triggerSyncHandler(request, reply) {
     try {
-      console.log('[API] Sync triggered manually');
-      
+      const includeCurrent = request.query.includeCurrent !== false && request.query.includeCurrent !== 'false';
       const result = await apiUsageSyncService.runScheduledSync({
+        includeCurrent,
         force: request.query.force === true || request.query.force === 'true',
       });
-      
+
       return reply.send({
         success: true,
         ...result,
       });
     } catch (error) {
-      request.log.error({ err: error }, 'Failed to trigger sync');
+      request.log.error({ err: error }, 'Failed to trigger usage sync');
       return reply.code(500).send({
         success: false,
         error: 'SyncFailed',
@@ -78,30 +60,31 @@ async function apiUsageSyncRoutes(fastify) {
     }
   });
 
-  /**
-   * POST /api-usage-sync/halfday
-   * Manually trigger half-day sync
-   */
-  fastify.post('/api-usage-sync/halfday', {
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-          },
-        },
-      },
-    },
-  }, async function halfDaySyncHandler(request, reply) {
+  fastify.post('/api-usage-sync/fourhour', {}, async function fourHourSyncHandler(request, reply) {
     try {
-      console.log('[API] Half-day sync triggered manually');
-      
-      const result = await apiUsageSyncService.syncHalfDayUsage();
-      
+      const includeCurrent = request.query?.includeCurrent !== false && request.query?.includeCurrent !== 'false';
+      const result = await apiUsageSyncService.syncFourHourUsage({ includeCurrent });
       return reply.send(result);
     } catch (error) {
-      request.log.error({ err: error }, 'Failed to sync half-day usage');
+      request.log.error({ err: error }, 'Failed to sync 4-hour usage');
+      return reply.code(500).send({
+        success: false,
+        error: 'FourHourSyncFailed',
+        message: error.message,
+      });
+    }
+  });
+
+  fastify.post('/api-usage-sync/halfday', {}, async function halfDayAliasHandler(request, reply) {
+    try {
+      const includeCurrent = request.query?.includeCurrent !== false && request.query?.includeCurrent !== 'false';
+      const result = await apiUsageSyncService.syncFourHourUsage({ includeCurrent });
+      return reply.send({
+        ...result,
+        deprecatedAlias: 'halfday',
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to sync usage via halfday alias');
       return reply.code(500).send({
         success: false,
         error: 'HalfDaySyncFailed',
@@ -110,30 +93,15 @@ async function apiUsageSyncRoutes(fastify) {
     }
   });
 
-  /**
-   * POST /api-usage-sync/daily
-   * Deprecated: alias for half-day sync
-   */
-  fastify.post('/api-usage-sync/daily', {
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-          },
-        },
-      },
-    },
-  }, async function dailySyncHandler(request, reply) {
+  fastify.post('/api-usage-sync/daily', {}, async function dailyAliasHandler(request, reply) {
     try {
-      console.log('[API] Daily sync (deprecated) triggered manually');
-
-      const result = await apiUsageSyncService.syncHalfDayUsage();
-      
-      return reply.send(result);
+      const result = await apiUsageSyncService.syncFourHourUsage({ includeCurrent: true });
+      return reply.send({
+        ...result,
+        deprecatedAlias: 'daily',
+      });
     } catch (error) {
-      request.log.error({ err: error }, 'Failed to sync daily usage');
+      request.log.error({ err: error }, 'Failed to sync usage via daily alias');
       return reply.code(500).send({
         success: false,
         error: 'DailySyncFailed',
@@ -142,30 +110,15 @@ async function apiUsageSyncRoutes(fastify) {
     }
   });
 
-  /**
-   * POST /api-usage-sync/weekly
-   * Deprecated: alias for half-day sync
-   */
-  fastify.post('/api-usage-sync/weekly', {
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-          },
-        },
-      },
-    },
-  }, async function weeklySyncHandler(request, reply) {
+  fastify.post('/api-usage-sync/weekly', {}, async function weeklyAliasHandler(request, reply) {
     try {
-      console.log('[API] Weekly sync (deprecated) triggered manually');
-
-      const result = await apiUsageSyncService.syncHalfDayUsage();
-      
-      return reply.send(result);
+      const result = await apiUsageSyncService.syncFourHourUsage({ includeCurrent: true });
+      return reply.send({
+        ...result,
+        deprecatedAlias: 'weekly',
+      });
     } catch (error) {
-      request.log.error({ err: error }, 'Failed to sync weekly usage');
+      request.log.error({ err: error }, 'Failed to sync usage via weekly alias');
       return reply.code(500).send({
         success: false,
         error: 'WeeklySyncFailed',
@@ -174,30 +127,15 @@ async function apiUsageSyncRoutes(fastify) {
     }
   });
 
-  /**
-   * POST /api-usage-sync/monthly
-   * Deprecated: alias for half-day sync
-   */
-  fastify.post('/api-usage-sync/monthly', {
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-          },
-        },
-      },
-    },
-  }, async function monthlySyncHandler(request, reply) {
+  fastify.post('/api-usage-sync/monthly', {}, async function monthlyAliasHandler(request, reply) {
     try {
-      console.log('[API] Monthly sync (deprecated) triggered manually');
-
-      const result = await apiUsageSyncService.syncHalfDayUsage();
-
-      return reply.send(result);
+      const result = await apiUsageSyncService.syncFourHourUsage({ includeCurrent: true });
+      return reply.send({
+        ...result,
+        deprecatedAlias: 'monthly',
+      });
     } catch (error) {
-      request.log.error({ err: error }, 'Failed to sync monthly usage');
+      request.log.error({ err: error }, 'Failed to sync usage via monthly alias');
       return reply.code(500).send({
         success: false,
         error: 'MonthlySyncFailed',
@@ -206,10 +144,6 @@ async function apiUsageSyncRoutes(fastify) {
     }
   });
 
-  /**
-   * GET /api-usage-sync/status
-   * Get sync service status
-   */
   fastify.get('/api-usage-sync/status', {
     schema: {
       response: {
@@ -218,25 +152,22 @@ async function apiUsageSyncRoutes(fastify) {
           properties: {
             provider: { type: 'string' },
             usageRedisEnabled: { type: 'boolean' },
-            lastSync: { type: 'object' },
+            period: { type: 'string' },
           },
         },
       },
     },
   }, async function statusHandler(request, reply) {
     try {
-      const usageRedis = require('../lib/usageRedis');
-      
       return reply.send({
         provider: usageRedis.getProviderName(),
         usageRedisEnabled: usageRedis.isEnabled(),
+        period: '4hour',
         message: 'API Usage Sync Service is running',
         endpoints: {
-          trigger: 'POST /api-usage-sync/trigger - Run scheduled sync (half-day)',
-          halfday: 'POST /api-usage-sync/halfday - Force half-day sync',
-          daily: 'POST /api-usage-sync/daily - Deprecated alias for half-day sync',
-          weekly: 'POST /api-usage-sync/weekly - Deprecated alias for half-day sync',
-          monthly: 'POST /api-usage-sync/monthly - Deprecated alias for half-day sync',
+          trigger: 'POST /api-usage-sync/trigger - Safe to call at any time, syncs closed periods and the current partial period',
+          fourhour: 'POST /api-usage-sync/fourhour - Force a 4-hour usage sync',
+          halfday: 'POST /api-usage-sync/halfday - Deprecated alias for 4-hour sync',
         },
       });
     } catch (error) {

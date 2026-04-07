@@ -1,5 +1,5 @@
 const dashboardService = require('../services/dashboardService')
-const usageRedis = require('../lib/usageRedis')
+const localRedisClient = require('../lib/localRedis')
 const apiUsageService = require('../services/apiUsageService')
 const {
   tenantContext,
@@ -137,7 +137,7 @@ async function dashboardRoutes(fastify) {
     }
   })
 
-  // Get API call statistics from Upstash Redis
+  // Get API call statistics from MongoDB + local Redis delta counters
   fastify.get('/dashboard/api-stats', {
     preHandler: [authenticate],
     schema: {
@@ -145,6 +145,8 @@ async function dashboardRoutes(fastify) {
         200: {
           type: 'object',
           properties: {
+            fourHour: { type: 'number' },
+            daily: { type: 'number' },
             today: { type: 'number' },
             weekly: { type: 'number' },
             monthly: { type: 'number' },
@@ -170,24 +172,26 @@ async function dashboardRoutes(fastify) {
     }
   })
 
-  // Debug endpoint to check Redis keys directly
+  // Debug endpoint to inspect current 4-hour counter state
   fastify.get('/dashboard/api-stats-debug', {
     preHandler: [authenticate],
   }, async function apiStatsDebugHandler(request, reply) {
     try {
-      const tenantId = request.tenantId || 'system';
+      const tenantId = request.tenantId;
       const now = new Date();
-      const period = apiUsageService.getHalfDayPeriod(now);
-      const key = `api:count:12h:${tenantId}:${period.periodKey}`;
-      const value = await usageRedis.get(key);
+      const period = apiUsageService.getFourHourPeriod(now);
+      const key = localRedisClient.getUsageCounterKey(tenantId, period.periodKey);
+      const counter = tenantId ? await localRedisClient.getUsageCounter(tenantId, period.periodKey) : null;
 
       return reply.send({
         tenantId,
-        provider: usageRedis.getProviderName(),
+        provider: 'local',
         periodKey: period.periodKey,
         key,
-        rawValue: value,
-        parsedValue: value === null ? 0 : Number(value),
+        count: counter?.count || 0,
+        flushed: counter?.flushed || 0,
+        pending: counter?.pending || 0,
+        updatedAt: counter?.updatedAt || null,
       })
     } catch (error) {
       request.log.error({ err: error }, 'Failed to debug API stats')

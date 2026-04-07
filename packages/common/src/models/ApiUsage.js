@@ -12,10 +12,10 @@ const apiUsageSchema = new mongoose.Schema({
     index: true,
   },
   
-  // Period type: 'halfday', 'daily', 'weekly', 'monthly'
+  // Period type: '4hour', 'daily', 'weekly', 'monthly'
   period: {
     type: String,
-    enum: ['halfday', 'daily', 'weekly', 'monthly'],
+    enum: ['4hour', 'halfday', 'daily', 'weekly', 'monthly'],
     required: true,
     index: true,
   },
@@ -24,7 +24,7 @@ const apiUsageSchema = new mongoose.Schema({
   periodKey: {
     type: String,
     required: true,
-    // Examples: '2025-10-08T00' (halfday), '2025-10-08' (daily), '2025-W41' (weekly), '2025-10' (monthly)
+    // Examples: '2025-10-08T12' (4hour), '2025-10-08' (daily), '2025-W41' (weekly), '2025-10' (monthly)
   },
   
   // Start and end dates of the period

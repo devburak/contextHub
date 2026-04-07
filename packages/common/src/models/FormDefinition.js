@@ -78,6 +78,7 @@ const formSettingsSchema = new Schema({
   enableHoneypot: { type: Boolean, default: true },
   allowMultipleSubmissions: { type: Boolean, default: true },
   submitLimit: { type: Number }, // max submissions per user
+  submissionCooldownSeconds: { type: Number, default: 60, min: 0, max: 3600 }, // cooldown between submissions (0-3600 seconds)
   enableNotifications: { type: Boolean, default: false },
   notificationEmails: [{ type: String }],
   emailNotifications: { type: emailNotificationSchema, default: {} },

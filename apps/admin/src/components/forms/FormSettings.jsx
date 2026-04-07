@@ -229,6 +229,25 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
               </Switch>
             </div>
 
+            <div>
+              <label className="text-sm font-medium text-gray-900">
+                Gönderim Bekleme Süresi (saniye)
+              </label>
+              <p className="text-sm text-gray-500 mb-2">
+                Aynı IP'den ardışık gönderimler arasında beklenmesi gereken süre
+              </p>
+              <input
+                type="number"
+                min="0"
+                max="3600"
+                value={settings.submissionCooldownSeconds ?? 60}
+                onChange={(e) => handleSettingChange('submissionCooldownSeconds', Math.min(3600, Math.max(0, parseInt(e.target.value) || 0)))}
+                className="block w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                placeholder="60"
+              />
+              <p className="text-xs text-gray-400 mt-1">0 = bekleme yok, max 3600 saniye (1 saat)</p>
+            </div>
+
             <div className="flex items-center justify-between">
               <div>
                 <label className="text-sm font-medium text-gray-900">
@@ -236,6 +255,10 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
                 </label>
                 <p className="text-sm text-gray-500">
                   Sadece giriş yapmış kullanıcılar gönderebilir
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Bu seçenek public formlarda uygulanmaz. API key ile çalışan uygulama/widget
+                  kullanımında etkisi yoktur; yalnızca oturumlu (JWT) kullanıcılar için geçerlidir.
                 </p>
               </div>
               <Switch

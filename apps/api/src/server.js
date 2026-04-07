@@ -10,20 +10,10 @@ const { database } = require('@contexthub/common');
 const roleService = require('./services/roleService');
 const tenantContext = require('@contexthub/common/src/tenantContext');
 const apiLogger = require('./middleware/apiLogger');
-const upstashClient = require('./lib/upstash');
 const localRedisClient = require('./lib/localRedis');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
-
-// Simple RBAC roles definition.  In later phases this will be replaced by a more robust implementation.
-const ROLES = {
-  OWNER: 'owner',
-  ADMIN: 'admin',
-  EDITOR: 'editor',
-  AUTHOR: 'author',
-  VIEWER: 'viewer'
-};
 
 // JWT plugin wrapper.  Using fastify-plugin allows encapsulation while keeping clear separation of concerns.
 const jwtPlugin = fp(async function (app) {
@@ -183,8 +173,7 @@ async function buildServer() {
     tenantContext.run({}, done);
   });
 
-  // Register API logger middleware (logs all requests to Upstash Redis)
-  // Using onResponse hook to ensure tenantContext has run first
+  // Register API usage logger after tenant resolution
   app.addHook('onResponse', apiLogger);
 
   // Register routes with /api prefix
@@ -229,40 +218,45 @@ async function start() {
   // Connect to MongoDB before starting the server
   await database.connectDB();
   await roleService.ensureSystemRoles();
-  
-  // Initialize Upstash Redis client (after env vars are loaded)
-  upstashClient.initialize();
-  
-  // Initialize Local Redis client for limit caching
-  await localRedisClient.initialize();
 
-  // Cleanup legacy API log keys on startup
-  setImmediate(async () => {
-    try {
-      if (upstashClient.isEnabled()) {
-        const result = await upstashClient.cleanupLegacyLogs();
-        console.log('[Server] Upstash legacy log cleanup result:', result);
-      }
-      if (localRedisClient.isEnabled()) {
-        const result = await localRedisClient.cleanupLegacyLogs();
-        console.log('[Server] Local Redis legacy log cleanup result:', result);
-      }
-    } catch (error) {
-      console.error('[Server] Legacy log cleanup failed:', error.message);
+  let usageStateRefreshPromise = null;
+  const refreshUsageRuntimeState = async (reason) => {
+    if (!localRedisClient.isEnabled()) {
+      return;
     }
+
+    if (usageStateRefreshPromise) {
+      return usageStateRefreshPromise;
+    }
+
+    usageStateRefreshPromise = (async () => {
+      try {
+        console.log(`[Server] Refreshing usage runtime state (${reason})...`);
+        const limitCheckerService = require('./services/limitCheckerService');
+        const apiUsageService = require('./services/apiUsageService');
+        const cleanupResult = await localRedisClient.cleanupLegacyLogs();
+        console.log('[Server] Local Redis legacy usage cleanup result:', cleanupResult);
+        await Promise.all([
+          limitCheckerService.refreshAllLimitsCache(),
+          apiUsageService.refreshAllTenantRequestStates(),
+        ]);
+        console.log('[Server] Usage runtime state refreshed');
+      } catch (error) {
+        console.error('[Server] Failed to refresh usage runtime state:', error.message);
+      } finally {
+        usageStateRefreshPromise = null;
+      }
+    })();
+
+    return usageStateRefreshPromise;
+  };
+
+  localRedisClient.on('ready', ({ reconnected }) => {
+    const reason = reconnected ? 'redis reconnected' : 'redis ready';
+    void refreshUsageRuntimeState(reason);
   });
-  
-  // Pre-populate limits cache on startup
-  if (localRedisClient.isEnabled()) {
-    console.log('[Server] Pre-populating limits cache...');
-    try {
-      const limitCheckerService = require('./services/limitCheckerService');
-      await limitCheckerService.refreshAllLimitsCache();
-      console.log('[Server] Limits cache populated');
-    } catch (error) {
-      console.error('[Server] Failed to populate limits cache:', error.message);
-    }
-  }
+
+  await localRedisClient.initialize();
   
   const app = await buildServer();
   const port = process.env.PORT || 3000;

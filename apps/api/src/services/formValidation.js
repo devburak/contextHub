@@ -196,7 +196,13 @@ const formSettingsSchema = z.object({
   enableHoneypot: z.boolean().default(true),
   allowMultipleSubmissions: z.boolean().default(true),
   submitLimit: z.number().positive('Gönderim limiti pozitif bir sayı olmalıdır').optional(),
+  submissionCooldownSeconds: z
+    .number()
+    .min(0, 'Gönderim bekleme süresi 0 veya daha büyük olmalıdır')
+    .max(3600, 'Gönderim bekleme süresi en fazla 3600 saniye olabilir')
+    .optional(),
   requireAuthentication: z.boolean().default(false),
+  requireAuth: z.boolean().optional(),
   collectGeo: z.boolean().default(false),
   collectDevice: z.boolean().default(true),
   enableFileUpload: z.boolean().default(false),

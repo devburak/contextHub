@@ -259,6 +259,8 @@ function normalizeFormSettings(settings = {}) {
   const normalized = { ...settings };
   const legacyEnabled = settings.enableNotifications;
   const legacyRecipients = Array.isArray(settings.notificationEmails) ? settings.notificationEmails : [];
+  const legacyRequireAuth = settings.requireAuthentication;
+  const requireAuth = settings.requireAuth;
 
   const emailNotifications = {
     ...(settings.emailNotifications || {})
@@ -273,12 +275,22 @@ function normalizeFormSettings(settings = {}) {
   }
 
   normalized.emailNotifications = emailNotifications;
+
+  if (requireAuth === undefined && legacyRequireAuth !== undefined) {
+    normalized.requireAuth = Boolean(legacyRequireAuth);
+  }
+
+  if (legacyRequireAuth === undefined && requireAuth !== undefined) {
+    normalized.requireAuthentication = Boolean(requireAuth);
+  }
+
   return normalized;
 }
 
 function applyEmailNotificationCompatibility(settings = {}) {
   const normalized = { ...settings };
   const emailNotifications = normalized.emailNotifications;
+  const legacyRequireAuth = normalized.requireAuthentication;
 
   if (emailNotifications && typeof emailNotifications === 'object') {
     if (typeof emailNotifications.enabled === 'boolean') {
@@ -288,6 +300,10 @@ function applyEmailNotificationCompatibility(settings = {}) {
     if (Array.isArray(emailNotifications.recipients)) {
       normalized.notificationEmails = emailNotifications.recipients;
     }
+  }
+
+  if (legacyRequireAuth !== undefined && normalized.requireAuth === undefined) {
+    normalized.requireAuth = Boolean(legacyRequireAuth);
   }
 
   return normalized;
