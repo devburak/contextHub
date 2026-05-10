@@ -428,44 +428,58 @@ async function resolveSlug({ collectionType, tenantId, collectionKey, payload, d
 }
 
 function resolveSort(sortParam, collectionType) {
+  let primarySort;
   if (!sortParam || typeof sortParam !== 'string') {
     const { defaultSort } = collectionType.settings || {};
     if (defaultSort?.key) {
-      return {
+      primarySort = {
         [resolveSortKey(defaultSort.key, collectionType)]: defaultSort.dir === 'asc' ? 1 : -1
       };
+    } else {
+      primarySort = { createdAt: -1 };
     }
-    return { createdAt: -1 };
+  } else {
+    let direction = 1;
+    let key = sortParam;
+
+    if (sortParam.startsWith('-')) {
+      direction = -1;
+      key = sortParam.slice(1);
+    } else if (sortParam.includes(':')) {
+      const [providedKey, providedDir] = sortParam.split(':');
+      key = providedKey;
+      direction = providedDir === 'asc' ? 1 : -1;
+    }
+
+    primarySort = { [resolveSortKey(key, collectionType)]: direction };
   }
 
-  let direction = 1;
-  let key = sortParam;
-
-  if (sortParam.startsWith('-')) {
-    direction = -1;
-    key = sortParam.slice(1);
-  } else if (sortParam.includes(':')) {
-    const [providedKey, providedDir] = sortParam.split(':');
-    key = providedKey;
-    direction = providedDir === 'asc' ? 1 : -1;
-  }
-
-  const resolvedKey = resolveSortKey(key, collectionType);
-  return { [resolvedKey]: direction };
+  return {
+    ...primarySort,
+    _id: primarySort._id ? primarySort._id : 1
+  };
 }
 
 function resolveSortKey(key, collectionType) {
   if (!key) return 'createdAt';
 
-  if (['createdAt', 'updatedAt', 'slug', 'status'].includes(key)) {
+  if (['createdAt', 'updatedAt', 'slug', 'status', '_id'].includes(key)) {
     return key;
   }
 
-  if (key === 'title') {
+  if (key === 'title' || key === 'indexed.title') {
     return 'indexed.title';
   }
-  if (key === 'date') {
+  if (key === 'date' || key === 'indexed.date') {
     return 'indexed.date';
+  }
+
+  if (key.startsWith('data.')) {
+    const fieldKey = key.slice('data.'.length);
+    const fieldExists = (collectionType.fields || []).some((field) => field.key === fieldKey);
+    if (fieldExists) {
+      return key;
+    }
   }
 
   const fieldExists = (collectionType.fields || []).some((field) => field.key === key);

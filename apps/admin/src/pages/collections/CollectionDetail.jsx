@@ -52,7 +52,7 @@ export default function CollectionDetail() {
   const debouncedSearch = useDebouncedValue(search, 350);
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState('-createdAt');
+  const [sort, setSort] = useState('');
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
@@ -251,6 +251,7 @@ export default function CollectionDetail() {
               }}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             >
+              <option value="">Koleksiyon varsayılanı</option>
               <option value="-createdAt">En yeni</option>
               <option value="createdAt">En eski</option>
               <option value="-indexed.date">Tarih (yeni)</option>
