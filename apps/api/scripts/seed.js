@@ -7,6 +7,7 @@ const dotenv = require('dotenv');
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const { database, Tenant, User, Membership } = require('@contexthub/common');
+const tenantSubscriptionService = require('../src/services/tenantSubscriptionService');
 
 const DEFAULTS = {
   tenantName: process.env.SEED_TENANT_NAME || 'ContextHub',
@@ -31,6 +32,7 @@ async function ensureTenant({ name, slug, plan }) {
   let tenant = await Tenant.findOne({ slug });
   if (!tenant) {
     tenant = new Tenant({ name, slug, plan, status: 'active' });
+    await tenantSubscriptionService.applyPlanToTenant(tenant, plan);
     await tenant.save();
     console.log('• Tenant oluşturuldu.');
     return tenant;
@@ -50,6 +52,9 @@ async function ensureTenant({ name, slug, plan }) {
     tenant.status = 'active';
     changed = true;
   }
+
+  const planResult = await tenantSubscriptionService.applyPlanToTenant(tenant, plan);
+  changed = changed || planResult.changed;
 
   if (changed) {
     await tenant.save();

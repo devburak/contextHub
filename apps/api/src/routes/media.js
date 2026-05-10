@@ -101,6 +101,53 @@ async function mediaRoutes(fastify) {
     }
   })
 
+  fastify.post('/media/register-existing', {
+    preHandler: [authenticate, requireAuthor],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          key: { type: 'string' },
+          sourceUrl: { type: 'string' },
+          originalName: { type: 'string' },
+          mimeType: { type: 'string' },
+          size: { type: 'number' },
+          altText: { type: 'string' },
+          caption: { type: 'string' },
+          description: { type: 'string' },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async function registerExistingHandler(request, reply) {
+    try {
+      const media = await mediaService.registerExistingMedia({
+        tenantId: request.tenantId,
+        userId: request.user?._id?.toString(),
+        key: request.body.key,
+        sourceUrl: request.body.sourceUrl,
+        originalName: request.body.originalName,
+        providedMimeType: request.body.mimeType,
+        providedSize: request.body.size,
+        altText: request.body.altText,
+        caption: request.body.caption,
+        description: request.body.description,
+        tags: request.body.tags,
+      })
+
+      return reply.code(201).send({ media })
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to register existing media')
+      return reply.code(400).send({
+        error: 'ExistingMediaPersistFailed',
+        message: error.message,
+      })
+    }
+  })
+
   fastify.post('/media/external', {
     preHandler: [authenticate, requireAuthor],
     schema: {

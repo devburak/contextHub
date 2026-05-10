@@ -18,7 +18,9 @@
     "clean": "rm -rf dist .turbo",
     "type-check": "echo \"No TypeScript in API yet\"",
     "db:seed": "node scripts/seed.js",
+    "db:bootstrap": "node src/scripts/bootstrapCore.js",
     "db:migrate": "node scripts/migrate.js",
+    "db:backfill-subscriptions": "node src/scripts/backfillTenantSubscriptions.js",
     "db:seed-plans": "node src/scripts/seedSubscriptionPlans.js",
     "db:seed-flags": "node src/scripts/seedFeatureFlags.js"
   },

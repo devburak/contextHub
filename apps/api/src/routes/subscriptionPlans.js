@@ -1,5 +1,6 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
 const apiUsageService = require('../services/apiUsageService');
+const tenantSubscriptionService = require('../services/tenantSubscriptionService');
 const { tenantContext, authenticateWithoutTenant } = require('../middleware/auth');
 
 /**
@@ -244,19 +245,17 @@ async function subscriptionPlanRoutes(fastify) {
 
       // Update plan
       if (planSlug) {
-        const plan = await SubscriptionPlan.getPlanBySlug(planSlug);
-        if (!plan) {
-          return reply.code(404).send({
-            error: 'NotFound',
-            message: 'Subscription plan not found',
+        try {
+          await tenantSubscriptionService.applyPlanToTenant(tenant, planSlug);
+        } catch (error) {
+          const notFound = error.message.includes('not available');
+          return reply.code(notFound ? 404 : 400).send({
+            error: notFound ? 'NotFound' : 'BadRequest',
+            message: error.message,
           });
         }
-        
-        tenant.currentPlan = plan._id;
-        tenant.subscriptionStartDate = new Date();
-        tenant.billingCycleStart = new Date();
-        
-        console.log(`[Tenant] Updated subscription for ${tenantId} to ${planSlug}`);
+
+        console.log(`[Tenant] Updated subscription for ${tenantId} to ${tenant.plan}`);
       }
 
       // Update custom limits
@@ -287,6 +286,7 @@ async function subscriptionPlanRoutes(fastify) {
         tenant: {
           id: tenant._id,
           name: tenant.name,
+          plan: tenant.plan,
           currentPlan: tenant.currentPlan,
           customLimits: tenant.customLimits,
         },

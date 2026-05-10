@@ -30,11 +30,14 @@ const featureFlags = [
   }
 ];
 
-async function seedFeatureFlags() {
+async function seedFeatureFlags(options = {}) {
+  const { connect = true } = options;
   try {
-    console.log('🔗 Connecting to database...');
-    await database.connectDB();
-    console.log('✅ Connected to database\n');
+    if (connect) {
+      console.log('🔗 Connecting to database...');
+      await database.connectDB();
+      console.log('✅ Connected to database\n');
+    }
 
     console.log('🚩 Seeding feature flag definitions...\n');
 
@@ -64,11 +67,28 @@ async function seedFeatureFlags() {
       console.log('');
     });
 
-    process.exit(0);
+    return {
+      processed: featureFlags.length,
+      keys: featureFlags.map((flag) => flag.key),
+    };
   } catch (error) {
     console.error('❌ Error seeding feature flags:', error);
-    process.exit(1);
+    throw error;
+  } finally {
+    if (connect) {
+      await database.disconnectDB();
+    }
   }
 }
 
-seedFeatureFlags();
+if (require.main === module) {
+  seedFeatureFlags()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch(() => {
+      process.exit(1);
+    });
+}
+
+module.exports = seedFeatureFlags;
