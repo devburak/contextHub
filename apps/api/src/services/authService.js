@@ -714,7 +714,7 @@ class AuthService {
         tenantId,
         status: 'inactive',
         isEmailVerified: false,
-        mustChangePassword: Boolean(providedPassword)
+        mustChangePassword: true
       });
       await user.save();
 
@@ -754,6 +754,47 @@ class AuthService {
     return this.issueInvitation({ membership, tenantId, invitedBy });
   }
 
+  async getInvitationPreview(inviteToken) {
+    if (!inviteToken) {
+      throw new Error('Invitation token is required');
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(inviteToken).digest('hex');
+    const membership = await Membership.findOne({ inviteTokenHash: tokenHash })
+      .populate('tenantId', 'name slug plan status')
+      .populate('userId', 'email firstName lastName status isEmailVerified mustChangePassword');
+
+    if (!membership) {
+      throw new Error('Invitation not found or already used');
+    }
+
+    if (!membership.inviteTokenExpiresAt || membership.inviteTokenExpiresAt < new Date()) {
+      throw new Error('Invitation token has expired');
+    }
+
+    const user = membership.userId;
+    const tenant = membership.tenantId;
+
+    return {
+      email: user?.email || null,
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
+      role: membership.role,
+      status: membership.status,
+      expiresAt: membership.inviteTokenExpiresAt,
+      requiresPasswordSetup: Boolean(user?.mustChangePassword || !user?.isEmailVerified || user?.status !== 'active'),
+      tenant: tenant
+        ? {
+            id: tenant._id.toString(),
+            name: tenant.name,
+            slug: tenant.slug,
+            plan: tenant.plan,
+            status: tenant.status
+          }
+        : null
+    };
+  }
+
   async acceptInvitation(inviteToken, { password, firstName, lastName } = {}) {
     if (!inviteToken) {
       throw new Error('Invitation token is required');
@@ -777,6 +818,12 @@ class AuthService {
       throw new Error('User not found');
     }
 
+    const requiresPasswordSetup = Boolean(
+      user.mustChangePassword ||
+      !user.isEmailVerified ||
+      user.status !== 'active'
+    );
+
     if (typeof firstName === 'string' && firstName.trim()) {
       user.firstName = firstName.trim();
     }
@@ -787,8 +834,16 @@ class AuthService {
 
     let passwordUpdated = false;
     if (typeof password === 'string' && password.trim()) {
+      if (!requiresPasswordSetup) {
+        throw new Error('Password cannot be changed with an invitation link');
+      }
+
       user.password = password.trim();
       passwordUpdated = true;
+    }
+
+    if (requiresPasswordSetup && !passwordUpdated) {
+      throw new Error('Password is required to accept this invitation');
     }
 
     user.status = 'active';
@@ -804,6 +859,8 @@ class AuthService {
 
     const { role: roleDoc, permissions } = await roleService.ensureRoleReference(activatedMembership, tenantId);
     const roleKey = roleDoc?.key || activatedMembership.role;
+    const rolePayload = roleService.formatRole(roleDoc);
+    const tenantDoc = activatedMembership.tenantId;
 
     const authToken = this.fastify.jwt.sign(
       {
@@ -818,8 +875,75 @@ class AuthService {
       { expiresIn: '24h' }
     );
 
+    const activeMembershipDocs = await Membership.find({
+      userId: user._id,
+      status: 'active'
+    }).populate('tenantId', 'name slug plan status createdAt');
+
+    const memberships = await Promise.all(activeMembershipDocs.map(async (membershipDoc) => {
+      const resolvedTenantDoc = membershipDoc.tenantId;
+      const resolvedTenantId = resolvedTenantDoc?._id?.toString() || membershipDoc.tenantId?.toString();
+      const { role: resolvedRoleDoc, permissions: resolvedPermissions } = await roleService.ensureRoleReference(
+        membershipDoc,
+        resolvedTenantId
+      );
+      const resolvedRolePayload = roleService.formatRole(resolvedRoleDoc);
+      const resolvedRoleKey = resolvedRolePayload?.key || membershipDoc.role;
+      const token = this.fastify.jwt.sign(
+        {
+          sub: user._id.toString(),
+          email: user.email,
+          tokenVersion: user.tokenVersion ?? 0,
+          role: resolvedRoleKey,
+          roleId: resolvedRolePayload?.id ?? null,
+          tenantId: resolvedTenantId,
+          permissions: resolvedPermissions
+        },
+        { expiresIn: '24h' }
+      );
+
+      return {
+        id: membershipDoc._id.toString(),
+        tenantId: resolvedTenantId,
+        tenant: resolvedTenantDoc
+          ? {
+              id: resolvedTenantDoc._id.toString(),
+              name: resolvedTenantDoc.name,
+              slug: resolvedTenantDoc.slug,
+              plan: resolvedTenantDoc.plan,
+              status: resolvedTenantDoc.status,
+              createdAt: resolvedTenantDoc.createdAt
+            }
+          : null,
+        role: resolvedRoleKey,
+        roleMeta: resolvedRolePayload,
+        permissions: resolvedPermissions,
+        status: membershipDoc.status,
+        token
+      };
+    }));
+
+    const activeMembership = memberships.find((item) => item.id === activatedMembership._id.toString()) || {
+      id: activatedMembership._id.toString(),
+      tenantId,
+      tenant: tenantDoc
+        ? {
+            id: tenantDoc._id.toString(),
+            name: tenantDoc.name,
+            slug: tenantDoc.slug,
+            plan: tenantDoc.plan,
+            status: tenantDoc.status
+          }
+        : null,
+      role: roleKey,
+      roleMeta: rolePayload,
+      permissions,
+      status: activatedMembership.status,
+      token: authToken
+    };
+
     return {
-      token: authToken,
+      token: activeMembership.token || authToken,
       user: {
         id: user._id.toString(),
         email: user.email,
@@ -832,9 +956,23 @@ class AuthService {
       membership: {
         id: activatedMembership._id.toString(),
         tenantId,
+        tenant: tenantDoc
+          ? {
+              id: tenantDoc._id.toString(),
+              name: tenantDoc.name,
+              slug: tenantDoc.slug,
+              plan: tenantDoc.plan,
+              status: tenantDoc.status
+            }
+          : null,
+        role: roleKey,
+        roleMeta: rolePayload,
+        permissions,
         status: activatedMembership.status,
         acceptedAt: activatedMembership.acceptedAt
-      }
+      },
+      memberships,
+      activeMembership
     };
   }
 
