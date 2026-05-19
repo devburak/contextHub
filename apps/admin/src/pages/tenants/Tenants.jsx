@@ -218,6 +218,7 @@ export default function Tenants() {
                 // Backend'den gelen ownerCount'u kullan
                 const ownerCount = membership.ownerCount || 0
                 const hasOtherOwners = isOwner && ownerCount > 1
+                const planLabel = membership.tenant?.planName || membership.tenant?.currentPlan?.name || membership.tenant?.plan || 'Free'
                 
                 return (
                   <div
@@ -247,7 +248,7 @@ export default function Tenants() {
                           Rol: {membership.role}
                         </span>
                         <span className="text-xs uppercase tracking-wide text-gray-500">
-                          {membership.tenant?.plan || 'Free'} planı
+                          {planLabel} planı
                         </span>
                         {(() => {
                           const statusInfo = STATUS_STYLES[membership.status]

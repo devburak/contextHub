@@ -1,5 +1,6 @@
 const localRedisClient = require('../lib/localRedis');
 const apiUsageService = require('./apiUsageService');
+const tenantSubscriptionService = require('./tenantSubscriptionService');
 const Tenant = require('@contexthub/common/src/models/Tenant');
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan'); // Pre-load for populate
 const Membership = require('@contexthub/common/src/models/Membership');
@@ -41,12 +42,7 @@ class LimitCheckerService {
       throw new Error('Tenant not found');
     }
 
-    const limits = {
-      userLimit: await tenant.getLimit('userLimit'),
-      ownerLimit: await tenant.getLimit('ownerLimit'),
-      storageLimit: await tenant.getLimit('storageLimit'),
-      monthlyRequestLimit: await tenant.getLimit('monthlyRequestLimit'),
-    };
+    const limits = await tenantSubscriptionService.getEffectiveLimits(tenant);
 
     // Cache for 24 hours
     if (localRedisClient.isEnabled()) {
@@ -247,12 +243,7 @@ class LimitCheckerService {
       console.log(`[LimitChecker] Refreshing cache for ${tenants.length} tenants...`);
       
       for (const tenant of tenants) {
-        const limits = {
-          userLimit: await tenant.getLimit('userLimit'),
-          ownerLimit: await tenant.getLimit('ownerLimit'),
-          storageLimit: await tenant.getLimit('storageLimit'),
-          monthlyRequestLimit: await tenant.getLimit('monthlyRequestLimit'),
-        };
+        const limits = await tenantSubscriptionService.getEffectiveLimits(tenant);
 
         if (localRedisClient.isEnabled()) {
           await localRedisClient.cacheTenantLimits(tenant._id.toString(), limits, 86400);

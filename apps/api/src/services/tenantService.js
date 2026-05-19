@@ -8,6 +8,25 @@ const crypto = require('crypto');
 const { ROLE_KEYS } = rbac;
 
 class TenantService {
+  async #formatTenantSummary(tenantDoc) {
+    if (!tenantDoc) {
+      return null;
+    }
+
+    const plan = await tenantSubscriptionService.getPlanPayloadForTenant(tenantDoc);
+
+    return {
+      id: tenantDoc._id.toString(),
+      name: tenantDoc.name,
+      slug: tenantDoc.slug,
+      plan: plan.slug,
+      planName: plan.name,
+      currentPlan: plan,
+      status: tenantDoc.status,
+      createdAt: tenantDoc.createdAt
+    };
+  }
+
   #slugify(value) {
     return value
       .toString()
@@ -78,7 +97,11 @@ class TenantService {
 
   async listUserTenants(userId) {
     const memberships = await Membership.find({ userId, status: { $in: ['active', 'pending'] } })
-      .populate('tenantId', 'name slug plan status createdAt')
+      .populate({
+        path: 'tenantId',
+        select: 'name slug plan status createdAt currentPlan',
+        populate: { path: 'currentPlan' }
+      })
       .sort({ createdAt: -1 });
 
     return Promise.all(memberships.map(async (membership) => {
@@ -99,16 +122,7 @@ class TenantService {
       return {
         id: membership._id.toString(),
         tenantId,
-        tenant: tenantDoc
-          ? {
-              id: tenantDoc._id.toString(),
-              name: tenantDoc.name,
-              slug: tenantDoc.slug,
-              plan: tenantDoc.plan,
-              status: tenantDoc.status,
-              createdAt: tenantDoc.createdAt
-            }
-          : null,
+        tenant: await this.#formatTenantSummary(tenantDoc),
         role: roleDoc?.key || membership.role,
         roleMeta: roleService.formatRole(roleDoc),
         permissions,
