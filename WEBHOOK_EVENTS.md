@@ -58,6 +58,57 @@ A domain event is an immutable plain JavaScript object describing something that
 
 The `payload` structure is intentionally open so each feature team can include the minimum snapshot they need for replay (e.g., content ID, slug, version, diff, etc.).
 
+## Placement Event Payload
+
+Placement create, update, archive, duplicate, experience changes, and delete actions emit `placement.created`, `placement.updated`, or `placement.deleted`. The payload includes enough data for app-side popup/custom-view caches to refresh without calling admin endpoints.
+
+```json
+{
+  "placementId": "placement_id",
+  "slug": "welcome-popup",
+  "name": "Welcome popup",
+  "category": "popup",
+  "status": "active",
+  "defaultRules": {},
+  "settings": {},
+  "experiences": [
+    {
+      "experienceId": "experience_id",
+      "name": "Default",
+      "status": "active",
+      "contentType": "form",
+      "payload": { "formId": "form_id" },
+      "ui": {},
+      "trigger": { "type": "onLoad" },
+      "rules": {},
+      "conversions": {}
+    }
+  ],
+  "endpoints": {
+    "details": "/api/public/placements/welcome-popup",
+    "decide": "/api/public/placements/decide",
+    "event": "/api/public/placements/event"
+  }
+}
+```
+
+Consumers that render custom UI should refresh their local placement definition from `endpoints.details` and continue using the decision endpoint for targeting, frequency, and A/B selection.
+
+## Admin Visibility
+
+Admin users can inspect webhook/cache health for placement changes from the Placement Workbench. The UI reads:
+
+```http
+GET /api/admin/tenants/:tenantId/webhooks/queue
+```
+
+The response is shown as:
+- Pending domain events.
+- Pending webhook outbox deliveries.
+- Failed webhook deliveries with retry/error metadata.
+
+This view exists to answer "I changed the placement, why did the app not update?" without requiring direct database or worker-log access.
+
 ## Storage Strategy (Phase 1)
 
 For the first milestone the API simply persists every event into a `DomainEvents` MongoDB collection. No outbound calls or queueing happens yet. That keeps the contract discoverable while infrastructure is still being prepared.

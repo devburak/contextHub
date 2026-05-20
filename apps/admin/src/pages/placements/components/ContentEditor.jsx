@@ -1,6 +1,52 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { listForms } from '../../../lib/api/forms.js';
 
 export default function ContentEditor({ content = {}, onChange }) {
+  const [forms, setForms] = useState([]);
+  const [formsLoading, setFormsLoading] = useState(false);
+  const [formsError, setFormsError] = useState('');
+
+  useEffect(() => {
+    if (content.type !== 'form') {
+      return;
+    }
+
+    let cancelled = false;
+    async function loadForms() {
+      setFormsLoading(true);
+      setFormsError('');
+      try {
+        const result = await listForms({
+          page: 1,
+          limit: 100,
+          filters: { status: 'published' }
+        });
+        if (!cancelled) {
+          setForms(result.forms || result.items || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFormsError(error?.response?.data?.message || 'Formlar yüklenemedi.');
+        }
+      } finally {
+        if (!cancelled) {
+          setFormsLoading(false);
+        }
+      }
+    }
+
+    loadForms();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [content.type]);
+
+  const selectedForm = useMemo(
+    () => forms.find((form) => (form._id || form.id) === content.formId),
+    [forms, content.formId]
+  );
+
   const handleUpdate = (field, value) => {
     onChange({
       ...content,
@@ -26,6 +72,7 @@ export default function ContentEditor({ content = {}, onChange }) {
           <option value="video">Video</option>
           <option value="form">Form</option>
           <option value="component">Component</option>
+          <option value="external">External URL</option>
         </select>
       </div>
 
@@ -218,45 +265,60 @@ export default function ContentEditor({ content = {}, onChange }) {
         <>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Form Title
+              ContextHub Formu
+            </label>
+            <select
+              value={content.formId || ''}
+              onChange={(e) => {
+                const form = forms.find((item) => (item._id || item.id) === e.target.value);
+                onChange({
+                  ...content,
+                  formId: e.target.value,
+                  title: content.title || form?.title || '',
+                  submitText: content.submitText || form?.settings?.submitButtonText || ''
+                });
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              disabled={formsLoading}
+            >
+              <option value="">{formsLoading ? 'Formlar yükleniyor...' : 'Form seçin'}</option>
+              {forms.map((form) => (
+                <option key={form._id || form.id} value={form._id || form.id}>
+                  {typeof form.title === 'string' ? form.title : form.title?.tr || form.title?.en || form.slug}
+                </option>
+              ))}
+            </select>
+            {formsError && <p className="mt-1 text-sm text-red-600">{formsError}</p>}
+            {selectedForm && (
+              <p className="mt-1 text-xs text-gray-500">
+                Slug: {selectedForm.slug} · Alan sayısı: {selectedForm.fields?.length || 0}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Başlık override
             </label>
             <input
               type="text"
               value={content.title || ''}
               onChange={(e) => handleUpdate('title', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              placeholder="Subscribe to newsletter"
+              placeholder="Boş bırakılırsa form başlığı kullanılır"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Submit Button Text
+              Submit Button Text override
             </label>
             <input
               type="text"
-              value={content.submitText || 'Submit'}
+              value={content.submitText || ''}
               onChange={(e) => handleUpdate('submitText', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Form Fields (JSON)
-            </label>
-            <textarea
-              value={JSON.stringify(content.fields || [], null, 2)}
-              onChange={(e) => {
-                try {
-                  handleUpdate('fields', JSON.parse(e.target.value));
-                } catch (err) {
-                  // Invalid JSON, ignore
-                }
-              }}
-              rows={6}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-              placeholder='[{"name": "email", "type": "email", "label": "Email", "required": true}]'
+              placeholder="Boş bırakılırsa form ayarı kullanılır"
             />
           </div>
         </>
@@ -277,6 +339,25 @@ export default function ContentEditor({ content = {}, onChange }) {
           />
           <p className="text-sm text-gray-500 mt-1">
             Component must be registered in your app
+          </p>
+        </div>
+      )}
+
+      {/* External Content */}
+      {content.type === 'external' && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            External URL
+          </label>
+          <input
+            type="url"
+            value={content.externalUrl || ''}
+            onChange={(e) => handleUpdate('externalUrl', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            placeholder="https://example.com/embed"
+          />
+          <p className="text-sm text-gray-500 mt-1">
+            Render tarafında iframe veya uygulamaya özel component ile kullanılabilir.
           </p>
         </div>
       )}

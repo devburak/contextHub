@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { usePlacement } from '../hooks/usePlacement';
+import { getTracker } from '../tracking';
 
 /**
  * PlacementHost Component
@@ -8,7 +9,7 @@ import { usePlacement } from '../hooks/usePlacement';
 export function PlacementHost({
   placementSlug,
   context = {},
-  trigger = 'onLoad',
+  trigger = null,
   autoTrack = true,
   className = '',
   style = {},
@@ -49,7 +50,11 @@ export function PlacementHost({
       show();
     };
 
-    switch (trigger) {
+    const resolvedTrigger = typeof trigger === 'string'
+      ? { type: trigger }
+      : trigger || decision.experience?.trigger || decision.trigger || { type: 'onLoad' };
+
+    switch (resolvedTrigger.type) {
       case 'onLoad':
         handleTrigger();
         break;
@@ -75,10 +80,11 @@ export function PlacementHost({
         document.addEventListener('mouseleave', handleMouseLeave);
         return () => document.removeEventListener('mouseleave', handleMouseLeave);
         
+      case 'afterDelay':
       case 'onTimeout':
         const timer = setTimeout(() => {
           handleTrigger();
-        }, decision.experience.trigger?.delay || 3000);
+        }, resolvedTrigger.delay || 3000);
         return () => clearTimeout(timer);
         
       case 'manual':
@@ -186,7 +192,7 @@ export function PlacementHost({
       }}
       onClick={handleClick}
     >
-      {renderContent(content, ui, handleClose, handleDismiss)}
+      {renderContent(content, ui, handleClose, handleDismiss, handleConversion)}
     </div>
   );
 }
@@ -263,6 +269,7 @@ function getVariantStyles(ui) {
       };
       
     case 'corner-popup':
+    case 'toast':
       return {
         ...baseStyles,
         bottom: ui.offset?.bottom || '20px',
@@ -301,7 +308,23 @@ function getVariantStyles(ui) {
 /**
  * Render content based on type
  */
-function renderContent(content, ui, handleClose, handleDismiss) {
+function getLocalizedText(value, fallback = '') {
+  if (!value) return fallback;
+  if (typeof value === 'string') return value;
+  return value.tr || value.en || Object.values(value)[0] || fallback;
+}
+
+function resolveEndpoint(endpoint, apiUrl) {
+  if (!endpoint) return null;
+  try {
+    const base = apiUrl || (typeof window !== 'undefined' ? window.location.origin : undefined);
+    return base ? new URL(endpoint, base).toString() : endpoint;
+  } catch (error) {
+    return endpoint;
+  }
+}
+
+function renderContent(content, ui, handleClose, handleDismiss, handleConversion) {
   // Close button
   const closeButton = ui.showCloseButton !== false && (
     <button
@@ -396,26 +419,43 @@ function renderContent(content, ui, handleClose, handleDismiss) {
       return (
         <>
           {closeButton}
-          {content.title && <h2>{content.title}</h2>}
+          {content.title && <h2>{getLocalizedText(content.title)}</h2>}
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              // Handle form submission
               const formData = new FormData(e.target);
               const data = Object.fromEntries(formData);
-              console.log('Form submitted:', data);
+              const tracker = getTracker();
+
+              if (!content.submitEndpoint) {
+                console.log('Form submitted:', data);
+                handleConversion?.('formSubmit', 1, { formId: content.formId, data });
+                return;
+              }
+
+              const response = await fetch(resolveEndpoint(content.submitEndpoint, tracker.apiUrl), {
+                method: 'POST',
+                headers: tracker.getHeaders(),
+                body: JSON.stringify({ data })
+              });
+
+              if (!response.ok) {
+                throw new Error(`Form submit failed: ${response.status}`);
+              }
+
+              handleConversion?.('formSubmit', 1, { formId: content.formId });
             }}
           >
             {content.fields?.map((field, idx) => (
               <div key={idx} style={{ marginBottom: '12px' }}>
                 <label style={{ display: 'block', marginBottom: '4px' }}>
-                  {field.label}
+                  {getLocalizedText(field.label, field.name)}
                 </label>
                 <input
                   type={field.type || 'text'}
                   name={field.name}
                   required={field.required}
-                  placeholder={field.placeholder}
+                  placeholder={getLocalizedText(field.placeholder)}
                   style={{
                     width: '100%',
                     padding: '8px',
@@ -437,9 +477,21 @@ function renderContent(content, ui, handleClose, handleDismiss) {
                 cursor: 'pointer'
               }}
             >
-              {content.submitText || 'Submit'}
+              {getLocalizedText(content.submitText, getLocalizedText(content.settings?.submitButtonText, 'Submit'))}
             </button>
           </form>
+        </>
+      );
+
+    case 'external':
+      return (
+        <>
+          {closeButton}
+          <iframe
+            src={content.externalUrl}
+            title="ContextHub placement"
+            style={{ width: '100%', minHeight: ui.height || '320px', border: 0 }}
+          />
         </>
       );
       

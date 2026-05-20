@@ -35,6 +35,7 @@ export default function UIConfig({ ui = {}, trigger = {}, onUIChange, onTriggerC
           <option value="corner-popup">Corner Popup</option>
           <option value="fullscreen-takeover">Fullscreen Takeover</option>
           <option value="inline">Inline Content</option>
+          <option value="toast">Mobile Notification Prompt</option>
         </select>
       </div>
 

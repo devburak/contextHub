@@ -1,11 +1,38 @@
-import { useState, useEffect } from 'react'
-import { ExternalLink, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+import { ExternalLink, FileJson, MousePointerClick, RefreshCw, Server, ShieldCheck } from 'lucide-react'
+
+const placementEndpoints = [
+  {
+    method: 'POST',
+    path: '/api/public/placements/decide',
+    label: 'Decision engine',
+    description: 'Uygun experience, content, ui, trigger ve tracking context döner.'
+  },
+  {
+    method: 'GET',
+    path: '/api/public/placements/:slug',
+    label: 'Public details',
+    description: 'Custom renderer veya presentation katmanı için aktif experience yapısını verir.'
+  },
+  {
+    method: 'POST',
+    path: '/api/public/placements/event',
+    label: 'Analytics event',
+    description: 'Impression, view, click, close, dismiss, submit, conversion ve error eventlerini işler.'
+  },
+  {
+    method: 'POST',
+    path: '/api/public/forms/:formId/submit',
+    label: 'Form submit',
+    description: 'Form placement içerisinden dönen submitEndpoint bu public endpointi hedefler.'
+  }
+]
 
 export default function ApiDocs() {
   const [iframeKey, setIframeKey] = useState(0)
   const [apiUrl] = useState(() => {
     // Get API base URL from environment or default to localhost:3000
-    return import.meta.env.VITE_API_ || 'http://localhost:3000'
+    return import.meta.env.VITE_API_URL || 'http://localhost:3000'
   })
 
   const docsUrl = `${apiUrl}/docs`
@@ -56,9 +83,7 @@ export default function ApiDocs() {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+                <FileJson className="w-6 h-6 text-blue-600" />
               </div>
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase">Format</p>
@@ -70,13 +95,11 @@ export default function ApiDocs() {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
+                <ShieldCheck className="w-6 h-6 text-green-600" />
               </div>
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase">Authentication</p>
-                <p className="text-sm font-semibold text-gray-900">JWT Bearer Token</p>
+                <p className="text-sm font-semibold text-gray-900">JWT, API Token, Tenant Header</p>
               </div>
             </div>
           </div>
@@ -84,9 +107,7 @@ export default function ApiDocs() {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
+                <Server className="w-6 h-6 text-purple-600" />
               </div>
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase">Base URL</p>
@@ -94,6 +115,36 @@ export default function ApiDocs() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Placement Reference */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <MousePointerClick size={18} className="text-gray-700" />
+            <h2 className="text-sm font-semibold text-gray-900">Placement Public API</h2>
+            <span className="text-xs text-gray-500">
+              Popup, inline, custom view ve form tabanlı presentation akışları
+            </span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+            {placementEndpoints.map((endpoint) => (
+              <div key={`${endpoint.method}-${endpoint.path}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-gray-900 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                    {endpoint.method}
+                  </span>
+                  <span className="text-xs font-semibold text-gray-900">{endpoint.label}</span>
+                </div>
+                <code className="mt-2 block break-all text-xs text-blue-700">{endpoint.path}</code>
+                <p className="mt-2 text-xs leading-5 text-gray-600">{endpoint.description}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500">
+            Public placement isteklerinde tenant için `X-Tenant-ID`; SDK tarafında ise `tenantId` ve gerekiyorsa `apiKey` kullanılmalı.
+          </p>
         </div>
       </div>
 

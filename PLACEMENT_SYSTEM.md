@@ -19,7 +19,7 @@ The Placement System is a comprehensive Content-as-a-Service (CaaS) platform for
   - Scheduling
 
 - **PlacementEvent** (`packages/common/src/models/PlacementEvent.js` - 319 lines)
-  - 8 event types: impression, view, click, conversion, close, dismissal, submit, error
+  - 8 event types: impression, view, click, conversion, close, dismiss, submit, error
   - Session tracking
   - Conversion funnel
   - User journey
@@ -40,6 +40,7 @@ The Placement System is a comprehensive Content-as-a-Service (CaaS) platform for
   - Frequency capping (session/daily/total)
   - A/B testing (weighted random selection)
   - Batch decision support
+  - Admin decision explanation for preview/debug panels
 
 - **placementAnalyticsService.js** - Analytics and reporting
   - `getPlacementStats()` - Time series data
@@ -63,9 +64,11 @@ The Placement System is a comprehensive Content-as-a-Service (CaaS) platform for
 - `POST /api/placements/:id/experiences` - Add experience
 - `PUT /api/placements/:id/experiences/:expId` - Update experience
 - `DELETE /api/placements/:id/experiences/:expId` - Delete experience
+- `POST /api/placements/debug-decision` - Explain draft/saved placement eligibility for admin debug UI
 
 **Public Routes:**
 - `POST /api/public/placements/decide` - Get placement decision
+- `GET /api/public/placements/:slug` - Get active placement details for custom renderers/builders
 - `POST /api/public/placements/decide-batch` - Batch decisions
 - `POST /api/public/placements/event` - Track single event
 - `POST /api/public/placements/events/batch` - Track batch events
@@ -127,13 +130,20 @@ packages/promo-sdk/
 - **PlacementEdit.jsx** - Create/Edit form
   - Basic info (name, slug, status, description)
   - Experience management (add/remove/reorder)
+  - Two-column edit workspace with live Placement Workbench
 
-- **ExperienceBuilder.jsx** - Experience editor (5 tabs)
-  1. **Content Tab** - ContentEditor component
-  2. **Targeting Tab** - TargetingRules component
-  3. **UI Tab** - UIConfig component
-  4. **Schedule Tab** - Date range, days of week, timezone
-  5. **Frequency Tab** - Frequency caps & conversion goals
+- **PlacementWorkbench.jsx** - Preview/debug/cache visibility panel
+  - Presentation preview with desktop/mobile and light/dark toggles
+  - Trigger show/hide simulation
+  - SDK response JSON preview
+  - Decision debug panel for path, locale, device, tags, feature flags, session caps
+  - Rejected experience reasons such as `path_mismatch`, `frequency_capped`, `schedule_inactive`
+  - Webhook queue/outbox visibility for cache refresh troubleshooting
+
+- **ExperienceBuilder.jsx** - Experience editor organized around three workflow steps
+  1. **Kanal** - UI variant and presentation surface
+  2. **İçerik** - ContentEditor component
+  3. **Davranış** - Targeting, schedule, trigger, frequency, conversion goals
 
 - **ContentEditor.jsx** - Content builder (6 types)
   - Text & CTA
@@ -157,7 +167,7 @@ packages/promo-sdk/
   - Referrer (glob patterns)
 
 - **UIConfig.jsx** - UI configuration
-  - 8 UI variants
+  - 9 UI variants, including mobile notification prompt/toast
   - Position, width, height
   - Colors (background, text, button)
   - Styling (border radius, padding, z-index)
@@ -183,6 +193,7 @@ packages/promo-sdk/
 6. **corner-popup** - Bottom-right corner popup
 7. **fullscreen-takeover** - Full-screen overlay
 8. **inline** - Inline content (relative positioning)
+9. **toast** - Mobile notification prompt style surface
 
 ## 🎯 Targeting Rules (15+)
 
@@ -214,7 +225,7 @@ packages/promo-sdk/
 3. **click** - User clicked
 4. **conversion** - Goal completed
 5. **close** - Placement closed
-6. **dismissal** - Placement dismissed with reason
+6. **dismiss** - Placement dismissed with reason
 7. **submit** - Form submitted
 8. **error** - Error occurred
 
@@ -247,13 +258,13 @@ import { initTracker, PlacementHost } from '@contexthub/promo-sdk';
 // Initialize once
 initTracker({
   apiUrl: 'http://localhost:3000/api/public/placements',
-  tenantId: 'your-tenant-id'
+  tenantId: 'your-tenant-id',
+  apiKey: 'ctx_optional_public_token'
 });
 
 // Use component
 <PlacementHost
   placementSlug="welcome-popup"
-  trigger="onLoad"
   autoTrack={true}
   onConversion={(goalId, value) => {
     console.log('Conversion:', goalId, value);
@@ -261,17 +272,87 @@ initTracker({
 />
 ```
 
+### Public API Contract
+
+Placement public calls are designed for app UI layers that need backend-provided popup, inline, custom HTML, or form content. Use `X-Tenant-ID` for tenant resolution; the SDK sends it when `tenantId` is configured.
+
+```http
+POST /api/public/placements/decide
+GET  /api/public/placements/:slug
+POST /api/public/placements/event
+POST /api/public/forms/:formId/submit
+```
+
+Decision responses include both flat and nested render fields:
+
+```json
+{
+  "decisionId": "uuid",
+  "contentType": "form",
+  "content": {
+    "type": "form",
+    "formId": "form_id",
+    "fields": [],
+    "settings": {},
+    "submitEndpoint": "/api/public/forms/form_id/submit"
+  },
+  "ui": {},
+  "trigger": { "type": "onLoad" },
+  "placement": { "id": "placement_id", "slug": "welcome-popup" },
+  "experience": { "id": "experience_id", "contentType": "form" },
+  "trackingContext": {}
+}
+```
+
+For form placements, the admin editor stores the selected ContextHub form in `payload.formId`; the public decision and details endpoints resolve that into a sanitized public form definition.
+
+### Admin Debug API
+
+The admin workbench can test a draft placement before saving it:
+
+```http
+POST /api/placements/debug-decision
+```
+
+Request body:
+
+```json
+{
+  "placement": { "slug": "welcome-popup", "experiences": [] },
+  "context": {
+    "path": "/pricing",
+    "locale": "tr",
+    "device": "desktop",
+    "sessionId": "admin-preview-session",
+    "userTags": ["returning"],
+    "featureFlags": ["new-pricing"],
+    "seenCaps": {}
+  }
+}
+```
+
+Response includes `selected`, `eligible`, `rejected`, `evaluated`, and `summary`. Rejected items include reason codes and human-readable labels so admins can answer "why is this placement not showing?" without inspecting backend logs.
+
+### Webhook/Cache Visibility
+
+Placement admin changes emit `placement.created`, `placement.updated`, or `placement.deleted` domain events. The Workbench reads the tenant webhook queue endpoint to show pending domain events, pending outbox deliveries, and failed deliveries:
+
+```http
+GET /api/admin/tenants/:tenantId/webhooks/queue
+```
+
+This is intended for cache-refresh troubleshooting when downstream apps render placement definitions from cached public details.
+
 ### Admin UI
 1. Navigate to `/placements` in admin dashboard
 2. Click "New Placement"
 3. Fill in basic info (name, slug, status)
-4. Add experiences with:
-   - Content (choose type and configure)
-   - Targeting rules (select criteria)
-   - UI design (variant, colors, positioning)
-   - Schedule (when to show)
-   - Frequency cap (how often to show)
-5. Save and activate
+4. Add experiences through the workflow:
+   - Kanal: popup, banner, inline, custom view, mobile notification prompt
+   - İçerik: text, HTML, image, video, form, component, external URL
+   - Davranış: trigger, targeting, schedule, frequency cap
+5. Use Workbench to preview, run decision debug, and check webhook/cache visibility
+6. Save and activate
 
 ## 🔐 Security & Privacy
 
@@ -351,9 +432,9 @@ See individual README files:
 All components are **production-ready** and fully functional:
 - ✅ MongoDB Models
 - ✅ Backend Services
-- ✅ API Routes (14 endpoints)
+- ✅ API Routes (15 endpoints)
 - ✅ Frontend SDK (React/Vue/Vanilla JS)
-- ✅ Admin UI (7 pages/components)
+- ✅ Admin UI with Workbench preview/debug/cache visibility
 - ✅ Analytics & Reporting
 - ✅ Documentation
 - ✅ Menu Integration

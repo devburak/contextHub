@@ -21,6 +21,7 @@ import { initTracker, PlacementHost } from '@contexthub/promo-sdk';
 initTracker({
   apiUrl: 'https://api.contexthub.com/api/public/placements',
   tenantId: 'your-tenant-id',
+  apiKey: 'ctx_optional_public_token',
   userKey: 'user-123' // optional
 });
 
@@ -29,7 +30,6 @@ function App() {
   return (
     <PlacementHost
       placementSlug="welcome-popup"
-      trigger="onLoad"
       onDecision={(decision) => console.log('Placement shown:', decision)}
       onConversion={(goalId, value) => console.log('Conversion:', goalId, value)}
     />
@@ -86,7 +86,8 @@ function MyComponent() {
   
   sdk.init({
     apiUrl: 'https://api.contexthub.com/api/public/placements',
-    tenantId: 'your-tenant-id'
+    tenantId: 'your-tenant-id',
+    apiKey: 'ctx_optional_public_token'
   }).then(() => {
     sdk.render('welcome-popup', 'placement-container');
   });
@@ -105,6 +106,7 @@ Initialize the tracking system.
 initTracker({
   apiUrl: string,        // API base URL
   tenantId: string,      // Your tenant ID
+  apiKey?: string,       // Optional ctx_ API token
   userKey?: string,      // Optional user identifier
   batchSize?: number,    // Event batch size (default: 10)
   flushInterval?: number // Flush interval in ms (default: 5000)
@@ -170,6 +172,30 @@ const {
 - `onExit`: Show when mouse leaves viewport
 - `onTimeout`: Show after delay (default: 3s)
 - `manual`: Manual control with `show()` method
+
+If the `trigger` prop is omitted, `PlacementHost` uses the trigger returned by the backend decision response.
+
+### Admin Preview and Debug
+
+ContextHub Admin includes a Placement Workbench for validating SDK-facing output before release:
+
+- Preview renders the selected experience with desktop/mobile and light/dark controls.
+- Trigger simulation can show/hide the placement without waiting for real page conditions.
+- SDK JSON shows the response shape custom renderers should expect.
+- Decision debug uses `POST /api/placements/debug-decision` to explain selected/rejected experiences.
+- Webhook visibility shows cache-refresh queue/outbox health for downstream apps.
+
+### Public Endpoints
+
+The SDK talks to these public placement endpoints. Public requests must include `X-Tenant-ID`; `initTracker({ tenantId })` adds it automatically.
+
+```http
+POST /api/public/placements/decide
+GET  /api/public/placements/:slug
+POST /api/public/placements/event
+POST /api/public/placements/events/batch
+POST /api/public/forms/:formId/submit
+```
 
 ### Tracking Methods
 
@@ -269,9 +295,12 @@ frequencyManager.clearAll();
       "required": true
     }
   ],
-  "submitText": "Subscribe"
+  "submitText": "Subscribe",
+  "submitEndpoint": "/api/public/forms/form_id/submit"
 }
 ```
+
+Form placements created in ContextHub Admin store the selected form as `payload.formId`. Decision and details responses resolve that form into public fields, settings, and `submitEndpoint` so React children or other presentation layers can render and submit it.
 
 ## UI Variants
 
