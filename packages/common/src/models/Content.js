@@ -12,6 +12,7 @@ const contentSchema = new Schema({
   featuredMediaId: { type: Schema.Types.ObjectId, ref: 'Media' },
   categories: [{ type: Schema.Types.ObjectId, ref: 'Category' }],
   tags: [{ type: Schema.Types.ObjectId, ref: 'Tag' }],
+  customFields: { type: Schema.Types.Mixed, default: undefined },
   authorName: { type: String, default: '' },
   publishAt: { type: Date },
   publishedAt: { type: Date },

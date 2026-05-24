@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { fetchTenantLimits, updateTenantSubscription } from '../../lib/api/subscriptions.js'
+import {
+  listCustomFieldDefinitions,
+  createCustomFieldDefinition,
+  updateCustomFieldDefinition,
+  deleteCustomFieldDefinition
+} from '../../lib/api/customFieldDefinitions'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
 import ApiTokenManager from '../../components/ApiTokenManager.jsx'
@@ -46,6 +52,17 @@ const EMPTY_STATE = {
 
 const FIELD_INPUT_CLASS = 'block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500'
 const FIELD_INPUT_WITH_MARGIN_CLASS = `mt-1 ${FIELD_INPUT_CLASS}`
+const CUSTOM_FIELD_TYPES = [
+  { value: 'text', label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'boolean', label: 'Boolean' },
+  { value: 'date', label: 'Date' },
+  { value: 'select', label: 'Select' },
+  { value: 'multi-select', label: 'Multi-select' },
+  { value: 'url', label: 'URL' },
+  { value: 'json', label: 'JSON' },
+  { value: 'reference', label: 'Reference' },
+]
 
 const toStringValue = (value) => {
   if (value === undefined || value === null) {
@@ -196,6 +213,223 @@ const buildPayload = (state, secretFlags, metadataText) => {
   }
 
   return payload
+}
+
+function CustomFieldDefinitionsSettings({ tenantId }) {
+  const queryClient = useQueryClient()
+  const [draft, setDraft] = useState({
+    key: '',
+    label: '',
+    type: 'text',
+    required: false,
+    public: false,
+    filterable: false,
+    searchable: false,
+    optionsText: ''
+  })
+  const [feedback, setFeedback] = useState({ type: '', message: '' })
+  const optionTypes = new Set(['select', 'multi-select'])
+
+  const definitionsQuery = useQuery({
+    queryKey: ['customFieldDefinitions', { tenant: tenantId }],
+    queryFn: listCustomFieldDefinitions,
+    enabled: Boolean(tenantId)
+  })
+
+  const resetDraft = () => {
+    setDraft({
+      key: '',
+      label: '',
+      type: 'text',
+      required: false,
+      public: false,
+      filterable: false,
+      searchable: false,
+      optionsText: ''
+    })
+  }
+
+  const parseOptions = () => draft.optionsText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [label, value] = line.includes('|') ? line.split('|').map((part) => part.trim()) : [line, line]
+      return { label, value }
+    })
+
+  const invalidateDefinitions = () => {
+    queryClient.invalidateQueries({ queryKey: ['customFieldDefinitions'] })
+  }
+
+  const createMutation = useMutation({
+    mutationFn: (payload) => createCustomFieldDefinition(payload),
+    onMutate: () => setFeedback({ type: '', message: '' }),
+    onSuccess: () => {
+      invalidateDefinitions()
+      resetDraft()
+      setFeedback({ type: 'success', message: 'Custom field tanımı oluşturuldu.' })
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || error.message || 'Custom field tanımı oluşturulamadı.'
+      setFeedback({ type: 'error', message })
+    }
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }) => updateCustomFieldDefinition({ id, payload }),
+    onMutate: () => setFeedback({ type: '', message: '' }),
+    onSuccess: () => {
+      invalidateDefinitions()
+      setFeedback({ type: 'success', message: 'Custom field tanımı güncellendi.' })
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || error.message || 'Custom field tanımı güncellenemedi.'
+      setFeedback({ type: 'error', message })
+    }
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (definitionId) => deleteCustomFieldDefinition(definitionId),
+    onMutate: () => setFeedback({ type: '', message: '' }),
+    onSuccess: () => {
+      invalidateDefinitions()
+      setFeedback({ type: 'success', message: 'Custom field tanımı silindi.' })
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || error.message || 'Custom field tanımı silinemedi.'
+      setFeedback({ type: 'error', message })
+    }
+  })
+
+  const isMutating = createMutation.isLoading || createMutation.isPending || updateMutation.isLoading || updateMutation.isPending || deleteMutation.isLoading || deleteMutation.isPending
+  const definitions = definitionsQuery.data || []
+
+  const handleCreate = () => {
+    createMutation.mutate({
+      key: draft.key,
+      label: draft.label || draft.key,
+      type: draft.type,
+      required: draft.required,
+      public: draft.public,
+      filterable: draft.filterable,
+      searchable: draft.searchable,
+      options: parseOptions()
+    })
+  }
+
+  const toggleDefinitionFlag = (definition, key, value) => {
+    updateMutation.mutate({
+      id: definition._id,
+      payload: {
+        ...definition,
+        [key]: value
+      }
+    })
+  }
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
+      <div className="border-b border-gray-200 px-6 py-4">
+        <h2 className="text-lg font-semibold text-gray-900">İçerik Custom Field Tanımları</h2>
+        <p className="text-sm text-gray-500">İçerik editöründe doldurulacak tenant bazlı alanları, public API ve filtre davranışlarını buradan yönet.</p>
+      </div>
+      <div className="space-y-5 px-6 py-5">
+        {feedback.message && (
+          <div className={`rounded-md border px-4 py-3 text-sm ${feedback.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+            {feedback.message}
+          </div>
+        )}
+
+        {definitionsQuery.isLoading ? (
+          <div className="text-sm text-gray-500">Custom field tanımları yükleniyor...</div>
+        ) : definitionsQuery.isError ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span>Custom field tanımları alınamadı.</span>
+            <button type="button" onClick={() => definitionsQuery.refetch()} className="font-semibold text-red-700 hover:text-red-600">Tekrar dene</button>
+          </div>
+        ) : definitions.length === 0 ? (
+          <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500">Henüz custom field tanımı yok.</div>
+        ) : (
+          <div className="space-y-3">
+            {definitions.map((definition) => (
+              <div key={definition._id || definition.key} className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-gray-900">{definition.label}</h3>
+                      {definition.required && <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700">zorunlu</span>}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-gray-500">
+                      <span className="rounded bg-white px-1.5 py-0.5">{definition.key}</span>
+                      <span className="rounded bg-white px-1.5 py-0.5">{definition.type}</span>
+                      {definition.public && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">public</span>}
+                      {definition.filterable && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">filterable</span>}
+                      {definition.searchable && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">searchable</span>}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => window.confirm('Bu custom field tanımı silinsin mi?') && deleteMutation.mutate(definition._id)}
+                    disabled={isMutating}
+                    className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    Sil
+                  </button>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-gray-700 sm:grid-cols-4">
+                  {[['public', 'Public API'], ['filterable', 'Filtrelenebilir'], ['searchable', 'Aranabilir'], ['required', 'Zorunlu']].map(([key, label]) => (
+                    <label key={key} className="inline-flex items-center gap-2 rounded-md bg-white px-2 py-1.5">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(definition[key])}
+                        onChange={(event) => toggleDefinitionFlag(definition, key, event.target.checked)}
+                        disabled={isMutating}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-gray-900">Alan Tanımı Ekle</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input type="text" value={draft.key} onChange={(event) => setDraft((prev) => ({ ...prev, key: event.target.value }))} className={FIELD_INPUT_CLASS} placeholder="key: author, source, readingTime" />
+            <input type="text" value={draft.label} onChange={(event) => setDraft((prev) => ({ ...prev, label: event.target.value }))} className={FIELD_INPUT_CLASS} placeholder="Etiket" />
+            <select value={draft.type} onChange={(event) => setDraft((prev) => ({ ...prev, type: event.target.value }))} className={FIELD_INPUT_CLASS}>
+              {CUSTOM_FIELD_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+            {optionTypes.has(draft.type) && (
+              <textarea value={draft.optionsText} onChange={(event) => setDraft((prev) => ({ ...prev, optionsText: event.target.value }))} rows={3} className={`${FIELD_INPUT_CLASS} sm:col-span-2`} placeholder={'Seçenekler\nEtiket|value'} />
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs text-gray-700 sm:grid-cols-4">
+            {[['required', 'Zorunlu'], ['public', 'Public API'], ['filterable', 'Filtrelenebilir'], ['searchable', 'Aranabilir']].map(([key, label]) => (
+              <label key={key} className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((prev) => ({ ...prev, [key]: event.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                {label}
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={isMutating || !draft.key.trim()}
+              className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              {createMutation.isLoading || createMutation.isPending ? 'Ekleniyor...' : 'Alan Ekle'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
 }
 
 export default function TenantSettings() {
@@ -496,6 +730,8 @@ export default function TenantSettings() {
 
         {/* API Token Management Section */}
         <ApiTokenManager />
+
+        <CustomFieldDefinitionsSettings tenantId={activeMembership?.tenantId} />
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">

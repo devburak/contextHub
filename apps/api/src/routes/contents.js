@@ -6,6 +6,29 @@ const {
 const contentService = require('../services/contentService')
 const tenantSettingsService = require('../services/tenantSettingsService')
 
+function parseCustomFieldFilters(query = {}) {
+  const filters = {}
+
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (key.startsWith('custom.') || key.startsWith('field.')) {
+      const fieldKey = key.slice(key.indexOf('.') + 1).trim()
+      if (fieldKey) {
+        filters[fieldKey] = value
+      }
+    }
+  })
+
+  if (query.custom && typeof query.custom === 'object') {
+    Object.assign(filters, query.custom)
+  }
+
+  if (query.field && typeof query.field === 'object') {
+    Object.assign(filters, query.field)
+  }
+
+  return filters
+}
+
 async function contentRoutes(fastify) {
   fastify.addHook('preHandler', tenantContext)
 
@@ -34,9 +57,27 @@ async function contentRoutes(fastify) {
       const { status, search, category, categories, categoryName, tag, tagName, publishedFrom, publishedTo, page, limit } = request.query
       const result = await contentService.listContents({
         tenantId: request.tenantId,
-        filters: { status, search, category, categories, categoryName, tag, tagName, publishedFrom, publishedTo },
+        filters: {
+          status,
+          search,
+          category,
+          categories,
+          categoryName,
+          tag,
+          tagName,
+          publishedFrom,
+          publishedTo,
+          customFilters: parseCustomFieldFilters(request.query)
+        },
         pagination: { page, limit },
       })
+      if (request.authType === 'api_token') {
+        const publicResult = await contentService.filterPublicCustomFieldsInList({
+          tenantId: request.tenantId,
+          result
+        })
+        return reply.send(publicResult)
+      }
       return reply.send(result)
     } catch (error) {
       request.log.error({ err: error }, 'Failed to list contents')
@@ -57,6 +98,7 @@ async function contentRoutes(fastify) {
           html: { type: 'string' },
           categories: { type: 'array', items: { type: 'string' } },
           tags: { type: 'array', items: { type: 'string' } },
+          customFields: { type: 'object', additionalProperties: true },
           featuredMediaId: { type: 'string', nullable: true },
           status: { type: 'string' },
           publishAt: { type: ['string', 'null'] },
@@ -141,6 +183,13 @@ async function contentRoutes(fastify) {
         publishedFrom: request.query?.publishedFrom,
         publishedTo: request.query?.publishedTo
       })
+      if (request.authType === 'api_token') {
+        const publicContent = await contentService.filterPublicCustomFields({
+          tenantId: request.tenantId,
+          content
+        })
+        return reply.send({ content: publicContent })
+      }
       return reply.send({ content })
     } catch (error) {
       request.log.error({ err: error }, 'Failed to fetch content by slug')
@@ -165,6 +214,13 @@ async function contentRoutes(fastify) {
         tenantId: request.tenantId,
         contentId: request.params.id,
       })
+      if (request.authType === 'api_token') {
+        const publicContent = await contentService.filterPublicCustomFields({
+          tenantId: request.tenantId,
+          content
+        })
+        return reply.send({ content: publicContent })
+      }
       return reply.send({ content })
     } catch (error) {
       request.log.error({ err: error }, 'Failed to fetch content')
@@ -192,6 +248,7 @@ async function contentRoutes(fastify) {
           html: { type: 'string' },
           categories: { type: 'array', items: { type: 'string' } },
           tags: { type: 'array', items: { type: 'string' } },
+          customFields: { type: 'object', additionalProperties: true },
           featuredMediaId: { type: 'string', nullable: true },
           status: { type: 'string' },
           publishAt: { type: ['string', 'null'] },

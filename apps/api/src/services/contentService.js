@@ -1,4 +1,11 @@
-const { Content, ContentVersion, Category, Tag } = require('@contexthub/common')
+const {
+  Content,
+  ContentVersion,
+  Category,
+  Tag,
+  CustomFieldDefinition,
+  ContentCustomFieldIndex
+} = require('@contexthub/common')
 const mongoose = require('mongoose')
 const galleryService = require('./galleryService')
 const { emitDomainEvent } = require('../lib/domainEvents')
@@ -7,6 +14,7 @@ const { triggerWebhooksForTenant } = require('../lib/webhookTrigger')
 const ObjectId = mongoose.Types.ObjectId
 
 const CONTENT_SCHEDULING_DISABLED_CODE = 'CONTENT_SCHEDULING_DISABLED'
+const RESERVED_CUSTOM_FIELD_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 
 const TURKISH_CHAR_MAP = {
   ç: 'c', Ç: 'c', ğ: 'g', Ğ: 'g', ı: 'i', I: 'i', İ: 'i', ö: 'o', Ö: 'o', ş: 's', Ş: 's', ü: 'u', Ü: 'u', â: 'a', Â: 'a'
@@ -71,6 +79,231 @@ function normaliseTagIds(values = []) {
   return normaliseObjectIdList(values)
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeCustomFieldKey(value = '') {
+  const key = String(value)
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .replace(/^[._-]+|[._-]+$/g, '')
+  return RESERVED_CUSTOM_FIELD_KEYS.has(key) ? '' : key
+}
+
+function normalizeTextValue(value) {
+  return String(value ?? '').trim()
+}
+
+function normalizeBooleanValue(value) {
+  if (typeof value === 'boolean') return value
+  const text = String(value ?? '').trim().toLowerCase()
+  if (['true', '1', 'yes', 'evet', 'on'].includes(text)) return true
+  if (['false', '0', 'no', 'hayir', 'hayır', 'off'].includes(text)) return false
+  return Boolean(value)
+}
+
+function normalizeDateValue(value) {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+function normalizeCustomFieldValue(definition, value) {
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+
+  switch (definition?.type) {
+    case 'number': {
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : undefined
+    }
+    case 'boolean':
+      return normalizeBooleanValue(value)
+    case 'date':
+      return normalizeDateValue(value)
+    case 'multi-select':
+      return Array.isArray(value)
+        ? value.map(normalizeTextValue).filter(Boolean)
+        : String(value).split(',').map(normalizeTextValue).filter(Boolean)
+    case 'json':
+      return value
+    case 'select':
+    case 'url':
+    case 'reference':
+    case 'text':
+    default:
+      return normalizeTextValue(value)
+  }
+}
+
+async function getCustomFieldDefinitions(tenantId) {
+  return CustomFieldDefinition.find({ tenantId }).sort({ position: 1, label: 1, key: 1 }).lean()
+}
+
+async function normalizeCustomFieldsForTenant({ tenantId, customFields = {} }) {
+  if (customFields === undefined || customFields === null) {
+    customFields = {}
+  }
+
+  if (!isPlainObject(customFields)) {
+    throw new Error('customFields must be a JSON object')
+  }
+
+  const definitions = await getCustomFieldDefinitions(tenantId)
+  const definitionMap = new Map(definitions.map((definition) => [definition.key, definition]))
+  const normalized = {}
+
+  Object.entries(customFields).forEach(([rawKey, value]) => {
+    const key = normalizeCustomFieldKey(rawKey)
+    if (!key) return
+
+    const definition = definitionMap.get(key)
+    const normalizedValue = normalizeCustomFieldValue(definition || { type: 'json' }, value)
+    if (normalizedValue !== undefined) {
+      normalized[key] = normalizedValue
+    }
+  })
+
+  definitions.forEach((definition) => {
+    if (!definition.required) return
+    const value = normalized[definition.key]
+    const isMissing = value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)
+    if (isMissing) {
+      throw new Error(`Custom field "${definition.label || definition.key}" is required`)
+    }
+  })
+
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+async function getPublicCustomFieldKeySet(tenantId) {
+  const definitions = await CustomFieldDefinition.find({ tenantId, public: true })
+    .select({ key: 1 })
+    .lean()
+  return new Set(definitions.map((definition) => definition.key))
+}
+
+function filterCustomFieldsByKeySet(content, publicKeys) {
+  if (!content || !isPlainObject(content.customFields)) {
+    return content
+  }
+
+  const customFields = Object.fromEntries(
+    Object.entries(content.customFields).filter(([key]) => publicKeys.has(key))
+  )
+
+  return {
+    ...content,
+    customFields: Object.keys(customFields).length ? customFields : undefined
+  }
+}
+
+async function filterPublicCustomFields({ tenantId, content }) {
+  const publicKeys = await getPublicCustomFieldKeySet(tenantId)
+  return filterCustomFieldsByKeySet(content, publicKeys)
+}
+
+async function filterPublicCustomFieldsInList({ tenantId, result }) {
+  const publicKeys = await getPublicCustomFieldKeySet(tenantId)
+  return {
+    ...result,
+    items: (result.items || []).map((item) => filterCustomFieldsByKeySet(item, publicKeys))
+  }
+}
+
+function buildIndexValue(definition, value) {
+  if (value === undefined || value === null || value === '') {
+    return null
+  }
+
+  const payload = {
+    key: definition.key,
+    valueTokens: []
+  }
+
+  switch (definition.type) {
+    case 'number': {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed)) return null
+      payload.valueNumber = parsed
+      payload.valueString = String(parsed)
+      payload.valueTokens = [String(parsed)]
+      return payload
+    }
+    case 'boolean':
+      payload.valueBoolean = normalizeBooleanValue(value)
+      payload.valueString = String(payload.valueBoolean)
+      payload.valueTokens = [payload.valueString]
+      return payload
+    case 'date': {
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return null
+      payload.valueDate = date
+      payload.valueString = date.toISOString()
+      payload.valueTokens = [date.toISOString().slice(0, 10)]
+      return payload
+    }
+    case 'multi-select': {
+      const values = Array.isArray(value) ? value.map(normalizeTextValue).filter(Boolean) : []
+      if (!values.length) return null
+      payload.valueString = values.join(',')
+      payload.valueTokens = values
+      return payload
+    }
+    case 'json':
+      payload.valueString = JSON.stringify(value)
+      payload.valueTokens = []
+      return payload
+    case 'select':
+    case 'url':
+    case 'reference':
+    case 'text':
+    default:
+      payload.valueString = normalizeTextValue(value)
+      payload.valueTokens = payload.valueString ? [payload.valueString] : []
+      return payload.valueString ? payload : null
+  }
+}
+
+async function syncCustomFieldIndex({ tenantId, content }) {
+  if (!content?._id) return
+
+  await ContentCustomFieldIndex.deleteMany({ tenantId, contentId: content._id })
+
+  const customFields = content.customFields || {}
+  if (!isPlainObject(customFields)) {
+    return
+  }
+
+  const definitions = await CustomFieldDefinition.find({
+    tenantId,
+    $or: [{ filterable: true }, { searchable: true }]
+  }).lean()
+
+  const rows = definitions
+    .map((definition) => {
+      const indexed = buildIndexValue(definition, customFields[definition.key])
+      if (!indexed) return null
+
+      return {
+        tenantId,
+        contentId: content._id,
+        status: content.status,
+        publishedAt: content.publishedAt,
+        updatedAt: new Date(),
+        ...indexed
+      }
+    })
+    .filter(Boolean)
+
+  if (rows.length) {
+    await ContentCustomFieldIndex.insertMany(rows)
+  }
+}
+
 function createSchedulingDisabledError() {
   const error = new Error('Content scheduling is disabled for this tenant')
   error.code = CONTENT_SCHEDULING_DISABLED_CODE
@@ -114,6 +347,7 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
     html,
     categories = [],
     tags = [],
+    customFields,
     featuredMediaId = null,
     status = 'draft',
     publishAt,
@@ -135,6 +369,7 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
 
   const allowScheduling = Boolean(featureFlags?.contentScheduling)
   const statusPayload = resolveStatusAndDates({ status, publishAt }, { allowScheduling })
+  const normalizedCustomFields = await normalizeCustomFieldsForTenant({ tenantId, customFields })
 
   const document = await Content.create({
     tenantId,
@@ -145,6 +380,7 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
     html,
     categories: normaliseObjectIdList(categories),
     tags: normaliseTagIds(tags),
+    customFields: normalizedCustomFields,
     featuredMediaId: featuredMediaId && ObjectId.isValid(featuredMediaId) ? new ObjectId(featuredMediaId) : null,
     authorName,
     ...statusPayload,
@@ -164,6 +400,7 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
     html,
     categories: normaliseObjectIdList(categories),
     tags: normaliseTagIds(tags),
+    customFields: normalizedCustomFields,
     featuredMediaId: document.featuredMediaId || null,
     authorName,
     publishAt: statusPayload.publishAt,
@@ -175,6 +412,7 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
 
   document.lastVersionId = version._id
   await document.save()
+  await syncCustomFieldIndex({ tenantId, content: document })
 
   try {
     const eventPayload = {
@@ -225,6 +463,7 @@ async function updateContent({ tenantId, contentId, userId, payload, featureFlag
   let html = existing.html
   let categories = existing.categories || []
   let tags = existing.tags || []
+  let customFields = existing.customFields
   let featuredMediaId = existing.featuredMediaId || null
   let authorName = existing.authorName || ''
 
@@ -269,6 +508,11 @@ async function updateContent({ tenantId, contentId, userId, payload, featureFlag
   if (payload.tags !== undefined) {
     tags = normaliseTagIds(payload.tags)
     update.tags = tags
+  }
+
+  if (payload.customFields !== undefined) {
+    customFields = await normalizeCustomFieldsForTenant({ tenantId, customFields: payload.customFields })
+    update.customFields = customFields
   }
 
   if (payload.featuredMediaId !== undefined) {
@@ -331,6 +575,7 @@ async function updateContent({ tenantId, contentId, userId, payload, featureFlag
     html,
     categories,
     tags,
+    customFields,
     featuredMediaId,
     authorName,
     publishAt: statusPayload.publishAt,
@@ -342,6 +587,7 @@ async function updateContent({ tenantId, contentId, userId, payload, featureFlag
 
   updated.lastVersionId = version._id
   await updated.save()
+  await syncCustomFieldIndex({ tenantId, content: updated })
 
   try {
     const eventPayload = {
@@ -387,6 +633,7 @@ async function deleteContent({ tenantId, contentId, userId }) {
   const result = await Content.deleteOne({ _id: contentId, tenantId })
 
   await ContentVersion.deleteMany({ tenantId, contentId })
+  await ContentCustomFieldIndex.deleteMany({ tenantId, contentId })
   await galleryService.setGalleriesForContent({ tenantId, contentId, galleryIds: [] })
 
   try {
@@ -592,6 +839,135 @@ function buildDateRangeFilter(from, to) {
   return Object.keys(range).length ? range : null
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function normalizeCustomFilterValue(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeCustomFilterValue(item))
+  }
+
+  return String(value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+async function resolveCustomSearchContentIds({ tenantId, search }) {
+  const normalised = String(search || '').trim().split(/\s+/).join(' ')
+  if (!normalised) {
+    return []
+  }
+
+  const definitions = await CustomFieldDefinition.find({
+    tenantId,
+    searchable: true
+  }).select({ key: 1 }).lean()
+
+  const keys = definitions.map((definition) => definition.key)
+  if (!keys.length) {
+    return []
+  }
+
+  const valuePattern = new RegExp(escapeRegExp(normalised), 'i')
+  const rows = await ContentCustomFieldIndex.find({
+    tenantId,
+    key: { $in: keys },
+    $or: [
+      { valueString: valuePattern },
+      { valueTokens: normalised }
+    ]
+  }).select('contentId').lean()
+
+  return Array.from(new Set(rows.map((row) => row.contentId.toString())))
+    .filter(ObjectId.isValid)
+    .map((id) => new ObjectId(id))
+}
+
+function buildCustomIndexCriteria(definition, rawValue) {
+  const values = normalizeCustomFilterValue(rawValue)
+  if (!values.length) return null
+
+  switch (definition?.type) {
+    case 'number': {
+      const numbers = values.map(Number).filter(Number.isFinite)
+      return numbers.length ? { valueNumber: { $in: numbers } } : null
+    }
+    case 'boolean': {
+      const booleans = Array.from(new Set(values.map(normalizeBooleanValue)))
+      return { valueBoolean: { $in: booleans } }
+    }
+    case 'date': {
+      const dates = values
+        .map((value) => new Date(value))
+        .filter((date) => !Number.isNaN(date.getTime()))
+      return dates.length ? { valueDate: { $in: dates } } : null
+    }
+    case 'multi-select':
+      return { valueTokens: { $in: values } }
+    case 'select':
+    case 'url':
+    case 'reference':
+    case 'text':
+    default:
+      return { valueString: { $in: values } }
+  }
+}
+
+async function resolveCustomFieldContentIds({ tenantId, customFilters = {} }) {
+  const entries = Object.entries(customFilters || {})
+    .map(([key, value]) => [normalizeCustomFieldKey(key), value])
+    .filter(([key, value]) => key && value !== undefined && value !== null && value !== '')
+
+  if (!entries.length) {
+    return null
+  }
+
+  const keys = entries.map(([key]) => key)
+  const definitions = await CustomFieldDefinition.find({
+    tenantId,
+    key: { $in: keys },
+    filterable: true
+  }).lean()
+  const definitionMap = new Map(definitions.map((definition) => [definition.key, definition]))
+
+  let intersection = null
+
+  for (const [key, rawValue] of entries) {
+    const definition = definitionMap.get(key)
+    if (!definition) {
+      return []
+    }
+
+    const valueCriteria = buildCustomIndexCriteria(definition, rawValue)
+    if (!valueCriteria) {
+      return []
+    }
+
+    const rows = await ContentCustomFieldIndex.find({
+      tenantId,
+      key,
+      ...valueCriteria
+    }).select('contentId').lean()
+
+    const ids = new Set(rows.map((row) => row.contentId.toString()))
+    if (intersection === null) {
+      intersection = ids
+    } else {
+      intersection = new Set([...intersection].filter((id) => ids.has(id)))
+    }
+
+    if (!intersection.size) {
+      return []
+    }
+  }
+
+  return Array.from(intersection || [])
+    .filter(ObjectId.isValid)
+    .map((id) => new ObjectId(id))
+}
+
 async function getContentBySlug({ tenantId, slug, status = null, publishedFrom = null, publishedTo = null }) {
   if (!slug) {
     throw new Error('Slug is required')
@@ -647,6 +1023,7 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
     tagName,
     publishedFrom,
     publishedTo,
+    customFilters = {},
   } = filters
 
   const page = Math.max(Number(pagination.page || 1), 1)
@@ -738,9 +1115,12 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
   // Handle text search in title and summary
   if (search) {
     const normalised = search.trim().split(/\s+/).join(' ')
+    const customSearchContentIds = await resolveCustomSearchContentIds({ tenantId, search: normalised })
+    const searchPattern = new RegExp(escapeRegExp(normalised), 'i')
     query.$or = [
-      { title: new RegExp(normalised, 'i') },
-      { summary: new RegExp(normalised, 'i') }
+      { title: searchPattern },
+      { summary: searchPattern },
+      ...(customSearchContentIds.length ? [{ _id: { $in: customSearchContentIds } }] : [])
     ]
   }
 
@@ -762,6 +1142,11 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
     if (Object.keys(publishedAtFilter).length > 0) {
       query.publishedAt = { ...(query.publishedAt || {}), ...publishedAtFilter }
     }
+  }
+
+  const customContentIds = await resolveCustomFieldContentIds({ tenantId, customFilters })
+  if (Array.isArray(customContentIds)) {
+    query._id = { $in: customContentIds }
   }
 
   const [items, total] = await Promise.all([
@@ -1072,6 +1457,8 @@ module.exports = {
   getContentBySlug,
   listContents,
   listVersions,
+  filterPublicCustomFields,
+  filterPublicCustomFieldsInList,
   checkSlugAvailability,
   CONTENT_SCHEDULING_DISABLED_CODE,
   setContentGalleries,

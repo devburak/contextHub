@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
@@ -8,6 +8,7 @@ import { PERMISSIONS } from '../constants/permissions.js'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { user, memberships, activeMembership, selectTenant, logout, hasPermission } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
@@ -195,7 +196,11 @@ export default function Layout() {
     setExpandedGroups((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
-  const renderNavItem = (item) => {
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => !prev)
+  }
+
+  const renderNavItem = (item, collapsed = sidebarCollapsed) => {
     if (item.children) {
       const expanded = expandedGroups[item.id]
       return (
@@ -203,12 +208,14 @@ export default function Layout() {
           <button
             type="button"
             onClick={() => toggleGroup(item.id)}
+            title={collapsed ? item.name : undefined}
             className={classNames(
-              'group flex w-full items-center justify-between rounded-md px-2 py-2 text-sm font-semibold',
+              'group flex w-full items-center rounded-md px-2 py-2 text-sm font-semibold',
+              collapsed ? 'justify-center' : 'justify-between',
               expanded ? 'bg-gray-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50 hover:text-blue-600'
             )}
           >
-            <span className="flex items-center gap-x-3">
+            <span className={classNames('flex items-center', collapsed ? 'justify-center' : 'gap-x-3')}>
               {item.icon && (
                 <item.icon
                   className={classNames(
@@ -218,20 +225,22 @@ export default function Layout() {
                   aria-hidden="true"
                 />
               )}
-              {item.name}
+              <span className={collapsed ? 'sr-only' : ''}>{item.name}</span>
             </span>
-            <svg
-              className={classNames('h-4 w-4 transform transition-transform', expanded ? 'rotate-90 text-blue-600' : 'text-gray-400')}
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path fillRule="evenodd" d="M6 4l8 6-8 6V4z" clipRule="evenodd" />
-            </svg>
+            {!collapsed && (
+              <svg
+                className={classNames('h-4 w-4 transform transition-transform', expanded ? 'rotate-90 text-blue-600' : 'text-gray-400')}
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path fillRule="evenodd" d="M6 4l8 6-8 6V4z" clipRule="evenodd" />
+              </svg>
+            )}
           </button>
-          {expanded && (
+          {expanded && !collapsed && (
             <div className="space-y-1 border-l border-gray-100 pl-4">
-              {item.children.map((child) => renderNavItem(child))}
+              {item.children.map((child) => renderNavItem(child, collapsed))}
             </div>
           )}
         </div>
@@ -244,9 +253,11 @@ export default function Layout() {
       <Link
         key={item.id || item.href}
         to={item.href}
+        title={collapsed ? item.name : undefined}
         className={classNames(
           active ? 'bg-gray-50 text-blue-600' : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50',
-          'group flex items-center gap-x-3 rounded-md px-2 py-2 text-sm font-semibold'
+          'group flex items-center rounded-md px-2 py-2 text-sm font-semibold',
+          collapsed ? 'justify-center' : 'gap-x-3'
         )}
       >
         {item.icon && (
@@ -258,7 +269,7 @@ export default function Layout() {
             aria-hidden="true"
           />
         )}
-        {item.name}
+        <span className={collapsed ? 'sr-only' : ''}>{item.name}</span>
       </Link>
     )
   }
@@ -313,11 +324,21 @@ export default function Layout() {
                   </Transition.Child>
                   <div className="flex grow flex-col gap-y-3 overflow-y-auto bg-white px-6 pb-2">
                     <div className="flex h-16 shrink-0 items-center">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-                          <span className="text-white font-bold">C</span>
+                      <div className="flex w-full items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-blue-600">
+                            <span className="text-white font-bold">C</span>
+                          </div>
+                          <span className="truncate text-xl font-bold text-gray-900">ContextHub</span>
                         </div>
-                        <span className="text-xl font-bold text-gray-900">ContextHub</span>
+                        <button
+                          type="button"
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          onClick={() => setSidebarOpen(false)}
+                          aria-label="Menüyü kapat"
+                        >
+                          <XMarkIcon className="h-5 w-5" aria-hidden="true" />
+                        </button>
                       </div>
                     </div>
                     <nav className="flex flex-1 flex-col">
@@ -325,7 +346,7 @@ export default function Layout() {
                         <li>
                           <ul role="list" className="-mx-2 space-y-1">
                             {filteredNavigation.map((item) => (
-                              <li key={item.id || item.href}>{renderNavItem(item)}</li>
+                              <li key={item.id || item.href}>{renderNavItem(item, false)}</li>
                             ))}
                           </ul>
                         </li>
@@ -339,14 +360,31 @@ export default function Layout() {
         </Transition.Root>
 
         {/* Static sidebar for desktop */}
-        <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col">
-          <div className="flex grow flex-col gap-y-3 overflow-y-auto border-r border-gray-200 bg-white px-6">
-            <div className="flex h-16 shrink-0 items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-                  <span className="text-white font-bold">C</span>
+        <div className={classNames('hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:flex-col lg:transition-[width] lg:duration-200', sidebarCollapsed ? 'lg:w-20' : 'lg:w-72')}>
+          <div className={classNames('flex grow flex-col gap-y-3 overflow-y-auto border-r border-gray-200 bg-white', sidebarCollapsed ? 'px-3' : 'px-6')}>
+            <div className={classNames('flex shrink-0 items-center', sidebarCollapsed ? 'h-24 justify-center' : 'h-16')}>
+              <div className={classNames('flex w-full gap-3', sidebarCollapsed ? 'flex-col items-center justify-center' : 'items-center justify-between')}>
+                <div className={classNames('flex min-w-0 items-center gap-3', sidebarCollapsed ? 'justify-center' : '')}>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-blue-600">
+                    <span className="text-white font-bold">C</span>
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="truncate text-xl font-bold text-gray-900">ContextHub</span>
+                  )}
                 </div>
-                <span className="text-xl font-bold text-gray-900">ContextHub</span>
+                <button
+                  type="button"
+                  onClick={toggleSidebarCollapsed}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-label={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
+                  title={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
+                >
+                  {sidebarCollapsed ? (
+                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  ) : (
+                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                  )}
+                </button>
               </div>
             </div>
             <nav className="flex flex-1 flex-col">
@@ -354,7 +392,7 @@ export default function Layout() {
                 <li>
                   <ul role="list" className="-mx-2 space-y-1">
                     {filteredNavigation.map((item) => (
-                      <li key={item.id || item.href}>{renderNavItem(item)}</li>
+                      <li key={item.id || item.href}>{renderNavItem(item, sidebarCollapsed)}</li>
                     ))}
                   </ul>
                 </li>
@@ -363,7 +401,7 @@ export default function Layout() {
           </div>
         </div>
 
-        <div className="lg:pl-72">
+        <div className={classNames('transition-[padding] duration-200', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
           <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
             <button type="button" className="-m-2.5 p-2.5 text-gray-700 lg:hidden" onClick={() => setSidebarOpen(true)}>
               <span className="sr-only">Open sidebar</span>

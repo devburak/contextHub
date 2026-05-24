@@ -30,6 +30,8 @@ const CollectionEntry = require('./CollectionEntry');
 const Template = require('./Template');
 const Content = require('./Content');
 const ContentVersion = require('./ContentVersion');
+const CustomFieldDefinition = require('./CustomFieldDefinition');
+const ContentCustomFieldIndex = require('./ContentCustomFieldIndex');
 const TenantSettings = require('./TenantSettings');
 const FeatureFlagDefinition = require('./FeatureFlagDefinition');
 const Gallery = require('./Gallery');
@@ -66,6 +68,8 @@ module.exports = {
   Template,
   Content,
   ContentVersion,
+  CustomFieldDefinition,
+  ContentCustomFieldIndex,
   TenantSettings,
   FeatureFlagDefinition,
   Gallery,
