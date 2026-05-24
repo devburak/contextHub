@@ -3,6 +3,51 @@ const apiUsageService = require('../services/apiUsageService');
 const tenantSubscriptionService = require('../services/tenantSubscriptionService');
 const { tenantContext, authenticateWithoutTenant } = require('../middleware/auth');
 
+const LIMIT_USAGE_KEY_MAP = {
+  userLimit: 'userCount',
+  ownerLimit: 'ownerCount',
+  storageLimit: 'storageBytes',
+  monthlyRequestLimit: 'monthlyRequests',
+};
+
+function isUnlimitedLimit(limit) {
+  return limit === null || limit === -1;
+}
+
+function buildUsageMetric(current, limit) {
+  const numericCurrent = Number.isFinite(Number(current)) ? Number(current) : 0;
+
+  if (isUnlimitedLimit(limit)) {
+    return {
+      current: numericCurrent,
+      limit,
+      percentage: 0,
+      remaining: Infinity,
+      isUnlimited: true,
+    };
+  }
+
+  const numericLimit = Number.isFinite(Number(limit)) ? Number(limit) : 0;
+
+  return {
+    current: numericCurrent,
+    limit: numericLimit,
+    percentage: numericLimit > 0 ? Math.min(100, (numericCurrent / numericLimit) * 100) : 0,
+    remaining: numericLimit > 0 ? Math.max(0, numericLimit - numericCurrent) : 0,
+    isUnlimited: false,
+  };
+}
+
+function getRemainingFromStoredUsage(tenant, limitType, limit) {
+  if (isUnlimitedLimit(limit)) {
+    return Infinity;
+  }
+
+  const usageKey = LIMIT_USAGE_KEY_MAP[limitType];
+  const currentValue = usageKey ? (tenant.currentUsage?.[usageKey] || 0) : 0;
+  return Math.max(0, limit - currentValue);
+}
+
 /**
  * Subscription Plan Management Routes
  * Admin-only endpoints for managing subscription plans
@@ -281,6 +326,8 @@ async function subscriptionPlanRoutes(fastify) {
         console.warn('[Tenant] Failed to refresh limit flag:', error.message);
       }
 
+      const plan = await tenantSubscriptionService.getPlanPayloadForTenant(tenant);
+
       return reply.send({
         message: 'Tenant subscription updated successfully',
         tenant: {
@@ -288,6 +335,8 @@ async function subscriptionPlanRoutes(fastify) {
           name: tenant.name,
           plan: tenant.plan,
           currentPlan: tenant.currentPlan,
+          planName: plan.name,
+          effectivePlan: plan,
           customLimits: tenant.customLimits,
         },
       });
@@ -332,19 +381,15 @@ async function subscriptionPlanRoutes(fastify) {
       }
 
       // Get effective limits
-      const limits = {
-        userLimit: await tenant.getLimit('userLimit'),
-        ownerLimit: await tenant.getLimit('ownerLimit'),
-        storageLimit: await tenant.getLimit('storageLimit'),
-        monthlyRequestLimit: await tenant.getLimit('monthlyRequestLimit'),
-      };
+      const limits = await tenantSubscriptionService.getEffectiveLimits(tenant);
+      const plan = await tenantSubscriptionService.getPlanPayloadForTenant(tenant);
 
       // Get remaining quotas
       const remaining = {
-        users: await tenant.getRemainingQuota('userLimit'),
-        owners: await tenant.getRemainingQuota('ownerLimit'),
-        storage: await tenant.getRemainingQuota('storageLimit'),
-        requests: await tenant.getRemainingQuota('monthlyRequestLimit'),
+        users: getRemainingFromStoredUsage(tenant, 'userLimit', limits.userLimit),
+        owners: getRemainingFromStoredUsage(tenant, 'ownerLimit', limits.ownerLimit),
+        storage: getRemainingFromStoredUsage(tenant, 'storageLimit', limits.storageLimit),
+        requests: getRemainingFromStoredUsage(tenant, 'monthlyRequestLimit', limits.monthlyRequestLimit),
       };
 
       return reply.send({
@@ -352,11 +397,12 @@ async function subscriptionPlanRoutes(fastify) {
           id: tenant._id,
           name: tenant.name,
         },
-        plan: tenant.currentPlan ? {
-          slug: tenant.currentPlan.slug,
-          name: tenant.currentPlan.name,
-          price: tenant.currentPlan.price,
-        } : null,
+        plan: {
+          slug: plan.slug,
+          name: plan.name,
+          price: plan.price,
+          billingType: plan.billingType,
+        },
         limits,
         currentUsage: tenant.currentUsage,
         remaining,
@@ -401,12 +447,8 @@ async function subscriptionPlanRoutes(fastify) {
       }
 
       // Get effective limits
-      const limits = {
-        userLimit: await tenant.getLimit('userLimit'),
-        ownerLimit: await tenant.getLimit('ownerLimit'),
-        storageLimit: await tenant.getLimit('storageLimit'),
-        monthlyRequestLimit: await tenant.getLimit('monthlyRequestLimit'),
-      };
+      const limits = await tenantSubscriptionService.getEffectiveLimits(tenant);
+      const plan = await tenantSubscriptionService.getPlanPayloadForTenant(tenant);
 
       // Get actual usage counts from database
       const membershipCount = await Membership.countDocuments({ 
@@ -439,34 +481,10 @@ async function subscriptionPlanRoutes(fastify) {
 
       // Calculate usage percentages and remaining
       const usage = {
-        users: {
-          current: membershipCount,
-          limit: limits.userLimit,
-          percentage: limits.userLimit ? Math.min(100, (membershipCount / limits.userLimit) * 100) : 0,
-          remaining: limits.userLimit ? Math.max(0, limits.userLimit - membershipCount) : Infinity,
-          isUnlimited: limits.userLimit === null || limits.userLimit === -1,
-        },
-        owners: {
-          current: ownerCount,
-          limit: limits.ownerLimit,
-          percentage: limits.ownerLimit ? Math.min(100, (ownerCount / limits.ownerLimit) * 100) : 0,
-          remaining: limits.ownerLimit ? Math.max(0, limits.ownerLimit - ownerCount) : Infinity,
-          isUnlimited: limits.ownerLimit === null || limits.ownerLimit === -1,
-        },
-        storage: {
-          current: storageUsed,
-          limit: limits.storageLimit,
-          percentage: limits.storageLimit ? Math.min(100, (storageUsed / limits.storageLimit) * 100) : 0,
-          remaining: limits.storageLimit ? Math.max(0, limits.storageLimit - storageUsed) : Infinity,
-          isUnlimited: limits.storageLimit === null || limits.storageLimit === -1,
-        },
-        requests: {
-          current: monthlyRequests,
-          limit: limits.monthlyRequestLimit,
-          percentage: limits.monthlyRequestLimit ? Math.min(100, (monthlyRequests / limits.monthlyRequestLimit) * 100) : 0,
-          remaining: limits.monthlyRequestLimit ? Math.max(0, limits.monthlyRequestLimit - monthlyRequests) : Infinity,
-          isUnlimited: limits.monthlyRequestLimit === null || limits.monthlyRequestLimit === -1,
-        },
+        users: buildUsageMetric(membershipCount, limits.userLimit),
+        owners: buildUsageMetric(ownerCount, limits.ownerLimit),
+        storage: buildUsageMetric(storageUsed, limits.storageLimit),
+        requests: buildUsageMetric(monthlyRequests, limits.monthlyRequestLimit),
       };
 
       return reply.send({
@@ -475,16 +493,11 @@ async function subscriptionPlanRoutes(fastify) {
           name: tenant.name,
           slug: tenant.slug,
         },
-        plan: tenant.currentPlan ? {
-          slug: tenant.currentPlan.slug,
-          name: tenant.currentPlan.name,
-          price: tenant.currentPlan.price,
-          billingType: tenant.currentPlan.billingType,
-        } : {
-          slug: 'free',
-          name: 'Free',
-          price: 0,
-          billingType: 'fixed',
+        plan: {
+          slug: plan.slug,
+          name: plan.name,
+          price: plan.price,
+          billingType: plan.billingType,
         },
         usage,
         limits,

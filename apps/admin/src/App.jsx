@@ -6,6 +6,7 @@ import SignUp from './pages/auth/SignUp.jsx'
 import ForgotPassword from './pages/auth/ForgotPassword.jsx'
 import ResetPassword from './pages/auth/ResetPassword.jsx'
 import VerifyEmail from './pages/auth/VerifyEmail.jsx'
+import AcceptInvite from './pages/auth/AcceptInvite.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import UserList from './pages/users/UserList.jsx'
 import CreateUser from './pages/users/CreateUser.jsx'
@@ -273,6 +274,7 @@ function App() {
         <AuthContext.Provider value={authValue}>
           {pendingTenantSelection ? (
             <Routes>
+              <Route path="/accept-invite" element={<AcceptInvite />} />
               <Route path="/select-tenant" element={<TenantSelection />} />
               <Route path="/transfer-accept" element={<AcceptTransfer />} />
               <Route path="*" element={<Navigate to="/select-tenant" replace />} />
@@ -284,10 +286,12 @@ function App() {
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         ) : (
           <Routes>
+            <Route path="/accept-invite" element={<AcceptInvite />} />
             {/* Layout wrapper with nested routes; Layout renders <Outlet /> */}
             <Route element={<Layout />}>
               <Route path="/" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Dashboard /></PermissionRoute>} />

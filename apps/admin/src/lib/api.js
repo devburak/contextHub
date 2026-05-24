@@ -68,6 +68,17 @@ export const authAPI = {
 
   resendVerification: (email) =>
     apiClient.post('/auth/resend-verification', { email }),
+
+  previewInvitation: (token) =>
+    apiClient.get('/auth/invitations/preview', { params: { token } }),
+
+  acceptInvitation: ({ token, password, firstName, lastName }) =>
+    apiClient.post('/auth/invitations/accept', {
+      token,
+      ...(password ? { password } : {}),
+      ...(firstName ? { firstName } : {}),
+      ...(lastName ? { lastName } : {}),
+    }),
 }
 
 // Users API

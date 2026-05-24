@@ -1,4 +1,4 @@
-const { PlacementDefinition } = require('@contexthub/common');
+const { PlacementDefinition, FormDefinition } = require('@contexthub/common');
 const micromatch = require('micromatch');
 const { v4: uuidv4 } = require('uuid');
 
@@ -33,7 +33,7 @@ async function decide({ tenantId, placementSlug, context }) {
           exp => exp._id.toString() === placement.settings.fallbackExperienceId
         );
         if (fallback) {
-          return buildDecision(placement, fallback, context);
+          return await buildDecision(placement, fallback, context);
         }
       }
       return null;
@@ -50,7 +50,7 @@ async function decide({ tenantId, placementSlug, context }) {
     }
 
     // 5. Build decision response
-    return buildDecision(placement, selected, context);
+    return await buildDecision(placement, selected, context);
 
   } catch (error) {
     console.error('Decision engine error:', error);
@@ -171,6 +171,223 @@ function filterEligibleExperiences(experiences, context, defaultRules = {}) {
 
     return true;
   });
+}
+
+function explainExperienceEligibility(experience, context, defaultRules = {}) {
+  const reasons = [];
+
+  if (experience.status !== 'active') {
+    reasons.push({
+      code: 'experience_inactive',
+      label: 'Experience aktif değil',
+      detail: `Durum: ${experience.status || 'unknown'}`
+    });
+  }
+
+  const rules = {
+    ...defaultRules,
+    ...experience.rules
+  };
+
+  if (!matchPaths(context.path, rules.paths, rules.pathMode)) {
+    reasons.push({
+      code: 'path_mismatch',
+      label: 'Path kuralı eşleşmedi',
+      detail: `${context.path || '(empty)'} -> ${(rules.paths || []).join(', ')}`
+    });
+  }
+
+  if (rules.query && !matchQuery(context.query, rules.query)) {
+    reasons.push({
+      code: 'query_mismatch',
+      label: 'Query parametreleri eşleşmedi',
+      detail: Object.keys(rules.query).join(', ')
+    });
+  }
+
+  if (rules.locales?.length && context.locale && !rules.locales.includes(context.locale)) {
+    reasons.push({
+      code: 'locale_mismatch',
+      label: 'Locale hedeflemesi eşleşmedi',
+      detail: `${context.locale} beklenen: ${rules.locales.join(', ')}`
+    });
+  }
+
+  if (rules.devices?.length && context.device && !rules.devices.includes(context.device)) {
+    reasons.push({
+      code: 'device_mismatch',
+      label: 'Cihaz hedeflemesi eşleşmedi',
+      detail: `${context.device} beklenen: ${rules.devices.join(', ')}`
+    });
+  }
+
+  if (rules.browsers?.length && context.browser && !rules.browsers.includes(context.browser)) {
+    reasons.push({
+      code: 'browser_mismatch',
+      label: 'Tarayıcı hedeflemesi eşleşmedi',
+      detail: `${context.browser} beklenen: ${rules.browsers.join(', ')}`
+    });
+  }
+
+  if (rules.os?.length && context.os && !rules.os.includes(context.os)) {
+    reasons.push({
+      code: 'os_mismatch',
+      label: 'İşletim sistemi hedeflemesi eşleşmedi',
+      detail: `${context.os} beklenen: ${rules.os.join(', ')}`
+    });
+  }
+
+  if (rules.authenticated !== null && rules.authenticated !== undefined && rules.authenticated !== context.authenticated) {
+    reasons.push({
+      code: 'auth_mismatch',
+      label: 'Oturum hedeflemesi eşleşmedi',
+      detail: `Beklenen: ${rules.authenticated ? 'logged-in' : 'guest'}`
+    });
+  }
+
+  if (rules.roles?.length && context.userRoles) {
+    const hasRole = rules.roles.some(role => context.userRoles.includes(role));
+    if (!hasRole) {
+      reasons.push({
+        code: 'role_mismatch',
+        label: 'Rol hedeflemesi eşleşmedi',
+        detail: `Beklenen roller: ${rules.roles.join(', ')}`
+      });
+    }
+  }
+
+  if (rules.userTags?.length && context.userTags) {
+    const hasTag = rules.userTags.some(tag => context.userTags.includes(tag));
+    if (!hasTag) {
+      reasons.push({
+        code: 'tag_mismatch',
+        label: 'Kullanıcı etiketi eşleşmedi',
+        detail: `Beklenen etiketler: ${rules.userTags.join(', ')}`
+      });
+    }
+  }
+
+  if (rules.requiredFlags?.length && context.featureFlags) {
+    const missing = rules.requiredFlags.filter(flag => !context.featureFlags.includes(flag));
+    if (missing.length) {
+      reasons.push({
+        code: 'feature_flag_missing',
+        label: 'Feature flag eksik',
+        detail: missing.join(', ')
+      });
+    }
+  }
+
+  if (rules.excludeFlags?.length && context.featureFlags) {
+    const excluded = rules.excludeFlags.filter(flag => context.featureFlags.includes(flag));
+    if (excluded.length) {
+      reasons.push({
+        code: 'feature_flag_excluded',
+        label: 'Hariç tutulan feature flag mevcut',
+        detail: excluded.join(', ')
+      });
+    }
+  }
+
+  if (rules.cookies && !matchCookies(context.cookies, rules.cookies)) {
+    reasons.push({
+      code: 'cookie_mismatch',
+      label: 'Cookie kuralı eşleşmedi',
+      detail: 'Include/exclude cookie kurallarını kontrol edin'
+    });
+  }
+
+  if (rules.referrers?.length && context.referrer && !micromatch.isMatch(context.referrer, rules.referrers)) {
+    reasons.push({
+      code: 'referrer_mismatch',
+      label: 'Referrer hedeflemesi eşleşmedi',
+      detail: `${context.referrer} beklenen: ${rules.referrers.join(', ')}`
+    });
+  }
+
+  if (rules.excludeReferrers?.length && context.referrer && micromatch.isMatch(context.referrer, rules.excludeReferrers)) {
+    reasons.push({
+      code: 'referrer_excluded',
+      label: 'Referrer hariç tutuldu',
+      detail: context.referrer
+    });
+  }
+
+  if (rules.schedule && !isScheduleActive(rules.schedule, context.timezone)) {
+    reasons.push({
+      code: 'schedule_inactive',
+      label: 'Zamanlama şu an aktif değil',
+      detail: rules.schedule.timezone || context.timezone || 'UTC'
+    });
+  }
+
+  if (rules.frequency && !checkFrequencyCap(rules.frequency, context.seenCaps)) {
+    reasons.push({
+      code: 'frequency_capped',
+      label: 'Frequency cap dolmuş',
+      detail: rules.frequency.capKey || 'default cap'
+    });
+  }
+
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+    rules
+  };
+}
+
+async function explainDecision({ tenantId, placement, placementSlug, context = {} }) {
+  const source = placement || await PlacementDefinition.findOne({
+    tenantId,
+    slug: placementSlug
+  }).lean();
+
+  if (!source) {
+    return null;
+  }
+
+  const defaultRules = source.defaultRules || {};
+  const evaluated = (source.experiences || []).map((experience, index) => {
+    const result = explainExperienceEligibility(experience, context, defaultRules);
+    return {
+      id: experience._id?.toString?.() || experience.id || `draft-${index}`,
+      name: experience.name || `Experience ${index + 1}`,
+      status: experience.status || 'draft',
+      priority: experience.priority || 50,
+      weight: experience.weight || 100,
+      contentType: experience.contentType,
+      eligible: result.eligible,
+      reasons: result.reasons,
+      rules: result.rules
+    };
+  });
+
+  const eligible = evaluated
+    .filter((item) => item.eligible)
+    .sort((a, b) => (b.priority || 50) - (a.priority || 50));
+  const selected = eligible[0] || null;
+
+  return {
+    placement: {
+      id: source._id?.toString?.() || source.id || null,
+      slug: source.slug,
+      name: source.name,
+      status: source.status,
+      category: source.category
+    },
+    context,
+    selected,
+    eligible,
+    rejected: evaluated.filter((item) => !item.eligible),
+    evaluated,
+    summary: {
+      total: evaluated.length,
+      eligible: eligible.length,
+      rejected: evaluated.length - eligible.length,
+      selectionMode: 'priority-preview',
+      liveSelectionNote: 'Canlı decision engine uygun experience listesinden priority sonrası weight ile seçim yapar.'
+    }
+  };
 }
 
 /**
@@ -348,23 +565,229 @@ function weightedRandomSelection(experiences) {
 /**
  * Build decision response
  */
-function buildDecision(placement, experience, context) {
-  const trackingId = uuidv4();
+function sanitizePublicForm(form) {
+  if (!form) return null;
+
+  const formObj = form.toObject ? form.toObject() : { ...form };
+  const id = formObj._id?.toString?.() || formObj.id?.toString?.() || null;
 
   return {
-    placementId: placement._id.toString(),
-    experienceId: experience._id.toString(),
+    id,
+    title: formObj.title,
+    description: formObj.description,
+    slug: formObj.slug,
+    fields: Array.isArray(formObj.fields)
+      ? formObj.fields
+          .filter((field) => !field.hidden)
+          .sort((a, b) => (a.order || 0) - (b.order || 0))
+          .map((field) => ({
+            id: field.id,
+            type: field.type,
+            name: field.name,
+            label: field.label,
+            placeholder: field.placeholder,
+            helpText: field.helpText,
+            required: Boolean(field.required),
+            validation: field.validation,
+            options: field.options || [],
+            conditionalLogic: field.conditionalLogic,
+            defaultValue: field.defaultValue,
+            order: field.order || 0,
+            width: field.width,
+            className: field.className,
+            readOnly: Boolean(field.readOnly),
+            disabled: Boolean(field.disabled),
+          }))
+      : [],
+    settings: {
+      submitButtonText: formObj.settings?.submitButtonText,
+      successMessage: formObj.settings?.successMessage,
+      redirectUrl: formObj.settings?.redirectUrl,
+      enableCaptcha: Boolean(formObj.settings?.enableCaptcha),
+      enableHoneypot: formObj.settings?.enableHoneypot !== false,
+      allowMultipleSubmissions: formObj.settings?.allowMultipleSubmissions !== false,
+      submissionCooldownSeconds: formObj.settings?.submissionCooldownSeconds ?? 60,
+      requireAuth: Boolean(formObj.settings?.requireAuth),
+    },
+    submitEndpoint: id ? `/api/public/forms/${id}/submit` : null,
+  };
+}
+
+async function resolveExperienceContent(tenantId, experience) {
+  const contentType = experience.contentType;
+  const payload = experience.payload || {};
+
+  if (contentType === 'form') {
+    const formId = payload.formId;
+    const form = formId
+      ? await FormDefinition.findOne({ _id: formId, tenantId, status: 'published' }).lean()
+      : null;
+    const publicForm = sanitizePublicForm(form);
+
+    return {
+      payload: {
+        ...payload,
+        form: publicForm,
+        formId: publicForm?.id || (formId?.toString?.() || formId || null),
+        submitEndpoint: publicForm?.submitEndpoint || null,
+      },
+      content: {
+        type: 'form',
+        formId: publicForm?.id || (formId?.toString?.() || formId || null),
+        title: payload.title || publicForm?.title,
+        submitText: payload.submitText || publicForm?.settings?.submitButtonText,
+        fields: publicForm?.fields || [],
+        settings: publicForm?.settings || {},
+        form: publicForm,
+        submitEndpoint: publicForm?.submitEndpoint || null,
+      },
+    };
+  }
+
+  if (contentType === 'html') {
+    return {
+      payload,
+      content: {
+        type: 'html',
+        html: payload.html || '',
+        data: payload.data || {},
+      },
+    };
+  }
+
+  if (contentType === 'text') {
+    return {
+      payload,
+      content: {
+        type: 'text',
+        title: payload.title,
+        message: payload.message,
+        cta: payload.cta,
+      },
+    };
+  }
+
+  if (contentType === 'image') {
+    return {
+      payload,
+      content: {
+        type: 'image',
+        imageUrl: payload.imageUrl,
+        alt: payload.alt,
+        cta: payload.cta,
+      },
+    };
+  }
+
+  if (contentType === 'video') {
+    return {
+      payload,
+      content: {
+        type: 'video',
+        videoUrl: payload.videoUrl,
+        autoplay: Boolean(payload.autoplay),
+        controls: payload.controls !== false,
+      },
+    };
+  }
+
+  if (contentType === 'component') {
+    return {
+      payload,
+      content: {
+        type: 'component',
+        componentId: payload.componentId,
+        data: payload.data || {},
+      },
+    };
+  }
+
+  if (contentType === 'external') {
+    return {
+      payload,
+      content: {
+        type: 'external',
+        externalUrl: payload.externalUrl,
+        data: payload.data || {},
+      },
+    };
+  }
+
+  return {
+    payload,
+    content: {
+      type: contentType,
+      ...payload,
+    },
+  };
+}
+
+function resolveTrigger(placement, experience) {
+  return experience.trigger || experience.rules?.trigger || placement.defaultRules?.trigger || { type: 'onLoad' };
+}
+
+function resolveFrequency(experience, placement) {
+  const frequency = experience.rules?.frequency || placement.defaultRules?.frequency || null;
+  if (!frequency) return null;
+  return {
+    capKey: frequency.capKey,
+    session: frequency.maxPerSession,
+    daily: frequency.maxPerDay,
+    weekly: frequency.maxPerWeek,
+    monthly: frequency.maxPerMonth,
+    total: frequency.maxTotal,
+    resetOnConversion: Boolean(frequency.resetOnConversion),
+  };
+}
+
+async function buildDecision(placement, experience, context) {
+  const trackingId = uuidv4();
+  const { payload, content } = await resolveExperienceContent(placement.tenantId, experience);
+  const trigger = resolveTrigger(placement, experience);
+  const frequencyCap = resolveFrequency(experience, placement);
+  const placementId = placement._id.toString();
+  const experienceId = experience._id.toString();
+
+  return {
+    decisionId: trackingId,
+    placementId,
+    experienceId,
     contentType: experience.contentType,
-    payload: experience.payload,
+    payload,
+    content,
     ui: experience.ui || {},
+    trigger,
+    placement: {
+      _id: placementId,
+      id: placementId,
+      slug: placement.slug,
+      name: placement.name,
+      category: placement.category
+    },
+    experience: {
+      _id: experienceId,
+      id: experienceId,
+      name: experience.name,
+      contentType: experience.contentType,
+      payload,
+      content,
+      ui: experience.ui || {},
+      trigger,
+      frequencyCap,
+      conversions: experience.conversions || {}
+    },
     tracking: {
-      placementId: placement._id.toString(),
-      experienceId: experience._id.toString(),
+      placementId,
+      experienceId,
       sessionId: context.sessionId,
       trackingId,
       variantWeight: experience.weight || 100,
       variantPriority: experience.priority || 50,
       capKey: experience.rules?.frequency?.capKey || placement.defaultRules?.frequency?.capKey
+    },
+    trackingContext: {
+      ...context,
+      trackingId
     },
     meta: {
       placementSlug: placement.slug,
@@ -372,6 +795,56 @@ function buildDecision(placement, experience, context) {
       experienceName: experience.name,
       category: placement.category
     }
+  };
+}
+
+async function getPublicPlacementDetails({ tenantId, placementSlug }) {
+  const placement = await PlacementDefinition.findOne({
+    tenantId,
+    slug: placementSlug,
+    status: 'active'
+  }).lean();
+
+  if (!placement) {
+    return null;
+  }
+
+  const experiences = await Promise.all(
+    (placement.experiences || [])
+      .filter((experience) => experience.status === 'active')
+      .sort((a, b) => (b.priority || 50) - (a.priority || 50))
+      .map(async (experience) => {
+        const { payload, content } = await resolveExperienceContent(placement.tenantId, experience);
+        return {
+          id: experience._id.toString(),
+          name: experience.name,
+          description: experience.description,
+          status: experience.status,
+          priority: experience.priority,
+          weight: experience.weight,
+          contentType: experience.contentType,
+          payload,
+          content,
+          ui: experience.ui || {},
+          trigger: resolveTrigger(placement, experience),
+          rules: experience.rules || {},
+          conversions: experience.conversions || {},
+          tags: experience.tags || []
+        };
+      })
+  );
+
+  return {
+    id: placement._id.toString(),
+    slug: placement.slug,
+    name: placement.name,
+    description: placement.description,
+    category: placement.category,
+    status: placement.status,
+    defaultRules: placement.defaultRules || {},
+    settings: placement.settings || {},
+    tags: placement.tags || [],
+    experiences
   };
 }
 
@@ -394,6 +867,8 @@ async function decideBatch({ tenantId, placements, context }) {
 module.exports = {
   decide,
   decideBatch,
+  getPublicPlacementDetails,
+  explainDecision,
   filterEligibleExperiences,
   matchPaths,
   isScheduleActive,

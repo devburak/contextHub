@@ -35,9 +35,7 @@ export function usePlacement({
     try {
       const response = await fetch(`${tracker.apiUrl}/decide`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: tracker.getHeaders(),
         body: JSON.stringify({
           placement: placementSlug,
           context: {

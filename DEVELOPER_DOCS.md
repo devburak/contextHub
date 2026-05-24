@@ -1136,7 +1136,7 @@ Placement sistemi, Content-as-a-Service (CaaS) yaklaşımıyla popup, banner, in
   click: 'User clicked',
   conversion: 'Goal completed',
   close: 'Placement closed',
-  dismissal: 'Placement dismissed',
+  dismiss: 'Placement dismissed',
   submit: 'Form submitted',
   error: 'Error occurred'
 }
@@ -1160,9 +1160,11 @@ POST   /api/placements/:id/duplicate             // Duplicate
 POST   /api/placements/:id/experiences           // Add experience
 PUT    /api/placements/:id/experiences/:expId    // Update experience
 DELETE /api/placements/:id/experiences/:expId    // Delete experience
+POST   /api/placements/debug-decision            // Explain draft/saved placement eligibility
 
 // Public endpoints
 POST   /api/public/placements/decide             // Get placement decision
+GET    /api/public/placements/:slug              // Get active placement details
 POST   /api/public/placements/decide-batch       // Batch decisions
 POST   /api/public/placements/event              // Track event
 POST   /api/public/placements/events/batch       // Batch events
@@ -1179,6 +1181,39 @@ GET    /api/placements/:id/stats/realtime        // Real-time stats
 GET    /api/placements/journey                   // User journey
 ```
 
+### Placement Builder UX
+
+Admin placement editing is organized as a builder workflow:
+
+- **Kanal**: popup, banner, inline, custom view, fullscreen, toast/mobile notification prompt.
+- **İçerik**: text, custom HTML, image, video, ContextHub form, component, external URL.
+- **Davranış**: trigger, targeting, schedule, frequency caps, conversion goals.
+
+The edit page includes a right-side Placement Workbench:
+
+- **Preview**: desktop/mobile toggle, light/dark background, trigger simulation, form dry-run, SDK JSON.
+- **Debug**: sends draft placement + test context to `POST /api/placements/debug-decision`.
+- **Webhooks**: reads `GET /api/admin/tenants/:tenantId/webhooks/queue` for domain event/outbox visibility.
+
+Debug request:
+
+```json
+{
+  "placement": { "slug": "welcome-popup", "experiences": [] },
+  "context": {
+    "path": "/pricing",
+    "locale": "tr",
+    "device": "desktop",
+    "sessionId": "admin-preview-session",
+    "userTags": ["returning"],
+    "featureFlags": ["new-pricing"],
+    "seenCaps": {}
+  }
+}
+```
+
+Debug responses include `selected`, `eligible`, `rejected`, `evaluated`, and `summary`. Rejection reasons include codes such as `path_mismatch`, `locale_mismatch`, `feature_flag_missing`, `schedule_inactive`, and `frequency_capped`.
+
 ### Frontend SDK (@contexthub/promo-sdk)
 
 **React Kullanımı:**
@@ -1189,13 +1224,13 @@ import { initTracker, PlacementHost } from '@contexthub/promo-sdk';
 // Initialize once
 initTracker({
   apiUrl: 'https://api.example.com/api/public/placements',
-  tenantId: 'your-tenant-id'
+  tenantId: 'your-tenant-id',
+  apiKey: 'ctx_optional_public_token'
 });
 
 // Use component
 <PlacementHost
   placementSlug="welcome-popup"
-  trigger="onLoad"
   autoTrack={true}
   onConversion={(goalId, value) => {
     console.log('Conversion:', goalId, value);
@@ -1592,25 +1627,28 @@ import { initTracker, PlacementHost, usePlacement } from '@contexthub/promo-sdk'
 // Initialize
 initTracker({
   apiUrl: 'https://api.example.com/api/public/placements',
-  tenantId: 'tenant-id'
+  tenantId: 'tenant-id',
+  apiKey: 'ctx_optional_public_token'
 });
 
 // Component
 <PlacementHost
   placementSlug="welcome-popup"
-  trigger="onLoad"
   autoTrack={true}
 />
 
 // Hook
 function MyComponent() {
-  const { placement, loading, trackClick } = usePlacement('welcome-popup');
+  const { decision, loading, trackClick } = usePlacement({
+    placementSlug: 'welcome-popup',
+    autoTrack: true
+  });
 
   return (
     <div>
-      {placement && (
+      {decision && (
         <div onClick={trackClick}>
-          {placement.content.data.title}
+          {decision.content.title}
         </div>
       )}
     </div>
@@ -1625,8 +1663,9 @@ function MyComponent() {
 <script src="https://cdn.example.com/contexthub-placement.js"></script>
 <script>
   const placement = new ContextHubPlacement({
-    apiUrl: 'https://api.example.com',
+    apiUrl: 'https://api.example.com/api/public/placements',
     tenantId: 'tenant-id',
+    apiKey: 'ctx_optional_public_token',
     placementSlug: 'welcome-popup',
     container: '#placement',
     autoTrack: true
@@ -1643,7 +1682,11 @@ function MyComponent() {
 - **Intersection Observer** – View tracking
 - **Auto-tracking** – Impression, view, click events
 - **8 UI Variants** – Modal, banner, slide-in, etc.
-- **5 Triggers** – onLoad, onScroll, onExit, onTimeout, manual
+- **5 Triggers** – onLoad, onScroll, onExit, onTimeout, manual. If the component `trigger` prop is omitted, the backend placement trigger is used.
+
+**Form Placements:**
+
+When an experience uses `contentType: 'form'`, the admin editor stores the selected ContextHub form in `payload.formId`. Public decision/detail responses resolve the form into renderer-ready fields and include `content.submitEndpoint`, which targets `POST /api/public/forms/:formId/submit`.
 
 ---
 

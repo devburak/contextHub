@@ -6,8 +6,8 @@ const { z } = require('zod');
 
 // UI Config Schema
 const uiConfigSchema = z.object({
-  variant: z.enum(['modal', 'slideIn', 'topBar', 'bottomBar', 'inline', 'fullscreen', 'toast', 'corner']).default('modal'),
-  position: z.enum(['topLeft', 'topCenter', 'topRight', 'center', 'bottomLeft', 'bottomCenter', 'bottomRight', 'left', 'right']).optional(),
+  variant: z.enum(['modal', 'slideIn', 'topBar', 'bottomBar', 'inline', 'fullscreen', 'toast', 'corner', 'banner-top', 'banner-bottom', 'slide-in-right', 'slide-in-left', 'corner-popup', 'fullscreen-takeover']).default('modal'),
+  position: z.enum(['topLeft', 'topCenter', 'topRight', 'center', 'bottomLeft', 'bottomCenter', 'bottomRight', 'left', 'right', 'fixed', 'absolute', 'relative', 'sticky']).optional(),
   width: z.union([z.number(), z.string()]).optional(),
   maxWidth: z.number().optional(),
   height: z.union([z.number(), z.string(), z.literal('auto')]).optional(),
@@ -16,7 +16,7 @@ const uiConfigSchema = z.object({
   closeButton: z.boolean().default(true),
   closeOnBackdrop: z.boolean().optional(),
   closeOnEscape: z.boolean().optional(),
-  animation: z.enum(['fade', 'slide', 'zoom', 'bounce', 'none']).optional(),
+  animation: z.enum(['fade', 'slide', 'zoom', 'bounce', 'none', 'fadeIn', 'slideDown', 'slideUp', 'slideLeft', 'slideRight', 'zoomIn']).optional(),
   animationDuration: z.number().optional(),
   theme: z.object({
     backgroundColor: z.string().optional(),
@@ -37,12 +37,22 @@ const uiConfigSchema = z.object({
     height: z.union([z.number(), z.string()]).optional(),
     variant: z.string().optional(),
     position: z.string().optional()
-  }).optional()
+  }).optional(),
+  showCloseButton: z.boolean().optional(),
+  overlay: z.boolean().optional(),
+  closeOnOverlayClick: z.boolean().optional(),
+  zIndex: z.number().optional(),
+  buttonColor: z.string().optional(),
+  backgroundColor: z.string().optional(),
+  textColor: z.string().optional(),
+  borderRadius: z.union([z.number(), z.string()]).optional(),
+  padding: z.union([z.number(), z.string()]).optional(),
+  offset: z.any().optional()
 }).optional();
 
 // Trigger Schema
 const triggerSchema = z.object({
-  type: z.enum(['onLoad', 'afterDelay', 'onScroll', 'onExit', 'onClick', 'onIdle', 'onHover']).default('onLoad'),
+  type: z.enum(['onLoad', 'afterDelay', 'onScroll', 'onExit', 'onClick', 'onIdle', 'onHover', 'onTimeout', 'manual']).default('onLoad'),
   delay: z.number().optional(),
   scrollPercent: z.number().min(0).max(100).optional(),
   scrollDirection: z.enum(['down', 'up', 'both']).optional(),
@@ -128,17 +138,27 @@ const experienceSchema = z.object({
   status: z.enum(['draft', 'active', 'paused', 'archived']).default('draft'),
   priority: z.number().min(0).max(100).default(50),
   weight: z.number().min(0).max(100).default(100),
-  contentType: z.enum(['content', 'media', 'form', 'html', 'component', 'external']),
+  contentType: z.enum(['content', 'media', 'form', 'html', 'component', 'external', 'text', 'image', 'video']),
   payload: z.object({
     contentId: z.string().optional(),
     mediaId: z.string().optional(),
     formId: z.string().optional(),
     html: z.string().optional(),
+    title: z.any().optional(),
+    message: z.any().optional(),
+    cta: z.any().optional(),
+    imageUrl: z.string().optional(),
+    videoUrl: z.string().optional(),
+    alt: z.string().optional(),
+    autoplay: z.boolean().optional(),
+    controls: z.boolean().optional(),
+    submitText: z.any().optional(),
     componentId: z.string().optional(),
-    externalUrl: z.string().url().optional(),
+    externalUrl: z.union([z.string().url(), z.literal('')]).optional(),
     data: z.any().optional()
   }),
   ui: uiConfigSchema,
+  trigger: triggerSchema,
   rules: rulesSchema,
   conversions: z.object({
     enabled: z.boolean().default(true),

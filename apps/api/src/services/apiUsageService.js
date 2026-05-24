@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const ApiUsage = require('@contexthub/common/src/models/ApiUsage');
 const Tenant = require('@contexthub/common/src/models/Tenant');
 const localRedisClient = require('../lib/localRedis');
+const tenantSubscriptionService = require('./tenantSubscriptionService');
 
 const FOUR_HOUR_PERIOD = '4hour';
 const FOUR_HOUR_MS = 4 * 60 * 60 * 1000;
@@ -290,7 +291,7 @@ async function resolveRequestLimitState(tenantId, date = new Date(), options = {
     return { skipped: true, reason: 'tenant_not_found' };
   }
 
-  const limit = await tenant.getLimit('monthlyRequestLimit');
+  const limit = await tenantSubscriptionService.getEffectiveLimit(tenant, 'monthlyRequestLimit');
   const cycle = getBillingCycleRange(tenant, date);
   const usage = await getMonthlyUsage(tenantId, date, { tenant });
   const remaining = isUnlimited(limit) ? Infinity : Math.max(0, limit - usage);

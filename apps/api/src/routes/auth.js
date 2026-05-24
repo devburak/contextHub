@@ -252,6 +252,54 @@ async function authRoutes(fastify, options) {
     }
   });
 
+  fastify.get('/auth/invitations/preview', {
+    schema: {
+      description: 'Preview a tenant invitation before accepting it',
+      summary: 'Preview invitation',
+      tags: ['auth'],
+      querystring: {
+        type: 'object',
+        properties: {
+          token: { type: 'string', minLength: 10 }
+        },
+        required: ['token']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            email: { type: 'string', nullable: true },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            role: { type: 'string' },
+            status: { type: 'string' },
+            expiresAt: { type: 'string' },
+            requiresPasswordSetup: { type: 'boolean' },
+            tenant: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                slug: { type: 'string' },
+                plan: { type: 'string' },
+                status: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const result = await authService.getInvitationPreview(request.query.token);
+      return reply.send(result);
+    } catch (error) {
+      const status = /expired/i.test(error.message) ? 410 : 400;
+      return reply.code(status).send({ error: 'InvitationPreviewFailed', message: error.message });
+    }
+  });
+
   fastify.post('/auth/invitations/accept', {
     schema: {
       description: 'Accept a tenant invitation and create/update user account',
@@ -292,8 +340,124 @@ async function authRoutes(fastify, options) {
               properties: {
                 id: { type: 'string' },
                 tenantId: { type: 'string' },
+                tenant: {
+                  type: 'object',
+                  nullable: true,
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    slug: { type: 'string' },
+                    plan: { type: 'string' },
+                    status: { type: 'string' }
+                  }
+                },
+                role: { type: 'string' },
+                roleMeta: {
+                  type: 'object',
+                  nullable: true,
+                  properties: {
+                    id: { type: 'string' },
+                    key: { type: 'string' },
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    level: { type: 'number' },
+                    permissions: {
+                      type: 'array',
+                      items: { type: 'string' }
+                    }
+                  }
+                },
+                permissions: {
+                  type: 'array',
+                  items: { type: 'string' }
+                },
                 status: { type: 'string' },
                 acceptedAt: { type: 'string' }
+              }
+            },
+            activeMembership: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                tenantId: { type: 'string' },
+                tenant: {
+                  type: 'object',
+                  nullable: true,
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    slug: { type: 'string' },
+                    plan: { type: 'string' },
+                    status: { type: 'string' },
+                    createdAt: { type: 'string' }
+                  }
+                },
+                role: { type: 'string' },
+                roleMeta: {
+                  type: 'object',
+                  nullable: true,
+                  properties: {
+                    id: { type: 'string' },
+                    key: { type: 'string' },
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    level: { type: 'number' },
+                    permissions: {
+                      type: 'array',
+                      items: { type: 'string' }
+                    }
+                  }
+                },
+                permissions: {
+                  type: 'array',
+                  items: { type: 'string' }
+                },
+                status: { type: 'string' },
+                token: { type: 'string' }
+              }
+            },
+            memberships: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  tenantId: { type: 'string' },
+                  tenant: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string' },
+                      slug: { type: 'string' },
+                      plan: { type: 'string' },
+                      status: { type: 'string' },
+                      createdAt: { type: 'string' }
+                    }
+                  },
+                  role: { type: 'string' },
+                  roleMeta: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      id: { type: 'string' },
+                      key: { type: 'string' },
+                      name: { type: 'string' },
+                      description: { type: 'string' },
+                      level: { type: 'number' },
+                      permissions: {
+                        type: 'array',
+                        items: { type: 'string' }
+                      }
+                    }
+                  },
+                  permissions: {
+                    type: 'array',
+                    items: { type: 'string' }
+                  },
+                  status: { type: 'string' },
+                  token: { type: 'string' }
+                }
               }
             }
           }

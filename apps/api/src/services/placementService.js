@@ -1,8 +1,79 @@
 const { PlacementDefinition, PlacementEvent } = require('@contexthub/common');
+const { emitDomainEvent } = require('../lib/domainEvents');
+const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 
 /**
  * Placement CRUD Service
  */
+
+function formatId(value) {
+  return value?.toString?.() || value || null;
+}
+
+function buildPlacementEventPayload(placementDoc) {
+  if (!placementDoc) return null;
+  const doc = typeof placementDoc.toObject === 'function'
+    ? placementDoc.toObject({ depopulate: true })
+    : placementDoc;
+
+  return {
+    placementId: formatId(doc._id),
+    slug: doc.slug,
+    name: doc.name,
+    description: doc.description,
+    category: doc.category,
+    status: doc.status,
+    tags: doc.tags || [],
+    defaultRules: doc.defaultRules || {},
+    settings: doc.settings || {},
+    experiences: Array.isArray(doc.experiences)
+      ? doc.experiences.map((experience) => ({
+        experienceId: formatId(experience._id),
+        name: experience.name,
+        status: experience.status,
+        priority: experience.priority,
+        weight: experience.weight,
+        contentType: experience.contentType,
+        payload: experience.payload,
+        ui: experience.ui,
+        trigger: experience.trigger || experience.rules?.trigger,
+        rules: experience.rules,
+        conversions: experience.conversions,
+        tags: experience.tags || []
+      }))
+      : [],
+    endpoints: {
+      details: `/api/public/placements/${doc.slug}`,
+      decide: '/api/public/placements/decide',
+      event: '/api/public/placements/event'
+    },
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : doc.createdAt,
+    updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : doc.updatedAt
+  };
+}
+
+async function emitPlacementEvent({ tenantId, type, placement, userId }) {
+  if (!tenantId || !type || !placement) return;
+
+  const normalizedUserId = userId ? userId.toString() : null;
+  const metadata = {
+    triggeredBy: normalizedUserId ? 'user' : 'system',
+    source: 'admin-ui'
+  };
+
+  if (normalizedUserId) {
+    metadata.userId = normalizedUserId;
+  }
+
+  try {
+    const eventId = await emitDomainEvent(tenantId, type, buildPlacementEventPayload(placement) || {}, metadata);
+    if (eventId) {
+      triggerWebhooksForTenant(tenantId);
+    }
+  } catch (error) {
+    console.error('[placementService] Failed to emit domain event', { tenantId, type, error });
+  }
+}
 
 /**
  * Create new placement
@@ -27,6 +98,12 @@ async function createPlacement({ tenantId, data, userId }) {
   });
 
   await placement.save();
+  await emitPlacementEvent({
+    tenantId,
+    type: 'placement.created',
+    placement,
+    userId
+  });
   return placement;
 }
 
@@ -59,6 +136,12 @@ async function updatePlacement({ tenantId, placementId, data, userId }) {
   });
 
   await placement.save();
+  await emitPlacementEvent({
+    tenantId,
+    type: 'placement.updated',
+    placement,
+    userId
+  });
   return placement;
 }
 
@@ -162,6 +245,12 @@ async function archivePlacement({ tenantId, placementId, userId }) {
   placement.updatedAt = new Date();
 
   await placement.save();
+  await emitPlacementEvent({
+    tenantId,
+    type: 'placement.updated',
+    placement,
+    userId
+  });
   return placement;
 }
 
@@ -178,7 +267,13 @@ async function deletePlacement({ tenantId, placementId }) {
   // Delete associated events (optional - depends on data retention policy)
   // await PlacementEvent.deleteMany({ placementId });
 
+  const payloadSource = placement.toObject();
   await placement.deleteOne();
+  await emitPlacementEvent({
+    tenantId,
+    type: 'placement.deleted',
+    placement: payloadSource
+  });
   return { success: true };
 }
 
@@ -200,7 +295,7 @@ async function duplicatePlacement({ tenantId, placementId, userId, newName }) {
     _id: undefined,
     name,
     slug,
-    status: 'draft',
+    status: 'paused',
     tenantId,
     createdBy: userId,
     updatedBy: userId,
@@ -209,6 +304,12 @@ async function duplicatePlacement({ tenantId, placementId, userId, newName }) {
   });
 
   await duplicated.save();
+  await emitPlacementEvent({
+    tenantId,
+    type: 'placement.created',
+    placement: duplicated,
+    userId
+  });
   return duplicated;
 }
 
@@ -227,6 +328,12 @@ async function addExperience({ tenantId, placementId, experience, userId }) {
   placement.updatedAt = new Date();
 
   await placement.save();
+  await emitPlacementEvent({
+    tenantId,
+    type: 'placement.updated',
+    placement,
+    userId
+  });
   
   // Return the newly added experience
   const newExperience = placement.experiences[placement.experiences.length - 1];
@@ -253,6 +360,12 @@ async function updateExperience({ tenantId, placementId, experienceId, data, use
   placement.updatedAt = new Date();
 
   await placement.save();
+  await emitPlacementEvent({
+    tenantId,
+    type: 'placement.updated',
+    placement,
+    userId
+  });
   return experience;
 }
 
@@ -277,6 +390,12 @@ async function deleteExperience({ tenantId, placementId, experienceId, userId })
   placement.updatedAt = new Date();
 
   await placement.save();
+  await emitPlacementEvent({
+    tenantId,
+    type: 'placement.updated',
+    placement,
+    userId
+  });
   return { success: true };
 }
 

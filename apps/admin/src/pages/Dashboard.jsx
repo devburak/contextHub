@@ -150,7 +150,7 @@ function buildActivityDetails(item) {
 }
 
 export default function Dashboard() {
-  const { user, role, memberships, activeTenantId } = useAuth()
+  const { user, role, memberships, activeTenantId, updateMemberships } = useAuth()
   const isOwner = role === 'owner'
   const hasTenants = memberships && memberships.length > 0
 
@@ -390,6 +390,12 @@ export default function Dashboard() {
       // Refresh tenant limits
       const limitsData = await fetchTenantLimits()
       setTenantLimits(limitsData)
+      try {
+        const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
+        updateMemberships(tenants)
+      } catch (error) {
+        console.error('Tenant listesi plan değişikliği sonrası yenilenemedi:', error)
+      }
 
       setShowPlanModal(false)
       setSelectedPlan(null)

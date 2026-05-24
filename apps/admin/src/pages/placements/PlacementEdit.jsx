@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, X } from 'lucide-react';
+import { ArrowLeft, Save, Plus } from 'lucide-react';
 import { apiClient as api } from '../../lib/api';
 import ExperienceBuilder from './components/ExperienceBuilder';
+import PlacementWorkbench from './components/PlacementWorkbench';
 
 export default function PlacementEdit() {
   const { id } = useParams();
@@ -15,7 +16,8 @@ export default function PlacementEdit() {
     name: '',
     slug: '',
     description: '',
-    status: 'draft',
+    category: 'popup',
+    status: 'active',
     experiences: []
   });
 
@@ -67,24 +69,23 @@ export default function PlacementEdit() {
           status: 'active',
           weight: 100,
           priority: 50,
-          content: {
-            type: 'text',
-            title: '',
-            message: ''
+          contentType: 'html',
+          payload: {
+            html: '<div><h2>Merhaba</h2><p>Bu alanı kendi popup veya özel görünüm içeriğinle değiştir.</p></div>'
           },
           ui: {
             variant: 'modal',
             position: 'fixed',
             showCloseButton: true
           },
-          targeting: {
+          rules: {
             paths: [],
-            locale: [],
-            device: [],
-            browser: []
-          },
-          trigger: {
-            type: 'onLoad'
+            locales: [],
+            devices: [],
+            browsers: [],
+            trigger: {
+              type: 'onLoad'
+            }
           }
         }
       ]
@@ -150,113 +151,140 @@ export default function PlacementEdit() {
         </button>
       </div>
 
-      {/* Basic Info */}
-      <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Temel Bilgiler</h2>
-        
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              İsim *
-            </label>
-            <input
-              type="text"
-              value={placement.name}
-              onChange={(e) => {
-                const name = e.target.value;
-                setPlacement({
-                  ...placement,
-                  name,
-                  slug: isNew ? generateSlug(name) : placement.slug
-                });
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="Hoşgeldin Popup'ı"
-            />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div>
+          {/* Basic Info */}
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-4">Temel Bilgiler</h2>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  İsim *
+                </label>
+                <input
+                  type="text"
+                  value={placement.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setPlacement({
+                      ...placement,
+                      name,
+                      slug: isNew ? generateSlug(name) : placement.slug
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Hoşgeldin Popup'ı"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Slug *
+                </label>
+                <input
+                  type="text"
+                  value={placement.slug}
+                  onChange={(e) => setPlacement({ ...placement, slug: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="hosgeldin-popup"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Kanal kategorisi
+                </label>
+                <select
+                  value={placement.category || 'popup'}
+                  onChange={(e) => setPlacement({ ...placement, category: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="popup">Popup</option>
+                  <option value="banner">Banner</option>
+                  <option value="inline">Inline</option>
+                  <option value="overlay">Overlay</option>
+                  <option value="notification">Mobile notification prompt</option>
+                  <option value="widget">Widget</option>
+                  <option value="other">Custom view</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Durum
+                </label>
+                <select
+                  value={placement.status}
+                  onChange={(e) => setPlacement({ ...placement, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="active">Aktif</option>
+                  <option value="paused">Duraklatıldı</option>
+                  <option value="archived">Arşivlendi</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Açıklama
+                </label>
+                <textarea
+                  value={placement.description}
+                  onChange={(e) => setPlacement({ ...placement, description: e.target.value })}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Bu yerleşimi açıklayın..."
+                />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Slug *
-            </label>
-            <input
-              type="text"
-              value={placement.slug}
-              onChange={(e) => setPlacement({ ...placement, slug: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="hosgeldin-popup"
-            />
-          </div>
+          {/* Experiences */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">Deneyimler</h2>
+                <p className="mt-1 text-sm text-gray-500">Her deneyim kanal, içerik ve davranış adımlarından oluşur.</p>
+              </div>
+              <button
+                onClick={handleAddExperience}
+                className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
+              >
+                <Plus size={18} />
+                Deneyim Ekle
+              </button>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Durum
-            </label>
-            <select
-              value={placement.status}
-              onChange={(e) => setPlacement({ ...placement, status: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="draft">Taslak</option>
-              <option value="active">Aktif</option>
-              <option value="paused">Duraklatıldı</option>
-              <option value="archived">Arşivlendi</option>
-            </select>
-          </div>
-
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Açıklama
-            </label>
-            <textarea
-              value={placement.description}
-              onChange={(e) => setPlacement({ ...placement, description: e.target.value })}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="Bu yerleşimi açıklayın..."
-            />
+            {placement.experiences.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <p className="mb-4">Henüz deneyim yok. Başlamak için bir tane ekleyin.</p>
+                <button
+                  onClick={handleAddExperience}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <Plus size={20} />
+                  İlk Deneyimi Ekle
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {placement.experiences.map((experience, index) => (
+                  <ExperienceBuilder
+                    key={index}
+                    experience={experience}
+                    index={index}
+                    onUpdate={(updated) => handleUpdateExperience(index, updated)}
+                    onDelete={() => handleDeleteExperience(index)}
+                    canDelete={placement.experiences.length > 1}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Experiences */}
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Deneyimler (A/B Testleri)</h2>
-          <button
-            onClick={handleAddExperience}
-            className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
-          >
-            <Plus size={18} />
-            Deneyim Ekle
-          </button>
-        </div>
-
-        {placement.experiences.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <p className="mb-4">Henüz deneyim yok. Başlamak için bir tane ekleyin.</p>
-            <button
-              onClick={handleAddExperience}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              <Plus size={20} />
-              İlk Deneyimi Ekle
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {placement.experiences.map((experience, index) => (
-              <ExperienceBuilder
-                key={index}
-                experience={experience}
-                index={index}
-                onUpdate={(updated) => handleUpdateExperience(index, updated)}
-                onDelete={() => handleDeleteExperience(index)}
-                canDelete={placement.experiences.length > 1}
-              />
-            ))}
-          </div>
-        )}
+        <PlacementWorkbench placement={placement} />
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ class PlacementTracker {
   constructor(options = {}) {
     this.apiUrl = options.apiUrl || '/api/public/placements';
     this.tenantId = options.tenantId;
+    this.apiKey = options.apiKey;
     this.batchSize = options.batchSize || 10;
     this.flushInterval = options.flushInterval || 5000; // 5 seconds
     this.queue = [];
@@ -20,6 +21,23 @@ class PlacementTracker {
       this.startAutoFlush();
       this.setupBeforeUnload();
     }
+  }
+
+  getHeaders(extra = {}) {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...extra
+    };
+
+    if (this.tenantId) {
+      headers['X-Tenant-ID'] = this.tenantId;
+    }
+
+    if (this.apiKey) {
+      headers.Authorization = `Bearer ${this.apiKey}`;
+    }
+
+    return headers;
   }
 
   /**
@@ -80,19 +98,15 @@ class PlacementTracker {
       device,
       browser,
       userAgent: ua,
-      screenWidth: window.screen.width,
-      screenHeight: window.screen.height,
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight
-      }
+      screenSize: `${window.screen.width}x${window.screen.height}`,
+      viewport: `${window.innerWidth}x${window.innerHeight}`
     };
   }
 
   /**
    * Track an event
    */
-  track({ type, placementId, experienceId, context = {} }) {
+  track({ type, placementId, experienceId, context = {}, ...eventFields }) {
     if (!placementId) {
       console.error('placementId is required for tracking');
       return;
@@ -108,6 +122,7 @@ class PlacementTracker {
       path: typeof window !== 'undefined' ? window.location.pathname : null,
       referrer: typeof document !== 'undefined' ? document.referrer : null,
       ...this.getDeviceInfo(),
+      ...eventFields,
       ...context
     };
 
@@ -127,7 +142,7 @@ class PlacementTracker {
       type: 'impression',
       placementId,
       experienceId,
-      decisionId,
+      trackingId: decisionId,
       context
     });
   }
@@ -140,7 +155,7 @@ class PlacementTracker {
       type: 'view',
       placementId,
       experienceId,
-      decisionId,
+      trackingId: decisionId,
       context
     });
   }
@@ -153,8 +168,8 @@ class PlacementTracker {
       type: 'click',
       placementId,
       experienceId,
-      decisionId,
-      target,
+      trackingId: decisionId,
+      clickTarget: target,
       context
     });
   }
@@ -167,10 +182,10 @@ class PlacementTracker {
       type: 'conversion',
       placementId,
       experienceId,
-      decisionId,
-      goalId,
+      trackingId: decisionId,
+      conversionGoal: goalId,
       conversionValue: value,
-      conversionMetadata: metadata,
+      metadata,
       context
     });
   }
@@ -183,7 +198,7 @@ class PlacementTracker {
       type: 'close',
       placementId,
       experienceId,
-      decisionId,
+      trackingId: decisionId,
       duration,
       context
     });
@@ -194,11 +209,11 @@ class PlacementTracker {
    */
   trackDismissal({ placementId, experienceId, decisionId, reason, context }) {
     this.track({
-      type: 'dismissal',
+      type: 'dismiss',
       placementId,
       experienceId,
-      decisionId,
-      dismissalReason: reason,
+      trackingId: decisionId,
+      metadata: { reason },
       context
     });
   }
@@ -211,7 +226,7 @@ class PlacementTracker {
       type: 'submit',
       placementId,
       experienceId,
-      decisionId,
+      trackingId: decisionId,
       formData,
       context
     });
@@ -225,9 +240,11 @@ class PlacementTracker {
       type: 'error',
       placementId,
       experienceId,
-      decisionId,
-      errorMessage: error?.message || error,
-      errorStack: error?.stack,
+      trackingId: decisionId,
+      error: {
+        message: error?.message || String(error),
+        stack: error?.stack
+      },
       context
     });
   }
@@ -252,9 +269,7 @@ class PlacementTracker {
         // Regular async fetch
         await fetch(url, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: this.getHeaders(),
           body: JSON.stringify(payload)
         });
       }

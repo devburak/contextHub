@@ -62,6 +62,32 @@ const sanitizeNumberInput = (value) => {
   return Number.isFinite(numeric) ? numeric : null
 }
 
+const formatCountUsage = (metric) => {
+  const current = metric?.current ?? 0
+  if (metric?.isUnlimited) {
+    return `${current} / ∞`
+  }
+  return `${current} / ${metric?.limit ?? 0}`
+}
+
+const formatStorageUsage = (metric) => {
+  const current = Number(metric?.current ?? 0)
+  if (metric?.isUnlimited) {
+    return `${(current / (1024 ** 3)).toFixed(2)} GB / ∞`
+  }
+  const limit = Number(metric?.limit ?? 0)
+  return `${(current / (1024 ** 3)).toFixed(2)} GB / ${(limit / (1024 ** 3)).toFixed(0)} GB`
+}
+
+const formatRequestUsage = (metric) => {
+  const current = Number(metric?.current ?? 0)
+  if (metric?.isUnlimited) {
+    return `${(current / 1000).toFixed(1)}K / ∞`
+  }
+  const limit = Number(metric?.limit ?? 0)
+  return `${(current / 1000).toFixed(1)}K / ${(limit / 1000).toFixed(0)}K`
+}
+
 const mergeWithDefaults = (settings) => {
   if (!settings) {
     return JSON.parse(JSON.stringify(EMPTY_STATE))
@@ -174,7 +200,7 @@ const buildPayload = (state, secretFlags, metadataText) => {
 
 export default function TenantSettings() {
   const queryClient = useQueryClient()
-  const { activeMembership } = useAuth()
+  const { activeMembership, updateMemberships } = useAuth()
 
   const settingsQuery = useQuery({
     queryKey: ['tenants', 'settings'],
@@ -226,9 +252,18 @@ export default function TenantSettings() {
 
   const updatePlanMutation = useMutation({
     mutationFn: ({ tenantId, planSlug }) => updateTenantSubscription(tenantId, { planSlug }),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-limits'] })
+      queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
+      try {
+        const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
+        updateMemberships(tenants)
+        queryClient.setQueryData(['tenants', 'list'], tenants)
+      } catch (error) {
+        console.error('Tenant listesi plan değişikliği sonrası yenilenemedi:', error)
+      }
       setShowPlanModal(false)
+      setSelectedPlan(null)
       setFeedback({ type: 'success', message: 'Abonelik planı başarıyla güncellendi!' })
     },
     onError: (error) => {
@@ -429,44 +464,28 @@ export default function TenantSettings() {
                   <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
                     <p className="text-xs font-medium text-blue-600 uppercase">Kullanıcılar</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
-                      {limitsQuery.data?.usage?.users?.current || 0} / {
-                        limitsQuery.data?.usage?.users?.isUnlimited
-                          ? '∞'
-                          : (limitsQuery.data?.usage?.users?.limit || 0)
-                      }
+                      {formatCountUsage(limitsQuery.data?.usage?.users)}
                     </p>
                   </div>
 
                   <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
                     <p className="text-xs font-medium text-purple-600 uppercase">Depolama</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
-                      {(limitsQuery.data?.usage?.storage?.current / (1024**3)).toFixed(2)} GB / {
-                        limitsQuery.data?.usage?.storage?.isUnlimited
-                          ? '∞'
-                          : `${(limitsQuery.data?.usage?.storage?.limit / (1024**3)).toFixed(0)} GB`
-                      }
+                      {formatStorageUsage(limitsQuery.data?.usage?.storage)}
                     </p>
                   </div>
 
                   <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
                     <p className="text-xs font-medium text-emerald-600 uppercase">API İstekleri</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
-                      {(limitsQuery.data?.usage?.requests?.current / 1000).toFixed(1)}K / {
-                        limitsQuery.data?.usage?.requests?.isUnlimited
-                          ? '∞'
-                          : `${(limitsQuery.data?.usage?.requests?.limit / 1000).toFixed(0)}K`
-                      }
+                      {formatRequestUsage(limitsQuery.data?.usage?.requests)}
                     </p>
                   </div>
 
                   <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
                     <p className="text-xs font-medium text-amber-600 uppercase">Owners</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
-                      {limitsQuery.data?.usage?.owners?.current || 0} / {
-                        limitsQuery.data?.usage?.owners?.isUnlimited
-                          ? '∞'
-                          : (limitsQuery.data?.usage?.owners?.limit || 0)
-                      }
+                      {formatCountUsage(limitsQuery.data?.usage?.owners)}
                     </p>
                   </div>
                 </div>

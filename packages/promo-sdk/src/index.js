@@ -18,9 +18,9 @@ export class ContextHubPlacement {
   /**
    * Initialize SDK
    */
-  async init({ apiUrl, tenantId, userKey }) {
+  async init({ apiUrl, tenantId, userKey, apiKey }) {
     const { initTracker } = await import('./tracking');
-    this.tracker = initTracker({ apiUrl, tenantId, userKey });
+    this.tracker = initTracker({ apiUrl, tenantId, userKey, apiKey });
     return this;
   }
 
@@ -36,9 +36,7 @@ export class ContextHubPlacement {
       // Fetch decision
       const response = await fetch(`${this.tracker.apiUrl}/decide`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: this.tracker.getHeaders(),
         body: JSON.stringify({
           placement: placementSlug,
           context: {

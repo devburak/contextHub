@@ -7,12 +7,41 @@ const { Schema, model } = require('mongoose');
 const uiConfigSchema = new Schema({
   variant: {
     type: String,
-    enum: ['modal', 'slideIn', 'topBar', 'bottomBar', 'inline', 'fullscreen', 'toast', 'corner'],
+    enum: [
+      'modal',
+      'slideIn',
+      'topBar',
+      'bottomBar',
+      'inline',
+      'fullscreen',
+      'toast',
+      'corner',
+      'banner-top',
+      'banner-bottom',
+      'slide-in-right',
+      'slide-in-left',
+      'corner-popup',
+      'fullscreen-takeover'
+    ],
     default: 'modal'
   },
   position: {
     type: String,
-    enum: ['topLeft', 'topCenter', 'topRight', 'center', 'bottomLeft', 'bottomCenter', 'bottomRight', 'left', 'right'],
+    enum: [
+      'topLeft',
+      'topCenter',
+      'topRight',
+      'center',
+      'bottomLeft',
+      'bottomCenter',
+      'bottomRight',
+      'left',
+      'right',
+      'fixed',
+      'absolute',
+      'relative',
+      'sticky'
+    ],
     default: 'center'
   },
   width: { type: Schema.Types.Mixed }, // Number (px) or String ("%")
@@ -25,7 +54,7 @@ const uiConfigSchema = new Schema({
   closeOnEscape: { type: Boolean, default: true },
   animation: {
     type: String,
-    enum: ['fade', 'slide', 'zoom', 'bounce', 'none'],
+    enum: ['fade', 'slide', 'zoom', 'bounce', 'none', 'fadeIn', 'slideDown', 'slideUp', 'slideLeft', 'slideRight', 'zoomIn'],
     default: 'fade'
   },
   animationDuration: { type: Number, default: 300 }, // ms
@@ -52,7 +81,17 @@ const uiConfigSchema = new Schema({
     height: { type: Schema.Types.Mixed },
     variant: { type: String },
     position: { type: String }
-  }
+  },
+  showCloseButton: { type: Boolean },
+  overlay: { type: Boolean },
+  closeOnOverlayClick: { type: Boolean },
+  zIndex: { type: Number },
+  buttonColor: { type: String },
+  backgroundColor: { type: String },
+  textColor: { type: String },
+  borderRadius: { type: Schema.Types.Mixed },
+  padding: { type: Schema.Types.Mixed },
+  offset: { type: Schema.Types.Mixed }
 }, { _id: false });
 
 /**
@@ -62,7 +101,7 @@ const uiConfigSchema = new Schema({
 const triggerSchema = new Schema({
   type: {
     type: String,
-    enum: ['onLoad', 'afterDelay', 'onScroll', 'onExit', 'onClick', 'onIdle', 'onHover'],
+    enum: ['onLoad', 'afterDelay', 'onScroll', 'onExit', 'onClick', 'onIdle', 'onHover', 'onTimeout', 'manual'],
     default: 'onLoad'
   },
   delay: { type: Number, default: 0 }, // ms for afterDelay
@@ -238,7 +277,7 @@ const experienceSchema = new Schema({
   // Content Payload
   contentType: {
     type: String,
-    enum: ['content', 'media', 'form', 'html', 'component', 'external'],
+    enum: ['content', 'media', 'form', 'html', 'component', 'external', 'text', 'image', 'video'],
     required: true
   },
   payload: {
@@ -246,6 +285,15 @@ const experienceSchema = new Schema({
     mediaId: { type: Schema.Types.ObjectId, ref: 'Media' },
     formId: { type: Schema.Types.ObjectId, ref: 'FormDefinition' },
     html: { type: String },
+    title: { type: Schema.Types.Mixed },
+    message: { type: Schema.Types.Mixed },
+    cta: { type: Schema.Types.Mixed },
+    imageUrl: { type: String },
+    videoUrl: { type: String },
+    alt: { type: String },
+    autoplay: { type: Boolean },
+    controls: { type: Boolean },
+    submitText: { type: Schema.Types.Mixed },
     componentId: { type: String }, // React component identifier
     externalUrl: { type: String }, // iframe URL
     data: { type: Schema.Types.Mixed } // Extra props/config
@@ -253,6 +301,7 @@ const experienceSchema = new Schema({
   
   // UI Configuration
   ui: uiConfigSchema,
+  trigger: triggerSchema,
   
   // Targeting Rules
   rules: rulesSchema,
