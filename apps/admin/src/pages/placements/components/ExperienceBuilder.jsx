@@ -218,71 +218,75 @@ export default function ExperienceBuilder({
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg">
+    <div className="rounded-lg border border-gray-200">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200">
-        <div className="flex items-center gap-4 flex-1">
+      <div className="flex flex-col gap-3 border-b border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
+            type="button"
             onClick={() => setCollapsed(!collapsed)}
-            className="text-gray-600 hover:text-gray-900"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label={collapsed ? 'Deneyimi aç' : 'Deneyimi kapat'}
           >
             {collapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
           </button>
-          
-          <div className="flex-1">
+
+          <div className="min-w-0 flex-1">
             <input
               type="text"
               value={experience.name}
               onChange={(e) => handleUpdate('name', e.target.value)}
-              className="font-medium text-gray-900 bg-transparent border-none focus:outline-none focus:ring-0"
+              className="w-full min-w-0 truncate border-none bg-transparent px-0 text-base font-semibold text-gray-900 focus:outline-none focus:ring-0 sm:text-sm"
               placeholder="Experience name"
             />
           </div>
+        </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Weight:</label>
-              <input
-                type="number"
-                value={experience.weight}
-                onChange={(e) => handleUpdate('weight', parseInt(e.target.value))}
-                min="0"
-                max="100"
-                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Priority:</label>
-              <input
-                type="number"
-                value={experience.priority}
-                onChange={(e) => handleUpdate('priority', parseInt(e.target.value))}
-                min="0"
-                max="100"
-                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded"
-              />
-            </div>
-
-            <select
-              value={experience.status}
-              onChange={(e) => handleUpdate('status', e.target.value)}
-              className="px-3 py-1 text-sm border border-gray-300 rounded"
-            >
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-            </select>
-
-            {canDelete && (
-              <button
-                onClick={onDelete}
-                className="text-red-600 hover:text-red-900"
-                title="Delete experience"
-              >
-                <Trash2 size={18} />
-              </button>
-            )}
+        <div className="flex min-w-0 flex-wrap items-center gap-2 pl-12 sm:justify-end sm:pl-0">
+          <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5">
+            <label className="whitespace-nowrap text-xs font-medium text-gray-500 sm:text-sm">Weight</label>
+            <input
+              type="number"
+              value={experience.weight}
+              onChange={(e) => handleUpdate('weight', parseInt(e.target.value))}
+              min="0"
+              max="100"
+              className="h-8 w-16 rounded border border-gray-300 px-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
           </div>
+
+          <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5">
+            <label className="whitespace-nowrap text-xs font-medium text-gray-500 sm:text-sm">Priority</label>
+            <input
+              type="number"
+              value={experience.priority}
+              onChange={(e) => handleUpdate('priority', parseInt(e.target.value))}
+              min="0"
+              max="100"
+              className="h-8 w-16 rounded border border-gray-300 px-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <select
+            value={experience.status}
+            onChange={(e) => handleUpdate('status', e.target.value)}
+            className="h-11 min-w-[112px] rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+          </select>
+
+          {canDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-50 hover:text-red-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+              title="Delete experience"
+              aria-label="Delete experience"
+            >
+              <Trash2 size={18} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -317,13 +321,14 @@ export default function ExperienceBuilder({
           </div>
 
           {/* Tabs */}
-          <div className="border-b border-gray-200 mb-4">
-            <nav className="flex gap-4">
+          <div className="mb-4 border-b border-gray-200">
+            <nav className="flex gap-4 overflow-x-auto">
               {['content', 'targeting', 'ui', 'schedule', 'frequency'].map((tab) => (
                 <button
                   key={tab}
+                  type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`pb-2 px-1 border-b-2 text-sm font-medium capitalize ${
+                  className={`whitespace-nowrap border-b-2 px-1 pb-2 text-sm font-medium capitalize ${
                     activeTab === tab
                       ? 'border-blue-600 text-blue-600'
                       : 'border-transparent text-gray-600 hover:text-gray-900'

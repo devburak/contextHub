@@ -6,6 +6,7 @@ import { getContent, createContent, updateContent, listVersions, deleteContentVe
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { listCategories } from '../../lib/api/categories'
 import { searchTags, createTag } from '../../lib/api/tags'
+import { listCustomFieldDefinitions } from '../../lib/api/customFieldDefinitions'
 import { galleriesAPI } from '../../lib/galleriesAPI.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
@@ -387,6 +388,9 @@ export default function ContentEditor() {
   const [selectedCategoryRecords, setSelectedCategoryRecords] = useState([])
   const [tags, setTags] = useState([])
   const [selectedTagRecords, setSelectedTagRecords] = useState([])
+  const [customFields, setCustomFields] = useState({})
+  const [customJsonDraft, setCustomJsonDraft] = useState('{}')
+  const [customJsonError, setCustomJsonError] = useState('')
   const [slugError, setSlugError] = useState('')
   const [initialEditorState, setInitialEditorState] = useState(INITIAL_EDITOR_STATE)
   const [latestEditorState, setLatestEditorState] = useState(INITIAL_EDITOR_STATE)
@@ -628,6 +632,12 @@ export default function ContentEditor() {
     const nextTags = normaliseIdList(source.tags)
     setSelectedTagRecords([])
     setTags(nextTags)
+    const nextCustomFields = source.customFields && typeof source.customFields === 'object' && !Array.isArray(source.customFields)
+      ? source.customFields
+      : {}
+    setCustomFields(nextCustomFields)
+    setCustomJsonDraft(JSON.stringify(nextCustomFields, null, 2))
+    setCustomJsonError('')
     const mediaValue = source.featuredMediaId
     if (mediaValue && typeof mediaValue === 'object') {
       setFeaturedMedia(mediaValue)
@@ -675,6 +685,14 @@ export default function ContentEditor() {
     () => galleriesAPI.list({ search: gallerySearch, limit: 100 }),
     { enabled: !!token && !!activeTenantId }
   )
+
+  const customFieldDefinitionsQuery = useQuery(
+    ['customFieldDefinitions', { tenant: activeTenantId }],
+    listCustomFieldDefinitions,
+    { enabled: !!token && !!activeTenantId }
+  )
+
+  const customFieldDefinitions = customFieldDefinitionsQuery.data || []
 
   const versionsData = useMemo(() => versionsPayload?.versions ?? [], [versionsPayload])
   const deletedVersionsData = useMemo(() => versionsPayload?.deletedVersions ?? [], [versionsPayload])
@@ -918,6 +936,53 @@ export default function ContentEditor() {
     setGalleriesMut.mutate(selectedGalleryIds)
   }, [isNew, selectedGalleryIds, setGalleriesMut])
 
+  const updateCustomFieldValue = useCallback((key, value) => {
+    setCustomFields((prev) => {
+      const next = { ...(prev || {}) }
+      if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) {
+        delete next[key]
+      } else {
+        next[key] = value
+      }
+      setCustomJsonDraft(JSON.stringify(next, null, 2))
+      return next
+    })
+    setCustomJsonError('')
+    setDirty(true)
+    setSaveError('')
+  }, [])
+
+  const applyAdvancedCustomJson = useCallback(() => {
+    try {
+      const parsed = customJsonDraft.trim() ? JSON.parse(customJsonDraft) : {}
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setCustomJsonError('Custom fields JSON bir obje olmalı.')
+        return
+      }
+      setCustomFields(parsed)
+      setCustomJsonDraft(JSON.stringify(parsed, null, 2))
+      setCustomJsonError('')
+      setDirty(true)
+      setSaveError('')
+    } catch (error) {
+      setCustomJsonError(`Geçersiz JSON: ${error.message}`)
+    }
+  }, [customJsonDraft])
+
+  const formatAdvancedCustomJson = useCallback(() => {
+    try {
+      const parsed = customJsonDraft.trim() ? JSON.parse(customJsonDraft) : {}
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setCustomJsonError('Custom fields JSON bir obje olmalı.')
+        return
+      }
+      setCustomJsonDraft(JSON.stringify(parsed, null, 2))
+      setCustomJsonError('')
+    } catch (error) {
+      setCustomJsonError(`Geçersiz JSON: ${error.message}`)
+    }
+  }, [customJsonDraft])
+
   const handleSave = useCallback(async ({ silent = false } = {}) => {
     const trimmedTitle = title.trim()
     const trimmedSlug = slug.trim()
@@ -981,6 +1046,7 @@ export default function ContentEditor() {
       categories,
       tags,
       featuredMediaId: featuredMediaId || null,
+      customFields,
     }
 
     try {
@@ -999,7 +1065,7 @@ export default function ContentEditor() {
       console.error('Save failed', err)
       throw err
     }
-  }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, tags, featuredMediaId, isNew, createMut, updateMut, id, renderMode])
+  }, [title, slug, status, summary, publishAt, latestEditorState, html, categories, tags, featuredMediaId, customFields, isNew, createMut, updateMut, id, renderMode])
 
   const onLexicalChange = useCallback((editorState, editor) => {
     editorState.read(() => {
@@ -1580,6 +1646,19 @@ export default function ContentEditor() {
             </div>
           </section>
 
+          <CustomFieldsPanel
+            cardClass={cardClass}
+            definitions={customFieldDefinitions}
+            definitionsLoading={customFieldDefinitionsQuery.isLoading}
+            customFields={customFields}
+            onFieldChange={updateCustomFieldValue}
+            customJsonDraft={customJsonDraft}
+            onCustomJsonDraftChange={setCustomJsonDraft}
+            customJsonError={customJsonError}
+            onApplyCustomJson={applyAdvancedCustomJson}
+            onFormatCustomJson={formatAdvancedCustomJson}
+          />
+
         </div>
 
         {sidebarOpen && (
@@ -1737,7 +1816,7 @@ export default function ContentEditor() {
               </section>
             )}
             {isNew && (
-              <section className={`${cardClass} space-y-3 p-5`}>
+            <section className={`${cardClass} space-y-3 p-5`}>
                 <h3 className="text-sm font-semibold text-gray-900">Bağlı Galeriler</h3>
                 <p className="text-sm text-gray-600">
                   Galeri eklemek için önce içeriği kaydet. İçerik oluşturulduktan sonra galerileri bu panelden ilişkilendirebilirsin.
@@ -1807,7 +1886,7 @@ export default function ContentEditor() {
               <TagSelector selectedTags={selectedTagRecords} onAdd={handleTagAdd} onRemove={handleTagRemove} />
             </section>
 
-            <section className={`${cardClass} space-y-3 p-5`}>
+	            <section className={`${cardClass} space-y-3 p-5`}>
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold text-gray-900">Sürümler</h3>
                 {!isNew && (
@@ -2311,6 +2390,146 @@ function CategoryMultiSelect({ selectedCategories, onAdd, onRemove }) {
         </div>
       )}
     </div>
+  )
+}
+
+function CustomFieldsPanel({
+  cardClass,
+  definitions,
+  definitionsLoading,
+  customFields,
+  onFieldChange,
+  customJsonDraft,
+  onCustomJsonDraftChange,
+  customJsonError,
+  onApplyCustomJson,
+  onFormatCustomJson
+}) {
+  const [mode, setMode] = useState('builder')
+
+  const renderValueInput = (definition) => {
+    const value = customFields?.[definition.key]
+    const commonClass = 'mt-1 block w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500'
+
+    switch (definition.type) {
+      case 'number':
+        return <input type="number" value={value ?? ''} onChange={(event) => onFieldChange(definition.key, event.target.value === '' ? '' : Number(event.target.value))} className={commonClass} />
+      case 'boolean':
+        return (
+          <label className="mt-2 inline-flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={Boolean(value)} onChange={(event) => onFieldChange(definition.key, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            Aktif
+          </label>
+        )
+      case 'date':
+        return <input type="date" value={typeof value === 'string' ? value.slice(0, 10) : ''} onChange={(event) => onFieldChange(definition.key, event.target.value)} className={commonClass} />
+      case 'select':
+        return (
+          <select value={value ?? ''} onChange={(event) => onFieldChange(definition.key, event.target.value)} className={commonClass}>
+            <option value="">Seçiniz</option>
+            {(definition.options || []).map((option) => <option key={option.value} value={option.value}>{option.label || option.value}</option>)}
+          </select>
+        )
+      case 'multi-select': {
+        const values = Array.isArray(value) ? value : []
+        return (
+          <div className="mt-2 space-y-1">
+            {(definition.options || []).map((option) => {
+              const checked = values.includes(option.value)
+              return (
+                <label key={option.value} className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => {
+                      const next = event.target.checked ? [...values, option.value] : values.filter((item) => item !== option.value)
+                      onFieldChange(definition.key, next)
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  {option.label || option.value}
+                </label>
+              )
+            })}
+          </div>
+        )
+      }
+      case 'json':
+        return (
+          <textarea
+            value={typeof value === 'string' ? value : JSON.stringify(value ?? {}, null, 2)}
+            onChange={(event) => {
+              try {
+                onFieldChange(definition.key, event.target.value ? JSON.parse(event.target.value) : {})
+              } catch (_error) {
+                onFieldChange(definition.key, event.target.value)
+              }
+            }}
+            rows={4}
+            className={`${commonClass} font-mono`}
+          />
+        )
+      case 'url':
+        return <input type="url" value={value ?? ''} onChange={(event) => onFieldChange(definition.key, event.target.value)} className={commonClass} />
+      case 'reference':
+      case 'text':
+      default:
+        return <input type="text" value={value ?? ''} onChange={(event) => onFieldChange(definition.key, event.target.value)} className={commonClass} />
+    }
+  }
+
+  return (
+    <section className={`${cardClass} space-y-4 p-5`}>
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900">Custom Fields</h3>
+        <p className="mt-1 text-xs text-gray-500">Bu içerik için tenant ayarlarında tanımlanmış alanların değerlerini gir.</p>
+      </div>
+
+      <div className="grid grid-cols-2 rounded-lg border border-gray-200 bg-gray-50 p-1 text-xs font-semibold">
+        <button type="button" onClick={() => setMode('builder')} className={clsx('rounded-md px-3 py-1.5', mode === 'builder' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600')}>Builder</button>
+        <button type="button" onClick={() => setMode('json')} className={clsx('rounded-md px-3 py-1.5', mode === 'json' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600')}>Advanced JSON</button>
+      </div>
+
+      {mode === 'builder' ? (
+        <div className="space-y-4">
+          {definitionsLoading ? (
+            <p className="text-sm text-gray-500">Özel alanlar yükleniyor...</p>
+          ) : definitions.length === 0 ? (
+            <p className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-3 text-sm text-gray-500">Henüz custom field tanımı yok. Alan tanımlarını Varlık Ayarları ekranından oluşturabilirsin.</p>
+          ) : (
+            <div className="space-y-3">
+              {definitions.map((definition) => (
+                <div key={definition._id || definition.key} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="min-w-0">
+                    <label className="block text-sm font-semibold text-gray-800">
+                      {definition.label}
+                      {definition.required && <span className="ml-1 text-rose-500">*</span>}
+                    </label>
+                    <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-gray-500">
+                      <span className="rounded bg-white px-1.5 py-0.5">{definition.key}</span>
+                      <span className="rounded bg-white px-1.5 py-0.5">{definition.type}</span>
+                      {definition.public && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">public</span>}
+                      {definition.filterable && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">filterable</span>}
+                      {definition.searchable && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">searchable</span>}
+                    </div>
+                  </div>
+                  {renderValueInput(definition)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <textarea value={customJsonDraft} onChange={(event) => onCustomJsonDraftChange(event.target.value)} rows={10} className="block w-full rounded-md border border-gray-200 bg-gray-950 px-3 py-2 font-mono text-xs text-gray-100 shadow-sm focus:border-blue-500 focus:ring-blue-500" spellCheck={false} />
+          {customJsonError && <p className="text-xs text-rose-600">{customJsonError}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={onApplyCustomJson} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Kontrol Et ve Uygula</button>
+            <button type="button" onClick={onFormatCustomJson} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">Formatla</button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 
