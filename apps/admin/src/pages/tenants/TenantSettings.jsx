@@ -153,7 +153,7 @@ const mergeWithDefaults = (settings) => {
   }
 }
 
-const buildPayload = (state, secretFlags, metadataText) => {
+const buildPayload = (state, secretFlags, secretEditState, metadataText) => {
   let metadata = {}
   if (metadataText.trim().length) {
     try {
@@ -202,7 +202,7 @@ const buildPayload = (state, secretFlags, metadataText) => {
 
   if (secretFlags.smtpPassword) {
     payload.smtp.password = null
-  } else if (state.smtp.password) {
+  } else if (secretEditState.smtpPassword && state.smtp.password) {
     payload.smtp.password = state.smtp.password
   }
 
@@ -451,6 +451,7 @@ export default function TenantSettings() {
   const [formState, setFormState] = useState(JSON.parse(JSON.stringify(EMPTY_STATE)))
   const [metadataText, setMetadataText] = useState('{}')
   const [secretFlags, setSecretFlags] = useState({ smtpPassword: false, webhookSecret: false })
+  const [secretEditState, setSecretEditState] = useState({ smtpPassword: false, webhookSecret: false })
   const [feedback, setFeedback] = useState({ type: '', message: '' })
   const [featureKeyInput, setFeatureKeyInput] = useState('')
   const [selectedPlan, setSelectedPlan] = useState(null)
@@ -462,6 +463,7 @@ export default function TenantSettings() {
       setFormState(merged)
       setMetadataText(JSON.stringify(settingsQuery.data.metadata || {}, null, 2) || '{}')
       setSecretFlags({ smtpPassword: false, webhookSecret: false })
+      setSecretEditState({ smtpPassword: false, webhookSecret: false })
     }
   }, [settingsQuery.data])
 
@@ -476,6 +478,7 @@ export default function TenantSettings() {
       setFormState(merged)
       setMetadataText(JSON.stringify(settings.metadata || {}, null, 2) || '{}')
       setSecretFlags({ smtpPassword: false, webhookSecret: false })
+      setSecretEditState({ smtpPassword: false, webhookSecret: false })
       setFeedback({ type: 'success', message: 'Ayarlar başarıyla kaydedildi.' })
     },
     onError: (error) => {
@@ -575,6 +578,9 @@ export default function TenantSettings() {
   }
 
   const handlePasswordChange = (event) => {
+    if (!secretEditState.smtpPassword) {
+      return
+    }
     const value = event.target.value
     setFormState((prev) => ({
       ...prev,
@@ -588,8 +594,32 @@ export default function TenantSettings() {
     }
   }
 
+  const startSmtpPasswordEdit = () => {
+    setSecretFlags((prev) => ({ ...prev, smtpPassword: false }))
+    setSecretEditState((prev) => ({ ...prev, smtpPassword: true }))
+    setFormState((prev) => ({
+      ...prev,
+      smtp: {
+        ...prev.smtp,
+        password: ''
+      }
+    }))
+  }
+
+  const cancelSmtpPasswordEdit = () => {
+    setSecretEditState((prev) => ({ ...prev, smtpPassword: false }))
+    setFormState((prev) => ({
+      ...prev,
+      smtp: {
+        ...prev.smtp,
+        password: ''
+      }
+    }))
+  }
+
   const resetSmtpPassword = () => {
     setSecretFlags((prev) => ({ ...prev, smtpPassword: true }))
+    setSecretEditState((prev) => ({ ...prev, smtpPassword: false }))
     setFormState((prev) => ({
       ...prev,
       smtp: {
@@ -603,7 +633,7 @@ export default function TenantSettings() {
   const handleSubmit = (event) => {
     event.preventDefault()
     try {
-      const payload = buildPayload(formState, secretFlags, metadataText)
+      const payload = buildPayload(formState, secretFlags, secretEditState, metadataText)
       updateMutation.mutate(payload)
     } catch (error) {
       setFeedback({ type: 'error', message: error.message })
@@ -650,7 +680,9 @@ export default function TenantSettings() {
         </p>
       </div>
 
-      <form className="space-y-6" onSubmit={handleSubmit}>
+      <form className="space-y-6" onSubmit={handleSubmit} autoComplete="off">
+        <input type="text" name="tenant-settings-username" autoComplete="username" className="hidden" tabIndex="-1" aria-hidden="true" />
+        <input type="password" name="tenant-settings-password" autoComplete="current-password" className="hidden" tabIndex="-1" aria-hidden="true" />
         {feedback.message && (
           <div
             className={`rounded-md px-4 py-3 text-sm ${
@@ -754,6 +786,8 @@ export default function TenantSettings() {
               <label className="block text-sm font-medium text-gray-700">Sunucu Adresi</label>
               <input
                 type="text"
+                name="smtp-host"
+                autoComplete="off"
                 value={formState.smtp.host}
                 onChange={handleInputChange('smtp', 'host')}
                 placeholder="smtp.mailprovider.com"
@@ -764,6 +798,8 @@ export default function TenantSettings() {
               <label className="block text-sm font-medium text-gray-700">Port</label>
               <input
                 type="number"
+                name="smtp-port"
+                autoComplete="off"
                 min="0"
                 value={formState.smtp.port}
                 onChange={handleInputChange('smtp', 'port')}
@@ -787,6 +823,8 @@ export default function TenantSettings() {
               <label className="block text-sm font-medium text-gray-700">Kullanıcı Adı</label>
               <input
                 type="text"
+                name="smtp-username"
+                autoComplete="off"
                 value={formState.smtp.username}
                 onChange={handleInputChange('smtp', 'username')}
                 placeholder="smtp-user"
@@ -797,6 +835,8 @@ export default function TenantSettings() {
               <label className="block text-sm font-medium text-gray-700">Gönderen Adı</label>
               <input
                 type="text"
+                name="smtp-from-name"
+                autoComplete="off"
                 value={formState.smtp.fromName}
                 onChange={handleInputChange('smtp', 'fromName')}
                 placeholder="ContextHub"
@@ -807,6 +847,8 @@ export default function TenantSettings() {
               <label className="block text-sm font-medium text-gray-700">Gönderen E-posta</label>
               <input
                 type="email"
+                name="smtp-from-email"
+                autoComplete="off"
                 value={formState.smtp.fromEmail}
                 onChange={handleInputChange('smtp', 'fromEmail')}
                 placeholder="no-reply@domain.com"
@@ -816,27 +858,55 @@ export default function TenantSettings() {
             <div>
               <label className="block text-sm font-medium text-gray-700">Parola</label>
               <input
+                id="smtp-credential-secret"
+                name="smtp-credential-secret"
                 type="password"
+                autoComplete="new-password"
+                readOnly={!secretEditState.smtpPassword}
+                disabled={!secretEditState.smtpPassword}
                 value={formState.smtp.password}
                 onChange={handlePasswordChange}
                 placeholder={formState.smtp.hasPassword ? '••••••' : 'Parola girin'}
-                className={FIELD_INPUT_WITH_MARGIN_CLASS}
+                className={`${FIELD_INPUT_WITH_MARGIN_CLASS} disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400`}
               />
               <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
                 <span>
                   {secretFlags.smtpPassword
                     ? 'Kaydedildiğinde parola temizlenecek.'
-                    : formState.smtp.hasPassword
-                      ? 'Kaydetmediğin sürece mevcut parola korunur.'
+                    : secretEditState.smtpPassword
+                      ? 'Yeni parola kaydedilecek.'
+                      : formState.smtp.hasPassword
+                        ? 'Kaydetmediğin sürece mevcut parola korunur.'
                       : 'Parola girilmedi.'}
                 </span>
-                <button
-                  type="button"
-                  onClick={resetSmtpPassword}
-                  className="font-medium text-blue-600 hover:text-blue-500"
-                >
-                  Parolayı temizle
-                </button>
+                <div className="flex items-center gap-3">
+                  {secretEditState.smtpPassword ? (
+                    <button
+                      type="button"
+                      onClick={cancelSmtpPasswordEdit}
+                      className="font-medium text-gray-600 hover:text-gray-500"
+                    >
+                      İptal
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startSmtpPasswordEdit}
+                      className="font-medium text-blue-600 hover:text-blue-500"
+                    >
+                      {formState.smtp.hasPassword ? 'Parolayı değiştir' : 'Parola ekle'}
+                    </button>
+                  )}
+                  {(formState.smtp.hasPassword || secretEditState.smtpPassword || secretFlags.smtpPassword) && (
+                    <button
+                      type="button"
+                      onClick={resetSmtpPassword}
+                      className="font-medium text-blue-600 hover:text-blue-500"
+                    >
+                      Parolayı temizle
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -984,6 +1054,7 @@ export default function TenantSettings() {
                 setFormState(merged)
                 setMetadataText(JSON.stringify(settingsQuery.data.metadata || {}, null, 2) || '{}')
                 setSecretFlags({ smtpPassword: false, webhookSecret: false })
+                setSecretEditState({ smtpPassword: false, webhookSecret: false })
                 setFeedback({ type: '', message: '' })
               }
             }}
