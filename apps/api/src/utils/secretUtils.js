@@ -23,7 +23,10 @@ function encryptSecret(value) {
 
   const key = getKey();
   if (!key) {
-    throw new Error('SMTP_SECRET_KEY ortam değişkeni tanımlanmalı (SMTP bilgilerini şifrelemek için).');
+    const error = new Error('SMTP parolası kaydedilemedi: SMTP_SECRET_KEY ortam değişkeni tanımlanmalı.');
+    error.statusCode = 400;
+    error.code = 'SMTP_SECRET_KEY_MISSING';
+    throw error;
   }
 
   const iv = crypto.randomBytes(12);
@@ -41,7 +44,10 @@ function decryptSecret(value) {
 
   const key = getKey();
   if (!key) {
-    throw new Error('SMTP_SECRET_KEY ortam değişkeni eksik olduğu için SMTP parolası çözülemedi.');
+    const error = new Error('SMTP_SECRET_KEY ortam değişkeni eksik olduğu için SMTP parolası çözülemedi.');
+    error.statusCode = 400;
+    error.code = 'SMTP_SECRET_KEY_MISSING';
+    throw error;
   }
 
   const [, ivB64, ciphertextB64, authTagB64] = value.split(':');
