@@ -85,6 +85,7 @@ import {
 import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
 import { mediaToImagePayload } from './utils/mediaHelpers.js'
+import { buildEmbedPayloadFromIframe, buildEmbedPayloadFromUrl } from './utils/embedHelpers.js'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
 
 const DEFAULT_FONT_SIZE = 12
@@ -162,7 +163,7 @@ const buildEmbedPayloadFromInput = (rawInput) => {
   const looksLikeHtml = /<iframe[\s\S]*?>/i.test(trimmed)
 
   if (!looksLikeHtml && !trimmed.startsWith('<')) {
-    return { src: trimmed, attributes: {} }
+    return buildEmbedPayloadFromUrl(trimmed) || { src: trimmed, attributes: {} }
   }
 
   try {
@@ -172,18 +173,7 @@ const buildEmbedPayloadFromInput = (rawInput) => {
       return null
     }
 
-    const src = iframe.getAttribute('src')?.trim()
-    if (!src) {
-      return null
-    }
-
-    const attributes = {}
-    Array.from(iframe.attributes).forEach(({ name, value }) => {
-      if (!name) return
-      attributes[name.toLowerCase()] = value
-    })
-
-    return { src, attributes }
+    return buildEmbedPayloadFromIframe(iframe)
   } catch (error) {
     return null
   }
@@ -2224,14 +2214,14 @@ export default function ContentEditor() {
           <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl border border-gray-200">
             <h3 className="text-base font-semibold text-gray-900 mb-2">Iframe embed</h3>
             <p className="mb-3 text-xs text-gray-500">
-              YouTube/Vimeo dışındaki harita, form veya özel iframe kodlarını buraya yapıştırın. Sadece URL girmeniz de yeterli.
+              Spotify, harita, form veya özel iframe kodlarını buraya yapıştırın. Sadece URL girmeniz de yeterli.
             </p>
             <textarea
               value={embedDialog.value}
               onChange={(event) => setEmbedDialog((prev) => ({ ...prev, value: event.target.value, error: '' }))}
               className={`${textareaClass} h-36`}
               rows={5}
-              placeholder={`https://... veya <iframe src="https://..." width="640" height="480"></iframe>`}
+              placeholder={`https://open.spotify.com/episode/... veya <iframe src="https://..." width="640" height="480"></iframe>`}
             />
             {embedDialog.error && <p className="mt-2 text-xs text-red-500">{embedDialog.error}</p>}
             <div className="mt-4 flex justify-end gap-2">

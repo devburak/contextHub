@@ -7,11 +7,18 @@ import {
   $isRangeSelection,
   $isRootOrShadowRoot,
   COMMAND_PRIORITY_EDITOR,
+  COMMAND_PRIORITY_HIGH,
   PASTE_COMMAND,
   createCommand,
 } from 'lexical'
 import { $createEmbedNode, EmbedNode } from '../nodes/EmbedNode.jsx'
 import { detectVideoProvider } from '../../../utils/externalMedia.js'
+import {
+  buildEmbedPayloadFromIframe,
+  buildEmbedPayloadFromUrl,
+  extractEmbeddableUrls,
+  isOnlyEmbeddableUrls,
+} from '../utils/embedHelpers.js'
 
 export const INSERT_EMBED_COMMAND = createCommand('INSERT_EMBED_COMMAND')
 
@@ -38,13 +45,23 @@ export default function EmbedPlugin() {
 
         const plainText = (event.clipboardData.getData('text/plain') || '').trim()
         const html = event.clipboardData.getData('text/html')
-        const candidate = html || plainText
+        const iframePayloads = extractIframeEmbedsFromHtml(html || plainText)
+        if (iframePayloads.length) {
+          event.preventDefault()
+          iframePayloads.forEach((embedPayload) => {
+            insertEmbedNodeFromPayload(embedPayload)
+          })
+          return true
+        }
 
-        if (!candidate || !candidate.toLowerCase().includes('<iframe')) {
+        if (!plainText || !isOnlyEmbeddableUrls(plainText)) {
           return false
         }
 
-        const embedPayloads = extractIframeEmbedsFromHtml(candidate)
+        const embedPayloads = extractEmbeddableUrls(plainText)
+          .map((rawUrl) => buildEmbedPayloadFromUrl(rawUrl))
+          .filter(Boolean)
+
         if (!embedPayloads.length) {
           return false
         }
@@ -55,7 +72,7 @@ export default function EmbedPlugin() {
         })
         return true
       },
-      COMMAND_PRIORITY_EDITOR
+      COMMAND_PRIORITY_HIGH
     )
 
     return () => {
@@ -94,7 +111,7 @@ function extractIframeEmbedsFromHtml(htmlString) {
   }
 
   const trimmed = htmlString.trim()
-  if (!trimmed) {
+  if (!trimmed || !trimmed.toLowerCase().includes('<iframe')) {
     return []
   }
 
@@ -123,13 +140,7 @@ function extractIframeEmbedsFromHtml(htmlString) {
           return null
         }
 
-        const attributes = {}
-        Array.from(iframe.attributes).forEach(({ name, value }) => {
-          if (!name) return
-          attributes[name.toLowerCase()] = value
-        })
-
-        return { src, attributes }
+        return buildEmbedPayloadFromIframe(iframe)
       })
       .filter(Boolean)
   } catch (error) {
