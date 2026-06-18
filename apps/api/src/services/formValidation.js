@@ -211,7 +211,21 @@ const formSettingsSchema = z.object({
   enableNotifications: z.boolean().optional(),
   notificationEmails: z.array(z.string().email('Geçersiz e-posta adresi')).optional(),
   emailNotifications: emailNotificationsSchema,
+  uniqueSubmission: z.object({
+    enabled: z.boolean().default(false),
+    fieldId: z.string().optional(),
+    fieldName: z.string().optional(),
+    message: i18nTextSchema.optional()
+  }).optional(),
   webhooks: webhooksSchema
+}).superRefine((settings, ctx) => {
+  if (settings.uniqueSubmission?.enabled && !settings.uniqueSubmission.fieldId && !settings.uniqueSubmission.fieldName) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['uniqueSubmission', 'fieldId'],
+      message: 'Benzersiz gönderim için bir form alanı seçmelisiniz'
+    });
+  }
 }).optional();
 
 /**

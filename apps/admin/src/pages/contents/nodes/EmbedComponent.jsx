@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection'
 import { mergeRegister } from '@lexical/utils'
@@ -11,6 +11,7 @@ import {
 } from 'lexical'
 import clsx from 'clsx'
 import { $isEmbedNode } from './EmbedNode.jsx'
+import { buildEmbedPayloadFromUrl } from '../utils/embedHelpers.js'
 
 const INTERACTIVE_TAGS = new Set(['iframe', 'video', 'button', 'input', 'textarea', 'select', 'a'])
 const DEFAULT_FALLBACK_TITLE = 'Gömülü içerik'
@@ -115,13 +116,23 @@ function EmbedComponent({ nodeKey, src, attributes }) {
   const containerRef = useRef(null)
   const [editor] = useLexicalComposerContext()
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
+  const [editUrl, setEditUrl] = useState(attributes?.['data-url'] || src || '')
 
   const iframeProps = useMemo(() => buildIframeProps(src, attributes), [src, attributes])
   const displayLabel = iframeProps.title || src || DEFAULT_FALLBACK_TITLE
 
+  useEffect(() => {
+    setEditUrl(attributes?.['data-url'] || src || '')
+  }, [attributes, src])
+
   const onDelete = useCallback(
     (event) => {
       if (!isSelected) {
+        return false
+      }
+
+      const activeTag = document.activeElement?.tagName?.toLowerCase()
+      if (activeTag === 'input' || activeTag === 'textarea') {
         return false
       }
 
@@ -136,6 +147,28 @@ function EmbedComponent({ nodeKey, src, attributes }) {
     },
     [editor, isSelected, nodeKey]
   )
+
+  const applyEdit = useCallback(() => {
+    const trimmed = editUrl.trim()
+    if (!trimmed) {
+      return
+    }
+
+    const payload = buildEmbedPayloadFromUrl(trimmed) || {
+      src: trimmed,
+      attributes: {
+        ...(attributes || {}),
+        src: trimmed,
+      },
+    }
+
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey)
+      if ($isEmbedNode(node)) {
+        node.setPayload(payload)
+      }
+    })
+  }, [attributes, editUrl, editor, nodeKey])
 
   const onClick = useCallback(
     (event) => {
@@ -201,6 +234,32 @@ function EmbedComponent({ nodeKey, src, attributes }) {
             </a>
           ) : null}
         </div>
+        {isSelected ? (
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              type="url"
+              value={editUrl}
+              onChange={(event) => setEditUrl(event.target.value)}
+              onBlur={applyEdit}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  applyEdit()
+                  event.currentTarget.blur()
+                }
+              }}
+              className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring focus:ring-blue-200"
+              placeholder="Embed URL"
+            />
+            <button
+              type="button"
+              onClick={applyEdit}
+              className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Güncelle
+            </button>
+          </div>
+        ) : null}
         {isSelected && (
           <span className="absolute right-3 top-3 rounded-md bg-blue-600 px-2 py-1 text-xs font-semibold text-white">
             Seçili

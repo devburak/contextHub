@@ -1,5 +1,6 @@
 import { DecoratorNode } from 'lexical'
 import { detectVideoProvider } from '../../../utils/externalMedia.js'
+import { buildEmbedPayloadFromIframe } from '../utils/embedHelpers.js'
 import { $createVideoNode } from './VideoNode.jsx'
 import EmbedComponent from './EmbedComponent.jsx'
 
@@ -117,6 +118,13 @@ export class EmbedNode extends DecoratorNode {
   getAttributes() {
     return this.__attributes
   }
+
+  setPayload(payload = {}) {
+    const writable = this.getWritable()
+    const sanitized = sanitizeAttributes({ ...(payload.attributes || {}), src: payload.src })
+    writable.__attributes = sanitized
+    writable.__src = sanitized.src || ''
+  }
 }
 
 export function $createEmbedNode(payload) {
@@ -164,13 +172,10 @@ function convertEmbedElement(domNode) {
     }
   }
 
-  const attributes = {}
-  Array.from(domNode.attributes).forEach(({ name, value }) => {
-    attributes[name.toLowerCase()] = value
-  })
+  const payload = buildEmbedPayloadFromIframe(domNode)
 
   return {
-    node: $createEmbedNode({ src, attributes }),
+    node: $createEmbedNode(payload || { src, attributes: { src } }),
   }
 }
 

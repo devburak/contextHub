@@ -7,6 +7,7 @@ import { tenantAPI } from '../../lib/tenantAPI.js'
 import { listCategories } from '../../lib/api/categories'
 import { searchTags, createTag } from '../../lib/api/tags'
 import { listCustomFieldDefinitions } from '../../lib/api/customFieldDefinitions'
+import { formsApi } from '../../lib/api/forms'
 import { galleriesAPI } from '../../lib/galleriesAPI.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
@@ -69,10 +70,12 @@ import ImageHandlersPlugin from './plugins/ImageHandlersPlugin.jsx'
 import VideoPlugin, { INSERT_VIDEO_COMMAND } from './plugins/VideoPlugin.jsx'
 import EmbedPlugin, { INSERT_EMBED_COMMAND } from './plugins/EmbedPlugin.jsx'
 import GalleryPlugin, { INSERT_GALLERY_COMMAND } from './plugins/GalleryPlugin.jsx'
+import FormPlugin, { INSERT_FORM_COMMAND } from './plugins/FormPlugin.jsx'
 import { ImageNode, $isImageNode } from './nodes/ImageNode.jsx'
 import { VideoNode } from './nodes/VideoNode.jsx'
 import { EmbedNode } from './nodes/EmbedNode.jsx'
 import { GalleryNode, getGalleryLayoutForCount } from './nodes/GalleryNode.jsx'
+import { FormNode } from './nodes/FormNode.jsx'
 import {
   TableNode,
   TableRowNode,
@@ -85,6 +88,7 @@ import {
 import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
 import { mediaToImagePayload } from './utils/mediaHelpers.js'
+import { buildEmbedPayloadFromIframe, buildEmbedPayloadFromUrl } from './utils/embedHelpers.js'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
 
 const DEFAULT_FONT_SIZE = 12
@@ -162,7 +166,7 @@ const buildEmbedPayloadFromInput = (rawInput) => {
   const looksLikeHtml = /<iframe[\s\S]*?>/i.test(trimmed)
 
   if (!looksLikeHtml && !trimmed.startsWith('<')) {
-    return { src: trimmed, attributes: {} }
+    return buildEmbedPayloadFromUrl(trimmed) || { src: trimmed, attributes: {} }
   }
 
   try {
@@ -172,18 +176,7 @@ const buildEmbedPayloadFromInput = (rawInput) => {
       return null
     }
 
-    const src = iframe.getAttribute('src')?.trim()
-    if (!src) {
-      return null
-    }
-
-    const attributes = {}
-    Array.from(iframe.attributes).forEach(({ name, value }) => {
-      if (!name) return
-      attributes[name.toLowerCase()] = value
-    })
-
-    return { src, attributes }
+    return buildEmbedPayloadFromIframe(iframe)
   } catch (error) {
     return null
   }
@@ -257,6 +250,15 @@ const sanitizeHtmlString = (rawHtml) => {
   return sanitized
 }
 
+const resolveI18nText = (value, preferredLocales = ['tr', 'en']) => {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  for (const locale of preferredLocales) {
+    if (value[locale]) return value[locale]
+  }
+  return Object.values(value)[0] || ''
+}
+
 // Lexical Playground inspired theme
 const theme = {
   paragraph: 'editor-paragraph',
@@ -296,7 +298,7 @@ const theme = {
 const initialConfig = {
   namespace: 'content-editor',
   theme,
-  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, EmbedNode, GalleryNode, TableNode, TableRowNode, TableCellNode, ParagraphNode, TextNode],
+  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, EmbedNode, GalleryNode, FormNode, TableNode, TableRowNode, TableCellNode, ParagraphNode, TextNode],
   onError(error) {
     console.error(error)
   },
@@ -419,6 +421,7 @@ export default function ContentEditor() {
   const [fileLinkEditor, setFileLinkEditor] = useState({ open: false, url: '', name: '', download: false, linkKey: null, error: '' })
   const [linkEditor, setLinkEditor] = useState({ open: false, url: '', text: '', newTab: true, linkKey: null, error: '', lockText: false, type: 'link' })
   const [embedDialog, setEmbedDialog] = useState({ open: false, value: '', error: '' })
+  const [formDialog, setFormDialog] = useState({ open: false, selectedFormId: '', error: '' })
   const editorRef = useRef(null)
   const pendingHtmlSyncRef = useRef(null)
   const slugDebounceRef = useRef(null)
@@ -686,6 +689,12 @@ export default function ContentEditor() {
     { enabled: !!token && !!activeTenantId }
   )
 
+  const formsListQuery = useQuery(
+    ['forms', 'content-embed', { tenant: activeTenantId }],
+    () => formsApi.listForms({ page: 1, limit: 100, filters: { status: 'published' } }),
+    { enabled: !!token && !!activeTenantId }
+  )
+
   const customFieldDefinitionsQuery = useQuery(
     ['customFieldDefinitions', { tenant: activeTenantId }],
     listCustomFieldDefinitions,
@@ -715,6 +724,8 @@ export default function ContentEditor() {
     })
     return Array.from(resultMap.values())
   }, [galleriesListQuery.data, attachedGalleries])
+
+  const availableForms = useMemo(() => formsListQuery.data?.items || [], [formsListQuery.data])
 
   useEffect(() => {
     if (!versionsData) return
@@ -1294,6 +1305,18 @@ export default function ContentEditor() {
     setEmbedDialog({ open: false, value: '', error: '' })
   }, [])
 
+  const openFormDialog = useCallback(() => {
+    setFormDialog({
+      open: true,
+      selectedFormId: availableForms[0]?._id || availableForms[0]?.id || '',
+      error: '',
+    })
+  }, [availableForms])
+
+  const closeFormDialog = useCallback(() => {
+    setFormDialog({ open: false, selectedFormId: '', error: '' })
+  }, [])
+
   const applyEmbedDialog = useCallback(() => {
     const payload = buildEmbedPayloadFromInput(embedDialog.value)
     if (!payload) {
@@ -1312,6 +1335,29 @@ export default function ContentEditor() {
     setDirty(true)
     setSaveError('')
   }, [embedDialog.value])
+
+  const applyFormDialog = useCallback(() => {
+    const selectedForm = availableForms.find((form) => String(form._id || form.id) === String(formDialog.selectedFormId))
+    if (!selectedForm) {
+      setFormDialog((prev) => ({ ...prev, error: 'Eklemek için bir form seçin.' }))
+      return
+    }
+
+    const editorInstance = editorRef.current
+    if (!editorInstance) {
+      setFormDialog((prev) => ({ ...prev, error: 'Editör hazır değil' }))
+      return
+    }
+
+    editorInstance.dispatchCommand(INSERT_FORM_COMMAND, {
+      formId: selectedForm._id || selectedForm.id,
+      slug: selectedForm.slug || '',
+      title: resolveI18nText(selectedForm.title, ['tr', 'en']) || selectedForm.slug || '',
+    })
+    setFormDialog({ open: false, selectedFormId: '', error: '' })
+    setDirty(true)
+    setSaveError('')
+  }, [availableForms, formDialog.selectedFormId])
 
 
   const currentFeaturedMediaId = featuredMediaId
@@ -1595,12 +1641,14 @@ export default function ContentEditor() {
                     setFileLinkEditor={setFileLinkEditor}
                     setLinkEditor={setLinkEditor}
                     onRequestEmbed={openEmbedDialog}
+                    onRequestForm={openFormDialog}
                   />
                   <ImagePlugin />
                   <ImageHandlersPlugin openMediaPicker={openMediaPicker} />
                   <VideoPlugin />
                   <EmbedPlugin />
                   <GalleryPlugin />
+                  <FormPlugin />
                   <div className="relative flex-1 flex overflow-hidden flex-col" ref={editorContainerRef}>
                     <RichTextPlugin
                       contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-x-auto overflow-y-visible scroll-smooth" />}
@@ -2224,14 +2272,14 @@ export default function ContentEditor() {
           <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl border border-gray-200">
             <h3 className="text-base font-semibold text-gray-900 mb-2">Iframe embed</h3>
             <p className="mb-3 text-xs text-gray-500">
-              YouTube/Vimeo dışındaki harita, form veya özel iframe kodlarını buraya yapıştırın. Sadece URL girmeniz de yeterli.
+              Spotify, harita, form veya özel iframe kodlarını buraya yapıştırın. Sadece URL girmeniz de yeterli.
             </p>
             <textarea
               value={embedDialog.value}
               onChange={(event) => setEmbedDialog((prev) => ({ ...prev, value: event.target.value, error: '' }))}
               className={`${textareaClass} h-36`}
               rows={5}
-              placeholder={`https://... veya <iframe src="https://..." width="640" height="480"></iframe>`}
+              placeholder={`https://open.spotify.com/episode/... veya <iframe src="https://..." width="640" height="480"></iframe>`}
             />
             {embedDialog.error && <p className="mt-2 text-xs text-red-500">{embedDialog.error}</p>}
             <div className="mt-4 flex justify-end gap-2">
@@ -2248,6 +2296,56 @@ export default function ContentEditor() {
                 className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow hover:bg-blue-700"
               >
                 Embed ekle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {formDialog.open && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-gray-900/40">
+          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl border border-gray-200">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Form ekle</h3>
+            <p className="mb-3 text-xs text-gray-500">
+              Yayındaki bir formu içerik gövdesine gömün. Form daha sonra gövde içinden seçilip düzenlenebilir.
+            </p>
+            {formsListQuery.isLoading ? (
+              <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">Formlar yükleniyor...</p>
+            ) : availableForms.length ? (
+              <select
+                value={formDialog.selectedFormId}
+                onChange={(event) => setFormDialog((prev) => ({ ...prev, selectedFormId: event.target.value, error: '' }))}
+                className={inputClass}
+              >
+                {availableForms.map((form) => {
+                  const formId = form._id || form.id
+                  return (
+                    <option key={formId} value={formId}>
+                      {resolveI18nText(form.title, ['tr', 'en']) || form.slug || formId}
+                    </option>
+                  )
+                })}
+              </select>
+            ) : (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Yayında form bulunamadı. Önce Formlar bölümünden bir form yayınlayın.
+              </p>
+            )}
+            {formDialog.error && <p className="mt-2 text-xs text-red-500">{formDialog.error}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeFormDialog}
+                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                İptal
+              </button>
+              <button
+                type="button"
+                onClick={applyFormDialog}
+                disabled={!availableForms.length}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Form ekle
               </button>
             </div>
           </div>
@@ -2764,6 +2862,7 @@ function Toolbar({
   setFileLinkEditor,
   setLinkEditor,
   onRequestEmbed = null,
+  onRequestForm = null,
 }) {
   const [editor] = useLexicalComposerContext()
   const [formatState, setFormatState] = useState({
@@ -2788,6 +2887,12 @@ function Toolbar({
       onRequestEmbed()
     }
   }, [onRequestEmbed])
+
+  const handleFormButtonClick = useCallback(() => {
+    if (typeof onRequestForm === 'function') {
+      onRequestForm()
+    }
+  }, [onRequestForm])
 
   const handleInsertImage = useCallback(() => {
     if (typeof openMediaPicker !== 'function') {
@@ -3269,6 +3374,7 @@ function Toolbar({
       <ToolbarButton title="Embed iframe ekle" onClick={handleEmbedButtonClick}>
         <IframeIcon />
       </ToolbarButton>
+      <ToolbarButton title="Form ekle" onClick={handleFormButtonClick} />
       <div className="relative">
         <ToolbarButton
           title="Tablo ekle"

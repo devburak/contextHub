@@ -740,6 +740,14 @@ async function publicFormRoutes(fastify) {
         });
       }
 
+      if (error.code === 'DuplicateSubmission') {
+        return reply.code(error.statusCode || 409).send({
+          error: 'DuplicateSubmission',
+          message: error.messageI18n || 'This form has already been submitted with this value.',
+          field: error.field
+        });
+      }
+
       return reply.code(500).send({
         error: 'SubmissionFailed',
         message: 'Failed to submit form response'

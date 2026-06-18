@@ -276,6 +276,10 @@ function normalizeFormSettings(settings = {}) {
 
   normalized.emailNotifications = emailNotifications;
 
+  normalized.uniqueSubmission = {
+    ...(settings.uniqueSubmission || {})
+  };
+
   if (requireAuth === undefined && legacyRequireAuth !== undefined) {
     normalized.requireAuth = Boolean(legacyRequireAuth);
   }
@@ -285,6 +289,91 @@ function normalizeFormSettings(settings = {}) {
   }
 
   return normalized;
+}
+
+function escapeRegExp(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeUniqueValue(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeUniqueValue(item)).filter(Boolean).join('|');
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return String(value).trim();
+}
+
+function resolveUniqueSubmissionField(form, data = {}) {
+  const uniqueSubmission = form.settings?.uniqueSubmission || {};
+  if (!uniqueSubmission.enabled) {
+    return null;
+  }
+
+  const fields = Array.isArray(form.fields) ? form.fields : [];
+  const configuredField = fields.find((field) => {
+    if (!field) return false;
+    return (
+      (uniqueSubmission.fieldId && field.id === uniqueSubmission.fieldId) ||
+      (uniqueSubmission.fieldName && field.name === uniqueSubmission.fieldName)
+    );
+  });
+
+  if (!configuredField) {
+    return null;
+  }
+
+  const rawValue = data[configuredField.name] !== undefined
+    ? data[configuredField.name]
+    : data[configuredField.id];
+  const normalizedValue = normalizeUniqueValue(rawValue);
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return {
+    field: configuredField,
+    rawValue,
+    value: normalizedValue,
+    message: uniqueSubmission.message
+  };
+}
+
+async function assertUniqueSubmission({ tenantId, form, data }) {
+  const unique = resolveUniqueSubmissionField(form, data);
+  if (!unique) {
+    return;
+  }
+
+  const keys = [unique.field.name, unique.field.id].filter(Boolean);
+  const valueMatchers = keys.map((key) => {
+    const path = `data.${key}`;
+    if (typeof unique.rawValue === 'string') {
+      return { [path]: { $regex: `^${escapeRegExp(unique.value)}$`, $options: 'i' } };
+    }
+    return { [path]: unique.rawValue };
+  });
+
+  const existing = await FormResponse.exists({
+    tenantId,
+    formId: form._id,
+    status: { $ne: 'deleted' },
+    $or: valueMatchers
+  });
+
+  if (existing) {
+    const error = new Error('Duplicate unique form submission');
+    error.code = 'DuplicateSubmission';
+    error.statusCode = 409;
+    error.field = unique.field.name;
+    error.messageI18n = unique.message;
+    throw error;
+  }
 }
 
 function applyEmailNotificationCompatibility(settings = {}) {
@@ -978,6 +1067,8 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
       throw new Error(`Field "${field.name}" is required`);
     }
   }
+
+  await assertUniqueSubmission({ tenantId, form, data });
 
   // Hash IP for privacy
   const crypto = require('crypto');

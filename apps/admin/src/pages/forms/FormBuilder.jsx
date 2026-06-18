@@ -78,6 +78,15 @@ export default function FormBuilder() {
       successMessage: { tr: 'Form başarıyla gönderildi', en: 'Form submitted successfully' },
       redirectUrl: '',
       allowMultipleSubmissions: false,
+      uniqueSubmission: {
+        enabled: false,
+        fieldId: '',
+        fieldName: '',
+        message: {
+          tr: 'Bu değer ile daha önce gönderim yapılmış.',
+          en: 'This form has already been submitted with this value.',
+        },
+      },
       requireAuthentication: false,
       enableCaptcha: false,
       enableFileUpload: false,
@@ -125,6 +134,16 @@ export default function FormBuilder() {
         events: ['submission.created'],
       };
 
+      const defaultUniqueSubmission = {
+        enabled: false,
+        fieldId: '',
+        fieldName: '',
+        message: {
+          tr: 'Bu değer ile daha önce gönderim yapılmış.',
+          en: 'This form has already been submitted with this value.',
+        },
+      };
+
       setFormData({
         title: form.title,
         description: form.description || { tr: '', en: '' },
@@ -140,6 +159,14 @@ export default function FormBuilder() {
           webhooks: {
             ...defaultWebhooks,
             ...(form.settings?.webhooks || {}),
+          },
+          uniqueSubmission: {
+            ...defaultUniqueSubmission,
+            ...(form.settings?.uniqueSubmission || {}),
+            message: {
+              ...defaultUniqueSubmission.message,
+              ...(form.settings?.uniqueSubmission?.message || {}),
+            },
           },
         },
       });

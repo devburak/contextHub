@@ -70,6 +70,13 @@ const emailNotificationSchema = new Schema({
   replyTo: { type: String }
 }, { _id: false });
 
+const uniqueSubmissionSchema = new Schema({
+  enabled: { type: Boolean, default: false },
+  fieldId: { type: String },
+  fieldName: { type: String },
+  message: { type: Schema.Types.Mixed, default: { en: 'This form has already been submitted with this value.', tr: 'Bu değer ile daha önce gönderim yapılmış.' } }
+}, { _id: false });
+
 const formSettingsSchema = new Schema({
   submitButtonText: { type: Schema.Types.Mixed, default: { en: 'Submit', tr: 'Gönder' } },
   successMessage: { type: Schema.Types.Mixed, default: { en: 'Thank you for your submission!', tr: 'Gönderiminiz için teşekkürler!' } },
@@ -82,6 +89,7 @@ const formSettingsSchema = new Schema({
   enableNotifications: { type: Boolean, default: false },
   notificationEmails: [{ type: String }],
   emailNotifications: { type: emailNotificationSchema, default: {} },
+  uniqueSubmission: { type: uniqueSubmissionSchema, default: {} },
   webhookUrl: { type: String },
   requireAuth: { type: Boolean, default: false }, // require authenticated users
   collectGeo: { type: Boolean, default: false }, // collect geo-location
