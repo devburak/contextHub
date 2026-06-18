@@ -10,6 +10,8 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
 
   // Get email fields from form
   const emailFields = formFields.filter(field => field.type === 'email');
+  const uniqueCandidateFields = formFields.filter(field => !['section', 'file', 'checkbox'].includes(field.type));
+  const selectedUniqueFieldId = settings.uniqueSubmission?.fieldId || '';
 
   // Add/remove form field email to recipients
   const toggleFieldEmail = (fieldId) => {
@@ -61,6 +63,17 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
         },
       });
     }
+  };
+
+  const handleUniqueFieldChange = (fieldId) => {
+    const field = uniqueCandidateFields.find(item => item.id === fieldId);
+    onSettingsUpdate({
+      uniqueSubmission: {
+        ...(settings.uniqueSubmission || {}),
+        fieldId: field?.id || '',
+        fieldName: field?.name || '',
+      },
+    });
   };
 
   const addRecipient = () => {
@@ -246,6 +259,70 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
                 placeholder="60"
               />
               <p className="text-xs text-gray-400 mt-1">0 = bekleme yok, max 3600 saniye (1 saat)</p>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-900">
+                    Benzersiz Alan ile Tekrar Gönderimi Engelle
+                  </label>
+                  <p className="text-sm text-gray-500">
+                    Seçilen alan aynı değerle tekrar gönderilirse form kaydedilmez.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.uniqueSubmission?.enabled || false}
+                  onChange={(checked) => handleSettingChange('uniqueSubmission.enabled', checked)}
+                  className={`${
+                    settings.uniqueSubmission?.enabled ? 'bg-indigo-600' : 'bg-gray-200'
+                  } relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2`}
+                >
+                  <span
+                    className={`${
+                      settings.uniqueSubmission?.enabled ? 'translate-x-6' : 'translate-x-1'
+                    } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                  />
+                </Switch>
+              </div>
+
+              {settings.uniqueSubmission?.enabled && (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Benzersiz Alan
+                    </label>
+                    <select
+                      value={selectedUniqueFieldId}
+                      onChange={(e) => handleUniqueFieldChange(e.target.value)}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    >
+                      <option value="">Alan seçin</option>
+                      {uniqueCandidateFields.map((field) => (
+                        <option key={field.id} value={field.id}>
+                          {(field.label?.[selectedLanguage] || field.label?.tr || field.label?.en || field.name)}
+                          {field.type === 'email' ? ' (e-posta)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {!uniqueCandidateFields.length && (
+                      <p className="mt-1 text-xs text-amber-600">Benzersizlik için önce e-posta, metin veya telefon alanı ekleyin.</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Tekrar Gönderim Mesajı ({langLabel})
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.uniqueSubmission?.message?.[selectedLanguage] || ''}
+                      onChange={(e) => handleSettingChange(`uniqueSubmission.message.${selectedLanguage}`, e.target.value)}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between">

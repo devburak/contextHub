@@ -238,6 +238,10 @@
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M3 3h18v18H3zM12 3v18M3 9h18M3 15h18'/%3e%3c/svg%3e");
 }
 
+.editor-toolbar__button[title='Form ekle']::before {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3e%3crect x='4' y='3' width='16' height='18' rx='2' stroke-width='2'/%3e%3cpath stroke-linecap='round' stroke-width='2' d='M8 8h8M8 12h8M8 16h5'/%3e%3c/svg%3e");
+}
+
 .editor-toolbar__button[title='Kalın']::before {
   background-image: url('./assets/icons/type-bold.svg');
 }
@@ -382,6 +386,11 @@
   border: 2px dashed #2563eb;
   border-radius: 14px;
   pointer-events: none;
+}
+
+.editor-form-wrapper {
+  display: block;
+  width: 100%;
 }
 
 /* Lexical Playground inspired editor styles */
