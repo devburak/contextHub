@@ -15,6 +15,25 @@ const localRedisClient = require('./lib/localRedis');
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
+function isProduction() {
+  return process.env.NODE_ENV === 'production';
+}
+
+function envFlag(name, defaultValue = false) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === '') {
+    return defaultValue;
+  }
+  return ['1', 'true', 'yes', 'on'].includes(String(raw).trim().toLowerCase());
+}
+
+function envList(name, defaultValue = '') {
+  return (process.env[name] || defaultValue)
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 // JWT plugin wrapper.  Using fastify-plugin allows encapsulation while keeping clear separation of concerns.
 const jwtPlugin = fp(async function (app) {
   const secret = process.env.JWT_SECRET || 'supersecret';
@@ -122,25 +141,29 @@ async function buildServer() {
   });
 
   // Register plugins
-  const allowedOrigins = (process.env.CORS_ORIGIN || '')
-    .split(',')
-    .map(origin => origin.trim())
-    .filter(Boolean);
+  const allowedOrigins = envList('CORS_ORIGIN');
 
   await app.register(cors, {
-    origin: allowedOrigins.length ? allowedOrigins : true,
+    origin: allowedOrigins.length ? allowedOrigins : !isProduction(),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'X-API-Key'],
     credentials: true
   });
   await app.register(jwtPlugin);
 
   // Block direct IP access - requests must come through domain
   // This prevents bots/scanners hitting the server directly
+  const strictHostCheck = envFlag('STRICT_HOST_CHECK', isProduction());
+  const requireHttps = envFlag('REQUIRE_HTTPS', isProduction());
+  const defaultAllowedHosts = isProduction() ? '' : 'localhost,127.0.0.1';
   const ALLOWED_HOSTS = new Set(
-    (process.env.ALLOWED_HOSTS || 'api.ctxhub.net,localhost').split(',').map(h => h.trim().toLowerCase())
+    envList('ALLOWED_HOSTS', defaultAllowedHosts).map(h => h.toLowerCase())
   );
   const IP_REGEX = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
+
+  if (strictHostCheck && ALLOWED_HOSTS.size === 0) {
+    throw new Error('ALLOWED_HOSTS must be configured when STRICT_HOST_CHECK is enabled.');
+  }
 
   app.addHook('onRequest', (request, reply, done) => {
     const host = (request.headers.host || '').split(':')[0].toLowerCase();
@@ -150,6 +173,19 @@ async function buildServer() {
       return done();
     }
 
+    if (requireHttps) {
+      const forwardedProto = String(request.headers['x-forwarded-proto'] || '')
+        .split(',')[0]
+        .trim()
+        .toLowerCase();
+      const protocol = forwardedProto || (request.raw.socket?.encrypted ? 'https' : 'http');
+
+      if (protocol !== 'https') {
+        request.log.warn({ host, protocol, ip: request.ip, url: request.url }, 'Blocked non-HTTPS API access');
+        return reply.code(403).send({ error: 'HTTPS required' });
+      }
+    }
+
     // Block if host is an IP address (not domain)
     if (IP_REGEX.test(host)) {
       request.log.warn({ host, ip: request.ip, url: request.url }, 'Blocked direct IP access');
@@ -157,9 +193,8 @@ async function buildServer() {
     }
 
     // Block if host is not in allowed list (optional, can be disabled)
-    if (ALLOWED_HOSTS.size > 0 && !ALLOWED_HOSTS.has(host) && host !== 'localhost' && host !== '127.0.0.1') {
-      // Log but don't block for now - can be enabled by setting STRICT_HOST_CHECK=true
-      if (process.env.STRICT_HOST_CHECK === 'true') {
+    if (ALLOWED_HOSTS.size > 0 && !ALLOWED_HOSTS.has(host)) {
+      if (strictHostCheck) {
         request.log.warn({ host, ip: request.ip, url: request.url }, 'Blocked unknown host');
         return reply.code(403).send({ error: 'Unknown host' });
       }
@@ -261,10 +296,11 @@ async function start() {
   
   const app = await buildServer();
   const port = process.env.PORT || 3000;
+  const host = process.env.HOST || '0.0.0.0';
   try {
-    console.log(`Starting server on port ${port}...`);
-    await app.listen({ port: Number(port), host: '0.0.0.0' });
-    console.log(`Server listening on port ${port}`);
+    console.log(`Starting server on ${host}:${port}...`);
+    await app.listen({ port: Number(port), host });
+    console.log(`Server listening on ${host}:${port}`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

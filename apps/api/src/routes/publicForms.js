@@ -186,7 +186,32 @@ function getFormCooldownMs(form) {
 
 function resolveDuplicateSubmissionMessage(form) {
   const uniqueMessage = form?.settings?.uniqueSubmission?.message;
-  return uniqueMessage || 'This form has already been submitted with this value.';
+  return normalizeMessage(uniqueMessage, 'This form has already been submitted with this value.');
+}
+
+function normalizeMessage(message, fallback) {
+  if (!message) {
+    return fallback;
+  }
+  if (typeof message === 'string') {
+    return message;
+  }
+  if (message && typeof message === 'object') {
+    return message.en || message.tr || Object.values(message).find(Boolean) || fallback;
+  }
+  return String(message);
+}
+
+function resolveDuplicateErrorMessage(error, form) {
+  const fallback = resolveDuplicateSubmissionMessage(form);
+  const uniqueMessage = error?.messageI18n;
+  if (typeof uniqueMessage === 'string') {
+    return uniqueMessage;
+  }
+  if (uniqueMessage && typeof uniqueMessage === 'object') {
+    return normalizeMessage(uniqueMessage, fallback);
+  }
+  return fallback;
 }
 
 /**
@@ -679,7 +704,7 @@ async function publicFormRoutes(fastify) {
         if (error.code === 'DuplicateSubmission') {
           return reply.code(error.statusCode || 409).send({
             error: 'DuplicateSubmission',
-            message: error.messageI18n || resolveDuplicateSubmissionMessage(form),
+            message: resolveDuplicateErrorMessage(error, form),
             field: error.field
           });
         }
@@ -771,7 +796,7 @@ async function publicFormRoutes(fastify) {
       if (error.code === 'DuplicateSubmission') {
         return reply.code(error.statusCode || 409).send({
           error: 'DuplicateSubmission',
-          message: error.messageI18n || 'This form has already been submitted with this value.',
+          message: normalizeMessage(error.messageI18n, 'This form has already been submitted with this value.'),
           field: error.field
         });
       }
