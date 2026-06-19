@@ -1477,6 +1477,7 @@ module.exports = {
   duplicate,
   generateUniqueSlug,
   ensureUniqueSlug,
+  assertUniqueSubmission,
   submitResponse,
   getResponses,
   getResponseById,
