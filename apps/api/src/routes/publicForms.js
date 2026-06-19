@@ -163,17 +163,30 @@ async function checkClientFormCooldown(formId, clientId) {
  */
 async function setClientFormCooldown(formId, clientId, cooldownMs = DEFAULT_CLIENT_COOLDOWN_MS) {
   const key = `${formId}:${clientId}`;
+  const ttl = Math.max(0, Number.isFinite(cooldownMs) ? cooldownMs : DEFAULT_CLIENT_COOLDOWN_MS);
+  if (ttl <= 0) {
+    return;
+  }
+
   const redisClient = getRedisClient();
   if (redisClient) {
-    const ttl = Math.max(0, Number.isFinite(cooldownMs) ? cooldownMs : DEFAULT_CLIENT_COOLDOWN_MS);
-    if (ttl <= 0) {
-      return;
-    }
     await redisClient.set(`${COOLDOWN_PREFIX}:${key}`, '1', { NX: true, EX: toSeconds(ttl) });
     return;
   }
 
-  clientFormCooldowns.set(key, Date.now() + cooldownMs);
+  clientFormCooldowns.set(key, Date.now() + ttl);
+}
+
+function getFormCooldownMs(form) {
+  const formCooldownSeconds = form?.settings?.submissionCooldownSeconds;
+  return (typeof formCooldownSeconds === 'number' && formCooldownSeconds >= 0)
+    ? formCooldownSeconds * 1000
+    : DEFAULT_CLIENT_COOLDOWN_MS;
+}
+
+function resolveDuplicateSubmissionMessage(form) {
+  const uniqueMessage = form?.settings?.uniqueSubmission?.message;
+  return uniqueMessage || 'This form has already been submitted with this value.';
 }
 
 /**
@@ -642,13 +655,44 @@ async function publicFormRoutes(fastify) {
         });
       }
 
+      // Load the form before submission guards so form-specific settings and messages
+      // can decide the response users see.
+      const form = await formService.getById({
+        tenantId: request.tenantId,
+        formId: request.params.formId
+      });
+
+      if (!form || form.status !== 'published') {
+        return reply.code(404).send({
+          error: 'FormNotFound',
+          message: 'Form not found or not available'
+        });
+      }
+
+      try {
+        await formService.assertUniqueSubmission({
+          tenantId: request.tenantId,
+          form,
+          data
+        });
+      } catch (error) {
+        if (error.code === 'DuplicateSubmission') {
+          return reply.code(error.statusCode || 409).send({
+            error: 'DuplicateSubmission',
+            message: error.messageI18n || resolveDuplicateSubmissionMessage(form),
+            field: error.field
+          });
+        }
+        throw error;
+      }
+
       // Check for duplicate submission (same data within 30 seconds)
       // Uses clientId to allow different users behind same IP
       if (await isDuplicateSubmission(request.params.formId, data, clientId)) {
         request.log.warn({ formId: request.params.formId, clientId }, 'Duplicate form submission detected');
         return reply.code(409).send({
           error: 'DuplicateSubmission',
-          message: 'This form was already submitted. Please wait before submitting again.'
+          message: 'This submission was just received. Please wait before submitting again.'
         });
       }
 
@@ -678,19 +722,6 @@ async function publicFormRoutes(fastify) {
         });
       }
 
-      // Get form to check settings and for later use
-      const form = await formService.getById({
-        tenantId: request.tenantId,
-        formId: request.params.formId
-      });
-
-      if (!form || form.status !== 'published') {
-        return reply.code(404).send({
-          error: 'FormNotFound',
-          message: 'Form not found or not available'
-        });
-      }
-
       // Prepare metadata
       const metadata = {
         ip: ip,
@@ -709,10 +740,7 @@ async function publicFormRoutes(fastify) {
       });
 
       // Set client cooldown after successful submission (use form-specific cooldown if configured)
-      const formCooldownSeconds = form.settings?.submissionCooldownSeconds;
-      const cooldownMs = (typeof formCooldownSeconds === 'number' && formCooldownSeconds >= 0)
-        ? formCooldownSeconds * 1000
-        : DEFAULT_CLIENT_COOLDOWN_MS;
+      const cooldownMs = getFormCooldownMs(form);
       await setClientFormCooldown(request.params.formId, clientId, cooldownMs);
 
       return reply.code(201).send({
