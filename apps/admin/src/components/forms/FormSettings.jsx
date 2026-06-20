@@ -224,7 +224,7 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
                   Çoklu Gönderim İzni
                 </label>
                 <p className="text-sm text-gray-500">
-                  Kullanıcılar birden fazla kez gönderebilir
+                  Açık olduğunda aynı kullanıcı arka arkaya birden fazla kayıt gönderebilir; benzersiz alan kuralı ayrıca uygulanır.
                 </p>
               </div>
               <Switch
@@ -247,7 +247,7 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
                 Gönderim Bekleme Süresi (saniye)
               </label>
               <p className="text-sm text-gray-500 mb-2">
-                Aynı IP'den ardışık gönderimler arasında beklenmesi gereken süre
+                Aynı istemciden ardışık gönderimler arasında beklenmesi gereken süre
               </p>
               <input
                 type="number"
@@ -258,7 +258,7 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
                 className="block w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                 placeholder="60"
               />
-              <p className="text-xs text-gray-400 mt-1">0 = bekleme yok, max 3600 saniye (1 saat)</p>
+              <p className="text-xs text-gray-400 mt-1">0 = bekleme ve tekrar gönderim guard'ı yok, max 3600 saniye (1 saat)</p>
             </div>
 
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
