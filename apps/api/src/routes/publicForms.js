@@ -184,6 +184,18 @@ function getFormCooldownMs(form) {
     : DEFAULT_CLIENT_COOLDOWN_MS;
 }
 
+function allowsMultipleSubmissions(form) {
+  return form?.settings?.allowMultipleSubmissions !== false;
+}
+
+function shouldSkipCooldownBasedGuards(cooldownMs) {
+  return cooldownMs <= 0;
+}
+
+function shouldSkipDuplicatePatternGuards(form, cooldownMs) {
+  return shouldSkipCooldownBasedGuards(cooldownMs) || allowsMultipleSubmissions(form);
+}
+
 function resolveDuplicateSubmissionMessage(form) {
   const uniqueMessage = form?.settings?.uniqueSubmission?.message;
   return normalizeMessage(uniqueMessage, 'This form has already been submitted with this value.');
@@ -656,20 +668,6 @@ async function publicFormRoutes(fastify) {
       // This helps distinguish different users behind the same IP (shared hosting, NAT, etc.)
       const clientId = generateClientId(ip, userAgent, acceptLanguage);
 
-      // Check rate limiting (still IP-based for general abuse prevention)
-      try {
-        await enforceRateLimit(request.tenantId, ip);
-      } catch (error) {
-        request.log.warn({ err: error }, 'Form submission rate limit exceeded');
-        return reply
-          .code(error.statusCode || 429)
-          .header('Retry-After', error.retryAfter || 60)
-          .send({
-            error: 'RateLimitExceeded',
-            message: 'Too many submissions. Please try again later.'
-          });
-      }
-
       // Extract form data from request body
       const { data } = request.body;
 
@@ -694,6 +692,26 @@ async function publicFormRoutes(fastify) {
         });
       }
 
+      const cooldownMs = getFormCooldownMs(form);
+      const skipCooldownBasedGuards = shouldSkipCooldownBasedGuards(cooldownMs);
+      const skipDuplicatePatternGuards = shouldSkipDuplicatePatternGuards(form, cooldownMs);
+
+      if (!skipCooldownBasedGuards) {
+        // Check rate limiting (still IP-based for general abuse prevention)
+        try {
+          await enforceRateLimit(request.tenantId, ip);
+        } catch (error) {
+          request.log.warn({ err: error }, 'Form submission rate limit exceeded');
+          return reply
+            .code(error.statusCode || 429)
+            .header('Retry-After', error.retryAfter || 60)
+            .send({
+              error: 'RateLimitExceeded',
+              message: 'Too many submissions. Please try again later.'
+            });
+        }
+      }
+
       try {
         await formService.assertUniqueSubmission({
           tenantId: request.tenantId,
@@ -711,40 +729,46 @@ async function publicFormRoutes(fastify) {
         throw error;
       }
 
-      // Check for duplicate submission (same data within 30 seconds)
-      // Uses clientId to allow different users behind same IP
-      if (await isDuplicateSubmission(request.params.formId, data, clientId)) {
-        request.log.warn({ formId: request.params.formId, clientId }, 'Duplicate form submission detected');
-        return reply.code(409).send({
-          error: 'DuplicateSubmission',
-          message: 'This submission was just received. Please wait before submitting again.'
-        });
+      if (!skipDuplicatePatternGuards) {
+        // Check for duplicate submission (same data within 30 seconds)
+        // Uses clientId to allow different users behind same IP
+        if (await isDuplicateSubmission(request.params.formId, data, clientId)) {
+          request.log.warn({ formId: request.params.formId, clientId }, 'Duplicate form submission detected');
+          return reply.code(409).send({
+            error: 'DuplicateSubmission',
+            message: 'This submission was just received. Please wait before submitting again.'
+          });
+        }
       }
 
       // Check client-based cooldown (configurable per-form, default 1 minute)
       // Uses clientId instead of just IP to allow different users behind same IP
-      const cooldownCheck = await checkClientFormCooldown(request.params.formId, clientId);
-      if (!cooldownCheck.allowed) {
-        const remainingSec = Math.ceil(cooldownCheck.remainingMs / 1000);
-        request.log.warn({ formId: request.params.formId, clientId, remainingSec }, 'Client cooldown active');
-        return reply
-          .code(429)
-          .header('Retry-After', remainingSec)
-          .send({
-            error: 'CooldownActive',
-            message: `Please wait ${remainingSec} seconds before submitting again.`
-          });
+      if (!skipCooldownBasedGuards) {
+        const cooldownCheck = await checkClientFormCooldown(request.params.formId, clientId);
+        if (!cooldownCheck.allowed) {
+          const remainingSec = Math.ceil(cooldownCheck.remainingMs / 1000);
+          request.log.warn({ formId: request.params.formId, clientId, remainingSec }, 'Client cooldown active');
+          return reply
+            .code(429)
+            .header('Retry-After', remainingSec)
+            .send({
+              error: 'CooldownActive',
+              message: `Please wait ${remainingSec} seconds before submitting again.`
+            });
+        }
       }
 
-      // Check submission fingerprint (pattern-based rate limiting)
-      // Uses clientId to allow different users behind same IP
-      const fingerprintCheck = checkSubmissionFingerprint(request.params.formId, clientId, data);
-      if (!fingerprintCheck.allowed) {
-        request.log.warn({ formId: request.params.formId, clientId, count: fingerprintCheck.count }, 'Fingerprint rate limit exceeded');
-        return reply.code(429).send({
-          error: 'TooManySubmissions',
-          message: 'Too many similar submissions detected. Please try again later.'
-        });
+      if (!skipDuplicatePatternGuards) {
+        // Check submission fingerprint (pattern-based rate limiting)
+        // Uses clientId to allow different users behind same IP
+        const fingerprintCheck = checkSubmissionFingerprint(request.params.formId, clientId, data);
+        if (!fingerprintCheck.allowed) {
+          request.log.warn({ formId: request.params.formId, clientId, count: fingerprintCheck.count }, 'Fingerprint rate limit exceeded');
+          return reply.code(429).send({
+            error: 'TooManySubmissions',
+            message: 'Too many similar submissions detected. Please try again later.'
+          });
+        }
       }
 
       // Prepare metadata
@@ -765,7 +789,6 @@ async function publicFormRoutes(fastify) {
       });
 
       // Set client cooldown after successful submission (use form-specific cooldown if configured)
-      const cooldownMs = getFormCooldownMs(form);
       await setClientFormCooldown(request.params.formId, clientId, cooldownMs);
 
       return reply.code(201).send({
