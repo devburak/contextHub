@@ -50,7 +50,8 @@ const jwtPlugin = fp(async function (app) {
 
 async function buildServer() {
   // trustProxy true ensures request.ip reflects real client IP when behind Nginx/ELB
-  const app = fastify({ logger: true, trustProxy: true });
+  const bodyLimit = Number(process.env.API_BODY_LIMIT_BYTES) || 10 * 1024 * 1024;
+  const app = fastify({ logger: true, trustProxy: true, bodyLimit });
 
   // Register Swagger for OpenAPI documentation
   await app.register(swagger, {
