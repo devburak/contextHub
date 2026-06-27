@@ -6,7 +6,8 @@ const {
 const {
   listCollectionTypes,
   createCollectionType,
-  updateCollectionType
+  updateCollectionType,
+  deleteCollectionType
 } = require('../services/collectionTypeService');
 const {
   listEntries,
@@ -83,6 +84,8 @@ function handleServiceError(reply, error) {
         message: error.message,
         details: error.details
       });
+    case 'ActiveCollectionCannotBeDeleted':
+      return reply.code(409).send({ error: error.code, message: error.message });
     case 'CollectionTypeNotFound':
     case 'EntryNotFound':
       return reply.code(404).send({ error: error.code, message: error.message });
@@ -164,6 +167,22 @@ async function collectionRoutes(fastify) {
       return reply.send({ collection: updated });
     } catch (error) {
       request.log.error({ err: error }, 'Failed to update collection type');
+      return handleServiceError(reply, error);
+    }
+  });
+
+  fastify.delete('/collections/:key', {
+    preHandler: [authenticate, requireEditor]
+  }, async (request, reply) => {
+    try {
+      await deleteCollectionType({
+        tenantId: request.tenantId,
+        key: request.params.key,
+        userId: request.user?._id?.toString()
+      });
+      return reply.code(204).send();
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to delete collection type');
       return handleServiceError(reply, error);
     }
   });

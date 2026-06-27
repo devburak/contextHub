@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { CollectionType } = require('@contexthub/common');
+const { CollectionType, CollectionEntry } = require('@contexthub/common');
 const { emitDomainEvent } = require('../lib/domainEvents');
 const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 
@@ -170,9 +170,41 @@ async function updateCollectionType({ tenantId, key, payload, userId }) {
   return doc.toObject();
 }
 
+async function deleteCollectionType({ tenantId, key, userId }) {
+  const doc = await CollectionType.findOne({ tenantId, key });
+  if (!doc) {
+    const error = new Error('Collection type not found');
+    error.code = 'CollectionTypeNotFound';
+    throw error;
+  }
+
+  if (doc.status === 'active') {
+    const error = new Error('Active collections must be archived before deletion');
+    error.code = 'ActiveCollectionCannotBeDeleted';
+    throw error;
+  }
+
+  const collectionPayload = doc.toObject();
+  const entriesResult = await CollectionEntry.deleteMany({ tenantId, collectionKey: key });
+  await CollectionType.deleteOne({ tenantId, key });
+
+  await emitCollectionEvent({
+    tenantId,
+    type: 'collection.deleted',
+    collection: collectionPayload,
+    userId
+  });
+
+  return {
+    deleted: true,
+    deletedEntries: entriesResult.deletedCount || 0
+  };
+}
+
 module.exports = {
   listCollectionTypes,
   getCollectionType,
   createCollectionType,
-  updateCollectionType
+  updateCollectionType,
+  deleteCollectionType
 };

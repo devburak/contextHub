@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { PlusCircleIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
-import { listCollectionTypes, createCollectionType } from '../../lib/api/collections.js';
+import { PlusCircleIcon, ArrowRightIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { listCollectionTypes, createCollectionType, deleteCollectionType } from '../../lib/api/collections.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import CollectionDefinitionForm from './components/CollectionDefinitionForm.jsx';
@@ -23,6 +23,7 @@ export default function CollectionsList() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [isFormExpanded, setFormExpanded] = useState(false);
+  const [deleteConfirmKey, setDeleteConfirmKey] = useState(null);
 
   const { data: collections = [], isLoading, isError, refetch } = useQuery(
     ['collections', { tenant: activeTenantId }],
@@ -33,7 +34,7 @@ export default function CollectionsList() {
   );
 
   const createMutation = useMutation((payload) => createCollectionType(payload), {
-    onSuccess: (created) => {
+    onSuccess: () => {
       toast.success('Koleksiyon başarıyla oluşturuldu');
       queryClient.invalidateQueries(['collections']);
       setFormExpanded(false);
@@ -44,8 +45,28 @@ export default function CollectionsList() {
     }
   });
 
+  const deleteMutation = useMutation((collectionKey) => deleteCollectionType(collectionKey), {
+    onSuccess: () => {
+      toast.success('Koleksiyon silindi');
+      queryClient.invalidateQueries(['collections']);
+      setDeleteConfirmKey(null);
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || error.message || 'Koleksiyon silinemedi';
+      toast.error(message);
+    }
+  });
+
   const handleCreate = (payload) => {
     createMutation.mutate(payload);
+  };
+
+  const handleDelete = (collectionKey) => {
+    if (deleteConfirmKey !== collectionKey) {
+      setDeleteConfirmKey(collectionKey);
+      return;
+    }
+    deleteMutation.mutate(collectionKey);
   };
 
   return (
@@ -92,36 +113,59 @@ export default function CollectionsList() {
               {collections.map((collection) => {
                 const statusMeta = statusConfig[collection.status] || statusConfig.active;
                 const fieldCount = collection.fields?.length || 0;
+                const canDelete = collection.status !== 'active';
                 return (
-                  <Link
+                  <article
                     key={collection.key}
-                    to={`/collections/${collection.key}`}
-                    className="group relative flex flex-col justify-between rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
+                    className="relative flex flex-col justify-between rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
                   >
-                    <div>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h2 className="text-lg font-semibold text-gray-900">
-                            {collection.name?.tr || collection.name?.en || collection.key}
-                          </h2>
-                          <p className="mt-1 text-sm text-gray-500">/{collection.key}</p>
+                    <Link to={`/collections/${collection.key}`} className="group block min-h-0 flex-1">
+                      <div>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h2 className="text-lg font-semibold text-gray-900">
+                              {collection.name?.tr || collection.name?.en || collection.key}
+                            </h2>
+                            <p className="mt-1 text-sm text-gray-500">/{collection.key}</p>
+                          </div>
+                          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusMeta.className}`}>
+                            {statusMeta.label}
+                          </span>
                         </div>
-                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusMeta.className}`}>
-                          {statusMeta.label}
-                        </span>
+                        {collection.description?.tr && (
+                          <p className="mt-3 text-sm text-gray-600 line-clamp-3">{collection.description.tr}</p>
+                        )}
                       </div>
-                      {collection.description?.tr && (
-                        <p className="mt-3 text-sm text-gray-600 line-clamp-3">{collection.description.tr}</p>
-                      )}
-                    </div>
+                    </Link>
                     <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 text-sm text-gray-500">
                       <span>{fieldCount} alan</span>
-                      <span className="inline-flex items-center gap-1 font-medium text-blue-600">
-                        Detaylar
-                        <ArrowRightIcon className="h-4 w-4 transition group-hover:translate-x-1" />
-                      </span>
+                      <div className="inline-flex items-center gap-2">
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(collection.key)}
+                            disabled={deleteMutation.isLoading && deleteConfirmKey === collection.key}
+                            className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-semibold ${
+                              deleteConfirmKey === collection.key
+                                ? 'border-red-300 bg-red-50 text-red-600'
+                                : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                            } disabled:cursor-not-allowed disabled:opacity-60`}
+                          >
+                            {deleteConfirmKey === collection.key ? 'Emin misiniz?' : (
+                              <>
+                                <TrashIcon className="h-4 w-4" />
+                                Sil
+                              </>
+                            )}
+                          </button>
+                        )}
+                        <Link to={`/collections/${collection.key}`} className="inline-flex items-center gap-1 font-medium text-blue-600">
+                          Detaylar
+                          <ArrowRightIcon className="h-4 w-4" />
+                        </Link>
+                      </div>
                     </div>
-                  </Link>
+                  </article>
                 );
               })}
             </div>

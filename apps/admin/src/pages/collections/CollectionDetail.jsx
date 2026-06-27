@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listCollectionTypes,
   updateCollectionType,
+  deleteCollectionType,
   listCollectionEntries,
   createCollectionEntry,
   updateCollectionEntry,
@@ -56,6 +57,7 @@ export default function CollectionDetail() {
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deleteCollectionConfirm, setDeleteCollectionConfirm] = useState(false);
 
   const { data: collections = [], isLoading: isCollectionsLoading, isError: isCollectionsError } = useQuery(
     ['collections', { tenant: activeTenantId }],
@@ -88,6 +90,19 @@ export default function CollectionDetail() {
     },
     onError: (error) => {
       const message = error?.response?.data?.message || error.message || 'Koleksiyon güncellenemedi';
+      toast.error(message);
+    }
+  });
+
+  const deleteCollectionMutation = useMutation(() => deleteCollectionType(key), {
+    onSuccess: () => {
+      toast.success('Koleksiyon silindi');
+      queryClient.invalidateQueries(['collections']);
+      queryClient.invalidateQueries(['collection-entries']);
+      navigate('/collections');
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || error.message || 'Koleksiyon silinemedi';
       toast.error(message);
     }
   });
@@ -169,6 +184,16 @@ export default function CollectionDetail() {
     });
   };
 
+  const handleDeleteCollection = () => {
+    if (!deleteCollectionConfirm) {
+      setDeleteCollectionConfirm(true);
+      return;
+    }
+    deleteCollectionMutation.mutate();
+  };
+
+  const canDeleteCollection = collection.status !== 'active';
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -180,13 +205,29 @@ export default function CollectionDetail() {
             {collection.settings?.slugField && <span>· slug: {collection.settings.slugField}</span>}
           </div>
         </div>
-        <button
-          onClick={() => setShowEditForm((prev) => !prev)}
-          className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
-        >
-          <PencilIcon className="h-4 w-4" />
-          Koleksiyonu Düzenle
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {canDeleteCollection && (
+            <button
+              onClick={handleDeleteCollection}
+              disabled={deleteCollectionMutation.isLoading}
+              className={`inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold shadow-sm ${
+                deleteCollectionConfirm
+                  ? 'border-red-300 bg-red-50 text-red-600 hover:bg-red-100'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              } disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              <TrashIcon className="h-4 w-4" />
+              {deleteCollectionConfirm ? 'Koleksiyonu sil?' : 'Koleksiyonu Sil'}
+            </button>
+          )}
+          <button
+            onClick={() => setShowEditForm((prev) => !prev)}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            <PencilIcon className="h-4 w-4" />
+            Koleksiyonu Düzenle
+          </button>
+        </div>
       </div>
 
       {showEditForm && (
