@@ -1,6 +1,7 @@
 const { Tenant, Membership, User, rbac } = require('@contexthub/common');
 const roleService = require('./roleService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
+const edgeGatewaySyncService = require('./edgeGatewaySyncService');
 const { mailService } = require('./mailService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -91,6 +92,10 @@ class TenantService {
       createdBy: ownerId
     });
     await membership.save();
+
+    edgeGatewaySyncService.syncTenantConfig({ tenantId: tenant._id, tenant }).catch((error) => {
+      console.error('[TenantService] Edge gateway sync failed after tenant create:', error.message);
+    });
 
     return { tenant, membership };
   }

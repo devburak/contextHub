@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const ApiToken = require('@contexthub/common/src/models/ApiToken');
 const { tenantContext, authenticate } = require('../middleware/auth');
+const edgeGatewaySyncService = require('../services/edgeGatewaySyncService');
 
 /**
  * API Token Management Routes
@@ -193,6 +194,9 @@ async function apiTokenRoutes(fastify) {
       });
 
       await apiToken.save();
+      edgeGatewaySyncService.syncApiTokenConfig({ apiToken }).catch((error) => {
+        request.log.error({ err: error, tokenId: apiToken._id.toString(), tenantId }, 'Failed to sync API token to Edge gateway');
+      });
 
       console.log(`[ApiToken] Created token: ${name} for tenant ${tenantId}`);
 
@@ -269,7 +273,11 @@ async function apiTokenRoutes(fastify) {
         });
       }
 
+      const tokenHash = token.hash;
       await ApiToken.deleteOne({ _id: tokenId });
+      edgeGatewaySyncService.deleteApiTokenConfig({ hash: tokenHash }).catch((error) => {
+        request.log.error({ err: error, tokenId, tenantId }, 'Failed to delete API token from Edge gateway');
+      });
 
       console.log(`[ApiToken] Deleted token: ${token.name} for tenant ${tenantId}`);
 
@@ -332,6 +340,9 @@ async function apiTokenRoutes(fastify) {
       if (scopes !== undefined) token.scopes = scopes;
 
       await token.save();
+      edgeGatewaySyncService.syncApiTokenConfig({ apiToken: token }).catch((error) => {
+        request.log.error({ err: error, tokenId: token._id.toString(), tenantId }, 'Failed to sync updated API token to Edge gateway');
+      });
 
       console.log(`[ApiToken] Updated token: ${token.name} for tenant ${tenantId}`);
 

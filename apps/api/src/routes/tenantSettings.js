@@ -62,6 +62,18 @@ async function tenantSettingsRoutes(fastify) {
         },
         additionalProperties: false
       },
+      edgeGateway: {
+        type: 'object',
+        properties: {
+          publicReadEnabled: { type: 'boolean' },
+          allowLocalhost: { type: 'boolean' },
+          allowedOrigins: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        },
+        additionalProperties: false
+      },
       features: {
         type: 'object',
         additionalProperties: { type: 'boolean' }
@@ -121,6 +133,18 @@ async function tenantSettingsRoutes(fastify) {
           custom: {
             type: 'object',
             additionalProperties: { type: 'number', nullable: true }
+          }
+        },
+        additionalProperties: false
+      },
+      edgeGateway: {
+        type: 'object',
+        properties: {
+          publicReadEnabled: { type: 'boolean' },
+          allowLocalhost: { type: 'boolean' },
+          allowedOrigins: {
+            type: 'array',
+            items: { type: 'string' }
           }
         },
         additionalProperties: false

@@ -46,6 +46,12 @@ const EMPTY_STATE = {
     emailPerMonth: '',
     custom: {}
   },
+  edgeGateway: {
+    publicReadEnabled: true,
+    allowLocalhost: true,
+    allowedOrigins: [],
+    allowedOriginsText: ''
+  },
   features: {},
   metadata: {}
 }
@@ -78,6 +84,23 @@ const sanitizeNumberInput = (value) => {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : null
 }
+
+const normalizeOriginsText = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .join('\n')
+  }
+  return ''
+}
+
+const parseOriginsText = (value) => Array.from(new Set(
+  String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+))
 
 const formatCountUsage = (metric) => {
   const current = metric?.current ?? 0
@@ -148,6 +171,13 @@ const mergeWithDefaults = (settings) => {
         Object.entries(settings.limits?.custom || {}).map(([key, value]) => [key, toStringValue(value)])
       )
     },
+    edgeGateway: {
+      ...EMPTY_STATE.edgeGateway,
+      publicReadEnabled: settings.edgeGateway?.publicReadEnabled ?? EMPTY_STATE.edgeGateway.publicReadEnabled,
+      allowLocalhost: settings.edgeGateway?.allowLocalhost ?? EMPTY_STATE.edgeGateway.allowLocalhost,
+      allowedOrigins: settings.edgeGateway?.allowedOrigins || EMPTY_STATE.edgeGateway.allowedOrigins,
+      allowedOriginsText: normalizeOriginsText(settings.edgeGateway?.allowedOrigins)
+    },
     features: { ...(settings.features || {}) },
     metadata: settings.metadata || {}
   }
@@ -193,6 +223,11 @@ const buildPayload = (state, secretFlags, secretEditState, metadataText) => {
       custom: Object.fromEntries(
         Object.entries(state.limits.custom || {}).map(([key, value]) => [key, sanitizeNumberInput(value)])
       )
+    },
+    edgeGateway: {
+      publicReadEnabled: Boolean(state.edgeGateway.publicReadEnabled),
+      allowLocalhost: Boolean(state.edgeGateway.allowLocalhost),
+      allowedOrigins: parseOriginsText(state.edgeGateway.allowedOriginsText)
     },
     features: Object.fromEntries(
       Object.entries(state.features || {}).map(([key, value]) => [key, Boolean(value)])
@@ -764,6 +799,54 @@ export default function TenantSettings() {
         <ApiTokenManager />
 
         <CustomFieldDefinitionsSettings tenantId={activeMembership?.tenantId} />
+
+        <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">Edge API ve CORS</h2>
+            <p className="text-sm text-gray-500">Cloudflare Worker üzerinden geçen public API erişimi ve tarayıcı origin izinlerini tenant bazında yönet.</p>
+          </div>
+          <div className="space-y-5 px-6 py-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={formState.edgeGateway.publicReadEnabled}
+                  onChange={handleCheckboxChange('edgeGateway', 'publicReadEnabled')}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-gray-900">Public read aktif</span>
+                  <span className="mt-1 block text-xs text-gray-500">Kapalıyken Worker tenant için public okuma isteklerini origin'e geçirmeden reddeder.</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={formState.edgeGateway.allowLocalhost}
+                  onChange={handleCheckboxChange('edgeGateway', 'allowLocalhost')}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-gray-900">Localhost geliştirme izni</span>
+                  <span className="mt-1 block text-xs text-gray-500">localhost ve 127.0.0.1 origin'leri sadece geliştirme/test için kabul edilir.</span>
+                </span>
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Allowed Origins</label>
+              <textarea
+                rows="5"
+                value={formState.edgeGateway.allowedOriginsText}
+                onChange={handleInputChange('edgeGateway', 'allowedOriginsText')}
+                placeholder={'https://kesk.org.tr\nhttps://www.kesk.org.tr\nhttps://*.example.com'}
+                className={`${FIELD_INPUT_WITH_MARGIN_CLASS} font-mono`}
+              />
+              <p className="mt-2 text-xs text-gray-500">
+                Her satıra bir origin yaz. Wildcard sadece alt domainleri kapsar; ana domain için ayrıca kayıt gir.
+              </p>
+            </div>
+          </div>
+        </section>
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">

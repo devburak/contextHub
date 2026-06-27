@@ -35,12 +35,19 @@ const limitsSchema = new Schema({
   custom: { type: Map, of: Number, default: {} }
 }, { _id: false, minimize: false });
 
+const edgeGatewaySchema = new Schema({
+  publicReadEnabled: { type: Boolean, default: true },
+  allowLocalhost: { type: Boolean, default: true },
+  allowedOrigins: [{ type: String, trim: true }]
+}, { _id: false, minimize: false });
+
 const tenantSettingsSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, unique: true, index: true },
   smtp: { type: smtpSchema, default: () => ({}) },
   webhook: { type: webhookSchema, default: () => ({}) },
   branding: { type: brandingSchema, default: () => ({}) },
   limits: { type: limitsSchema, default: () => ({}) },
+  edgeGateway: { type: edgeGatewaySchema, default: () => ({}) },
   features: { type: Map, of: Boolean, default: () => ({}) },
   metadata: { type: Map, of: Schema.Types.Mixed, default: () => ({}) }
 }, {
