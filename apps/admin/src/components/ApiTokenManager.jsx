@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApiTokens, createApiToken, deleteApiToken } from '../lib/api/apiTokens.js'
 import { KeyIcon, TrashIcon, ClipboardDocumentIcon, CheckIcon, PlusIcon } from '@heroicons/react/24/outline'
 
-export default function ApiTokenManager() {
+export default function ApiTokenManager({ tenantId }) {
   const queryClient = useQueryClient()
   const [showModal, setShowModal] = useState(false)
   const [newTokenName, setNewTokenName] = useState('')
@@ -13,11 +13,20 @@ export default function ApiTokenManager() {
   const [createdToken, setCreatedToken] = useState(null)
   const [copiedTokenId, setCopiedTokenId] = useState(null)
   const [feedback, setFeedback] = useState({ type: '', message: '' })
+  const apiTokensQueryKey = ['api-tokens', { tenant: tenantId }]
+
+  useEffect(() => {
+    setShowModal(false)
+    setCreatedToken(null)
+    setCopiedTokenId(null)
+    setFeedback({ type: '', message: '' })
+  }, [tenantId])
 
   // Fetch API tokens
   const tokensQuery = useQuery({
-    queryKey: ['api-tokens'],
+    queryKey: apiTokensQueryKey,
     queryFn: fetchApiTokens,
+    enabled: Boolean(tenantId),
     staleTime: 30000,
   })
 
@@ -25,7 +34,7 @@ export default function ApiTokenManager() {
   const createTokenMutation = useMutation({
     mutationFn: createApiToken,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
+      queryClient.invalidateQueries({ queryKey: apiTokensQueryKey })
       setCreatedToken(data.token)
       setNewTokenName('')
       setNewTokenRole('editor')
@@ -43,7 +52,7 @@ export default function ApiTokenManager() {
   const deleteTokenMutation = useMutation({
     mutationFn: deleteApiToken,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
+      queryClient.invalidateQueries({ queryKey: apiTokensQueryKey })
       setFeedback({ type: 'success', message: 'API token başarıyla silindi!' })
     },
     onError: (error) => {

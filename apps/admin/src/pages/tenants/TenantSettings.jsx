@@ -470,16 +470,21 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
 export default function TenantSettings() {
   const queryClient = useQueryClient()
   const { activeMembership, updateMemberships } = useAuth()
+  const activeTenantId = activeMembership?.tenantId || null
+  const tenantSettingsQueryKey = ['tenants', 'settings', { tenant: activeTenantId }]
+  const tenantLimitsQueryKey = ['tenant-limits', { tenant: activeTenantId }]
 
   const settingsQuery = useQuery({
-    queryKey: ['tenants', 'settings'],
-    queryFn: tenantAPI.getSettings
+    queryKey: tenantSettingsQueryKey,
+    queryFn: tenantAPI.getSettings,
+    enabled: Boolean(activeTenantId)
   })
 
   // Fetch current tenant limits and plan
   const limitsQuery = useQuery({
-    queryKey: ['tenant-limits'],
+    queryKey: tenantLimitsQueryKey,
     queryFn: fetchTenantLimits,
+    enabled: Boolean(activeTenantId),
     staleTime: 30000, // 30 seconds
   })
 
@@ -491,6 +496,17 @@ export default function TenantSettings() {
   const [featureKeyInput, setFeatureKeyInput] = useState('')
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [showPlanModal, setShowPlanModal] = useState(false)
+
+  useEffect(() => {
+    setFormState(JSON.parse(JSON.stringify(EMPTY_STATE)))
+    setMetadataText('{}')
+    setSecretFlags({ smtpPassword: false, webhookSecret: false })
+    setSecretEditState({ smtpPassword: false, webhookSecret: false })
+    setFeedback({ type: '', message: '' })
+    setFeatureKeyInput('')
+    setSelectedPlan(null)
+    setShowPlanModal(false)
+  }, [activeTenantId])
 
   useEffect(() => {
     if (settingsQuery.data) {
@@ -508,7 +524,7 @@ export default function TenantSettings() {
       setFeedback({ type: '', message: '' })
     },
     onSuccess: (settings) => {
-      queryClient.setQueryData(['tenants', 'settings'], settings)
+      queryClient.setQueryData(tenantSettingsQueryKey, settings)
       const merged = mergeWithDefaults(settings)
       setFormState(merged)
       setMetadataText(JSON.stringify(settings.metadata || {}, null, 2) || '{}')
@@ -525,7 +541,7 @@ export default function TenantSettings() {
   const updatePlanMutation = useMutation({
     mutationFn: ({ tenantId, planSlug }) => updateTenantSubscription(tenantId, { planSlug }),
     onSuccess: async () => {
-      queryClient.invalidateQueries({ queryKey: ['tenant-limits'] })
+      queryClient.invalidateQueries({ queryKey: tenantLimitsQueryKey })
       queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
       try {
         const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
@@ -667,6 +683,10 @@ export default function TenantSettings() {
 
   const handleSubmit = (event) => {
     event.preventDefault()
+    if (!activeTenantId) {
+      setFeedback({ type: 'error', message: 'Aktif tenant bulunamadı.' })
+      return
+    }
     try {
       const payload = buildPayload(formState, secretFlags, secretEditState, metadataText)
       updateMutation.mutate(payload)
@@ -676,16 +696,16 @@ export default function TenantSettings() {
   }
 
   const handlePlanChange = () => {
-    if (!selectedPlan || !activeMembership?.tenantId) return
+    if (!selectedPlan || !activeTenantId) return
     updatePlanMutation.mutate({
-      tenantId: activeMembership.tenantId,
+      tenantId: activeTenantId,
       planSlug: selectedPlan
     })
   }
 
   const currentPlan = limitsQuery.data?.plan?.slug || 'free'
 
-  if (settingsQuery.isLoading) {
+  if (!activeTenantId || settingsQuery.isLoading) {
     return <div className="text-sm text-gray-500">Ayarlar yükleniyor...</div>
   }
 
@@ -796,9 +816,9 @@ export default function TenantSettings() {
         </section>
 
         {/* API Token Management Section */}
-        <ApiTokenManager />
+        <ApiTokenManager tenantId={activeTenantId} />
 
-        <CustomFieldDefinitionsSettings tenantId={activeMembership?.tenantId} />
+        <CustomFieldDefinitionsSettings tenantId={activeTenantId} />
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="border-b border-gray-200 px-6 py-4">

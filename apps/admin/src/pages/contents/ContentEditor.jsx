@@ -373,8 +373,9 @@ export default function ContentEditor() {
   const queryClient = useQueryClient()
 
   const { data: tenantSettingsData } = useQuery({
-    queryKey: ['tenants', 'settings'],
+    queryKey: ['tenants', 'settings', { tenant: activeTenantId }],
     queryFn: tenantAPI.getSettings,
+    enabled: Boolean(token && activeTenantId),
     staleTime: 5 * 60 * 1000,
   })
 
