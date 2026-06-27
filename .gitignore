@@ -123,3 +123,6 @@ temp/
 turbo.json.bak
 
 *.config.js
+
+# Tek seferlik / local migration araçları (repo'ya gönderilmez)
+apps/api/scripts/migrate-image-urls.cjs

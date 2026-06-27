@@ -171,6 +171,37 @@ function ensureGeoJson(value) {
   return { type, coordinates };
 }
 
+// richText değeri Lexical editör çıktısı olarak { json, html } şeklinde saklanır.
+// json: Lexical editorState.toJSON() nesnesi (root içeren), html: render edilmiş HTML.
+function ensureRichText(value) {
+  if (!value) return undefined;
+
+  let json;
+  let html = '';
+
+  if (typeof value === 'string') {
+    // Sadece ham JSON string gönderildiyse parse etmeyi dene.
+    try {
+      const parsed = JSON.parse(value);
+      json = parsed?.root ? parsed : undefined;
+    } catch (err) {
+      return undefined;
+    }
+  } else if (typeof value === 'object' && !Array.isArray(value)) {
+    json = value.json ?? value.state ?? (value.root ? value : undefined);
+    if (typeof value.html === 'string') {
+      html = value.html;
+    }
+  }
+
+  // Geçerli bir Lexical state'i en azından bir root düğümü içermeli.
+  if (!json || typeof json !== 'object' || !json.root) {
+    return undefined;
+  }
+
+  return { json, html };
+}
+
 function normaliseFieldValue(field, value) {
   switch (field.type) {
     case 'string':
@@ -211,6 +242,8 @@ function normaliseFieldValue(field, value) {
     }
     case 'geojson':
       return ensureGeoJson(value);
+    case 'richText':
+      return ensureRichText(value);
     default:
       return value;
   }

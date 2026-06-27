@@ -5,6 +5,7 @@ import CollectionKeyAutocomplete from './CollectionKeyAutocomplete.jsx';
 const FIELD_TYPES = [
   { value: 'string', label: 'Metin' },
   { value: 'text', label: 'Uzun Metin' },
+  { value: 'richText', label: 'Zengin Metin (Lexical)' },
   { value: 'number', label: 'Sayı' },
   { value: 'boolean', label: 'Mantıksal' },
   { value: 'date', label: 'Tarih' },
@@ -157,7 +158,11 @@ export function CollectionDefinitionForm({
   }, [initialValues]);
 
 
-  const selectableSlugFields = useMemo(() => fields.map((field) => field.key).filter(Boolean), [fields]);
+  // richText alanları slug / sıralama için anlamlı olmadığından bu listelerden hariç tutulur.
+  const selectableSlugFields = useMemo(
+    () => fields.filter((field) => field.type !== 'richText').map((field) => field.key).filter(Boolean),
+    [fields]
+  );
 
   const handleAddField = () => {
     setFields((prev) => [...prev, DEFAULT_FIELD()]);
@@ -271,6 +276,11 @@ export function CollectionDefinitionForm({
               if (!['enum', 'ref', 'media'].includes(nextType)) {
                 patch.multiple = false;
               }
+              if (nextType === 'richText') {
+                // richText için unique/indexed anlamsız; bayrakları temizle.
+                patch.unique = false;
+                patch.indexed = false;
+              }
               handleFieldChange(field.clientId, patch);
             }}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
@@ -363,24 +373,28 @@ export function CollectionDefinitionForm({
           />
           Zorunlu Alan
         </label>
-        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={field.unique}
-            onChange={(event) => handleFieldChange(field.clientId, { unique: event.target.checked })}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          Tekil (unique)
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={field.indexed}
-            onChange={(event) => handleFieldChange(field.clientId, { indexed: event.target.checked })}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          Sorgulanabilir (index)
-        </label>
+        {field.type !== 'richText' && (
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={field.unique}
+              onChange={(event) => handleFieldChange(field.clientId, { unique: event.target.checked })}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Tekil (unique)
+          </label>
+        )}
+        {field.type !== 'richText' && (
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={field.indexed}
+              onChange={(event) => handleFieldChange(field.clientId, { indexed: event.target.checked })}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Sorgulanabilir (index)
+          </label>
+        )}
       </div>
     </div>
     );
