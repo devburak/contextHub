@@ -5,6 +5,7 @@ const {
 } = require('./collectionTypeService');
 const { emitDomainEvent } = require('../lib/domainEvents');
 const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
+const { sanitizeHtmlContent } = require('../utils/htmlSanitizer');
 
 const ObjectId = mongoose.Types.ObjectId;
 
@@ -199,7 +200,7 @@ function ensureRichText(value) {
     return undefined;
   }
 
-  return { json, html };
+  return { json, html: sanitizeHtmlContent(html) || '' };
 }
 
 function normaliseFieldValue(field, value) {

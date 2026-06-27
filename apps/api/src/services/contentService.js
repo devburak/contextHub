@@ -10,6 +10,7 @@ const mongoose = require('mongoose')
 const galleryService = require('./galleryService')
 const { emitDomainEvent } = require('../lib/domainEvents')
 const { triggerWebhooksForTenant } = require('../lib/webhookTrigger')
+const { sanitizeHtmlContent } = require('../utils/htmlSanitizer')
 
 const ObjectId = mongoose.Types.ObjectId
 
@@ -370,6 +371,7 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
   const allowScheduling = Boolean(featureFlags?.contentScheduling)
   const statusPayload = resolveStatusAndDates({ status, publishAt }, { allowScheduling })
   const normalizedCustomFields = await normalizeCustomFieldsForTenant({ tenantId, customFields })
+  const sanitizedHtml = sanitizeHtmlContent(html)
 
   const document = await Content.create({
     tenantId,
@@ -377,7 +379,7 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
     slug: finalSlug,
     summary,
     lexical,
-    html,
+    html: sanitizedHtml,
     categories: normaliseObjectIdList(categories),
     tags: normaliseTagIds(tags),
     customFields: normalizedCustomFields,
@@ -397,7 +399,7 @@ async function createContent({ tenantId, userId, payload, featureFlags = {} }) {
     slug: finalSlug,
     summary,
     lexical,
-    html,
+    html: sanitizedHtml,
     categories: normaliseObjectIdList(categories),
     tags: normaliseTagIds(tags),
     customFields: normalizedCustomFields,
@@ -496,7 +498,7 @@ async function updateContent({ tenantId, contentId, userId, payload, featureFlag
   }
 
   if (payload.html !== undefined) {
-    html = payload.html
+    html = sanitizeHtmlContent(payload.html)
     update.html = html
   }
 

@@ -19,6 +19,14 @@ export async function updateCollectionType(key, data) {
   return response.data.collection;
 }
 
+export async function deleteCollectionType(key) {
+  if (!key) {
+    throw new Error('collection key is required');
+  }
+  await apiClient.delete(`${BASE}/${key}`);
+  return true;
+}
+
 export async function listCollectionEntries({ collectionKey, page = 1, limit = 20, status, q, sort, filter } = {}) {
   if (!collectionKey) {
     throw new Error('collectionKey is required');
@@ -64,6 +72,7 @@ export const collectionsApi = {
   listCollectionTypes,
   createCollectionType,
   updateCollectionType,
+  deleteCollectionType,
   listCollectionEntries,
   createCollectionEntry,
   updateCollectionEntry,
