@@ -207,15 +207,36 @@
 }
 
 .editor-toolbar__button[title='Geri al']::before {
-  background-image: url('./assets/icons/arrow-counterclockwise.svg');
+  background-image: url('./assets/icons/undo.svg');
 }
 
 .editor-toolbar__button[title='İleri al']::before {
-  background-image: url('./assets/icons/arrow-clockwise.svg');
+  background-image: url('./assets/icons/redo.svg');
 }
 
 .editor-toolbar__button[title='Madde işaretli liste']::before {
   background-image: url('./assets/icons/list-ul.svg');
+}
+
+/* Blok tipi ikonları — ana editör ve koleksiyon richText toolbar'ı ortak kullanır. */
+.editor-toolbar__button[title='Paragraf']::before {
+  background-image: url('./assets/icons/text-paragraph.svg');
+}
+
+.editor-toolbar__button[title='Başlık 1']::before {
+  background-image: url('./assets/icons/type-h1.svg');
+}
+
+.editor-toolbar__button[title='Başlık 2']::before {
+  background-image: url('./assets/icons/type-h2.svg');
+}
+
+.editor-toolbar__button[title='Başlık 3']::before {
+  background-image: url('./assets/icons/type-h3.svg');
+}
+
+.editor-toolbar__button[title='Alıntı']::before {
+  background-image: url('./assets/icons/quote.svg');
 }
 
 .editor-toolbar__button[title='Numaralı liste']::before {
@@ -275,7 +296,11 @@
 }
 
 .editor-toolbar__button[title='Stili temizle']::before {
-  background-image: url('./assets/icons/text-paragraph.svg');
+  background-image: url('./assets/icons/eraser.svg');
+}
+
+.editor-toolbar__button[title='Metin rengi']::before {
+  background-image: url('./assets/icons/font-color.svg');
 }
 
 .editor-toolbar__button[title='Sola hizala']::before {
@@ -288,6 +313,12 @@
 
 .editor-toolbar__button[title='Sağa hizala']::before {
   background-image: url('./assets/icons/text-right.svg');
+}
+
+/* Sürükle-bırak handle'ı için soldaki pasif şerit (gutter).
+   Genişlik, editable'ın sol padding'i (pl-10 = 40px) ile birebir aynıdır. */
+.content-editor-input {
+  background: linear-gradient(to right, #f3f4f6 0, #f3f4f6 40px, transparent 40px);
 }
 
 

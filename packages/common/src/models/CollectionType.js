@@ -13,7 +13,8 @@ const FIELD_TYPES = [
   'enum',
   'ref',
   'media',
-  'geojson'
+  'geojson',
+  'richText'
 ];
 
 const optionsSchema = new Schema(

@@ -362,7 +362,7 @@ const convertHtmlToLexicalContent = async (rawHtml) => {
 }
 
 function Placeholder() {
-  return <div className="absolute top-2 left-3 text-gray-400 pointer-events-none text-sm">İçerik yazmaya başlayın...</div>
+  return <div className="absolute top-2 left-10 text-gray-400 pointer-events-none text-sm">İçerik yazmaya başlayın...</div>
 }
 
 export default function ContentEditor() {
@@ -1651,7 +1651,7 @@ export default function ContentEditor() {
                   <FormPlugin />
                   <div className="relative flex-1 flex overflow-hidden flex-col" ref={editorContainerRef}>
                     <RichTextPlugin
-                      contentEditable={<ContentEditable className="flex-1 px-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-x-auto overflow-y-visible scroll-smooth" />}
+                      contentEditable={<ContentEditable className="flex-1 content-editor-input pl-10 pr-4 py-3 outline-none prose prose-sm prose-p:my-2 prose-headings:my-1 max-w-none overflow-x-auto overflow-y-visible scroll-smooth" />}
                       placeholder={<Placeholder />}
                       ErrorBoundary={LexicalErrorBoundary}
                     />
@@ -3331,16 +3331,12 @@ function Toolbar({
         title="Geri al"
         onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
         disabled={!canUndo}
-      >
-        ↺
-      </ToolbarButton>
+      />
       <ToolbarButton
         title="İleri al"
         onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}
         disabled={!canRedo}
-      >
-        ↻
-      </ToolbarButton>
+      />
       <Divider />
       <select
         value={blockType}

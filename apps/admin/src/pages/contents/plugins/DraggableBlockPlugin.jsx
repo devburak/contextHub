@@ -137,7 +137,8 @@ function setMenuPosition(targetElem, floatingElem, anchorElem) {
         (targetCalculateHeight - floatingElemRect.height) / 2 -
         anchorElementRect.top +
         anchorElem.scrollTop;
-    const left = SPACE;
+    // Handle, editable'ın sol gutter'ında (pl-10 = 40px) kalsın; sola hizalanır.
+    const left = 2;
     floatingElem.style.opacity = '1';
     floatingElem.style.transform = `translate(${left}px, ${top}px)`;
 }

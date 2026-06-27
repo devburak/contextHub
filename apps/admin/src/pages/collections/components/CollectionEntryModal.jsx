@@ -4,6 +4,7 @@ import { XMarkIcon, TrashIcon } from '@heroicons/react/24/outline';
 import MediaPickerModal from '../../contents/components/MediaPickerModal.jsx';
 import ContentPickerModal from '../../contents/components/ContentPickerModal.jsx';
 import RefFieldAutocomplete from './RefFieldAutocomplete.jsx';
+import RichTextField from './RichTextField.jsx';
 
 const STATUS_OPTIONS = [
   { value: 'draft', label: 'Taslak' },
@@ -343,6 +344,13 @@ export function CollectionEntryModal({
             }
             break;
           }
+          case 'richText': {
+            // RichTextField { json, html } nesnesi üretir; olduğu gibi gönderilir.
+            if (rawValue && typeof rawValue === 'object' && rawValue.json) {
+              payloadData[field.key] = { json: rawValue.json, html: rawValue.html || '' };
+            }
+            break;
+          }
           default:
             payloadData[field.key] = rawValue;
         }
@@ -476,6 +484,15 @@ export function CollectionEntryModal({
             value={Array.isArray(value) ? value[0] ?? '' : value ?? ''}
             onChange={(event) => handleFieldUpdate(field.key, event.target.value)}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          />
+        );
+      case 'richText':
+        return (
+          <RichTextField
+            key={`${entry?._id || 'new'}-${field.key}`}
+            value={value}
+            onChange={(nextValue) => handleFieldUpdate(field.key, nextValue)}
+            placeholder={`${getFieldLabel(field)} içeriğini yazın…`}
           />
         );
       case 'geojson':
