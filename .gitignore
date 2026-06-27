@@ -126,3 +126,8 @@ turbo.json.bak
 
 # Tek seferlik / local migration araçları (repo'ya gönderilmez)
 apps/api/scripts/migrate-image-urls.cjs
+
+# Local/private Cloudflare Worker workspace
+apps/edge-gateway/
+
+/docs

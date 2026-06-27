@@ -1,5 +1,6 @@
 const { TenantSettings } = require('@contexthub/common');
 const { encryptSecret, decryptSecret, isEncrypted } = require('../utils/secretUtils');
+const edgeGatewaySyncService = require('./edgeGatewaySyncService');
 
 const DEFAULT_SETTINGS = Object.freeze({
   smtp: {
@@ -32,9 +33,21 @@ const DEFAULT_SETTINGS = Object.freeze({
     emailPerMonth: null,
     custom: {}
   },
+  edgeGateway: {
+    publicReadEnabled: true,
+    allowLocalhost: true,
+    allowedOrigins: []
+  },
   features: {},
   metadata: {}
 });
+
+function normalizeAllowedOrigins(value) {
+  const list = Array.isArray(value) ? value : [];
+  return Array.from(new Set(list
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)));
+}
 
 class TenantSettingsService {
   async getSettings(tenantId) {
@@ -175,6 +188,19 @@ class TenantSettingsService {
       }
     }
 
+    if (payload.edgeGateway) {
+      target.edgeGateway = target.edgeGateway || {};
+      if (payload.edgeGateway.publicReadEnabled !== undefined) {
+        target.edgeGateway.publicReadEnabled = Boolean(payload.edgeGateway.publicReadEnabled);
+      }
+      if (payload.edgeGateway.allowLocalhost !== undefined) {
+        target.edgeGateway.allowLocalhost = Boolean(payload.edgeGateway.allowLocalhost);
+      }
+      if (payload.edgeGateway.allowedOrigins !== undefined) {
+        target.edgeGateway.allowedOrigins = normalizeAllowedOrigins(payload.edgeGateway.allowedOrigins);
+      }
+    }
+
     if (payload.features !== undefined) {
       target.features = new Map();
       if (payload.features && typeof payload.features === 'object') {
@@ -194,6 +220,9 @@ class TenantSettingsService {
     }
 
     const saved = await target.save();
+    edgeGatewaySyncService.syncTenantConfig({ tenantId }).catch((error) => {
+      console.error('[TenantSettings] Edge gateway sync failed:', error.message);
+    });
     return this.#serialize(tenantId, saved.toObject({ depopulate: true }));
   }
 
@@ -256,6 +285,15 @@ class TenantSettingsService {
         custom: doc.limits.custom instanceof Map
           ? Object.fromEntries(Array.from(doc.limits.custom.entries()))
           : doc.limits.custom ?? base.limits.custom
+      };
+    }
+
+    if (doc.edgeGateway) {
+      result.edgeGateway = {
+        ...base.edgeGateway,
+        publicReadEnabled: doc.edgeGateway.publicReadEnabled ?? base.edgeGateway.publicReadEnabled,
+        allowLocalhost: doc.edgeGateway.allowLocalhost ?? base.edgeGateway.allowLocalhost,
+        allowedOrigins: normalizeAllowedOrigins(doc.edgeGateway.allowedOrigins)
       };
     }
 
