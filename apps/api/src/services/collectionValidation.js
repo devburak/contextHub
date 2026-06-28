@@ -90,6 +90,16 @@ const entryPayloadSchema = z.object({
   }).optional()
 });
 
+const entryFilterPrimitiveSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+const entryFilterValueSchema = z.union([
+  entryFilterPrimitiveSchema,
+  z.array(entryFilterPrimitiveSchema),
+  z.object({
+    $in: z.array(entryFilterPrimitiveSchema).max(200)
+  }).strict()
+]);
+
 const entryFilterQuerySchema = z.preprocess((value) => {
   if (typeof value !== 'string') return value;
   try {
@@ -97,7 +107,7 @@ const entryFilterQuerySchema = z.preprocess((value) => {
   } catch (error) {
     return value;
   }
-}, z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional());
+}, z.record(z.string(), entryFilterValueSchema).optional());
 
 const entryListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
