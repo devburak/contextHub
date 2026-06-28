@@ -3,6 +3,17 @@ import { useQuery } from '@tanstack/react-query'
 import { collectionsApi } from '../../../lib/api/collections.js'
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
+function useDebouncedValue(value, delay = 300) {
+  const [debounced, setDebounced] = useState(value)
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setDebounced(value), delay)
+    return () => window.clearTimeout(timeoutId)
+  }, [value, delay])
+
+  return debounced
+}
+
 /**
  * RefFieldAutocomplete - Ref type field'lar için autocomplete component'i
  * 
@@ -24,6 +35,7 @@ export default function RefFieldAutocomplete({
   const [isOpen, setIsOpen] = useState(false)
   const [selectedEntries, setSelectedEntries] = useState([])
   const wrapperRef = useRef(null)
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
 
   // Seçili entry'lerin detaylarını çek
   const selectedIds = multiple 
@@ -32,21 +44,21 @@ export default function RefFieldAutocomplete({
 
   // Ref target koleksiyon entry'lerini çek
   const { data: entriesData, isLoading, error } = useQuery({
-    queryKey: ['collection-entries', refTarget, searchQuery],
+    queryKey: ['collection-entries', refTarget, debouncedSearchQuery],
     queryFn: async () => {
       if (!refTarget) return { items: [], total: 0 }
-      console.log('🔍 RefFieldAutocomplete API call:', { refTarget, searchQuery })
       const result = await collectionsApi.listCollectionEntries({
         collectionKey: refTarget,
-        q: searchQuery,
+        q: debouncedSearchQuery,
         limit: 20,
         // Tüm statusleri çek (draft, published, archived)
         // status parametresi göndermeyerek hepsini al
       })
-      console.log('📦 RefFieldAutocomplete API response:', result)
       return result
     },
-    enabled: !!refTarget && isOpen
+    enabled: !!refTarget && isOpen,
+    retry: false,
+    keepPreviousData: true
   })
 
   // Seçili entry'lerin detaylarını çek
@@ -60,7 +72,9 @@ export default function RefFieldAutocomplete({
         limit: selectedIds.length
       })
     },
-    enabled: !!refTarget && selectedIds.length > 0
+    enabled: !!refTarget && selectedIds.length > 0,
+    retry: false,
+    staleTime: 5 * 60 * 1000
   })
 
   useEffect(() => {

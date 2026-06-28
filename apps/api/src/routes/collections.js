@@ -208,7 +208,12 @@ async function collectionRoutes(fastify) {
           status: { type: 'string', enum: ['draft', 'published', 'archived'] },
           q: { type: 'string' },
           sort: { type: 'string' },
-          filter: { type: 'object' }
+          filter: {
+            anyOf: [
+              { type: 'string' },
+              { type: 'object', additionalProperties: true }
+            ]
+          }
         }
       },
       response: {

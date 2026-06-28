@@ -673,21 +673,6 @@ export function CollectionEntryModal({
 
   return (
     <>
-      <MediaPickerModal
-        isOpen={isMediaPickerOpen}
-        mode="any"
-        showUpload={false}
-        multiple={Boolean(mediaPickerTarget?.multiple)}
-        onClose={() => setMediaPickerTarget(null)}
-        onSelect={handleMediaSelect}
-      />
-      <ContentPickerModal
-        isOpen={isContentPickerOpen}
-        selectedIds={contentIds}
-        onClose={() => setContentPickerOpen(false)}
-        onSelect={handleContentSelect}
-      />
-
       <Transition show={isOpen} as={Fragment}>
         <Dialog
           as="div"
@@ -695,6 +680,20 @@ export function CollectionEntryModal({
           onClose={(isSubmitting || isMediaPickerOpen || isContentPickerOpen) ? () => {} : onClose}
           initialFocus={initialFocusRef}
         >
+          <MediaPickerModal
+            isOpen={isMediaPickerOpen}
+            mode="any"
+            showUpload={false}
+            multiple={Boolean(mediaPickerTarget?.multiple)}
+            onClose={() => setMediaPickerTarget(null)}
+            onSelect={handleMediaSelect}
+          />
+          <ContentPickerModal
+            isOpen={isContentPickerOpen}
+            selectedIds={contentIds}
+            onClose={() => setContentPickerOpen(false)}
+            onSelect={handleContentSelect}
+          />
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-200"

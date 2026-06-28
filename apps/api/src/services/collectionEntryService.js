@@ -524,6 +524,23 @@ function resolveSortKey(key, collectionType) {
   return 'createdAt';
 }
 
+function normalizeFilterValue(value, { objectId = false } = {}) {
+  const normalizeSingle = (item) => {
+    if (item === undefined || item === null || item === '') return undefined;
+    return objectId ? toObjectId(item) : item;
+  };
+
+  if (Array.isArray(value)) {
+    return { $in: value.map(normalizeSingle).filter(Boolean) };
+  }
+
+  if (value && typeof value === 'object' && Array.isArray(value.$in)) {
+    return { $in: value.$in.map(normalizeSingle).filter(Boolean) };
+  }
+
+  return normalizeSingle(value);
+}
+
 async function listEntries({ tenantId, collectionKey, query }) {
   const collectionType = await getCollectionType({ tenantId, key: collectionKey });
 
@@ -560,7 +577,19 @@ async function listEntries({ tenantId, collectionKey, query }) {
   if (filter && typeof filter === 'object') {
     for (const [fieldKey, value] of Object.entries(filter)) {
       if (value === undefined || value === null || value === '') continue;
-      criteria[`data.${fieldKey}`] = value;
+
+      if (fieldKey === '_id') {
+        const normalizedIdFilter = normalizeFilterValue(value, { objectId: true });
+        if (normalizedIdFilter !== undefined && (!normalizedIdFilter.$in || normalizedIdFilter.$in.length)) {
+          criteria._id = normalizedIdFilter;
+        }
+        continue;
+      }
+
+      const normalizedValue = normalizeFilterValue(value);
+      if (normalizedValue !== undefined && (!normalizedValue.$in || normalizedValue.$in.length)) {
+        criteria[`data.${fieldKey}`] = normalizedValue;
+      }
     }
   }
 
