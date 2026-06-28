@@ -39,6 +39,7 @@ export default function MediaPickerModal({
 }) {
   const queryClient = useQueryClient()
   const searchInputRef = useRef(null)
+  const videoUrlInputRef = useRef(null)
   const loadMoreRef = useRef(null)
   const [search, setSearch] = useState(initialSearch)
   const [isUploading, setIsUploading] = useState(false)
@@ -47,6 +48,34 @@ export default function MediaPickerModal({
   const [activeTab, setActiveTab] = useState('library') // 'library' or 'url'
   const [videoUrl, setVideoUrl] = useState('')
   const debouncedSearch = useDebouncedValue(search, 400)
+
+  useEffect(() => {
+    if (!isOpen) return undefined
+
+    const focusActiveInput = () => {
+      const target = activeTab === 'url' ? videoUrlInputRef.current : searchInputRef.current
+      if (!target) return
+
+      target.focus({ preventScroll: true })
+      if (typeof target.setSelectionRange === 'function') {
+        const end = target.value.length
+        target.setSelectionRange(end, end)
+      }
+    }
+
+    let timeoutId
+    const frameId = window.requestAnimationFrame(() => {
+      focusActiveInput()
+      timeoutId = window.setTimeout(focusActiveInput, 80)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [activeTab, isOpen])
 
   useEffect(() => {
     if (!isOpen) {
@@ -492,6 +521,7 @@ export default function MediaPickerModal({
                             type="text"
                             name="video-url"
                             id="video-url"
+                            ref={videoUrlInputRef}
                             className="block w-full flex-1 rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                             placeholder="https://www.youtube.com/watch?v=..."
                             value={videoUrl}
