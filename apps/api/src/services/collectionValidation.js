@@ -90,15 +90,22 @@ const entryPayloadSchema = z.object({
   }).optional()
 });
 
+const entryFilterQuerySchema = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return value;
+  }
+}, z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional());
+
 const entryListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(20),
   status: z.enum(['draft', 'published', 'archived']).optional(),
   sort: z.string().optional(),
   q: z.string().optional(),
-  filter: z
-    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-    .optional()
+  filter: entryFilterQuerySchema
 });
 
 const queryOperatorSchema = z.enum(['=', '!=', 'IN', 'NIN', '>', '>=', '<', '<=', 'LIKE']);

@@ -35,6 +35,43 @@ function getEntryTitle(entry, collection) {
   return entry._id;
 }
 
+function normalizeLookupValue(value = '') {
+  return String(value)
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function getLocalizedLabel(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value.tr || value.en || Object.values(value).find(Boolean) || '';
+}
+
+function findOrganizationTypeField(collection) {
+  if (collection?.key !== 'anlasmali-kurumlar') return null;
+
+  const candidates = collection.fields || [];
+  return candidates.find((field) => {
+    const haystack = [
+      field.key,
+      getLocalizedLabel(field.label),
+      getLocalizedLabel(field.description)
+    ].map(normalizeLookupValue).join(' ');
+    const compactHaystack = haystack.replace(/\s+/g, '');
+
+    return (
+      haystack.includes('kurulus tipi') ||
+      haystack.includes('kurum tipi') ||
+      compactHaystack.includes('kurulustipi') ||
+      compactHaystack.includes('kurumtipi')
+    );
+  }) || null;
+}
+
 const statusBadge = {
   draft: 'bg-gray-100 text-gray-600',
   published: 'bg-green-100 text-green-700',
@@ -52,6 +89,7 @@ export default function CollectionDetail() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 350);
   const [statusFilter, setStatusFilter] = useState('');
+  const [organizationTypeFilter, setOrganizationTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('');
   const [entryModalOpen, setEntryModalOpen] = useState(false);
@@ -66,16 +104,23 @@ export default function CollectionDetail() {
   );
 
   const collection = useMemo(() => collections.find((item) => item.key === key), [collections, key]);
+  const organizationTypeField = useMemo(() => findOrganizationTypeField(collection), [collection]);
+  const organizationTypeOptions = organizationTypeField?.options || [];
+  const entryFilter = useMemo(() => {
+    if (!organizationTypeField || !organizationTypeFilter) return undefined;
+    return { [organizationTypeField.key]: organizationTypeFilter };
+  }, [organizationTypeField, organizationTypeFilter]);
 
   const entriesQuery = useQuery(
-    ['collection-entries', { key, page, status: statusFilter, search: debouncedSearch, sort }],
+    ['collection-entries', { key, page, status: statusFilter, search: debouncedSearch, sort, filter: entryFilter }],
     () => listCollectionEntries({
       collectionKey: key,
       page,
       limit: 20,
       status: statusFilter || undefined,
       q: debouncedSearch || undefined,
-      sort
+      sort,
+      filter: entryFilter
     }),
     {
       enabled: Boolean(collection)
@@ -151,6 +196,17 @@ export default function CollectionDetail() {
       navigate('/collections');
     }
   }, [collection, isCollectionsLoading, isCollectionsError, navigate, toast]);
+
+  useEffect(() => {
+    setOrganizationTypeFilter('');
+    setPage(1);
+  }, [key]);
+
+  useEffect(() => {
+    if (!organizationTypeField && organizationTypeFilter) {
+      setOrganizationTypeFilter('');
+    }
+  }, [organizationTypeField, organizationTypeFilter]);
 
   if (isCollectionsLoading || !collection) {
     return (
@@ -265,7 +321,7 @@ export default function CollectionDetail() {
           </button>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className={`mt-4 grid gap-3 ${organizationTypeField ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
           <div className="md:col-span-1">
             <label className="block text-sm font-medium text-gray-700">Durum</label>
             <select
@@ -282,6 +338,26 @@ export default function CollectionDetail() {
               <option value="archived">Arşiv</option>
             </select>
           </div>
+          {organizationTypeField && organizationTypeOptions.length > 0 && (
+            <div className="md:col-span-1">
+              <label className="block text-sm font-medium text-gray-700">Kuruluş Tipi</label>
+              <select
+                value={organizationTypeFilter}
+                onChange={(event) => {
+                  setOrganizationTypeFilter(event.target.value);
+                  setPage(1);
+                }}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                <option value="">Tümü</option>
+                {organizationTypeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label?.tr || option.label?.en || option.value}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="md:col-span-1">
             <label className="block text-sm font-medium text-gray-700">Sırala</label>
             <select

@@ -42,6 +42,22 @@ const ensureArray = (value) => {
   return [value];
 };
 
+const getMediaId = (mediaItem) => {
+  if (!mediaItem) return null;
+  if (typeof mediaItem === 'string') return mediaItem;
+  return mediaItem._id || mediaItem.id || null;
+};
+
+const getMediaTitle = (mediaItem) => {
+  if (!mediaItem || typeof mediaItem === 'string') return null;
+  return mediaItem.originalName || mediaItem.fileName || mediaItem.title || mediaItem.altText || null;
+};
+
+const getMediaThumbnail = (mediaItem) => {
+  if (!mediaItem || typeof mediaItem === 'string') return null;
+  return mediaItem.variants?.find((variant) => variant.name === 'thumbnail')?.url || mediaItem.thumbnailUrl || mediaItem.url || null;
+};
+
 const sanitizeRelations = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
@@ -117,10 +133,12 @@ export function CollectionEntryModal({
   const [relations, setRelations] = useState(initialRelations);
   const [relationsText, setRelationsText] = useState(() => formatRelationsText(initialRelations));
   const [relationsParseError, setRelationsParseError] = useState(null);
-  const [isMediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [mediaPickerTarget, setMediaPickerTarget] = useState(null);
+  const [selectedMediaById, setSelectedMediaById] = useState({});
   const [isContentPickerOpen, setContentPickerOpen] = useState(false);
   const [error, setError] = useState(null);
   const initialFocusRef = useRef(null);
+  const isMediaPickerOpen = Boolean(mediaPickerTarget);
 
   useEffect(() => {
     if (isOpen) {
@@ -131,16 +149,20 @@ export function CollectionEntryModal({
       setRelations(nextRelations);
       setRelationsText(formatRelationsText(nextRelations));
       setRelationsParseError(null);
+      setSelectedMediaById({});
       setError(null);
     } else {
-      setMediaPickerOpen(false);
+      setMediaPickerTarget(null);
       setContentPickerOpen(false);
     }
   }, [isOpen, initialData, entry]);
 
-  const handleFieldUpdate = (fieldKey, value) => {
-    setData((prev) => ({ ...prev, [fieldKey]: value }));
-  };
+  const handleFieldUpdate = useCallback((fieldKey, valueOrUpdater) => {
+    setData((prev) => ({
+      ...prev,
+      [fieldKey]: typeof valueOrUpdater === 'function' ? valueOrUpdater(prev[fieldKey]) : valueOrUpdater
+    }));
+  }, []);
 
   const applyRelationsUpdate = useCallback((updater) => {
     setRelations((prev) => {
@@ -157,27 +179,76 @@ export function CollectionEntryModal({
   const mediaIds = ensureArray(relations?.media)?.map((item) => `${item}`) || [];
   const contentIds = ensureArray(relations?.contents)?.map((item) => `${item}`) || [];
 
+  const rememberMediaItems = useCallback((items) => {
+    const list = Array.isArray(items) ? items : [items];
+    const pairs = list
+      .map((item) => [getMediaId(item), item])
+      .filter(([id, item]) => id && item && typeof item === 'object');
+    if (!pairs.length) return;
+
+    setSelectedMediaById((prev) => {
+      const next = { ...prev };
+      pairs.forEach(([id, item]) => {
+        next[`${id}`] = item;
+      });
+      return next;
+    });
+  }, []);
+
+  const addMediaRelations = useCallback(
+    (ids) => {
+      const nextIds = ensureArray(ids)?.map((item) => `${item}`).filter(Boolean) || [];
+      if (!nextIds.length) return;
+
+      applyRelationsUpdate((next) => {
+        const current = ensureArray(next.media)?.map((item) => `${item}`) || [];
+        next.media = Array.from(new Set([...current, ...nextIds]));
+        return next;
+      });
+    },
+    [applyRelationsUpdate]
+  );
+
   const handleMediaSelect = useCallback(
     (mediaItem, event) => {
       if (event) {
         event.preventDefault();
         event.stopPropagation();
       }
-      const mediaId = mediaItem?._id || mediaItem?.id;
-      if (!mediaId) return;
-      applyRelationsUpdate((next) => {
-        const current = ensureArray(next.media)?.map((item) => `${item}`) || [];
-        if (current.includes(`${mediaId}`)) {
+      const selectedItems = Array.isArray(mediaItem) ? mediaItem : [mediaItem];
+      const selectedIds = selectedItems.map(getMediaId).filter(Boolean).map((id) => `${id}`);
+      if (!selectedIds.length) return;
+
+      rememberMediaItems(selectedItems);
+
+      if (mediaPickerTarget?.kind === 'field') {
+        const previousIds = ensureArray(data[mediaPickerTarget.fieldKey])?.map(getMediaId).filter(Boolean).map((id) => `${id}`) || [];
+
+        handleFieldUpdate(mediaPickerTarget.fieldKey, (currentValue) => {
+          if (!mediaPickerTarget.multiple) {
+            return selectedIds[0];
+          }
+          const current = ensureArray(currentValue)?.map((item) => `${item}`) || [];
+          return Array.from(new Set([...current, ...selectedIds]));
+        });
+
+        applyRelationsUpdate((next) => {
+          const current = ensureArray(next.media)?.map((item) => `${item}`) || [];
+          const base = mediaPickerTarget.multiple
+            ? current
+            : current.filter((mediaId) => !previousIds.includes(mediaId));
+          next.media = Array.from(new Set([...base, ...selectedIds]));
           return next;
-        }
-        next.media = [...current, `${mediaId}`];
-        return next;
-      });
+        });
+      } else {
+        addMediaRelations(selectedIds);
+      }
+
       setTimeout(() => {
-        setMediaPickerOpen(false);
+        setMediaPickerTarget(null);
       }, 0);
     },
-    [applyRelationsUpdate]
+    [addMediaRelations, applyRelationsUpdate, data, handleFieldUpdate, mediaPickerTarget, rememberMediaItems]
   );
 
   const handleRemoveMedia = useCallback(
@@ -194,6 +265,21 @@ export function CollectionEntryModal({
       });
     },
     [applyRelationsUpdate]
+  );
+
+  const handleRemoveMediaFieldValue = useCallback(
+    (field, mediaId) => {
+      handleFieldUpdate(field.key, (currentValue) => {
+        if (field.settings?.multiple) {
+          const current = ensureArray(currentValue)?.map((item) => `${item}`) || [];
+          return current.filter((item) => item !== `${mediaId}`);
+        }
+        return '';
+      });
+
+      handleRemoveMedia(mediaId);
+    },
+    [handleFieldUpdate, handleRemoveMedia]
   );
 
   const handleContentSelect = useCallback(
@@ -254,7 +340,22 @@ export function CollectionEntryModal({
     }
   };
 
-      const handleSubmit = (event) => {
+  const openMediaPickerForField = (field) => {
+    setMediaPickerTarget({
+      kind: 'field',
+      fieldKey: field.key,
+      multiple: Boolean(field.settings?.multiple)
+    });
+  };
+
+  const openMediaPickerForRelations = () => {
+    setMediaPickerTarget({
+      kind: 'relations',
+      multiple: false
+    });
+  };
+
+  const handleSubmit = (event) => {
     event.preventDefault();
 
     try {
@@ -301,7 +402,7 @@ export function CollectionEntryModal({
 
       (collection?.fields || []).forEach((field) => {
         const rawValue = data[field.key];
-        if (rawValue === undefined || rawValue === null || rawValue === '') {
+        if (rawValue === undefined || rawValue === null || rawValue === '' || (Array.isArray(rawValue) && !rawValue.length)) {
           return;
         }
 
@@ -355,6 +456,18 @@ export function CollectionEntryModal({
             payloadData[field.key] = rawValue;
         }
       });
+
+      const mediaFieldRelationIds = new Set(relationsPayload.media || []);
+      (collection?.fields || []).forEach((field) => {
+        if (field.type !== 'media') return;
+        const storedValue = payloadData[field.key];
+        ensureArray(storedValue)?.forEach((mediaId) => {
+          if (mediaId) {
+            mediaFieldRelationIds.add(`${mediaId}`);
+          }
+        });
+      });
+      relationsPayload.media = Array.from(mediaFieldRelationIds);
 
       const payload = {
         data: payloadData,
@@ -466,26 +579,68 @@ export function CollectionEntryModal({
           />
         );
       case 'media':
-        if (field.settings?.multiple) {
-          const listValue = Array.isArray(value) ? value.join(', ') : value || '';
+        {
+          const selectedIds = ensureArray(value)?.map(getMediaId).filter(Boolean).map((item) => `${item}`) || [];
+
           return (
-            <input
-              type="text"
-              value={listValue}
-              onChange={(event) => handleFieldUpdate(field.key, event.target.value)}
-              placeholder="Her ID arasında virgül kullanın"
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            />
+            <div className="space-y-3">
+              {selectedIds.length ? (
+                <ul className="space-y-2">
+                  {selectedIds.map((mediaId) => {
+                    const mediaItem = selectedMediaById[mediaId];
+                    const thumbnail = getMediaThumbnail(mediaItem);
+                    const title = getMediaTitle(mediaItem);
+
+                    return (
+                      <li
+                        key={mediaId}
+                        className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          {thumbnail ? (
+                            <img
+                              src={thumbnail}
+                              alt={title || 'Seçili medya'}
+                              className="h-10 w-14 flex-none rounded border border-gray-200 object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-10 w-14 flex-none items-center justify-center rounded border border-gray-200 bg-gray-50 text-xs text-gray-400">
+                              Medya
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-gray-900">{title || 'Seçili medya'}</p>
+                            <p className="truncate font-mono text-xs text-gray-500">{mediaId}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMediaFieldValue(field, mediaId)}
+                          className="inline-flex flex-none items-center rounded-md border border-transparent bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+                        >
+                          <TrashIcon className="mr-1 h-4 w-4" />
+                          Kaldır
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-4 text-sm text-gray-500">
+                  Medya kütüphanesinden bir varlık seçilmedi.
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => openMediaPickerForField(field)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {selectedIds.length && !field.settings?.multiple ? 'Medyayı değiştir' : 'Medya seç'}
+              </button>
+            </div>
           );
         }
-        return (
-          <input
-            type="text"
-            value={Array.isArray(value) ? value[0] ?? '' : value ?? ''}
-            onChange={(event) => handleFieldUpdate(field.key, event.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          />
-        );
       case 'richText':
         return (
           <RichTextField
@@ -522,7 +677,8 @@ export function CollectionEntryModal({
         isOpen={isMediaPickerOpen}
         mode="any"
         showUpload={false}
-        onClose={() => setMediaPickerOpen(false)}
+        multiple={Boolean(mediaPickerTarget?.multiple)}
+        onClose={() => setMediaPickerTarget(null)}
         onSelect={handleMediaSelect}
       />
       <ContentPickerModal
@@ -637,7 +793,7 @@ export function CollectionEntryModal({
                         </div>
                         <button
                           type="button"
-                          onClick={() => setMediaPickerOpen(true)}
+                          onClick={openMediaPickerForRelations}
                           className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                         >
                           Medya seç

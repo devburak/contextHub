@@ -37,7 +37,7 @@ export async function listCollectionEntries({ collectionKey, page = 1, limit = 2
   if (q) params.q = q;
   if (sort) params.sort = sort;
   if (filter && typeof filter === 'object') {
-    params.filter = filter;
+    params.filter = JSON.stringify(filter);
   }
 
   const response = await apiClient.get(`${BASE}/${collectionKey}/entries`, { params });
