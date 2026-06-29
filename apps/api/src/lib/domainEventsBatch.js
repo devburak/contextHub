@@ -2,6 +2,12 @@ const { mongoose } = require('@contexthub/common');
 const { buildWebhookOutboxJobs } = require('./webhooks');
 
 const DEFAULT_BATCH_LIMIT = 50;
+// Events locked to 'processing' for longer than this are considered orphaned
+// (the worker crashed/restarted mid-batch) and are reclaimed for reprocessing.
+const STALE_PROCESSING_MS = (() => {
+  const parsed = Number.parseInt(process.env.DOMAIN_EVENT_STALE_PROCESSING_MS, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2 * 60 * 1000;
+})();
 
 const ObjectId = mongoose.Types.ObjectId;
 const tenantSlugCache = new Map();
@@ -108,7 +114,14 @@ async function processDomainEventsBatch(options = {}) {
 
   const { events, webhooks, outbox, tenants } = resolveCollections();
 
-  const query = { status: 'pending' };
+  const staleProcessingBefore = new Date(Date.now() - STALE_PROCESSING_MS);
+  const query = {
+    $or: [
+      { status: 'pending' },
+      // Reclaim events orphaned in 'processing' by a crashed/restarted worker.
+      { status: 'processing', updatedAt: { $lt: staleProcessingBefore } }
+    ]
+  };
   if (tenantId) {
     query.tenantId = tenantId;
   }
@@ -128,8 +141,14 @@ async function processDomainEventsBatch(options = {}) {
   let failed = 0;
 
   for (const event of docs) {
+    // Compare-and-swap on updatedAt so concurrent workers cannot grab the same
+    // event twice, while still allowing reclaim of stale 'processing' locks.
     const lock = await events.updateOne(
-      { _id: event._id, status: 'pending' },
+      {
+        _id: event._id,
+        status: { $in: ['pending', 'processing'] },
+        updatedAt: event.updatedAt
+      },
       { $set: { status: 'processing', updatedAt: now(), lastError: null } }
     );
 
