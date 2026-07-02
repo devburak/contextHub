@@ -611,7 +611,18 @@ async function updateContent({ tenantId, contentId, userId, payload, featureFlag
       metadata.userId = userId.toString()
     }
 
-    const eventId = await emitDomainEvent(tenantId, 'content.updated', eventPayload, metadata)
+    // Emit the most specific lifecycle event for status transitions so that
+    // content.published / content.unpublished subscribers are actually notified.
+    const wasPublished = existing.status === 'published'
+    const isPublished = updated.status === 'published'
+    let eventType = 'content.updated'
+    if (!wasPublished && isPublished) {
+      eventType = 'content.published'
+    } else if (wasPublished && !isPublished) {
+      eventType = 'content.unpublished'
+    }
+
+    const eventId = await emitDomainEvent(tenantId, eventType, eventPayload, metadata)
     if (eventId) {
       triggerWebhooksForTenant(tenantId)
     }

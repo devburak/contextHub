@@ -3,6 +3,7 @@ const roleService = require('../services/roleService');
 const crypto = require('crypto');
 const tenantContextStore = require('@contexthub/common/src/tenantContext');
 const { checkRequestLimit } = require('./requestLimitGuard');
+const tokenBlacklist = require('../services/tokenBlacklist');
 
 const {
   getRoleLevel,
@@ -15,6 +16,13 @@ const {
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH']);
+
+// API tokens are always presented as `Authorization: Bearer ctx_...`. Dispatch on this
+// exact prefix (not a substring match) so a JWT that merely contains "ctx_" cannot be
+// misrouted into the API-token path, and vice-versa.
+const API_TOKEN_AUTH_PREFIX = 'Bearer ctx_';
+const isApiTokenHeader = (authHeader) =>
+  typeof authHeader === 'string' && authHeader.startsWith(API_TOKEN_AUTH_PREFIX);
 
 const resolveTokenScopes = (scopes) => {
   const normalized = normalizeScopes(scopes);
@@ -38,9 +46,9 @@ const scopeAllowsMethod = (method, scopeSet) => {
 async function tenantContext(request, reply) {
   let tenantId = null;
 
-  // Authorization header kontrolü - Bearer ctx_ var mı?
+  // Authorization header kontrolü - Bearer ctx_ ile mi başlıyor?
   const authHeader = request.headers.authorization;
-  if (authHeader && authHeader.includes('ctx_')) {
+  if (isApiTokenHeader(authHeader)) {
     // API token kullanılıyor - tenant ID'yi token'dan alacağız
     // Bu durumda tenantId kontrolünü atlayalım, authenticate veya validateApiKey set edecek
     return;
@@ -194,8 +202,8 @@ async function authenticateApiToken(request, reply) {
 async function authenticate(request, reply) {
   const authHeader = request.headers.authorization;
 
-  // API token kontrolü - ctx_ prefix'i varsa
-  if (authHeader && authHeader.includes('ctx_')) {
+  // API token kontrolü - Bearer ctx_ ile başlıyorsa
+  if (isApiTokenHeader(authHeader)) {
     return await authenticateApiToken(request, reply);
   }
 
@@ -209,6 +217,11 @@ async function authenticate(request, reply) {
 
   try {
     await request.jwtVerify();
+
+    // Revoked (logged out) token kontrolü
+    if (request.user?.jti && await tokenBlacklist.isJtiRevoked(request.user.jti)) {
+      return reply.code(401).send({ error: 'Session expired', message: 'Please login again' });
+    }
 
     // Token'dan user bilgisini al
     const userId = request.user.sub;
@@ -291,7 +304,12 @@ async function authenticate(request, reply) {
 async function authenticateWithoutTenant(request, reply) {
   try {
     await request.jwtVerify();
-    
+
+    // Revoked (logged out) token kontrolü
+    if (request.user?.jti && await tokenBlacklist.isJtiRevoked(request.user.jti)) {
+      return reply.code(401).send({ error: 'Session expired', message: 'Please login again' });
+    }
+
     // Token'dan user bilgisini al
     const userId = request.user.sub;
 
@@ -389,6 +407,7 @@ const requireEditor = requireRole(['editor', 'admin', 'owner']);
 const requireAuthor = requireRole(['author', 'editor', 'admin', 'owner']);
 
 module.exports = {
+  isApiTokenHeader,
   tenantContext,
   authenticate,
   authenticateWithoutTenant,

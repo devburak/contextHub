@@ -476,10 +476,10 @@ async function authRoutes(fastify, options) {
     }
   });
 
-  // POST /auth/logout - Çıkış yap (şu an için token invalidation yok)
+  // POST /auth/logout - Çıkış yap (token jti blacklist'e alınır)
   fastify.post('/auth/logout', {
     schema: {
-      description: 'Logout user (currently no token invalidation)',
+      description: 'Logout user and revoke the current token',
       summary: 'User logout',
       tags: ['auth'],
       response: {
@@ -492,7 +492,13 @@ async function authRoutes(fastify, options) {
       }
     }
   }, async function(request, reply) {
-    // Gelecekte token blacklist'e eklenebilir
+    const authHeader = request.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : (request.body?.token || null);
+
+    await authService.revokeToken(token);
+
     return reply.send({ message: 'Logged out successfully' });
   });
 

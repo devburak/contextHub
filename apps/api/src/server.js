@@ -1,5 +1,6 @@
 const fastify = require('fastify');
 const fp = require('fastify-plugin');
+const crypto = require('crypto');
 const jwt = require('@fastify/jwt');
 const cors = require('@fastify/cors');
 const swagger = require('@fastify/swagger');
@@ -34,9 +35,42 @@ function envList(name, defaultValue = '') {
     .filter(Boolean);
 }
 
+// Minimum acceptable JWT secret length in bytes (256-bit).  Anything shorter is
+// brute-forceable and rejected outright.
+const MIN_JWT_SECRET_LENGTH = 32;
+
+// Resolve the JWT signing secret.  Never fall back to a hardcoded/known value: a
+// forgeable secret lets anyone mint owner/admin tokens for any tenant.  In production
+// a strong secret is mandatory; in non-production we generate an ephemeral random
+// secret (tokens reset on restart) so local dev works without shipping a known key.
+function resolveJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+
+  if (secret) {
+    if (secret.length < MIN_JWT_SECRET_LENGTH) {
+      throw new Error(
+        `JWT_SECRET must be at least ${MIN_JWT_SECRET_LENGTH} characters (got ${secret.length}).`
+      );
+    }
+    return secret;
+  }
+
+  if (isProduction()) {
+    throw new Error('JWT_SECRET must be set in production. Refusing to start with a default secret.');
+  }
+
+  const ephemeral = crypto.randomBytes(48).toString('hex');
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[security] JWT_SECRET is not set; generated an ephemeral secret for this process. ' +
+    'Sessions will be invalidated on restart. Set JWT_SECRET for stable local sessions.'
+  );
+  return ephemeral;
+}
+
 // JWT plugin wrapper.  Using fastify-plugin allows encapsulation while keeping clear separation of concerns.
 const jwtPlugin = fp(async function (app) {
-  const secret = process.env.JWT_SECRET || 'supersecret';
+  const secret = resolveJwtSecret();
   app.register(jwt, { secret });
   // Decorate request with a verify function.  This will be used to protect routes.
   app.decorate('authenticate', async function (request, reply) {
