@@ -6,6 +6,27 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { mailService } = require('./mailService');
 const loginRateLimiter = require('./loginRateLimiter');
+const tokenBlacklist = require('./tokenBlacklist');
+
+// Session token lifetime and absolute session cap. A JWT lives for TOKEN_TTL and can
+// be refreshed, but refresh cannot keep a session alive past MAX_SESSION_AGE_SECONDS
+// from the original login — this bounds the blast radius of a leaked-then-refreshed token.
+const TOKEN_TTL = process.env.JWT_EXPIRES_IN || '24h';
+const MAX_SESSION_AGE_SECONDS = Number(process.env.MAX_SESSION_AGE_SECONDS) || 7 * 24 * 60 * 60;
+
+// Unique per-token id, used to revoke individual sessions on logout (see tokenBlacklist).
+function generateJti() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function nowInSeconds() {
+  return Math.floor(Date.now() / 1000);
+}
+
+// Precomputed bcrypt hash (cost 12, matching the User model) used to run a dummy
+// comparison when the email is unknown, so login response timing does not reveal
+// whether an account exists (account-enumeration defense).
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('contexthub-nonexistent-account-placeholder', 12);
 
 function extractClientIp(request) {
   // Fastify will populate request.ips when trustProxy is enabled
@@ -202,6 +223,9 @@ class AuthService {
     const user = await User.findOne({ email });
 
     if (!user) {
+      // Run a throwaway bcrypt comparison so the "unknown email" path costs the same
+      // as the "wrong password" path; otherwise response timing leaks account existence.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       await loginRateLimiter.recordFailedAttempt(email, clientIp);
       throw new Error('Invalid credentials');
     }
@@ -268,9 +292,11 @@ class AuthService {
           role: null,
           roleId: null,
           tenantId: null,
-          permissions: []
+          permissions: [],
+          jti: generateJti(),
+          authAt: nowInSeconds()
         },
-        { expiresIn: '24h' }
+        { expiresIn: TOKEN_TTL }
       );
 
       return {
@@ -338,9 +364,11 @@ class AuthService {
         role: payload.role,
         roleId: payload.roleMeta?.id ?? null,
         tenantId: payload.tenantId,
-        permissions: payload.permissions
+        permissions: payload.permissions,
+        jti: generateJti(),
+        authAt: nowInSeconds()
       },
-      { expiresIn: '24h' }
+      { expiresIn: TOKEN_TTL }
     );
 
     membershipDetails.forEach((entry) => {
@@ -540,58 +568,94 @@ class AuthService {
   }
 
   async refreshToken(oldToken) {
+    let decoded;
     try {
-      const decoded = this.fastify.jwt.verify(oldToken);
-      
-      // Kullanıcı ve membership kontrolü
-      const user = await User.findById(decoded.sub);
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-       const currentTokenVersion = user.tokenVersion ?? 0;
-       const payloadTokenVersion = decoded.tokenVersion ?? 0;
-
-       if (payloadTokenVersion !== currentTokenVersion) {
-         throw new Error('Session is no longer valid, please login again');
-       }
-
-      const membership = await Membership.findOne({ 
-        userId: decoded.sub, 
-        tenantId: decoded.tenantId, 
-        status: 'active' 
-      });
-
-      if (!membership) {
-        throw new Error('Membership not found or inactive');
-      }
-
-      const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
-        membership,
-        decoded.tenantId
-      );
-
-      const roleKey = roleDoc?.key || membership.role;
-
-      // Yeni token oluştur
-      const newToken = this.fastify.jwt.sign(
-        { 
-          sub: user._id.toString(),
-          email: user.email,
-          tokenVersion: currentTokenVersion,
-          role: roleKey,
-          roleId: roleDoc?._id?.toString() ?? null,
-          tenantId: decoded.tenantId,
-          permissions
-        },
-        { expiresIn: '24h' }
-      );
-
-      return { token: newToken, permissions, role: roleKey };
-
+      decoded = this.fastify.jwt.verify(oldToken);
     } catch (err) {
       throw new Error('Invalid or expired token');
     }
+
+    // A logged-out (revoked) token must not be refreshable back into a live session.
+    if (decoded.jti && await tokenBlacklist.isJtiRevoked(decoded.jti)) {
+      throw new Error('Session has been revoked, please login again');
+    }
+
+    // Absolute session cap: refresh cannot extend a session past MAX_SESSION_AGE_SECONDS
+    // from the original login, regardless of how often it is refreshed.
+    const sessionStart = decoded.authAt ?? decoded.iat ?? nowInSeconds();
+    if (nowInSeconds() - sessionStart > MAX_SESSION_AGE_SECONDS) {
+      throw new Error('Session expired, please login again');
+    }
+
+    // Kullanıcı ve membership kontrolü
+    const user = await User.findById(decoded.sub);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const currentTokenVersion = user.tokenVersion ?? 0;
+    const payloadTokenVersion = decoded.tokenVersion ?? 0;
+
+    if (payloadTokenVersion !== currentTokenVersion) {
+      throw new Error('Session is no longer valid, please login again');
+    }
+
+    const membership = await Membership.findOne({
+      userId: decoded.sub,
+      tenantId: decoded.tenantId,
+      status: 'active'
+    });
+
+    if (!membership) {
+      throw new Error('Membership not found or inactive');
+    }
+
+    const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
+      membership,
+      decoded.tenantId
+    );
+
+    const roleKey = roleDoc?.key || membership.role;
+
+    // Yeni token oluştur - yeni jti, ama orijinal login zamanı (authAt) korunur
+    const newToken = this.fastify.jwt.sign(
+      {
+        sub: user._id.toString(),
+        email: user.email,
+        tokenVersion: currentTokenVersion,
+        role: roleKey,
+        roleId: roleDoc?._id?.toString() ?? null,
+        tenantId: decoded.tenantId,
+        permissions,
+        jti: generateJti(),
+        authAt: sessionStart
+      },
+      { expiresIn: TOKEN_TTL }
+    );
+
+    return { token: newToken, permissions, role: roleKey };
+  }
+
+  // Logout: blacklist the token's jti until its natural expiry so it cannot be
+  // reused or refreshed. Idempotent — an already-invalid token is a no-op.
+  async revokeToken(token) {
+    if (!token) {
+      return { success: true };
+    }
+
+    let decoded;
+    try {
+      decoded = this.fastify.jwt.verify(token);
+    } catch (err) {
+      return { success: true };
+    }
+
+    const remainingTtl = (decoded.exp ?? nowInSeconds()) - nowInSeconds();
+    if (decoded.jti && remainingTtl > 0) {
+      await tokenBlacklist.revokeJti(decoded.jti, remainingTtl);
+    }
+
+    return { success: true };
   }
 
   async changePassword(userId, tenantId, currentPassword, newPassword) {
