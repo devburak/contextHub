@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.13.1",
-  "description": "Multi\u2011tenant headless CMS and content services platform.",
+  "description": "Multi‑tenant headless CMS and content services platform.",
   "license": "MIT",
   "scripts": {
-     "start": "NODE_ENV=production node src/server.js",
+    "start": "NODE_ENV=production node src/server.js",
     "dev": "turbo dev",
     "dev:api": "turbo dev --filter=@contexthub/api",
     "dev:admin": "turbo dev --filter=@contexthub/admin",
@@ -38,15 +38,15 @@
     "node": ">=24.13.1 <25"
   },
   "devDependencies": {
-    "turbo": "^2.8.13",
     "dotenv": "^16.6.1",
-    "node-ssh": "^13.2.1",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.2",
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.26",
-    "prettier": "^3.8.1",
+    "node-ssh": "^13.2.1",
+    "prettier": "^3.9.4",
+    "turbo": "^2.10.2",
     "vitest": "^0.34.6"
   }
 }

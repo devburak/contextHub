@@ -122,6 +122,9 @@ temp/
 .turbo/
 turbo.json.bak
 
+# Lockfile backups
+pnpm-lock.yaml.bak
+
 *.config.js
 
 # Tek seferlik / local migration araçları (repo'ya gönderilmez)
