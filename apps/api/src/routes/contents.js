@@ -92,7 +92,7 @@ async function contentRoutes(fastify) {
         type: 'object',
         properties: {
           title: { type: 'string' },
-          slug: { type: 'string' },
+          slug: { type: 'string', maxLength: 240 },
           summary: { type: 'string' },
           lexical: { type: 'object' },
           html: { type: 'string' },
@@ -242,7 +242,7 @@ async function contentRoutes(fastify) {
         type: 'object',
         properties: {
           title: { type: 'string' },
-          slug: { type: 'string' },
+          slug: { type: 'string', maxLength: 240 },
           summary: { type: 'string' },
           lexical: { type: 'object' },
           html: { type: 'string' },
