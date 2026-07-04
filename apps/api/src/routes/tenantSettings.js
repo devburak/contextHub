@@ -79,7 +79,8 @@ async function tenantSettingsRoutes(fastify) {
         additionalProperties: { type: 'boolean' }
       },
       metadata: {
-        type: 'object'
+        type: 'object',
+        additionalProperties: true
       }
     },
     additionalProperties: false
@@ -154,7 +155,8 @@ async function tenantSettingsRoutes(fastify) {
         additionalProperties: { type: 'boolean' }
       },
       metadata: {
-        type: 'object'
+        type: 'object',
+        additionalProperties: true
       }
     },
     additionalProperties: false
