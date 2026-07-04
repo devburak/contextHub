@@ -1533,10 +1533,12 @@ export default function ContentEditor() {
                       }
                     }}
                     disabled={slugValidationPending}
+                    maxLength={240}
                     className={clsx(
                       inputClass,
                       slugValidationPending && 'opacity-60 cursor-wait bg-gray-100',
-                      slugError && 'border-red-300 focus:border-red-400 focus:ring-red-300'
+                      slugError && 'border-red-300 focus:border-red-400 focus:ring-red-300',
+                      !slugError && slug.length > 70 && 'border-amber-300 focus:border-amber-400 focus:ring-amber-300'
                     )}
                     placeholder={isNew ? 'Başlık değiştiğinde otomatik güncellenir' : 'ornek-slug'}
                   />
@@ -1550,6 +1552,11 @@ export default function ContentEditor() {
                 </div>
                 {slugValidationPending && <p className="mt-1 text-xs text-amber-600">Slug kontrol ediliyor...</p>}
                 {slugError && <p className="mt-1 text-xs text-red-600">{slugError}</p>}
+                {!slugError && slug.length > 70 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Sistem verimliliği açısından 70 karakterden uzun slug önerilmez ({slug.length}/240). İzin veriliyor, ancak kısa tutmanız tavsiye edilir.
+                  </p>
+                )}
                 {isNew && <p className="mt-1 text-xs text-gray-500">Başlık değiştiğinde slug otomatik olarak güncellenecektir</p>}
                 {!isNew && !slug && <p className="mt-1 text-xs text-gray-500">Slug silinirse başlık değişiminde otomatik olarak yeniden oluşturulur</p>}
               </div>

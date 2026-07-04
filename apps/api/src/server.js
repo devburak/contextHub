@@ -85,7 +85,12 @@ const jwtPlugin = fp(async function (app) {
 async function buildServer() {
   // trustProxy true ensures request.ip reflects real client IP when behind Nginx/ELB
   const bodyLimit = Number(process.env.API_BODY_LIMIT_BYTES) || 10 * 1024 * 1024;
-  const app = fastify({ logger: true, trustProxy: true, bodyLimit });
+  // Fastify's default maxParamLength is 100; long slugs (e.g. migrated `id-detail`
+  // slugs) exceed it and make the router 404 on /contents/slug/:slug. Raise the ceiling
+  // to 240 so those slugs resolve; anything longer still 404s at the router, which is
+  // the intended cap.
+  const maxParamLength = Number(process.env.API_MAX_PARAM_LENGTH) || 240;
+  const app = fastify({ logger: true, trustProxy: true, bodyLimit, maxParamLength });
 
   // Register Swagger for OpenAPI documentation
   await app.register(swagger, {
