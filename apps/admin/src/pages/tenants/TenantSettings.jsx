@@ -705,6 +705,23 @@ export default function TenantSettings() {
 
   const currentPlan = limitsQuery.data?.plan?.slug || 'free'
 
+  // Advanced Metadata için canlı JSON denetimi: metin geçerli bir JSON nesnesi değilse
+  // alanı işaretle ve kaydı engelle. Boş metin = temizleme, izinli.
+  let metadataError = ''
+  {
+    const metadataTrimmed = metadataText.trim()
+    if (metadataTrimmed) {
+      try {
+        const parsed = JSON.parse(metadataTrimmed)
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          metadataError = 'Metadata bir JSON nesnesi olmalı (ör. { "anahtar": "değer" }).'
+        }
+      } catch {
+        metadataError = 'Geçersiz JSON formatı.'
+      }
+    }
+  }
+
   if (!activeTenantId || settingsQuery.isLoading) {
     return <div className="text-sm text-gray-500">Ayarlar yükleniyor...</div>
   }
@@ -1141,8 +1158,32 @@ export default function TenantSettings() {
               rows="6"
               value={metadataText}
               onChange={(event) => setMetadataText(event.target.value)}
-              className={FIELD_INPUT_WITH_MARGIN_CLASS}
+              aria-invalid={Boolean(metadataError)}
+              className={`${FIELD_INPUT_WITH_MARGIN_CLASS}${
+                metadataError
+                  ? ' border-red-300 focus:border-red-400 focus:ring-red-300'
+                  : metadataText.trim()
+                    ? ' border-green-300 focus:border-green-400 focus:ring-green-300'
+                    : ''
+              }`}
             />
+            {metadataError ? (
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-red-600">
+                <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                {metadataError}
+              </p>
+            ) : metadataText.trim() ? (
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-green-600">
+                <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Geçerli JSON.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-gray-500">Boş — kaydedildiğinde metadata temizlenecek.</p>
+            )}
             <p className="mt-2 text-xs text-gray-500">Örnek: {`{ "defaultLocale": "tr-TR", "theme": "dark" }`}</p>
           </div>
         </section>
@@ -1167,7 +1208,7 @@ export default function TenantSettings() {
           </button>
           <button
             type="submit"
-            disabled={updateMutation.isPending}
+            disabled={updateMutation.isPending || Boolean(metadataError)}
             className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
           >
             {updateMutation.isPending ? 'Kaydediliyor...' : 'Ayarları Kaydet'}
