@@ -42,6 +42,7 @@ import {
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
 import { $setBlocksType } from '@lexical/selection'
 import { HeadingNode, QuoteNode, $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
+import { HorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode'
 import { ListPlugin } from '@lexical/react/LexicalListPlugin'
 import { AutoLinkPlugin, createLinkMatcherWithRegExp } from '@lexical/react/LexicalAutoLinkPlugin'
 import {
@@ -89,6 +90,7 @@ import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
 import { mediaToImagePayload } from './utils/mediaHelpers.js'
 import { buildEmbedPayloadFromIframe, buildEmbedPayloadFromUrl } from './utils/embedHelpers.js'
+import { normalizeLexicalStateString } from './utils/lexicalStateNormalizer.js'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
 
 const DEFAULT_FONT_SIZE = 12
@@ -298,7 +300,7 @@ const theme = {
 const initialConfig = {
   namespace: 'content-editor',
   theme,
-  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, EmbedNode, GalleryNode, FormNode, TableNode, TableRowNode, TableCellNode, ParagraphNode, TextNode],
+  nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, EmbedNode, GalleryNode, FormNode, TableNode, TableRowNode, TableCellNode, ParagraphNode, TextNode, HorizontalRuleNode],
   onError(error) {
     console.error(error)
   },
@@ -605,11 +607,9 @@ export default function ContentEditor() {
 
   const applyContentPayload = useCallback((source, { markDirty = false } = {}) => {
     if (!source) return
-    const lexicalStateString = typeof source.lexical === 'string'
-      ? source.lexical
-      : source.lexical
-        ? JSON.stringify(source.lexical)
-        : INITIAL_EDITOR_STATE
+    const lexicalStateString = source.lexical
+      ? normalizeLexicalStateString(source.lexical, INITIAL_EDITOR_STATE)
+      : INITIAL_EDITOR_STATE
 
     skipNextOnChangeRef.current = true
     setInitialEditorState(lexicalStateString)
