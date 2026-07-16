@@ -41,6 +41,7 @@ const Menu = require('./Menu');
 const Role = require('./Role');
 const Webhook = require('./Webhook');
 const WebhookOutbox = require('./WebhookOutbox');
+const RevokedToken = require('./RevokedToken');
 
 module.exports = {
   Tenant,
@@ -79,5 +80,6 @@ module.exports = {
   Role,
   Webhook,
   WebhookOutbox,
+  RevokedToken,
   mongoose
 };

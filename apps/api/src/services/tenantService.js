@@ -2,6 +2,7 @@ const { Tenant, Membership, User, rbac } = require('@contexthub/common');
 const roleService = require('./roleService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
 const edgeGatewaySyncService = require('./edgeGatewaySyncService');
+const { invalidateTenantOriginPolicyCache } = require('./tenantOriginPolicy');
 const { mailService } = require('./mailService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -79,6 +80,7 @@ class TenantService {
     });
     await tenantSubscriptionService.applyPlanToTenant(tenant, plan);
     await tenant.save();
+    invalidateTenantOriginPolicyCache();
 
     const ownerRole = await roleService.resolveRole({ tenantId: tenant._id, roleKey: ROLE_KEYS.OWNER })
       || await roleService.resolveRole({ tenantId: null, roleKey: ROLE_KEYS.OWNER });
@@ -165,6 +167,7 @@ class TenantService {
         user.status = 'active';
       }
       user.isEmailVerified = true;
+      user.emailVerifiedAt = new Date();
       await user.save();
     }
 
@@ -326,6 +329,7 @@ class TenantService {
     if (newOwner && newOwner.status === 'pending') {
       newOwner.status = 'active';
       newOwner.isEmailVerified = true;
+      newOwner.emailVerifiedAt = new Date();
       await newOwner.save();
     }
 

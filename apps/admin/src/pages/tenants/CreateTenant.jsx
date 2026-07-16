@@ -17,7 +17,7 @@ export default function CreateTenant() {
   const [successMessage, setSuccessMessage] = useState('')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { addMembership } = useAuth()
+  const { refreshSession } = useAuth()
 
   const createMutation = useMutation({
     mutationFn: tenantAPI.createTenant,
@@ -25,17 +25,8 @@ export default function CreateTenant() {
       setError('')
       setSuccessMessage('')
     },
-    onSuccess: ({ tenant, membership, token }) => {
-      const newMembership = {
-        id: membership.id,
-        tenantId: tenant.id,
-        tenant,
-        role: membership.role,
-        status: membership.status,
-        token
-      }
-
-      addMembership(newMembership, { activate: true })
+    onSuccess: async ({ tenant }) => {
+      await refreshSession()
       setSuccessMessage(`${tenant.name} varlığı başarıyla oluşturuldu.`)
       setFormData(initialFormState)
       queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })

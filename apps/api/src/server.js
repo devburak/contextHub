@@ -12,6 +12,8 @@ const roleService = require('./services/roleService');
 const tenantContext = require('@contexthub/common/src/tenantContext');
 const apiLogger = require('./middleware/apiLogger');
 const localRedisClient = require('./lib/localRedis');
+const { getSessionCookieName } = require('./services/sessionSecurity');
+const { resolveCorsOptions } = require('./services/tenantOriginPolicy');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -72,17 +74,19 @@ function resolveJwtSecret() {
 const jwtPlugin = fp(async function (app) {
   const secret = resolveJwtSecret();
   app.register(jwt, { secret });
-  // Decorate request with a verify function.  This will be used to protect routes.
+  // Keep legacy route registrations working while delegating to the same
+  // cookie-aware authentication middleware used by the rest of the API.
   app.decorate('authenticate', async function (request, reply) {
-    try {
-      await request.jwtVerify();
-    } catch (err) {
-      reply.code(401).send({ message: 'Unauthorized' });
-    }
+    const { authenticate } = require('./middleware/auth');
+    return authenticate(request, reply);
   });
 });
 
 async function buildServer() {
+  // Validate production cookie configuration during startup instead of failing
+  // on the first login request.
+  getSessionCookieName();
+
   // trustProxy true ensures request.ip reflects real client IP when behind Nginx/ELB
   const bodyLimit = Number(process.env.API_BODY_LIMIT_BYTES) || 10 * 1024 * 1024;
   // Fastify's default maxParamLength is 100; long slugs (e.g. migrated `id-detail`
@@ -91,6 +95,17 @@ async function buildServer() {
   // the intended cap.
   const maxParamLength = Number(process.env.API_MAX_PARAM_LENGTH) || 240;
   const app = fastify({ logger: true, trustProxy: true, bodyLimit, maxParamLength });
+
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'no-referrer');
+    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (isProduction()) {
+      reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    return payload;
+  });
 
   // Register Swagger for OpenAPI documentation
   await app.register(swagger, {
@@ -181,13 +196,8 @@ async function buildServer() {
   });
 
   // Register plugins
-  const allowedOrigins = envList('CORS_ORIGIN');
-
   await app.register(cors, {
-    origin: allowedOrigins.length ? allowedOrigins : !isProduction(),
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'X-API-Key'],
-    credentials: true
+    delegator: async (request) => resolveCorsOptions(request),
   });
   await app.register(jwtPlugin);
 

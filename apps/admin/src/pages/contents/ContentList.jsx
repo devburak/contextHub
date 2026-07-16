@@ -9,7 +9,7 @@ import clsx from 'clsx'
 import { ChevronDownIcon } from '@heroicons/react/20/solid'
 
 export default function ContentList() {
-  const { token, activeTenantId } = useAuth()
+  const { isAuthenticated, activeTenantId } = useAuth()
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('')
   const [category, setCategory] = useState('')
@@ -50,7 +50,7 @@ export default function ContentList() {
     },
   }), {
     keepPreviousData: true,
-    enabled: !!token && !!activeTenantId
+    enabled: isAuthenticated && !!activeTenantId
   })
 
   const items = data?.items || []
@@ -68,7 +68,7 @@ export default function ContentList() {
   const categoryQuery = useQuery({
     queryKey: ['categories', 'flat'],
     queryFn: categoryAPI.listFlat,
-    enabled: !!token && !!activeTenantId,
+    enabled: isAuthenticated && !!activeTenantId,
   })
 
   const categoryOptions = useMemo(() => {

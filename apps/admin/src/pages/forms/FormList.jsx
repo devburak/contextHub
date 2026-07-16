@@ -16,7 +16,7 @@ import {
 import { CheckCircleIcon, ClockIcon, ArchiveBoxIcon } from '@heroicons/react/20/solid';
 
 export default function FormList() {
-  const { token, activeTenantId } = useAuth();
+  const { isAuthenticated, activeTenantId } = useAuth();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
@@ -42,7 +42,7 @@ export default function FormList() {
     }),
     {
       keepPreviousData: true,
-      enabled: !!token && !!activeTenantId,
+      enabled: isAuthenticated && !!activeTenantId,
     }
   );
 

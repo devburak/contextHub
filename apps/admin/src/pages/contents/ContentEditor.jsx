@@ -371,13 +371,13 @@ export default function ContentEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isNew = id === 'new'
-  const { token, activeTenantId, role } = useAuth()
+  const { isAuthenticated, activeTenantId, role } = useAuth()
   const queryClient = useQueryClient()
 
   const { data: tenantSettingsData } = useQuery({
     queryKey: ['tenants', 'settings', { tenant: activeTenantId }],
     queryFn: tenantAPI.getSettings,
-    enabled: Boolean(token && activeTenantId),
+    enabled: Boolean(isAuthenticated && activeTenantId),
     staleTime: 5 * 60 * 1000,
   })
 
@@ -675,31 +675,31 @@ export default function ContentEditor() {
   const { data: contentData } = useQuery(
     ['content', { tenant: activeTenantId, id }],
     () => getContent({ id }),
-    { enabled: !!token && !!activeTenantId && !isNew }
+    { enabled: isAuthenticated && !!activeTenantId && !isNew }
   )
 
   const { data: versionsPayload } = useQuery(
     ['contentVersions', { tenant: activeTenantId, id }],
     () => listVersions({ id }),
-    { enabled: !!token && !!activeTenantId && !isNew }
+    { enabled: isAuthenticated && !!activeTenantId && !isNew }
   )
 
   const galleriesListQuery = useQuery(
     ['galleries', 'content-link', { tenant: activeTenantId, search: gallerySearch }],
     () => galleriesAPI.list({ search: gallerySearch, limit: 100 }),
-    { enabled: !!token && !!activeTenantId }
+    { enabled: isAuthenticated && !!activeTenantId }
   )
 
   const formsListQuery = useQuery(
     ['forms', 'content-embed', { tenant: activeTenantId }],
     () => formsApi.listForms({ page: 1, limit: 100, filters: { status: 'published' } }),
-    { enabled: !!token && !!activeTenantId }
+    { enabled: isAuthenticated && !!activeTenantId }
   )
 
   const customFieldDefinitionsQuery = useQuery(
     ['customFieldDefinitions', { tenant: activeTenantId }],
     listCustomFieldDefinitions,
-    { enabled: !!token && !!activeTenantId }
+    { enabled: isAuthenticated && !!activeTenantId }
   )
 
   const customFieldDefinitions = customFieldDefinitionsQuery.data || []

@@ -15,7 +15,7 @@ export default function AcceptTransfer() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { updateMemberships, selectTenant } = useAuth()
+  const { updateMemberships } = useAuth()
   
   const token = searchParams.get('token')
   const tenantId = searchParams.get('tenant')
@@ -32,7 +32,7 @@ export default function AcceptTransfer() {
       
       // Tüm tenant listesini yeniden çek (ownerCount güncellenmiş olacak)
       try {
-        const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
+        const { tenants } = await tenantAPI.getTenants()
         updateMemberships(tenants)
         
         // Query cache'i invalidate et

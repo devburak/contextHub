@@ -12,21 +12,33 @@ describe('API server', () => {
   beforeAll(async () => {
     originalLogin = AuthService.prototype.login;
     AuthService.prototype.login = async function mockLogin(email, password, tenantId) {
-      if (tenantId && email === 'test@example.com' && password === '123456') {
+      if (email === 'test@example.com' && password === '123456') {
+        const activeMembership = tenantId
+          ? {
+              id: 'membership-1',
+              tenantId,
+              tenant: { id: tenantId, name: 'Test Tenant', slug: 'test-tenant' },
+              role: 'admin',
+              roleMeta: null,
+              permissions: [],
+              status: 'active',
+            }
+          : null;
         return {
           token: 'mock-token',
+          csrfToken: 'mock-csrf-token',
           user: {
             id: 'user-1',
             email,
             firstName: 'Test',
             lastName: 'User',
-            role: 'admin',
+            role: activeMembership?.role || null,
             permissions: []
           },
           memberships: [],
-          requiresTenantSelection: false,
+          requiresTenantSelection: !activeMembership,
           message: 'ok',
-          activeMembership: null
+          activeMembership
         };
       }
       throw new Error('Invalid credentials');
@@ -43,18 +55,24 @@ describe('API server', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
     expect(body.status).toBe('ok');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-frame-options']).toBe('DENY');
   });
 
-  it('requires tenantId for login', async () => {
+  it('creates a tenant-selection session when tenantId is omitted', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
       payload: { email: 'test@example.com', password: '123456' },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.requiresTenantSelection).toBe(true);
+    expect(body).not.toHaveProperty('token');
+    expect(body.csrfToken).toBe('mock-csrf-token');
   });
 
-  it('returns a token for valid login', async () => {
+  it('sets an HttpOnly cookie and does not expose the session JWT', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/login?tenantId=mock-tenant-id',
@@ -62,9 +80,12 @@ describe('API server', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
-    expect(body).toHaveProperty('token');
-    expect(typeof body.token).toBe('string');
+    expect(body).not.toHaveProperty('token');
+    expect(body.csrfToken).toBe('mock-csrf-token');
     expect(body).toHaveProperty('user');
     expect(body.user.email).toBe('test@example.com');
+    expect(res.headers['set-cookie']).toContain('ctx_session=mock-token');
+    expect(res.headers['set-cookie']).toContain('HttpOnly');
+    expect(res.headers['set-cookie']).toContain('SameSite=Strict');
   });
 });

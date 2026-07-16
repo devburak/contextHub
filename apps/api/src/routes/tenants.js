@@ -1,6 +1,8 @@
 const tenantService = require('../services/tenantService');
 const roleService = require('../services/roleService');
-const { authenticate, authenticateWithoutTenant } = require('../middleware/auth');
+const { authenticateWithoutTenant } = require('../middleware/auth');
+const AuthService = require('../services/authService');
+const { setSessionCookie } = require('../services/sessionSecurity');
 
 async function tenantRoutes(fastify) {
 
@@ -58,7 +60,7 @@ async function tenantRoutes(fastify) {
                 status: { type: 'string' }
               }
             },
-            token: { type: 'string' }
+            csrfToken: { type: 'string' }
           }
         }
       }
@@ -75,15 +77,14 @@ async function tenantRoutes(fastify) {
 
       const rolePayload = roleService.formatRole(roleDoc);
 
-      const token = fastify.jwt.sign({
-        sub: request.user._id.toString(),
-        email: request.user.email,
-        tokenVersion: request.user.tokenVersion ?? 0,
-        role: rolePayload?.key || membership.role,
-        roleId: rolePayload?.id || null,
-        tenantId: tenant._id.toString(),
-        permissions
-      }, { expiresIn: '24h' });
+      const authService = new AuthService(fastify);
+      const session = await authService.switchTenant(
+        request.user._id,
+        tenant._id.toString(),
+        request.authPayload,
+        request
+      );
+      setSessionCookie(reply, session.token);
 
       return reply.code(201).send({
         tenant: {
@@ -101,7 +102,7 @@ async function tenantRoutes(fastify) {
           permissions,
           status: membership.status
         },
-        token
+        csrfToken: session.csrfToken
       });
     } catch (error) {
       if (error.message.includes('slug')) {
@@ -114,12 +115,6 @@ async function tenantRoutes(fastify) {
   fastify.get('/tenants', {
     preHandler: [authenticateWithoutTenant],
     schema: {
-      querystring: {
-        type: 'object',
-        properties: {
-          includeTokens: { type: ['boolean', 'string'] }
-        }
-      },
       response: {
         200: {
           type: 'object',
@@ -163,8 +158,7 @@ async function tenantRoutes(fastify) {
                     items: { type: 'string' }
                   },
                   status: { type: 'string' },
-                  ownerCount: { type: 'number' },
-                  token: { type: 'string' }
+                  ownerCount: { type: 'number' }
                 }
               }
             }
@@ -174,25 +168,8 @@ async function tenantRoutes(fastify) {
     }
   }, async function(request, reply) {
     try {
-      const includeTokens = request.query?.includeTokens === true || request.query?.includeTokens === 'true';
       const tenants = await tenantService.listUserTenants(request.user._id);
-
-      const enhanced = includeTokens
-        ? tenants.map((membership) => ({
-            ...membership,
-            token: fastify.jwt.sign({
-              sub: request.user._id.toString(),
-              email: request.user.email,
-              tokenVersion: request.user.tokenVersion ?? 0,
-              role: membership.role,
-              roleId: membership.roleMeta?.id || null,
-              tenantId: membership.tenantId,
-              permissions: membership.permissions || []
-            }, { expiresIn: '24h' })
-          }))
-        : tenants;
-
-      return reply.send({ tenants: enhanced });
+      return reply.send({ tenants });
     } catch (error) {
       return reply.code(500).send({ error: 'Failed to fetch tenants', message: error.message });
     }
@@ -251,7 +228,7 @@ async function tenantRoutes(fastify) {
                 status: { type: 'string' }
               }
             },
-            token: { type: 'string' }
+            csrfToken: { type: 'string' }
           }
         }
       }
@@ -268,15 +245,14 @@ async function tenantRoutes(fastify) {
 
       const rolePayload = roleService.formatRole(roleDoc);
 
-      const token = fastify.jwt.sign({
-        sub: request.user._id.toString(),
-        email: request.user.email,
-        tokenVersion: request.user.tokenVersion ?? 0,
-        role: rolePayload?.key || membership.role,
-        roleId: rolePayload?.id || null,
+      const authService = new AuthService(fastify);
+      const session = await authService.switchTenant(
+        request.user._id,
         tenantId,
-        permissions
-      }, { expiresIn: '24h' });
+        request.authPayload,
+        request
+      );
+      setSessionCookie(reply, session.token);
 
       const tenantDoc = membership.tenantId;
 
@@ -299,7 +275,7 @@ async function tenantRoutes(fastify) {
               status: tenantDoc.status
             }
           : null,
-        token
+        csrfToken: session.csrfToken
       });
     } catch (error) {
       const status = error.message === 'Invitation not found' ? 404 : 400;

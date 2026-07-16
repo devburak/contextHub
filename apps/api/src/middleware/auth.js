@@ -4,6 +4,11 @@ const crypto = require('crypto');
 const tenantContextStore = require('@contexthub/common/src/tenantContext');
 const { checkRequestLimit } = require('./requestLimitGuard');
 const tokenBlacklist = require('../services/tokenBlacklist');
+const {
+  getSessionToken,
+  enforceCookieCsrf,
+} = require('../services/sessionSecurity');
+const { logSecurityEvent } = require('../services/auditService');
 
 const {
   getRoleLevel,
@@ -71,8 +76,8 @@ async function tenantContext(request, reply) {
   // }
 
   if (!tenantId) {
-    // If request has Authorization header, let authenticate middleware derive tenantId from token
-    if (request.headers.authorization) {
+    // Browser sessions derive the tenant from the HttpOnly session cookie.
+    if (request.headers.authorization || getSessionToken(request).token) {
       return;
     }
 
@@ -129,8 +134,15 @@ async function authenticateApiToken(request, reply) {
       });
     }
 
-    // Last used at'i güncelle
-    apiToken.lastUsedAt = new Date();
+    // Last used at'i güncelle. Audit kaydını yüksek trafikte şişirmemek için aynı
+    // tokenın kullanımını en fazla 15 dakikada bir güvenlik günlüğüne yaz.
+    const now = new Date();
+    const shouldAuditUsage = !apiToken.lastAuditAt
+      || now.getTime() - new Date(apiToken.lastAuditAt).getTime() >= 15 * 60 * 1000;
+    apiToken.lastUsedAt = now;
+    if (shouldAuditUsage) {
+      apiToken.lastAuditAt = now;
+    }
     await apiToken.save();
 
     // Request'e tenant ve token bilgilerini ekle
@@ -145,7 +157,7 @@ async function authenticateApiToken(request, reply) {
     }
 
     // API token'ın role'ünü ve level'ını set et
-    const tokenRole = apiToken.role || 'editor'; // Default: editor
+    const tokenRole = apiToken.role || 'viewer';
     request.userRole = tokenRole;
     request.roleLevel = getRoleLevel(tokenRole);
 
@@ -171,6 +183,7 @@ async function authenticateApiToken(request, reply) {
     if (apiToken.createdBy) {
       const user = await User.findById(apiToken.createdBy).select('-password');
       if (user) {
+        if (!ensureActiveUser(user, reply)) return;
         request.user = user;
       }
     }
@@ -190,6 +203,24 @@ async function authenticateApiToken(request, reply) {
       userId: request.user?._id?.toString?.()
     });
 
+    if (shouldAuditUsage) {
+      await logSecurityEvent({
+        action: 'api_token.used',
+        description: `API token kullanıldı: ${apiToken.name}`,
+        userId: apiToken.createdBy || null,
+        tenantId: apiToken.tenantId,
+        metadata: {
+          tokenId: apiToken._id.toString(),
+          name: apiToken.name,
+          scopes: effectiveScopes,
+          role: tokenRole,
+          method: request.method,
+          path: request.url,
+        },
+        request,
+      });
+    }
+
   } catch (err) {
     return reply.code(401).send({
       error: 'Authentication failed',
@@ -198,7 +229,70 @@ async function authenticateApiToken(request, reply) {
   }
 }
 
-// JWT Authentication middleware - hem JWT hem API token destekler
+async function verifyJwtSession(request, reply) {
+  const { token, source } = getSessionToken(request);
+  if (!token) {
+    reply.code(401).send({
+      error: 'Authentication required',
+      message: 'A valid session is required',
+    });
+    return null;
+  }
+
+  let decoded;
+  try {
+    decoded = request.server.jwt.verify(token);
+  } catch (error) {
+    reply.code(401).send({ error: 'Authentication failed', message: 'Invalid or expired session' });
+    return null;
+  }
+
+  request.authToken = token;
+  request.authSource = source;
+  request.authPayload = decoded;
+
+  if (!enforceCookieCsrf(request, reply, decoded)) {
+    return null;
+  }
+
+  if (decoded.jti && await tokenBlacklist.isJtiRevoked(decoded.jti)) {
+    reply.code(401).send({ error: 'Session expired', message: 'Please login again' });
+    return null;
+  }
+
+  return decoded;
+}
+
+function ensureActiveUser(user, reply) {
+  if (user.status !== 'active') {
+    reply.code(403).send({
+      error: 'AccountDisabled',
+      message: 'This account is inactive or suspended',
+    });
+    return false;
+  }
+
+  const reverificationDays = Number(process.env.EMAIL_REVERIFICATION_DAYS) || 90;
+  const verificationReference = user.emailVerifiedAt || user.createdAt;
+  const verificationExpired = Boolean(
+    user.isEmailVerified
+    && verificationReference
+    && Date.now() - new Date(verificationReference).getTime()
+      >= reverificationDays * 24 * 60 * 60 * 1000
+  );
+
+  if (!user.isEmailVerified || verificationExpired) {
+    reply.code(403).send({
+      error: 'EmailVerificationRequired',
+      message: 'Email verification is required before continuing',
+    });
+    return false;
+  }
+
+  return true;
+}
+
+// Browser session authentication plus separate ctx_ API token support.
 async function authenticate(request, reply) {
   const authHeader = request.headers.authorization;
 
@@ -207,28 +301,22 @@ async function authenticate(request, reply) {
     return await authenticateApiToken(request, reply);
   }
 
-  // Normal JWT authentication için authHeader kontrolü
-  if (!authHeader) {
-    return reply.code(401).send({
-      error: 'Authentication required',
-      message: 'Authorization header is required'
-    });
-  }
-
   try {
-    await request.jwtVerify();
-
-    // Revoked (logged out) token kontrolü
-    if (request.user?.jti && await tokenBlacklist.isJtiRevoked(request.user.jti)) {
-      return reply.code(401).send({ error: 'Session expired', message: 'Please login again' });
-    }
+    const decoded = await verifyJwtSession(request, reply);
+    if (!decoded) return;
 
     // Token'dan user bilgisini al
-    const userId = request.user.sub;
+    const userId = decoded.sub;
     // Prefer explicit tenantId from header/query; fallback to token claim if missing
     const providedTenantId = request.tenantId || request.headers['x-tenant-id'] || request.query?.tenantId;
-    const tokenTenantId = request.user?.tenantId || request.user?.tenant_id || request.user?.tenant;
+    const tokenTenantId = decoded.tenantId || decoded.tenant_id || decoded.tenant;
     if (providedTenantId) {
+      if (!tokenTenantId || tokenTenantId.toString() !== providedTenantId.toString()) {
+        return reply.code(403).send({
+          error: 'SessionTenantMismatch',
+          message: 'Switch tenant through the session endpoint before accessing this tenant'
+        });
+      }
       request.tenantId = providedTenantId;
     } else if (tokenTenantId) {
       request.tenantId = tokenTenantId;
@@ -248,8 +336,9 @@ async function authenticate(request, reply) {
     if (!user) {
       return reply.code(401).send({ error: 'User not found', message: 'User does not exist' });
     }
+    if (!ensureActiveUser(user, reply)) return;
 
-    const payloadTokenVersion = request.user?.tokenVersion ?? 0;
+    const payloadTokenVersion = decoded.tokenVersion ?? 0;
     const currentTokenVersion = user.tokenVersion ?? 0;
 
     if (payloadTokenVersion !== currentTokenVersion) {
@@ -303,15 +392,11 @@ async function authenticate(request, reply) {
 // JWT Authentication without tenant check - for listing all user's tenants
 async function authenticateWithoutTenant(request, reply) {
   try {
-    await request.jwtVerify();
-
-    // Revoked (logged out) token kontrolü
-    if (request.user?.jti && await tokenBlacklist.isJtiRevoked(request.user.jti)) {
-      return reply.code(401).send({ error: 'Session expired', message: 'Please login again' });
-    }
+    const decoded = await verifyJwtSession(request, reply);
+    if (!decoded) return;
 
     // Token'dan user bilgisini al
-    const userId = request.user.sub;
+    const userId = decoded.sub;
 
     if (!userId) {
       return reply.code(401).send({ error: 'Invalid token', message: 'User ID not found in token' });
@@ -322,8 +407,9 @@ async function authenticateWithoutTenant(request, reply) {
     if (!user) {
       return reply.code(401).send({ error: 'User not found', message: 'User does not exist' });
     }
+    if (!ensureActiveUser(user, reply)) return;
 
-    const payloadTokenVersion = request.user?.tokenVersion ?? 0;
+    const payloadTokenVersion = decoded.tokenVersion ?? 0;
     const currentTokenVersion = user.tokenVersion ?? 0;
 
     if (payloadTokenVersion !== currentTokenVersion) {

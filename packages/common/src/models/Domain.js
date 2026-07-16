@@ -5,6 +5,13 @@ const domainSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
   host: { type: String, required: true, unique: true },
   isPrimary: { type: Boolean, default: false },
+  status: {
+    type: String,
+    enum: ['pending', 'verified', 'disabled'],
+    default: 'pending',
+    index: true
+  },
+  verifiedAt: { type: Date },
   siteId: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },

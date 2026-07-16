@@ -1,9 +1,8 @@
 import { apiClient } from './api.js'
 
 export const tenantAPI = {
-  getTenants: async ({ includeTokens = false } = {}) => {
-    const params = includeTokens ? { includeTokens: true } : {}
-    const { data } = await apiClient.get('/tenants', { params })
+  getTenants: async () => {
+    const { data } = await apiClient.get('/tenants')
     return data
   },
 

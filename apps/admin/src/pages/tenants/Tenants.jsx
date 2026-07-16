@@ -40,7 +40,7 @@ export default function Tenants() {
   const tenantsQuery = useQuery({
     queryKey: ['tenants', 'list'],
     queryFn: async () => {
-      const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
+      const { tenants } = await tenantAPI.getTenants()
       updateMemberships(tenants)
       return tenants
     }
@@ -48,12 +48,12 @@ export default function Tenants() {
 
   const acceptInvitationMutation = useMutation({
     mutationFn: (tenantId) => tenantAPI.acceptInvitation(tenantId),
-    onSuccess: ({ membership, tenant, token }) => {
+    onSuccess: async ({ membership, tenant }) => {
       toast.success('Davet başarıyla kabul edildi.')
-      tenantsQuery.refetch()
+      await tenantsQuery.refetch()
 
-      if (membership?.tenantId && token) {
-        selectTenant({ ...membership, tenant, token })
+      if (membership?.tenantId) {
+        await selectTenant({ ...membership, tenant })
       }
     },
     onError: (error) => {

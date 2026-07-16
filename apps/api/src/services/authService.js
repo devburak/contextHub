@@ -7,17 +7,14 @@ const crypto = require('crypto');
 const { mailService } = require('./mailService');
 const loginRateLimiter = require('./loginRateLimiter');
 const tokenBlacklist = require('./tokenBlacklist');
+const { issueSessionToken } = require('./sessionSecurity');
+const { hashIdentifier, logSecurityEvent } = require('./auditService');
 
 // Session token lifetime and absolute session cap. A JWT lives for TOKEN_TTL and can
 // be refreshed, but refresh cannot keep a session alive past MAX_SESSION_AGE_SECONDS
 // from the original login — this bounds the blast radius of a leaked-then-refreshed token.
-const TOKEN_TTL = process.env.JWT_EXPIRES_IN || '24h';
 const MAX_SESSION_AGE_SECONDS = Number(process.env.MAX_SESSION_AGE_SECONDS) || 7 * 24 * 60 * 60;
-
-// Unique per-token id, used to revoke individual sessions on logout (see tokenBlacklist).
-function generateJti() {
-  return crypto.randomBytes(16).toString('hex');
-}
+const EMAIL_REVERIFICATION_DAYS = Number(process.env.EMAIL_REVERIFICATION_DAYS) || 90;
 
 function nowInSeconds() {
   return Math.floor(Date.now() / 1000);
@@ -51,7 +48,7 @@ function extractClientIp(request) {
   if (forwardedHeader && typeof forwardedHeader === 'string') {
     const match = forwardedHeader.match(/for=([^;]+)/i);
     if (match && match[1]) {
-      return match[1].replace(/["\[\]]/g, '');
+      return match[1].replace(/["[\]]/g, '');
     }
   }
 
@@ -60,6 +57,44 @@ function extractClientIp(request) {
     request?.socket?.remoteAddress ||
     request?.raw?.socket?.remoteAddress ||
     'unknown'
+  );
+}
+
+async function getActiveMembershipDetails(userId) {
+  const memberships = await Membership.find({
+    userId,
+    status: 'active'
+  }).populate('tenantId', 'name slug plan status createdAt');
+
+  return Promise.all(
+    memberships.map(async (membershipDoc) => {
+      const tenant = membershipDoc.tenantId;
+      const tenantId = tenant?._id?.toString() || membershipDoc.tenantId?.toString();
+      const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
+        membershipDoc,
+        tenantId
+      );
+      const roleMeta = roleService.formatRole(roleDoc);
+
+      return {
+        id: membershipDoc._id.toString(),
+        tenantId,
+        tenant: tenant
+          ? {
+              id: tenant._id.toString(),
+              name: tenant.name,
+              slug: tenant.slug,
+              plan: tenant.plan,
+              status: tenant.status,
+              createdAt: tenant.createdAt,
+            }
+          : null,
+        role: roleMeta?.key || membershipDoc.role,
+        roleMeta,
+        status: membershipDoc.status,
+        permissions,
+      };
+    })
   );
 }
 
@@ -127,6 +162,9 @@ class AuthService {
 
     if (!user) {
       throw new Error('User not found');
+    }
+    if (user.status === 'suspended') {
+      throw new Error('Suspended accounts cannot accept invitations');
     }
 
     const { token, tokenHash, expiresAt } = this.generateInvitationToken();
@@ -198,18 +236,27 @@ class AuthService {
     const blockStatus = await loginRateLimiter.isBlocked(email, clientIp);
     if (blockStatus.blocked) {
       const shouldNotify = !blockStatus.retryAfterSeconds || blockStatus.retryAfterSeconds >= (loginRateLimiter.BLOCK_TTL_SECONDS - 5);
+      const existingUser = await User.findOne({ email }).select('_id email firstName lastName');
 
       // Attempt to notify user if account exists
-      if (shouldNotify) {
+      if (shouldNotify && existingUser) {
         try {
-          const existingUser = await User.findOne({ email });
-          if (existingUser) {
-            await mailService.sendLoginLimitExceededEmail(existingUser.email, { ip: clientIp, userAgent });
-          }
+          await mailService.sendLoginLimitExceededEmail(existingUser.email, { ip: clientIp, userAgent });
         } catch (notifyError) {
           console.error('Failed to notify user about login block:', notifyError);
         }
       }
+
+      await logSecurityEvent({
+        action: 'user.login.blocked',
+        description: 'Giriş denemesi geçici olarak engellendi',
+        userId: existingUser?._id || null,
+        metadata: {
+          emailHash: hashIdentifier(email),
+          retryAfterSeconds: blockStatus.retryAfterSeconds,
+        },
+        request,
+      });
 
       const err = new Error('Çok fazla hatalı deneme yapıldı. Lütfen 1 saat sonra tekrar deneyin.');
       err.statusCode = 429;
@@ -227,6 +274,15 @@ class AuthService {
       // as the "wrong password" path; otherwise response timing leaks account existence.
       await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       await loginRateLimiter.recordFailedAttempt(email, clientIp);
+      await logSecurityEvent({
+        action: 'user.login.failed',
+        description: 'Geçersiz kimlik bilgileriyle giriş denemesi',
+        metadata: {
+          emailHash: hashIdentifier(email),
+          reason: 'invalid_credentials',
+        },
+        request,
+      });
       throw new Error('Invalid credentials');
     }
 
@@ -234,6 +290,19 @@ class AuthService {
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       const attemptResult = await loginRateLimiter.recordFailedAttempt(email, clientIp);
+      await logSecurityEvent({
+        action: attemptResult.blocked ? 'user.login.blocked' : 'user.login.failed',
+        description: attemptResult.blocked
+          ? 'Hatalı giriş denemeleri nedeniyle hesap geçici olarak engellendi'
+          : 'Geçersiz kimlik bilgileriyle giriş denemesi',
+        userId: user._id,
+        metadata: {
+          emailHash: hashIdentifier(email),
+          reason: 'invalid_credentials',
+          attempts: attemptResult.attempts,
+        },
+        request,
+      });
       if (attemptResult.blocked) {
         try {
           await mailService.sendLoginLimitExceededEmail(user.email, { ip: clientIp, userAgent });
@@ -252,6 +321,43 @@ class AuthService {
     // Başarılı girişte limit sıfırla
     await loginRateLimiter.reset(email, clientIp);
 
+    if (user.status !== 'active') {
+      await logSecurityEvent({
+        action: 'user.login.failed',
+        description: 'Pasif veya askıya alınmış hesapla giriş denemesi',
+        userId: user._id,
+        metadata: {
+          emailHash: hashIdentifier(email),
+          reason: 'account_disabled',
+          status: user.status,
+        },
+        request,
+      });
+      const err = new Error('Hesabınız aktif değil. Lütfen yöneticinizle iletişime geçin.');
+      err.statusCode = 403;
+      err.code = 'ACCOUNT_DISABLED';
+      throw err;
+    }
+
+    const verificationReference = user.emailVerifiedAt || user.createdAt;
+    const verificationExpired = Boolean(
+      user.isEmailVerified
+      && verificationReference
+      && Date.now() - new Date(verificationReference).getTime()
+        >= EMAIL_REVERIFICATION_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    if (verificationExpired) {
+      user.isEmailVerified = false;
+      await user.save();
+      await this.resendVerificationEmail(user.email, request);
+      const err = new Error('E-posta adresinizi yeniden doğrulamanız gerekiyor. Yeni doğrulama bağlantısı gönderildi.');
+      err.statusCode = 403;
+      err.code = 'EMAIL_REVERIFICATION_REQUIRED';
+      err.email = user.email;
+      throw err;
+    }
+
     // E-posta doğrulama kontrolü
     if (!user.isEmailVerified) {
       const err = new Error('Lütfen önce e-posta adresinizi doğrulayın. Doğrulama e-postası gelen kutunuzda olmalı.');
@@ -261,202 +367,71 @@ class AuthService {
       throw err;
     }
 
-    // Aktif membership'leri getir
-    const memberships = await Membership.find({
-      userId: user._id,
-      status: 'active'
-    }).populate('tenantId', 'name slug');
-
-    // Eğer hiç aktif membership yoksa, kullanıcıyı yine de login yap
-    // ama tenant seçimi gerekli olduğunu belirt
-    if (!memberships.length) {
-      user.lastLoginAt = new Date();
-      await user.save();
-
-      // Log login activity (tenant olmadan)
-      await this.logActivity({
-        userId: user._id,
-        tenantId: null,
-        action: 'user.login',
-        description: `${user.firstName} ${user.lastName} giriş yaptı (tenant yok)`,
-        metadata: { email: user.email, noTenant: true },
-        request
-      });
-
-      // Minimal token oluştur (tenant bilgisi olmadan)
-      const minimalToken = this.fastify.jwt.sign(
-        {
-          sub: user._id.toString(),
-          email: user.email,
-          tokenVersion: user.tokenVersion ?? 0,
-          role: null,
-          roleId: null,
-          tenantId: null,
-          permissions: [],
-          jti: generateJti(),
-          authAt: nowInSeconds()
-        },
-        { expiresIn: TOKEN_TTL }
-      );
-
-      return {
-        token: minimalToken,
-        user: {
-          id: user._id.toString(),
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: null,
-          permissions: [],
-          mustChangePassword: Boolean(user.mustChangePassword)
-        },
-        memberships: [],
-        requiresTenantSelection: true,
-        message: 'Lütfen bir varlık oluşturun veya mevcut bir varlığa katılın'
-      };
-    }
-
-    const membershipDetails = await Promise.all(
-      memberships.map(async (membershipDoc) => {
-        const tenant = membershipDoc.tenantId;
-        const tenantIdResolved = tenant?.id?.toString?.() || tenant?._id?.toString() || membershipDoc.tenantId?.toString();
-
-        const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
-          membershipDoc,
-          tenantIdResolved
-        );
-
-        const rolePayload = roleService.formatRole(roleDoc);
-        const roleKey = rolePayload?.key || membershipDoc.role;
-
-        const tenantPayload = tenant
-          ? {
-              id: tenant._id ? tenant._id.toString() : tenant.id,
-              name: tenant.name,
-              slug: tenant.slug
-            }
-          : {
-              id: tenantIdResolved,
-              name: null,
-              slug: null
-            };
-
-        return {
-          doc: membershipDoc,
-          payload: {
-            id: membershipDoc._id.toString(),
-            tenantId: tenantIdResolved,
-            tenant: tenantPayload,
-            role: roleKey,
-            roleMeta: rolePayload,
-            status: membershipDoc.status,
-            permissions
-          }
-        };
-      })
-    );
-
-    const createToken = (payload) => this.fastify.jwt.sign(
-      {
-        sub: user._id.toString(),
-        email: user.email,
-        tokenVersion: user.tokenVersion ?? 0,
-        role: payload.role,
-        roleId: payload.roleMeta?.id ?? null,
-        tenantId: payload.tenantId,
-        permissions: payload.permissions,
-        jti: generateJti(),
-        authAt: nowInSeconds()
-      },
-      { expiresIn: TOKEN_TTL }
-    );
-
-    membershipDetails.forEach((entry) => {
-      entry.token = createToken(entry.payload);
-    });
-
-    const membershipResponses = membershipDetails.map(({ payload, token }) => ({
-      ...payload,
-      token
-    }));
-
-    const membershipMap = new Map(
-      membershipDetails.map(({ doc, payload, token }) => [doc._id.toString(), { payload, token }])
-    );
-
-    const resolveMembershipLogin = async (membership) => {
-      const detail = membershipMap.get(membership._id.toString());
-
-      if (!detail) {
-        throw new Error('Membership details could not be resolved');
-      }
-
-      user.lastLoginAt = new Date();
-      await user.save();
-
-      const { payload, token } = detail;
-
-      // Log login activity
-      await this.logActivity({
-        userId: user._id,
-        tenantId: payload.tenantId,
-        action: 'user.login',
-        description: `${user.firstName} ${user.lastName} giriş yaptı`,
-        metadata: { email: user.email, tenantName: payload.tenant?.name },
-        request
-      });
-
-      return {
-        token,
-        user: {
-          id: user._id,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: payload.role,
-          permissions: payload.permissions,
-          mustChangePassword: Boolean(user.mustChangePassword)
-        },
-        memberships: membershipResponses,
-        activeMembership: {
-          ...payload,
-          token
-        },
-        requiresTenantSelection: false
-      };
-    };
-
+    const memberships = await getActiveMembershipDetails(user._id);
+    let activeMembership = null;
     if (tenantId) {
-      const membership = memberships.find((item) =>
-        item.tenantId && item.tenantId._id.toString() === tenantId.toString()
-      );
-
-      if (!membership) {
+      activeMembership = memberships.find((item) => item.tenantId === tenantId.toString()) || null;
+      if (!activeMembership) {
         throw new Error('User does not have access to this tenant');
       }
-
-      return resolveMembershipLogin(membership);
+    } else if (memberships.length === 1) {
+      [activeMembership] = memberships;
     }
 
-    // Tek tenant varsa otomatik giriş
-    if (memberships.length === 1) {
-      return resolveMembershipLogin(memberships[0]);
-    }
+    const session = issueSessionToken(this.fastify, {
+      user,
+      tenantId: activeMembership?.tenantId || null,
+      role: activeMembership?.role || null,
+      roleId: activeMembership?.roleMeta?.id || null,
+      permissions: activeMembership?.permissions || [],
+    });
 
-    // Tenant seçilmediyse, seçim için membership listesini döndür
     user.lastLoginAt = new Date();
     await user.save();
 
+    await this.logActivity({
+      userId: user._id,
+      tenantId: activeMembership?.tenantId || null,
+      action: 'user.login',
+      description: activeMembership
+        ? `${user.firstName} ${user.lastName} giriş yaptı`
+        : `${user.firstName} ${user.lastName} giriş yaptı (tenant seçimi bekleniyor)`,
+      metadata: {
+        email: user.email,
+        tenantName: activeMembership?.tenant?.name || null,
+      },
+      request,
+    });
+    await logSecurityEvent({
+      action: 'session.created',
+      description: 'Yeni kullanıcı oturumu oluşturuldu',
+      userId: user._id,
+      tenantId: activeMembership?.tenantId || null,
+      metadata: {
+        jti: session.jti,
+        tenantSelectionRequired: !activeMembership,
+      },
+      request,
+    });
+
     return {
-      requiresTenantSelection: true,
+      token: session.token,
+      csrfToken: session.csrfToken,
       user: {
-        id: user._id,
+        id: user._id.toString(),
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        mustChangePassword: Boolean(user.mustChangePassword)
+        role: activeMembership?.role || null,
+        permissions: activeMembership?.permissions || [],
+        mustChangePassword: Boolean(user.mustChangePassword),
       },
-      memberships: membershipResponses
+      memberships,
+      activeMembership,
+      requiresTenantSelection: !activeMembership,
+      message: memberships.length
+        ? undefined
+        : 'Lütfen bir varlık oluşturun veya mevcut bir varlığa katılın',
     };
   }
 
@@ -567,7 +542,7 @@ class AuthService {
     };
   }
 
-  async refreshToken(oldToken) {
+  async refreshToken(oldToken, request = null) {
     let decoded;
     try {
       decoded = this.fastify.jwt.verify(oldToken);
@@ -592,6 +567,9 @@ class AuthService {
     if (!user) {
       throw new Error('User not found');
     }
+    if (user.status !== 'active') {
+      throw new Error('Account is inactive or suspended');
+    }
 
     const currentTokenVersion = user.tokenVersion ?? 0;
     const payloadTokenVersion = decoded.tokenVersion ?? 0;
@@ -600,45 +578,70 @@ class AuthService {
       throw new Error('Session is no longer valid, please login again');
     }
 
-    const membership = await Membership.findOne({
-      userId: decoded.sub,
-      tenantId: decoded.tenantId,
-      status: 'active'
-    });
+    let role = null;
+    let roleId = null;
+    let permissions = [];
 
-    if (!membership) {
-      throw new Error('Membership not found or inactive');
+    if (decoded.tenantId) {
+      const membership = await Membership.findOne({
+        userId: decoded.sub,
+        tenantId: decoded.tenantId,
+        status: 'active'
+      });
+
+      if (!membership) {
+        throw new Error('Membership not found or inactive');
+      }
+
+      const roleResult = await roleService.ensureRoleReference(membership, decoded.tenantId);
+      role = roleResult.role?.key || membership.role;
+      roleId = roleResult.role?._id?.toString() ?? null;
+      permissions = roleResult.permissions;
     }
 
-    const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
-      membership,
-      decoded.tenantId
-    );
+    const session = issueSessionToken(this.fastify, {
+      user,
+      tenantId: decoded.tenantId || null,
+      role,
+      roleId,
+      permissions,
+      authAt: sessionStart,
+    });
 
-    const roleKey = roleDoc?.key || membership.role;
+    const remainingTtl = (decoded.exp ?? nowInSeconds()) - nowInSeconds();
+    if (decoded.jti && remainingTtl > 0) {
+      const persisted = await tokenBlacklist.revokeJti(decoded.jti, remainingTtl, {
+        userId: user._id,
+        reason: 'refresh_rotation',
+      });
+      if (!persisted) {
+        throw new Error('Previous session could not be revoked');
+      }
+    }
 
-    // Yeni token oluştur - yeni jti, ama orijinal login zamanı (authAt) korunur
-    const newToken = this.fastify.jwt.sign(
-      {
-        sub: user._id.toString(),
-        email: user.email,
-        tokenVersion: currentTokenVersion,
-        role: roleKey,
-        roleId: roleDoc?._id?.toString() ?? null,
-        tenantId: decoded.tenantId,
-        permissions,
-        jti: generateJti(),
-        authAt: sessionStart
+    await logSecurityEvent({
+      action: 'session.refreshed',
+      description: 'Kullanıcı oturumu yenilendi',
+      userId: user._id,
+      tenantId: decoded.tenantId || null,
+      metadata: {
+        previousJti: decoded.jti || null,
+        jti: session.jti,
       },
-      { expiresIn: TOKEN_TTL }
-    );
+      request,
+    });
 
-    return { token: newToken, permissions, role: roleKey };
+    return {
+      token: session.token,
+      csrfToken: session.csrfToken,
+      permissions,
+      role,
+    };
   }
 
   // Logout: blacklist the token's jti until its natural expiry so it cannot be
   // reused or refreshed. Idempotent — an already-invalid token is a no-op.
-  async revokeToken(token) {
+  async revokeToken(token, options = {}) {
     if (!token) {
       return { success: true };
     }
@@ -652,10 +655,148 @@ class AuthService {
 
     const remainingTtl = (decoded.exp ?? nowInSeconds()) - nowInSeconds();
     if (decoded.jti && remainingTtl > 0) {
-      await tokenBlacklist.revokeJti(decoded.jti, remainingTtl);
+      const persisted = await tokenBlacklist.revokeJti(decoded.jti, remainingTtl, {
+        userId: decoded.sub || null,
+        reason: options.reason || 'logout',
+      });
+      if (!persisted) {
+        const fallbackUser = await User.findByIdAndUpdate(
+          decoded.sub,
+          { $inc: { tokenVersion: 1 } },
+          { new: true }
+        );
+        if (!fallbackUser) {
+          throw new Error('Session revocation could not be persisted');
+        }
+      }
     }
 
+    await logSecurityEvent({
+      action: 'session.revoked',
+      description: 'Kullanıcı oturumu sunucu tarafında iptal edildi',
+      userId: decoded.sub || null,
+      tenantId: decoded.tenantId || null,
+      metadata: {
+        jti: decoded.jti || null,
+        reason: options.reason || 'logout',
+      },
+      request: options.request || null,
+    });
+
     return { success: true };
+  }
+
+  async revokeAllSessions(userId, request = null) {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { tokenVersion: 1 }, $set: { updatedAt: new Date() } },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    await logSecurityEvent({
+      action: 'session.revoked.all',
+      description: 'Kullanıcının tüm cihazlardaki oturumları iptal edildi',
+      userId: user._id,
+      metadata: { tokenVersion: user.tokenVersion },
+      request,
+    });
+
+    return { success: true };
+  }
+
+  async getSessionState(userId, decoded) {
+    const user = await User.findById(userId).select('-password');
+    if (!user || user.status !== 'active') {
+      throw new Error('Session is no longer valid');
+    }
+
+    const memberships = await getActiveMembershipDetails(user._id);
+    const activeMembership = decoded?.tenantId
+      ? memberships.find((item) => item.tenantId === decoded.tenantId.toString()) || null
+      : null;
+
+    return {
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: activeMembership?.role || null,
+        permissions: activeMembership?.permissions || [],
+        mustChangePassword: Boolean(user.mustChangePassword),
+      },
+      memberships,
+      activeMembership,
+      requiresTenantSelection: !activeMembership,
+      csrfToken: decoded?.csrf || null,
+    };
+  }
+
+  async switchTenant(userId, tenantId, decoded, request = null) {
+    const user = await User.findById(userId).select('-password');
+    if (!user || user.status !== 'active') {
+      throw new Error('Session is no longer valid');
+    }
+
+    const memberships = await getActiveMembershipDetails(user._id);
+    const activeMembership = memberships.find((item) => item.tenantId === tenantId?.toString());
+    if (!activeMembership) {
+      throw new Error('User does not have access to this tenant');
+    }
+
+    const session = issueSessionToken(this.fastify, {
+      user,
+      tenantId: activeMembership.tenantId,
+      role: activeMembership.role,
+      roleId: activeMembership.roleMeta?.id || null,
+      permissions: activeMembership.permissions,
+      authAt: decoded?.authAt ?? decoded?.iat ?? nowInSeconds(),
+    });
+
+    const remainingTtl = (decoded?.exp ?? nowInSeconds()) - nowInSeconds();
+    if (decoded?.jti && remainingTtl > 0) {
+      const persisted = await tokenBlacklist.revokeJti(decoded.jti, remainingTtl, {
+        userId: user._id,
+        reason: 'tenant_switch',
+      });
+      if (!persisted) {
+        throw new Error('Previous tenant session could not be revoked');
+      }
+    }
+
+    await logSecurityEvent({
+      action: 'session.tenant.switched',
+      description: 'Aktif tenant oturumu değiştirildi',
+      userId: user._id,
+      tenantId: activeMembership.tenantId,
+      metadata: {
+        previousTenantId: decoded?.tenantId || null,
+        previousJti: decoded?.jti || null,
+        jti: session.jti,
+      },
+      request,
+    });
+
+    return {
+      token: session.token,
+      csrfToken: session.csrfToken,
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: activeMembership.role,
+        permissions: activeMembership.permissions,
+        mustChangePassword: Boolean(user.mustChangePassword),
+      },
+      memberships,
+      activeMembership,
+      requiresTenantSelection: false,
+    };
   }
 
   async changePassword(userId, tenantId, currentPassword, newPassword) {
@@ -859,7 +1000,7 @@ class AuthService {
     };
   }
 
-  async acceptInvitation(inviteToken, { password, firstName, lastName } = {}) {
+  async acceptInvitation(inviteToken, { password, firstName, lastName } = {}, request = null) {
     if (!inviteToken) {
       throw new Error('Invitation token is required');
     }
@@ -881,11 +1022,14 @@ class AuthService {
     if (!user) {
       throw new Error('User not found');
     }
+    if (user.status === 'suspended') {
+      throw new Error('Suspended accounts cannot accept invitations');
+    }
 
     const requiresPasswordSetup = Boolean(
       user.mustChangePassword ||
       !user.isEmailVerified ||
-      user.status !== 'active'
+      user.status === 'inactive'
     );
 
     if (typeof firstName === 'string' && firstName.trim()) {
@@ -912,6 +1056,7 @@ class AuthService {
 
     user.status = 'active';
     user.isEmailVerified = true;
+    user.emailVerifiedAt = new Date();
     if (passwordUpdated) {
       user.tokenVersion = (user.tokenVersion || 0) + 1;
       user.mustChangePassword = false;
@@ -926,66 +1071,7 @@ class AuthService {
     const rolePayload = roleService.formatRole(roleDoc);
     const tenantDoc = activatedMembership.tenantId;
 
-    const authToken = this.fastify.jwt.sign(
-      {
-        sub: user._id.toString(),
-        email: user.email,
-        tokenVersion: user.tokenVersion ?? 0,
-        role: roleKey,
-        roleId: roleDoc?._id?.toString() ?? null,
-        tenantId,
-        permissions
-      },
-      { expiresIn: '24h' }
-    );
-
-    const activeMembershipDocs = await Membership.find({
-      userId: user._id,
-      status: 'active'
-    }).populate('tenantId', 'name slug plan status createdAt');
-
-    const memberships = await Promise.all(activeMembershipDocs.map(async (membershipDoc) => {
-      const resolvedTenantDoc = membershipDoc.tenantId;
-      const resolvedTenantId = resolvedTenantDoc?._id?.toString() || membershipDoc.tenantId?.toString();
-      const { role: resolvedRoleDoc, permissions: resolvedPermissions } = await roleService.ensureRoleReference(
-        membershipDoc,
-        resolvedTenantId
-      );
-      const resolvedRolePayload = roleService.formatRole(resolvedRoleDoc);
-      const resolvedRoleKey = resolvedRolePayload?.key || membershipDoc.role;
-      const token = this.fastify.jwt.sign(
-        {
-          sub: user._id.toString(),
-          email: user.email,
-          tokenVersion: user.tokenVersion ?? 0,
-          role: resolvedRoleKey,
-          roleId: resolvedRolePayload?.id ?? null,
-          tenantId: resolvedTenantId,
-          permissions: resolvedPermissions
-        },
-        { expiresIn: '24h' }
-      );
-
-      return {
-        id: membershipDoc._id.toString(),
-        tenantId: resolvedTenantId,
-        tenant: resolvedTenantDoc
-          ? {
-              id: resolvedTenantDoc._id.toString(),
-              name: resolvedTenantDoc.name,
-              slug: resolvedTenantDoc.slug,
-              plan: resolvedTenantDoc.plan,
-              status: resolvedTenantDoc.status,
-              createdAt: resolvedTenantDoc.createdAt
-            }
-          : null,
-        role: resolvedRoleKey,
-        roleMeta: resolvedRolePayload,
-        permissions: resolvedPermissions,
-        status: membershipDoc.status,
-        token
-      };
-    }));
+    const memberships = await getActiveMembershipDetails(user._id);
 
     const activeMembership = memberships.find((item) => item.id === activatedMembership._id.toString()) || {
       id: activatedMembership._id.toString(),
@@ -1003,11 +1089,31 @@ class AuthService {
       roleMeta: rolePayload,
       permissions,
       status: activatedMembership.status,
-      token: authToken
     };
 
+    const session = issueSessionToken(this.fastify, {
+      user,
+      tenantId,
+      role: roleKey,
+      roleId: roleDoc?._id?.toString() ?? null,
+      permissions,
+    });
+
+    await logSecurityEvent({
+      action: 'session.created',
+      description: 'Davet kabulü sonrasında yeni oturum oluşturuldu',
+      userId: user._id,
+      tenantId,
+      metadata: {
+        jti: session.jti,
+        source: 'invitation',
+      },
+      request,
+    });
+
     return {
-      token: activeMembership.token || authToken,
+      token: session.token,
+      csrfToken: session.csrfToken,
       user: {
         id: user._id.toString(),
         email: user.email,
@@ -1129,6 +1235,12 @@ class AuthService {
 
   async verifyEmail(token, request = null) {
     if (!token) {
+      await logSecurityEvent({
+        action: 'user.email.verification.failed',
+        description: 'Eksik token ile e-posta doğrulama denemesi',
+        metadata: { reason: 'missing_token' },
+        request,
+      });
       throw new Error('Doğrulama token\'ı gereklidir');
     }
 
@@ -1148,6 +1260,15 @@ class AuthService {
     }
 
     if (!user) {
+      await logSecurityEvent({
+        action: 'user.email.verification.failed',
+        description: 'Geçersiz veya süresi dolmuş token ile e-posta doğrulama denemesi',
+        metadata: {
+          reason: 'invalid_or_expired_token',
+          tokenFingerprint: crypto.createHash('sha256').update(token).digest('hex').slice(0, 16),
+        },
+        request,
+      });
       throw new Error('Geçersiz veya süresi dolmuş doğrulama bağlantısı');
     }
 
@@ -1158,6 +1279,7 @@ class AuthService {
 
     // E-posta doğrula
     user.isEmailVerified = true;
+    user.emailVerifiedAt = new Date();
     user.emailVerificationToken = null;
     user.emailVerificationTokenExpiresAt = null;
     await user.save();
@@ -1199,6 +1321,15 @@ class AuthService {
 
     if (!user) {
       // Güvenlik için her zaman başarılı gibi görün (email enumeration önleme)
+      await logSecurityEvent({
+        action: 'user.email.verification.resend',
+        description: 'Kayıtlı olmayan adres için doğrulama e-postası talebi',
+        metadata: {
+          emailHash: hashIdentifier(email),
+          userExists: false,
+        },
+        request,
+      });
       console.log(`Verification email requested for non-existent email: ${email}`);
       return { message: 'Eğer bu e-posta adresi kayıtlıysa, doğrulama bağlantısı gönderilecektir' };
     }

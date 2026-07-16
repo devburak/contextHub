@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import edgeGatewaySyncService from './edgeGatewaySyncService.js';
-import { TenantSettings } from '@contexthub/common';
+import { Domain, TenantSettings } from '@contexthub/common';
 
 const originalFetch = globalThis.fetch;
 const EDGE_ENV_KEYS = [
@@ -38,6 +38,14 @@ describe('edgeGatewaySyncService', () => {
     resetEdgeGatewayEnv();
   });
 
+  function mockNoVerifiedDomains() {
+    vi.spyOn(Domain, 'find').mockReturnValue({
+      select: () => ({
+        lean: () => Promise.resolve([]),
+      }),
+    });
+  }
+
   it('builds a normalized tenant payload for the Worker KV config', () => {
     const payload = edgeGatewaySyncService.buildTenantPayload({
       tenant: {
@@ -51,6 +59,10 @@ describe('edgeGatewaySyncService', () => {
           allowedOrigins: [' https://kesk.org.tr ', '', 'https://kesk.org.tr', 'https://www.kesk.org.tr'],
         },
       },
+      domains: [
+        { host: 'tenant.example.com', status: 'verified' },
+        { host: 'pending.example.com', status: 'pending' },
+      ],
     });
 
     expect(payload).toEqual({
@@ -58,7 +70,7 @@ describe('edgeGatewaySyncService', () => {
       tenantId: 'tenant-object-id',
       status: 'active',
       publicReadEnabled: false,
-      allowedOrigins: ['https://kesk.org.tr', 'https://www.kesk.org.tr'],
+      allowedOrigins: ['https://kesk.org.tr', 'https://www.kesk.org.tr', 'https://tenant.example.com'],
       allowLocalhost: true,
       updatedAt: '2026-06-27T20:30:00.000Z',
     });
@@ -106,6 +118,7 @@ describe('edgeGatewaySyncService', () => {
         },
       }),
     });
+    mockNoVerifiedDomains();
 
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -153,6 +166,7 @@ describe('edgeGatewaySyncService', () => {
         },
       }),
     });
+    mockNoVerifiedDomains();
 
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,

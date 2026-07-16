@@ -37,23 +37,17 @@ import { PERMISSIONS, expandPermissions } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
 import ApiDocs from './pages/ApiDocs.jsx'
 import i18n from './i18n.js'
-
-const parseStoredJSON = (key, fallback) => {
-  const raw = localStorage.getItem(key)
-  if (!raw) return fallback
-  try {
-    return JSON.parse(raw)
-  } catch (err) {
-    console.warn(`Failed to parse stored ${key}:`, err)
-    return fallback
-  }
-}
+import {
+  authAPI,
+  setActiveTenantId as setApiActiveTenantId,
+  setCsrfToken,
+} from './lib/api.js'
 
 function App() {
-  const [user, setUser] = useState(() => parseStoredJSON('user', null))
-  const [token, setToken] = useState(() => localStorage.getItem('token'))
-  const [memberships, setMembershipsState] = useState(() => parseStoredJSON('memberships', []))
-  const [activeTenantId, setActiveTenantId] = useState(() => localStorage.getItem('tenantId'))
+  const [user, setUser] = useState(null)
+  const [memberships, setMembershipsState] = useState([])
+  const [activeTenantId, setActiveTenantId] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
 
   // Set default language to Turkish on app mount
   useEffect(() => {
@@ -67,11 +61,6 @@ function App() {
   const updateMemberships = useCallback((list) => {
     const next = Array.isArray(list) ? list : []
     setMembershipsState(next)
-    if (next.length) {
-      localStorage.setItem('memberships', JSON.stringify(next))
-    } else {
-      localStorage.removeItem('memberships')
-    }
   }, [])
 
   const updateUserProfile = useCallback((nextUser) => {
@@ -79,64 +68,94 @@ function App() {
       return
     }
     setUser(nextUser)
-    localStorage.setItem('user', JSON.stringify(nextUser))
   }, [])
 
-  const login = useCallback((authResult) => {
+  const clearAuthState = useCallback(() => {
+    setUser(null)
+    setMembershipsState([])
+    setActiveTenantId(null)
+    setPendingTenantSelection(false)
+    setApiActiveTenantId(null)
+    setCsrfToken(null)
+  }, [])
+
+  const applyAuthResult = useCallback((authResult) => {
     if (!authResult) return
 
     const {
       user: userData,
-      token: tokenData,
       memberships: membershipList = [],
       activeMembership,
       requiresTenantSelection = false,
+      csrfToken,
     } = authResult
 
-    if (userData) {
-      setUser(userData)
-      localStorage.setItem('user', JSON.stringify(userData))
-    }
-
+    setUser(userData || null)
     updateMemberships(membershipList)
-
-    if (tokenData) {
-      setToken(tokenData)
-      localStorage.setItem('token', tokenData)
-      const membershipToUse =
-        activeMembership ||
-        membershipList.find((item) => item?.token === tokenData) ||
-        membershipList[0] ||
-        null
-
-      if (membershipToUse?.tenantId) {
-        setActiveTenantId(membershipToUse.tenantId)
-        localStorage.setItem('tenantId', membershipToUse.tenantId)
-      }
-
-      setPendingTenantSelection(false)
-    } else {
-      setToken(null)
-      localStorage.removeItem('token')
-      setActiveTenantId(null)
-      localStorage.removeItem('tenantId')
-      setPendingTenantSelection(requiresTenantSelection)
+    const nextTenantId = activeMembership?.tenantId || null
+    setActiveTenantId(nextTenantId)
+    setApiActiveTenantId(nextTenantId)
+    setPendingTenantSelection(Boolean(requiresTenantSelection))
+    if (csrfToken) {
+      setCsrfToken(csrfToken)
     }
   }, [updateMemberships])
 
-  const logout = useCallback(() => {
-    setUser(null)
-    setToken(null)
-    setActiveTenantId(null)
-    setPendingTenantSelection(false)
-    updateMemberships([])
-    localStorage.removeItem('token')
-    localStorage.removeItem('tenantId')
-    localStorage.removeItem('user')
-    localStorage.removeItem('memberships')
-  }, [updateMemberships])
+  const refreshSession = useCallback(async () => {
+    const { data } = await authAPI.session()
+    applyAuthResult(data)
+    return data
+  }, [applyAuthResult])
 
-  const selectTenant = useCallback((membershipInput) => {
+  useEffect(() => {
+    let active = true
+    authAPI.session()
+      .then(({ data }) => {
+        if (active) applyAuthResult(data)
+      })
+      .catch(() => {
+        if (active) clearAuthState()
+      })
+      .finally(() => {
+        if (active) setAuthReady(true)
+      })
+
+    const handleSessionExpired = () => {
+      clearAuthState()
+      setAuthReady(true)
+    }
+    window.addEventListener('contexthub:session-expired', handleSessionExpired)
+
+    return () => {
+      active = false
+      window.removeEventListener('contexthub:session-expired', handleSessionExpired)
+    }
+  }, [applyAuthResult, clearAuthState])
+
+  const login = useCallback((authResult) => {
+    applyAuthResult(authResult)
+    setAuthReady(true)
+  }, [applyAuthResult])
+
+  const logout = useCallback(async () => {
+    try {
+      await authAPI.logout()
+    } catch (error) {
+      console.warn('Server logout failed:', error)
+    } finally {
+      clearAuthState()
+    }
+  }, [clearAuthState])
+
+  const logoutAll = useCallback(async () => {
+    try {
+      await authAPI.logoutAll()
+    } finally {
+      clearAuthState()
+    }
+  }, [clearAuthState])
+
+  const selectTenant = useCallback(async (membershipInput) => {
     const membership =
       typeof membershipInput === 'string'
         ? memberships.find((item) => item.tenantId === membershipInput)
@@ -146,22 +165,15 @@ function App() {
       return false
     }
 
-    if (membership.token) {
-      setToken(membership.token)
-      localStorage.setItem('token', membership.token)
+    try {
+      const { data } = await authAPI.switchTenant(membership.tenantId)
+      applyAuthResult(data)
+      return true
+    } catch (error) {
+      console.error('Tenant switch failed:', error)
+      return false
     }
-
-    setActiveTenantId(membership.tenantId)
-    localStorage.setItem('tenantId', membership.tenantId)
-    setPendingTenantSelection(false)
-
-    const nextMemberships = memberships.some((item) => item.tenantId === membership.tenantId)
-      ? memberships.map((item) => (item.tenantId === membership.tenantId ? { ...item, ...membership } : item))
-      : [...memberships, membership]
-
-    updateMemberships(nextMemberships)
-    return true
-  }, [memberships, updateMemberships])
+  }, [memberships, applyAuthResult])
 
   const addMembership = useCallback((membership, options = {}) => {
     if (!membership || !membership.tenantId) {
@@ -172,9 +184,11 @@ function App() {
     updateMemberships([...filtered, membership])
 
     if (options.activate) {
-      selectTenant(membership)
+      setActiveTenantId(membership.tenantId)
+      setApiActiveTenantId(membership.tenantId)
+      setPendingTenantSelection(false)
     }
-  }, [memberships, updateMemberships, selectTenant])
+  }, [memberships, updateMemberships])
 
   const activeMembership = useMemo(
     () => memberships.find((item) => item.tenantId === activeTenantId) || null,
@@ -232,7 +246,6 @@ function App() {
 
   const authValue = useMemo(() => ({
     user,
-    token,
     memberships,
     activeMembership,
     activeTenantId,
@@ -242,16 +255,18 @@ function App() {
     pendingTenantSelection,
     login,
     logout,
+    logoutAll,
     selectTenant,
     addMembership,
     updateMemberships,
     updateUserProfile,
-    isAuthenticated: Boolean(token),
+    refreshSession,
+    authReady,
+    isAuthenticated: Boolean(user),
     hasPermission,
     hasAnyPermission
   }), [
     user,
-    token,
     memberships,
     activeMembership,
     activeTenantId,
@@ -259,15 +274,25 @@ function App() {
     pendingTenantSelection,
     login,
     logout,
+    logoutAll,
     selectTenant,
     addMembership,
     updateMemberships,
     updateUserProfile,
+    refreshSession,
+    authReady,
     hasPermission,
     hasAnyPermission
   ])
 
- 
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-sm text-gray-600">
+        Güvenli oturum yükleniyor...
+      </div>
+    )
+  }
+
   return (
     <BrowserRouter>
       <ToastProvider>
@@ -276,10 +301,11 @@ function App() {
             <Routes>
               <Route path="/accept-invite" element={<AcceptInvite />} />
               <Route path="/select-tenant" element={<TenantSelection />} />
+              <Route path="/varliklar/yeni" element={<CreateTenant />} />
               <Route path="/transfer-accept" element={<AcceptTransfer />} />
               <Route path="*" element={<Navigate to="/select-tenant" replace />} />
             </Routes>
-          ) : !token ? (
+          ) : !user ? (
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />

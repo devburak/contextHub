@@ -8,12 +8,16 @@ const apiTokenSchema = new Schema({
   role: {
     type: String,
     enum: ['viewer', 'author', 'editor', 'admin', 'owner'],
-    default: 'editor',
+    default: 'viewer',
     required: true
   },
-  scopes: [{ type: String }],
+  scopes: {
+    type: [{ type: String }],
+    default: ['read']
+  },
   expiresAt: { type: Date },
   lastUsedAt: { type: Date },
+  lastAuditAt: { type: Date },
   createdAt: { type: Date, default: Date.now },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
 });

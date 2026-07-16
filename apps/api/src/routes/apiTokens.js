@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const ApiToken = require('@contexthub/common/src/models/ApiToken');
 const { tenantContext, authenticate } = require('../middleware/auth');
 const edgeGatewaySyncService = require('../services/edgeGatewaySyncService');
+const { logSecurityEvent } = require('../services/auditService');
 
 /**
  * API Token Management Routes
@@ -76,7 +77,7 @@ async function apiTokenRoutes(fastify) {
         tokens: tokens.map(token => ({
           id: token._id.toString(),
           name: token.name,
-          role: token.role || 'editor', // Default to editor for old tokens
+          role: token.role || 'viewer',
           scopes: token.scopes,
           expiresAt: token.expiresAt,
           lastUsedAt: token.lastUsedAt,
@@ -115,7 +116,7 @@ async function apiTokenRoutes(fastify) {
             type: 'string',
             enum: ['viewer', 'author', 'editor', 'admin', 'owner'],
             description: 'Role-based permissions for this token',
-            default: 'editor'
+            default: 'viewer'
           },
           scopes: {
             type: 'array',
@@ -158,7 +159,7 @@ async function apiTokenRoutes(fastify) {
       const tenantId = request.tenantId;
       const userRole = request.userRole;
       const userId = request.user._id;
-      const { name, role = 'editor', scopes = ['read'], expiresInDays } = request.body;
+      const { name, role = 'viewer', scopes = ['read'], expiresInDays } = request.body;
 
       // Only owners can create API tokens
       if (userRole !== 'owner') {
@@ -199,6 +200,19 @@ async function apiTokenRoutes(fastify) {
       });
 
       console.log(`[ApiToken] Created token: ${name} for tenant ${tenantId}`);
+      await logSecurityEvent({
+        action: 'api_token.created',
+        description: `API token oluşturuldu: ${name}`,
+        userId,
+        tenantId,
+        metadata: {
+          tokenId: apiToken._id.toString(),
+          role: apiToken.role,
+          scopes: apiToken.scopes,
+          expiresAt: apiToken.expiresAt,
+        },
+        request,
+      });
 
       // Return the token ONLY ONCE - it won't be shown again
       return reply.code(201).send({
@@ -280,6 +294,18 @@ async function apiTokenRoutes(fastify) {
       });
 
       console.log(`[ApiToken] Deleted token: ${token.name} for tenant ${tenantId}`);
+      await logSecurityEvent({
+        action: 'api_token.deleted',
+        description: `API token silindi: ${token.name}`,
+        userId: request.user?._id || null,
+        tenantId,
+        metadata: {
+          tokenId,
+          role: token.role,
+          scopes: token.scopes,
+        },
+        request,
+      });
 
       return reply.send({
         message: 'API token deleted successfully',
@@ -345,6 +371,17 @@ async function apiTokenRoutes(fastify) {
       });
 
       console.log(`[ApiToken] Updated token: ${token.name} for tenant ${tenantId}`);
+      await logSecurityEvent({
+        action: 'api_token.updated',
+        description: `API token güncellendi: ${token.name}`,
+        userId: request.user?._id || null,
+        tenantId,
+        metadata: {
+          tokenId: token._id.toString(),
+          scopes: token.scopes,
+        },
+        request,
+      });
 
       return reply.send({
         message: 'API token updated successfully',

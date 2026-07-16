@@ -135,6 +135,16 @@ export async function markResponseAsSpam({ formId, responseId }) {
   return response.data;
 }
 
+export async function permanentlyDeleteFormResponse({ formId, responseId }) {
+  const response = await apiClient.delete(`${BASE}/${formId}/responses/${responseId}/permanent`);
+  return response.data;
+}
+
+export async function updateFormResponseStatus({ formId, responseId, status }) {
+  const response = await apiClient.patch(`${BASE}/${formId}/responses/${responseId}/status`, { status });
+  return response.data;
+}
+
 /**
  * Forms API object with all methods
  */
@@ -154,4 +164,6 @@ export const formsApi = {
   getFormResponse: (formId, responseId) => getFormResponse({ formId, responseId }),
   deleteFormResponse: (formId, responseId) => deleteFormResponse({ formId, responseId }),
   markResponseAsSpam: (formId, responseId) => markResponseAsSpam({ formId, responseId }),
+  permanentlyDeleteFormResponse: (formId, responseId) => permanentlyDeleteFormResponse({ formId, responseId }),
+  updateFormResponseStatus: (formId, responseId, status) => updateFormResponseStatus({ formId, responseId, status }),
 };

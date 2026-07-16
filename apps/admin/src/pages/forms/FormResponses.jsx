@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getForm, getFormResponses, getFormResponse, deleteFormResponse, markResponseAsSpam } from '../../lib/api/forms';
+import {
+  getForm,
+  getFormResponses,
+  getFormResponse,
+  deleteFormResponse,
+  markResponseAsSpam,
+  permanentlyDeleteFormResponse,
+  updateFormResponseStatus,
+} from '../../lib/api/forms';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import clsx from 'clsx';
 import {
@@ -24,7 +32,7 @@ import ResponseDetailModal from '../../components/forms/ResponseDetailModal';
 export default function FormResponses() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, activeTenantId } = useAuth();
+  const { isAuthenticated, activeTenantId } = useAuth();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [selectedResponseId, setSelectedResponseId] = useState(null);
@@ -37,7 +45,7 @@ export default function FormResponses() {
     ['form', { id, tenant: activeTenantId }],
     () => getForm({ id }),
     {
-      enabled: !!token && !!activeTenantId && !!id,
+      enabled: isAuthenticated && !!activeTenantId && !!id,
     }
   );
 
@@ -56,7 +64,7 @@ export default function FormResponses() {
     }),
     {
       keepPreviousData: true,
-      enabled: !!token && !!activeTenantId && !!id,
+      enabled: isAuthenticated && !!activeTenantId && !!id,
     }
   );
 
@@ -70,7 +78,7 @@ export default function FormResponses() {
       return detail;
     },
     {
-      enabled: !!token && !!activeTenantId && !!id && !!selectedResponseId,
+      enabled: isAuthenticated && !!activeTenantId && !!id && !!selectedResponseId,
     }
   );
 
@@ -96,19 +104,7 @@ export default function FormResponses() {
 
   const handleHardDelete = async (responseId) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/forms/${id}/responses/${responseId}/permanent`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-Tenant-ID': activeTenantId,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Kalıcı silme işlemi başarısız oldu');
-      }
-
-      // Yanıtları yenile
+      await permanentlyDeleteFormResponse({ formId: id, responseId });
       refetch();
     } catch (error) {
       console.error('Failed to permanently delete response:', error);
@@ -128,21 +124,7 @@ export default function FormResponses() {
 
   const handleStatusChange = async (responseId, newStatus) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/forms/${id}/responses/${responseId}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'X-Tenant-ID': activeTenantId,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Status güncellenemedi');
-      }
-
-      // Yanıtları yenile
+      await updateFormResponseStatus({ formId: id, responseId, status: newStatus });
       refetch();
     } catch (error) {
       console.error('Failed to update status:', error);

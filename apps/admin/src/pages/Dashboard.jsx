@@ -391,7 +391,7 @@ export default function Dashboard() {
       const limitsData = await fetchTenantLimits()
       setTenantLimits(limitsData)
       try {
-        const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
+        const { tenants } = await tenantAPI.getTenants()
         updateMemberships(tenants)
       } catch (error) {
         console.error('Tenant listesi plan değişikliği sonrası yenilenemedi:', error)

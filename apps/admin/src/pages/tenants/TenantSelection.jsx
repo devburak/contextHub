@@ -6,8 +6,8 @@ export default function TenantSelection() {
   const { user, memberships, selectTenant, logout } = useAuth()
   const navigate = useNavigate()
 
-  const handleSelect = (membership) => {
-    const success = selectTenant(membership)
+  const handleSelect = async (membership) => {
+    const success = await selectTenant(membership)
     if (success) {
       navigate('/')
     }
@@ -64,7 +64,7 @@ export default function TenantSelection() {
 
           <div className="mt-8 text-center">
             <button
-              onClick={logout}
+              onClick={() => logout()}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
               Farklı bir hesapla giriş yap

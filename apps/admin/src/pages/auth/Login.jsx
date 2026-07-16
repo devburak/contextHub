@@ -127,7 +127,7 @@ export default function Login() {
       const errorEmail = error.response?.data?.email
 
       // E-posta doğrulanmamış hatası
-      if (errorCode === 'EMAIL_NOT_VERIFIED') {
+      if (['EMAIL_NOT_VERIFIED', 'EMAIL_REVERIFICATION_REQUIRED'].includes(errorCode)) {
         setEmailNotVerified({ email: errorEmail || email, message })
         return
       }

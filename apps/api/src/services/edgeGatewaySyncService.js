@@ -1,4 +1,4 @@
-const { Tenant, TenantSettings } = require('@contexthub/common');
+const { Domain, Tenant, TenantSettings } = require('@contexthub/common');
 
 const DEFAULT_SCHEMA_VERSION = 1;
 
@@ -39,26 +39,32 @@ function getKvKey(name) {
   return `${prefix}${name}`;
 }
 
-function buildTenantPayload({ tenant, settings }) {
+function buildTenantPayload({ tenant, settings, domains = [] }) {
   const edgeGateway = settings?.edgeGateway || {};
+  const domainOrigins = domains
+    .filter((domain) => domain?.status === 'verified' && domain.host)
+    .map((domain) => `https://${String(domain.host).trim().toLowerCase()}`);
   return {
     schemaVersion: DEFAULT_SCHEMA_VERSION,
     tenantId: tenant._id.toString(),
     status: mapTenantStatus(tenant.status),
     publicReadEnabled: edgeGateway.publicReadEnabled ?? true,
-    allowedOrigins: normalizeAllowedOrigins(edgeGateway.allowedOrigins),
+    allowedOrigins: normalizeAllowedOrigins([
+      ...(edgeGateway.allowedOrigins || []),
+      ...domainOrigins,
+    ]),
     allowLocalhost: edgeGateway.allowLocalhost ?? true,
     updatedAt: new Date().toISOString(),
   };
 }
 
-function buildApiTokenPayload({ apiToken, tenant, settings }) {
-  const tenantPayload = buildTenantPayload({ tenant, settings });
+function buildApiTokenPayload({ apiToken, tenant, settings, domains = [] }) {
+  const tenantPayload = buildTenantPayload({ tenant, settings, domains });
   return {
     ...tenantPayload,
     tokenId: apiToken._id?.toString?.() || null,
-    role: apiToken.role || 'editor',
-    scopes: Array.isArray(apiToken.scopes) ? apiToken.scopes : [],
+    role: apiToken.role || 'viewer',
+    scopes: Array.isArray(apiToken.scopes) && apiToken.scopes.length ? apiToken.scopes : ['read'],
     expiresAt: apiToken.expiresAt ? new Date(apiToken.expiresAt).toISOString() : null,
   };
 }
@@ -115,8 +121,11 @@ async function syncTenantConfig({ tenantId, tenant: tenantInput } = {}) {
     return { skipped: true, reason: 'tenant_not_found' };
   }
 
-  const settings = await TenantSettings.findOne({ tenantId: tenant._id }).lean();
-  const payload = buildTenantPayload({ tenant, settings });
+  const [settings, domains] = await Promise.all([
+    TenantSettings.findOne({ tenantId: tenant._id }).lean(),
+    Domain.find({ tenantId: tenant._id, status: 'verified' }).select('host status').lean(),
+  ]);
+  const payload = buildTenantPayload({ tenant, settings, domains });
   const key = getKvKey(`tenant:${tenant._id.toString()}`);
 
   await putKvJson(key, payload);
@@ -144,8 +153,11 @@ async function syncApiTokenConfig({ apiToken, tenant: tenantInput } = {}) {
     return { skipped: true, reason: 'tenant_not_found' };
   }
 
-  const settings = await TenantSettings.findOne({ tenantId: tenant._id }).lean();
-  const payload = buildApiTokenPayload({ apiToken, tenant, settings });
+  const [settings, domains] = await Promise.all([
+    TenantSettings.findOne({ tenantId: tenant._id }).lean(),
+    Domain.find({ tenantId: tenant._id, status: 'verified' }).select('host status').lean(),
+  ]);
+  const payload = buildApiTokenPayload({ apiToken, tenant, settings, domains });
   const key = getKvKey(`apikey:${apiToken.hash}`);
 
   await putKvJson(key, payload);
