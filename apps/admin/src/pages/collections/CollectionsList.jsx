@@ -19,7 +19,7 @@ const statusConfig = {
 };
 
 export default function CollectionsList() {
-  const { token, activeTenantId } = useAuth();
+  const { isAuthenticated, activeTenantId } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
   const [isFormExpanded, setFormExpanded] = useState(false);
@@ -29,7 +29,7 @@ export default function CollectionsList() {
     ['collections', { tenant: activeTenantId }],
     () => listCollectionTypes(),
     {
-      enabled: Boolean(token && activeTenantId)
+      enabled: Boolean(isAuthenticated && activeTenantId)
     }
   );
 

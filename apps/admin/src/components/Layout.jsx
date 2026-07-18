@@ -419,10 +419,10 @@ export default function Layout() {
                     <select
                       id="tenant-select"
                       value={activeMembership?.tenantId || ''}
-                      onChange={(event) => {
+                      onChange={async (event) => {
                         const membership = memberships.find((item) => item.tenantId === event.target.value)
                         if (membership && membership.tenantId !== activeMembership?.tenantId) {
-                          const selected = selectTenant(membership)
+                          const selected = await selectTenant(membership)
                           if (selected) {
                             window.location.reload()
                           }

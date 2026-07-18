@@ -58,17 +58,14 @@ export default function AcceptInvite() {
       return data
     },
     onSuccess: (data) => {
-      const activeMembership = data.activeMembership || {
-        ...data.membership,
-        token: data.token,
-      }
+      const activeMembership = data.activeMembership || data.membership
 
       login({
         user: data.user,
-        token: data.token,
         memberships: data.memberships?.length ? data.memberships : [activeMembership],
         activeMembership,
         requiresTenantSelection: false,
+        csrfToken: data.csrfToken,
       })
 
       navigate('/', {

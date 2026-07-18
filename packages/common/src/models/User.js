@@ -11,6 +11,7 @@ const userSchema = new Schema({
   name: { type: String },
   status: { type: String, default: 'active', enum: ['active', 'inactive', 'suspended'] },
   isEmailVerified: { type: Boolean, default: false },
+  emailVerifiedAt: { type: Date },
   emailVerificationToken: { type: String },
   emailVerificationTokenExpiresAt: { type: Date },
   lastLoginAt: { type: Date },

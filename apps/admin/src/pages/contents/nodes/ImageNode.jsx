@@ -11,8 +11,9 @@ export class ImageNode extends DecoratorNode {
   __showCaption
   __linkUrl
   __linkTarget
+  __mediaId
 
-  constructor({ src, altText = '', width = undefined, height = undefined, alignment = 'center', caption = '', showCaption = true, linkUrl = '', linkTarget = '_blank' }, key) {
+  constructor({ src, altText = '', width = undefined, height = undefined, alignment = 'center', caption = '', showCaption = true, linkUrl = '', linkTarget = '_blank', mediaId = '' }, key) {
     super(key)
     this.__src = src
     this.__altText = altText
@@ -23,6 +24,7 @@ export class ImageNode extends DecoratorNode {
     this.__showCaption = showCaption
     this.__linkUrl = linkUrl || ''
     this.__linkTarget = linkTarget || '_blank'
+    this.__mediaId = mediaId || ''
   }
 
   static getType() {
@@ -41,6 +43,7 @@ export class ImageNode extends DecoratorNode {
         showCaption: node.__showCaption,
         linkUrl: node.__linkUrl,
         linkTarget: node.__linkTarget,
+        mediaId: node.__mediaId,
       },
       node.__key
     )
@@ -61,12 +64,12 @@ export class ImageNode extends DecoratorNode {
   }
 
   static importJSON(serializedNode) {
-    const { src, altText, width, height, alignment, caption, showCaption, linkUrl, linkTarget } = serializedNode
-    return $createImageNode({ src, altText, width, height, alignment, caption, showCaption, linkUrl, linkTarget })
+    const { src, altText, width, height, alignment, caption, showCaption, linkUrl, linkTarget, mediaId, data } = serializedNode
+    return $createImageNode({ src, altText, width, height, alignment, caption, showCaption, linkUrl, linkTarget, mediaId: mediaId || data?.contexthubMediaId || '' })
   }
 
   exportJSON() {
-    return {
+    const json = {
       type: 'image',
       version: 1,
       src: this.__src,
@@ -79,6 +82,10 @@ export class ImageNode extends DecoratorNode {
       linkUrl: this.__linkUrl,
       linkTarget: this.__linkTarget,
     }
+    if (this.__mediaId) {
+      json.mediaId = this.__mediaId
+    }
+    return json
   }
 
   createDOM() {
@@ -232,7 +239,7 @@ export class ImageNode extends DecoratorNode {
   }
 }
 
-export function $createImageNode({ src, altText = '', width, height, alignment = 'center', caption = '', showCaption = true, linkUrl = '', linkTarget = '_blank' }) {
+export function $createImageNode({ src, altText = '', width, height, alignment = 'center', caption = '', showCaption = true, linkUrl = '', linkTarget = '_blank', mediaId = '' }) {
   return new ImageNode(
     {
       src,
@@ -244,6 +251,7 @@ export function $createImageNode({ src, altText = '', width, height, alignment =
       showCaption,
       linkUrl,
       linkTarget,
+      mediaId,
     }
   )
 }

@@ -1,6 +1,7 @@
 const { TenantSettings } = require('@contexthub/common');
 const { encryptSecret, decryptSecret, isEncrypted } = require('../utils/secretUtils');
 const edgeGatewaySyncService = require('./edgeGatewaySyncService');
+const { invalidateTenantOriginPolicyCache } = require('./tenantOriginPolicy');
 
 const DEFAULT_SETTINGS = Object.freeze({
   smtp: {
@@ -220,6 +221,7 @@ class TenantSettingsService {
     }
 
     const saved = await target.save();
+    invalidateTenantOriginPolicyCache();
     edgeGatewaySyncService.syncTenantConfig({ tenantId }).catch((error) => {
       console.error('[TenantSettings] Edge gateway sync failed:', error.message);
     });

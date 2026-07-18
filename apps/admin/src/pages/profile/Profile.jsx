@@ -12,7 +12,7 @@ export default function Profile() {
   const toast = useToast()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { user, updateUserProfile, roleMeta, permissions, logout, memberships } = useAuth()
+  const { user, updateUserProfile, roleMeta, permissions, logout, logoutAll, memberships } = useAuth()
   const location = useLocation()
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -31,6 +31,7 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [isLoggingOutAll, setIsLoggingOutAll] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['currentUser'],
@@ -248,6 +249,21 @@ export default function Profile() {
     }
   }
 
+  const handleLogoutAll = async () => {
+    if (!window.confirm('Tüm cihazlardaki oturumlar kapatılsın mı? Bu cihazda da yeniden giriş yapmanız gerekir.')) {
+      return
+    }
+
+    setIsLoggingOutAll(true)
+    try {
+      await logoutAll()
+      navigate('/login', { replace: true })
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Oturumlar kapatılamadı')
+      setIsLoggingOutAll(false)
+    }
+  }
+
   const renderPermissions = (list = []) => {
     if (!list.length) {
       return <p className="text-sm text-gray-500">Bu rol için atanmış yetki yok.</p>
@@ -348,6 +364,25 @@ export default function Profile() {
                     Şifremi Değiştir
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                <h2 className="text-sm font-medium text-gray-700">Aktif Oturumlar</h2>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-gray-600">
+                  Hesabınızın açık olduğu tüm tarayıcı ve cihazlardaki oturumları sunucu tarafında iptal edin.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleLogoutAll}
+                  disabled={isLoggingOutAll}
+                  className="mt-4 inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isLoggingOutAll ? 'Oturumlar kapatılıyor...' : 'Tüm cihazlardan çıkış yap'}
+                </button>
               </div>
             </div>
 

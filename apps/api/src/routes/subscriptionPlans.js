@@ -180,7 +180,7 @@ async function subscriptionPlanRoutes(fastify) {
   }, async function updatePlanHandler(request, reply) {
     try {
       const { slug } = request.params;
-      const userRole = request.user?.role;
+      const userRole = request.userRole;
 
       // Only owners can update plans
       if (userRole !== 'owner') {
@@ -268,7 +268,7 @@ async function subscriptionPlanRoutes(fastify) {
     try {
       const { tenantId } = request.params;
       const { planSlug, customLimits } = request.body;
-      const userRole = request.user?.role;
+      const userRole = request.userRole;
 
       // Only owners can update subscriptions
       if (userRole !== 'owner') {
@@ -370,7 +370,7 @@ async function subscriptionPlanRoutes(fastify) {
       }
 
       // Check permission - only owner or members of the tenant
-      const userRole = request.user?.role;
+      const userRole = request.userRole;
       const userTenantId = request.tenantId;
       
       if (userRole !== 'owner' && userTenantId !== tenantId) {

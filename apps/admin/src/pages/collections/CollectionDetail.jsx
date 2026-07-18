@@ -81,7 +81,7 @@ const statusBadge = {
 export default function CollectionDetail() {
   const { key } = useParams();
   const navigate = useNavigate();
-  const { token, activeTenantId } = useAuth();
+  const { isAuthenticated, activeTenantId } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -100,7 +100,7 @@ export default function CollectionDetail() {
   const { data: collections = [], isLoading: isCollectionsLoading, isError: isCollectionsError } = useQuery(
     ['collections', { tenant: activeTenantId }],
     () => listCollectionTypes(),
-    { enabled: Boolean(token && activeTenantId) }
+    { enabled: Boolean(isAuthenticated && activeTenantId) }
   );
 
   const collection = useMemo(() => collections.find((item) => item.key === key), [collections, key]);

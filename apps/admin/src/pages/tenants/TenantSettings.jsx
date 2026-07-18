@@ -544,7 +544,7 @@ export default function TenantSettings() {
       queryClient.invalidateQueries({ queryKey: tenantLimitsQueryKey })
       queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
       try {
-        const { tenants } = await tenantAPI.getTenants({ includeTokens: true })
+        const { tenants } = await tenantAPI.getTenants()
         updateMemberships(tenants)
         queryClient.setQueryData(['tenants', 'list'], tenants)
       } catch (error) {
@@ -840,7 +840,7 @@ export default function TenantSettings() {
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="border-b border-gray-200 px-6 py-4">
             <h2 className="text-lg font-semibold text-gray-900">Edge API ve CORS</h2>
-            <p className="text-sm text-gray-500">Cloudflare Worker üzerinden geçen public API erişimi ve tarayıcı origin izinlerini tenant bazında yönet.</p>
+            <p className="text-sm text-gray-500">Tenantın kendi web siteleri için public/API-token erişimini yönet. Bu liste yönetim oturumu veya admin cookie yetkisi vermez.</p>
           </div>
           <div className="space-y-5 px-6 py-5">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -879,7 +879,7 @@ export default function TenantSettings() {
                 className={`${FIELD_INPUT_WITH_MARGIN_CLASS} font-mono`}
               />
               <p className="mt-2 text-xs text-gray-500">
-                Her satıra bir origin yaz. Wildcard sadece alt domainleri kapsar; ana domain için ayrıca kayıt gir.
+                Her satıra protokolüyle birlikte bir origin yaz. Wildcard yalnızca alt domainleri kapsar; ana domain için ayrıca kayıt gir. Doğrulanmış tenant domainleri otomatik eklenir. Bu originlerden gelen isteklerde kullanıcı oturum cookie’leri kabul edilmez.
               </p>
             </div>
           </div>

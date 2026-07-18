@@ -15,6 +15,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { apiClient as api } from '../../../lib/api';
+import { useAuth } from '../../../contexts/AuthContext.jsx';
 
 const channelLabels = {
   modal: 'Popup',
@@ -460,7 +461,7 @@ function DebugResult({ result }) {
 }
 
 function WebhookVisibility({ placement }) {
-  const tenantId = typeof window !== 'undefined' ? localStorage.getItem('tenantId') : null;
+  const { activeTenantId: tenantId } = useAuth();
   const [loading, setLoading] = useState(false);
   const [queue, setQueue] = useState(null);
   const [error, setError] = useState('');

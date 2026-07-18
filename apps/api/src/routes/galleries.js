@@ -163,7 +163,10 @@ async function galleryRoutes(fastify) {
       });
       return reply.send({ success: true });
     } catch (error) {
-      return reply.code(400).send({ error: 'GalleryDeleteFailed', message: error.message });
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'GalleryDeleteFailed',
+        message: error.message
+      });
     }
   });
 }

@@ -1,6 +1,12 @@
 const AuthService = require('../services/authService');
+const { authenticateWithoutTenant } = require('../middleware/auth');
+const {
+  getSessionToken,
+  setSessionCookie,
+  clearSessionCookie,
+} = require('../services/sessionSecurity');
 
-async function authRoutes(fastify, options) {
+async function authRoutes(fastify) {
   const authService = new AuthService(fastify);
 
   // POST /auth/login - Giriş yap
@@ -30,14 +36,14 @@ async function authRoutes(fastify, options) {
                 firstName: { type: 'string' },
                 lastName: { type: 'string' },
                 mustChangePassword: { type: 'boolean' },
-                role: { type: 'string' },
+                role: { type: 'string', nullable: true },
                 permissions: {
                   type: 'array',
                   items: { type: 'string' }
                 }
               }
             },
-            token: { type: 'string' },
+            csrfToken: { type: 'string' },
             memberships: {
               type: 'array',
               items: {
@@ -76,8 +82,7 @@ async function authRoutes(fastify, options) {
                   permissions: {
                     type: 'array',
                     items: { type: 'string' }
-                  },
-                  token: { type: 'string' }
+                  }
                 }
               }
             },
@@ -85,6 +90,7 @@ async function authRoutes(fastify, options) {
             message: { type: 'string' },
             activeMembership: {
               type: 'object',
+              nullable: true,
               properties: {
                 id: { type: 'string' },
                 tenantId: { type: 'string' },
@@ -119,8 +125,7 @@ async function authRoutes(fastify, options) {
                 permissions: {
                   type: 'array',
                   items: { type: 'string' }
-                },
-                token: { type: 'string' }
+                }
               }
             }
           }
@@ -132,13 +137,18 @@ async function authRoutes(fastify, options) {
       const { email, password, tenantId: tenantFromBody } = request.body;
       const tenantId = tenantFromBody || request.query.tenantId;
       const result = await authService.login(email, password, tenantId, request);
-      
-      return reply.send(result);
+      const { token, ...response } = result;
+      setSessionCookie(reply, token);
+      return reply.send(response);
     } catch (error) {
       const statusCode = error.statusCode || 401;
+      const isEmailVerificationError = [
+        'EMAIL_NOT_VERIFIED',
+        'EMAIL_REVERIFICATION_REQUIRED',
+      ].includes(error.code);
       const response = {
-        error: error.code === 'EMAIL_NOT_VERIFIED'
-          ? 'EMAIL_NOT_VERIFIED'
+        error: isEmailVerificationError
+          ? error.code
           : (statusCode === 429 ? 'Too many attempts' : 'Authentication failed'),
         message: error.message
       };
@@ -149,7 +159,7 @@ async function authRoutes(fastify, options) {
       if (error.blocked) {
         response.blocked = true;
       }
-      if (error.code === 'EMAIL_NOT_VERIFIED' && error.email) {
+      if (isEmailVerificationError && error.email) {
         response.email = error.email;
       }
 
@@ -216,23 +226,21 @@ async function authRoutes(fastify, options) {
 
   // POST /auth/refresh - Token yenile
   fastify.post('/auth/refresh', {
+    preHandler: [authenticateWithoutTenant],
     schema: {
       description: 'Refresh an existing JWT token',
       summary: 'Token refresh',
       tags: ['auth'],
       body: {
         type: 'object',
-        properties: {
-          token: { type: 'string' }
-        },
-        required: ['token']
+        properties: {}
       },
       response: {
         200: {
           type: 'object',
           properties: {
-            token: { type: 'string' },
-            role: { type: 'string' },
+            csrfToken: { type: 'string' },
+            role: { type: 'string', nullable: true },
             permissions: {
               type: 'array',
               items: { type: 'string' }
@@ -243,10 +251,11 @@ async function authRoutes(fastify, options) {
     }
   }, async function(request, reply) {
     try {
-      const { token } = request.body;
-      const result = await authService.refreshToken(token);
-      
-      return reply.send(result);
+      const token = request.authToken || getSessionToken(request).token;
+      const result = await authService.refreshToken(token, request);
+      const { token: refreshedToken, ...response } = result;
+      setSessionCookie(reply, refreshedToken);
+      return reply.send(response);
     } catch (error) {
       return reply.code(401).send({ error: 'Token refresh failed', message: error.message });
     }
@@ -319,7 +328,7 @@ async function authRoutes(fastify, options) {
         200: {
           type: 'object',
           properties: {
-            token: { type: 'string' },
+            csrfToken: { type: 'string' },
             user: {
               type: 'object',
               properties: {
@@ -412,8 +421,7 @@ async function authRoutes(fastify, options) {
                   type: 'array',
                   items: { type: 'string' }
                 },
-                status: { type: 'string' },
-                token: { type: 'string' }
+                status: { type: 'string' }
               }
             },
             memberships: {
@@ -455,8 +463,7 @@ async function authRoutes(fastify, options) {
                     type: 'array',
                     items: { type: 'string' }
                   },
-                  status: { type: 'string' },
-                  token: { type: 'string' }
+                  status: { type: 'string' }
                 }
               }
             }
@@ -467,9 +474,14 @@ async function authRoutes(fastify, options) {
   }, async function(request, reply) {
     try {
       const { token, password, firstName, lastName } = request.body;
-      const result = await authService.acceptInvitation(token, { password, firstName, lastName });
-
-      return reply.send(result);
+      const result = await authService.acceptInvitation(
+        token,
+        { password, firstName, lastName },
+        request
+      );
+      const { token: sessionToken, ...response } = result;
+      setSessionCookie(reply, sessionToken);
+      return reply.send(response);
     } catch (error) {
       const status = /expired/i.test(error.message) ? 410 : 400;
       return reply.code(status).send({ error: 'InvitationAcceptFailed', message: error.message });
@@ -478,6 +490,7 @@ async function authRoutes(fastify, options) {
 
   // POST /auth/logout - Çıkış yap (token jti blacklist'e alınır)
   fastify.post('/auth/logout', {
+    preHandler: [authenticateWithoutTenant],
     schema: {
       description: 'Logout user and revoke the current token',
       summary: 'User logout',
@@ -492,14 +505,89 @@ async function authRoutes(fastify, options) {
       }
     }
   }, async function(request, reply) {
-    const authHeader = request.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ')
-      ? authHeader.slice(7)
-      : (request.body?.token || null);
-
-    await authService.revokeToken(token);
-
+    await authService.revokeToken(request.authToken, {
+      reason: 'logout',
+      request,
+    });
+    await authService.logActivity({
+      userId: request.user._id,
+      tenantId: request.authPayload?.tenantId || null,
+      action: 'user.logout',
+      description: 'Kullanıcı çıkış yaptı',
+      metadata: { jti: request.authPayload?.jti || null },
+      request,
+    });
+    clearSessionCookie(reply);
     return reply.send({ message: 'Logged out successfully' });
+  });
+
+  fastify.post('/auth/logout-all', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      description: 'Revoke all sessions for the current user',
+      summary: 'Logout from all devices',
+      tags: ['auth'],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function(request, reply) {
+    await authService.revokeAllSessions(request.user._id, request);
+    clearSessionCookie(reply);
+    return reply.send({ message: 'All sessions revoked successfully' });
+  });
+
+  fastify.get('/auth/session', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      description: 'Return the current cookie-backed session state',
+      summary: 'Current session',
+      tags: ['auth'],
+    }
+  }, async function(request, reply) {
+    try {
+      const state = await authService.getSessionState(request.user._id, request.authPayload);
+      reply.header('Cache-Control', 'no-store');
+      return reply.send(state);
+    } catch (error) {
+      clearSessionCookie(reply);
+      return reply.code(401).send({ error: 'SessionInvalid', message: error.message });
+    }
+  });
+
+  fastify.post('/auth/switch-tenant', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      description: 'Switch the active tenant and rotate the session',
+      summary: 'Switch tenant',
+      tags: ['auth'],
+      body: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string', minLength: 1 }
+        },
+        required: ['tenantId']
+      }
+    }
+  }, async function(request, reply) {
+    try {
+      const result = await authService.switchTenant(
+        request.user._id,
+        request.body.tenantId,
+        request.authPayload,
+        request
+      );
+      const { token, ...response } = result;
+      setSessionCookie(reply, token);
+      return reply.send(response);
+    } catch (error) {
+      return reply.code(403).send({ error: 'TenantSwitchFailed', message: error.message });
+    }
   });
 
   // POST /auth/forgot-password - Şifre sıfırlama talebi
