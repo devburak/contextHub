@@ -1,11 +1,18 @@
 import axios from 'axios'
+import { shouldInvalidateSession } from './sessionInvalidationPolicy.js'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 let csrfToken = null
 let activeTenantId = null
+let sessionRevision = 0
+let sessionTransitionDepth = 0
 
 export const setCsrfToken = (value) => {
-  csrfToken = value || null
+  const nextToken = value || null
+  if (nextToken !== csrfToken) {
+    sessionRevision += 1
+  }
+  csrfToken = nextToken
 }
 
 export const setActiveTenantId = (value) => {
@@ -23,6 +30,7 @@ export const apiClient = axios.create({
 // Authentication is carried only by the HttpOnly session cookie. JavaScript can
 // neither read nor persist it.
 apiClient.interceptors.request.use((config) => {
+  config.__sessionRevision = sessionRevision
   const method = String(config.method || 'get').toLowerCase()
   if (!['get', 'head', 'options'].includes(method) && csrfToken) {
     config.headers['X-CSRF-Token'] = csrfToken
@@ -54,15 +62,17 @@ apiClient.interceptors.response.use(
     return response
   },
   (error) => {
-    const authInvalidatingErrors = new Set([
-      'AccountDisabled',
-      'EmailVerificationRequired',
-      'SessionTenantMismatch',
-    ])
-    if (
-      error.response?.status === 401
-      || authInvalidatingErrors.has(error.response?.data?.error)
-    ) {
+    const requestUrl = String(error.config?.url || '')
+    const isSessionTransitionRequest = requestUrl.startsWith('/auth/switch-tenant')
+    const requestRevision = Number(error.config?.__sessionRevision)
+    if (shouldInvalidateSession({
+      status: error.response?.status,
+      errorCode: error.response?.data?.error,
+      requestRevision,
+      currentRevision: sessionRevision,
+      sessionTransitioning: sessionTransitionDepth > 0,
+      isSessionTransitionRequest,
+    })) {
       setCsrfToken(null)
       setActiveTenantId(null)
       if (typeof window !== 'undefined') {
@@ -81,8 +91,14 @@ export const authAPI = {
   session: () =>
     apiClient.get('/auth/session'),
 
-  switchTenant: (tenantId) =>
-    apiClient.post('/auth/switch-tenant', { tenantId }),
+  switchTenant: async (tenantId) => {
+    sessionTransitionDepth += 1
+    try {
+      return await apiClient.post('/auth/switch-tenant', { tenantId })
+    } finally {
+      sessionTransitionDepth = Math.max(0, sessionTransitionDepth - 1)
+    }
+  },
 
   logout: () =>
     apiClient.post('/auth/logout', {}),

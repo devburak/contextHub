@@ -1,7 +1,8 @@
 import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
-import { Link, useLocation, Outlet } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
 import { PERMISSIONS } from '../constants/permissions.js'
@@ -9,8 +10,11 @@ import { PERMISSIONS } from '../constants/permissions.js'
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [switchingTenantId, setSwitchingTenantId] = useState(null)
   const { user, memberships, activeMembership, selectTenant, logout, hasPermission } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const navigation = useMemo(() => [
     {
@@ -422,12 +426,22 @@ export default function Layout() {
                       onChange={async (event) => {
                         const membership = memberships.find((item) => item.tenantId === event.target.value)
                         if (membership && membership.tenantId !== activeMembership?.tenantId) {
-                          const selected = await selectTenant(membership)
-                          if (selected) {
-                            window.location.reload()
+                          setSwitchingTenantId(membership.tenantId)
+                          try {
+                            const selected = await selectTenant(membership)
+                            if (selected) {
+                              // Tenant-scoped query keys are not uniformly namespaced yet.
+                              // Drop the previous tenant's cache and let the dashboard fetch
+                              // fresh data with the newly rotated session cookie.
+                              queryClient.clear()
+                              navigate('/', { replace: true })
+                            }
+                          } finally {
+                            setSwitchingTenantId(null)
                           }
                         }
                       }}
+                      disabled={Boolean(switchingTenantId)}
                       className="block w-full rounded-md border-gray-300 py-1.5 pl-3 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                     >
                       {memberships.map((membership) => (
