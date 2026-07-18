@@ -32,36 +32,8 @@ function normaliseContentIds(values = []) {
     .filter(Boolean);
 }
 
-async function attachMediaData(gallery) {
-  if (!gallery || !gallery.items?.length) {
-    return gallery;
-  }
-  const mediaIds = gallery.items.map((item) => item.mediaId).filter(Boolean);
-  const uniqueIds = [...new Set(mediaIds.map((id) => id.toString()))].map((id) => new ObjectId(id));
-  const mediaDocs = await Media.find({ _id: { $in: uniqueIds } }).lean();
-  const mediaMap = new Map(mediaDocs.map((doc) => [doc._id.toString(), doc]));
-
-  const items = gallery.items.map((item) => {
-    const mediaDoc = mediaMap.get(item.mediaId.toString());
-    return {
-      mediaId: item.mediaId.toString(),
-      title: item.title,
-      caption: item.caption,
-      order: item.order ?? 0,
-      media: mediaDoc
-        ? {
-            id: mediaDoc._id.toString(),
-            originalName: mediaDoc.originalName,
-            fileName: mediaDoc.fileName,
-            mimeType: mediaDoc.mimeType,
-            size: mediaDoc.size,
-            publicUrl: mediaDoc.publicUrl,
-            variants: mediaDoc.variants || [],
-            createdAt: mediaDoc.createdAt,
-          }
-        : null,
-    };
-  });
+function serializeGallery(gallery, items = []) {
+  if (!gallery) return gallery;
 
   return {
     ...gallery,
@@ -72,6 +44,64 @@ async function attachMediaData(gallery) {
     createdBy: gallery.createdBy?.toString?.() || gallery.createdBy,
     updatedBy: gallery.updatedBy?.toString?.() || gallery.updatedBy,
   };
+}
+
+function serializeMedia(mediaDoc) {
+  if (!mediaDoc) return null;
+
+  return {
+    id: mediaDoc._id.toString(),
+    originalName: mediaDoc.originalName,
+    fileName: mediaDoc.fileName,
+    mimeType: mediaDoc.mimeType,
+    size: mediaDoc.size,
+    width: mediaDoc.width,
+    height: mediaDoc.height,
+    url: mediaDoc.url,
+    publicUrl: mediaDoc.publicUrl || mediaDoc.url,
+    variants: mediaDoc.variants || [],
+    sourceType: mediaDoc.sourceType,
+    provider: mediaDoc.provider,
+    providerId: mediaDoc.providerId,
+    externalUrl: mediaDoc.externalUrl,
+    thumbnailUrl: mediaDoc.thumbnailUrl,
+    duration: mediaDoc.duration,
+    altText: mediaDoc.altText,
+    createdAt: mediaDoc.createdAt,
+  };
+}
+
+async function attachMediaData(gallery) {
+  if (!gallery) return gallery;
+
+  const galleryItems = Array.isArray(gallery.items)
+    ? [...gallery.items].sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
+    : [];
+
+  if (!galleryItems.length) {
+    return serializeGallery(gallery, []);
+  }
+
+  const mediaIds = galleryItems.map((item) => item.mediaId).filter(Boolean);
+  const uniqueIds = [...new Set(mediaIds.map((id) => id.toString()))].map((id) => new ObjectId(id));
+  const mediaDocs = await Media.find({
+    tenantId: gallery.tenantId,
+    _id: { $in: uniqueIds }
+  }).lean();
+  const mediaMap = new Map(mediaDocs.map((doc) => [doc._id.toString(), doc]));
+
+  const items = galleryItems.map((item) => {
+    const mediaDoc = mediaMap.get(item.mediaId.toString());
+    return {
+      mediaId: item.mediaId.toString(),
+      title: item.title,
+      caption: item.caption,
+      order: item.order ?? 0,
+      media: serializeMedia(mediaDoc),
+    };
+  });
+
+  return serializeGallery(gallery, items);
 }
 
 class GalleryService {
@@ -203,7 +233,25 @@ class GalleryService {
       throw new Error('Invalid gallery id');
     }
 
-    await Gallery.deleteOne({ _id: galleryId, tenantId });
+    const gallery = await Gallery.findOne({ _id: galleryId, tenantId })
+      .select({ status: 1 })
+      .lean();
+
+    if (!gallery) {
+      const error = new Error('Gallery not found');
+      error.statusCode = 404;
+      error.code = 'GALLERY_NOT_FOUND';
+      throw error;
+    }
+
+    if (gallery.status !== 'draft') {
+      const error = new Error('Only draft galleries can be deleted. Move the gallery to draft first.');
+      error.statusCode = 409;
+      error.code = 'GALLERY_MUST_BE_DRAFT';
+      throw error;
+    }
+
+    await Gallery.deleteOne({ _id: galleryId, tenantId, status: 'draft' });
     return { success: true };
   }
 

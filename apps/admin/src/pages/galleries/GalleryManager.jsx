@@ -4,6 +4,7 @@ import { galleriesAPI } from '../../lib/galleriesAPI.js'
 import MediaPickerModal from '../contents/components/MediaPickerModal.jsx'
 import { PhotoIcon, TrashIcon, ArrowsUpDownIcon, PlusCircleIcon, VideoCameraIcon, PlayIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
+import { getGalleryId, getMediaPreview } from './galleryPresentation.js'
 
 const emptyGallery = {
   title: '',
@@ -11,6 +12,45 @@ const emptyGallery = {
   status: 'draft',
   items: [],
   linkedContentIds: [],
+}
+
+function GalleryMediaPreview({ media, alt, compact = false }) {
+  const preview = getMediaPreview(media)
+  const heightClass = compact ? 'h-full' : 'h-32'
+
+  if (preview.isVideo) {
+    return (
+      <div className={clsx('relative w-full bg-black', heightClass)}>
+        {preview.url ? (
+          <img src={preview.url} alt={alt || 'Video'} className="h-full w-full object-cover" />
+        ) : !preview.isExternal && preview.mediaUrl ? (
+          <video src={preview.mediaUrl} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-white">
+            <VideoCameraIcon className={compact ? 'h-6 w-6' : 'h-10 w-10'} />
+          </div>
+        )}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <PlayIcon className={clsx('text-white drop-shadow-lg', compact ? 'h-4 w-4' : 'h-8 w-8')} />
+        </div>
+        {!compact && (
+          <div className="absolute top-1 left-1 bg-red-600 text-white text-xs px-1 rounded">
+            {media?.provider?.toUpperCase() || 'VIDEO'}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (preview.url) {
+    return <img src={preview.url} alt={alt || 'Medya'} className={clsx('w-full object-cover', heightClass)} />
+  }
+
+  return (
+    <div className={clsx('flex w-full items-center justify-center text-gray-300', heightClass)}>
+      <PhotoIcon className={compact ? 'h-6 w-6' : 'h-10 w-10'} />
+    </div>
+  )
 }
 
 function GalleryItemsEditor({ items, onChange, openMediaPicker }) {
@@ -52,33 +92,10 @@ function GalleryItemsEditor({ items, onChange, openMediaPicker }) {
             <li key={`${item.mediaId}-${index}`} className="rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="flex flex-col gap-4 p-4 sm:flex-row">
                 <div className="w-full max-w-[160px] flex-none overflow-hidden rounded-md bg-gray-100 relative">
-                  {item.media?.sourceType === 'external' ? (
-                    // External video (YouTube, Vimeo, etc.)
-                    <div className="relative h-32 w-full bg-black">
-                      {item.media.thumbnailUrl ? (
-                        <>
-                          <img src={item.media.thumbnailUrl} alt={item.media.originalName || 'Video'} className="h-full w-full object-cover" />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <PlayIcon className="h-8 w-8 text-white drop-shadow-lg" />
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-white">
-                          <VideoCameraIcon className="h-10 w-10" />
-                        </div>
-                      )}
-                      <div className="absolute top-1 left-1 bg-red-600 text-white text-xs px-1 rounded">
-                        {item.media.provider?.toUpperCase() || 'VIDEO'}
-                      </div>
-                    </div>
-                  ) : item.media?.publicUrl || item.media?.url ? (
-                    // Regular image
-                    <img src={item.media.publicUrl || item.media.url} alt={item.media.originalName || 'Medya'} className="h-32 w-full object-cover" />
-                  ) : (
-                    <div className="flex h-32 w-full items-center justify-center text-gray-300">
-                      <PhotoIcon className="h-10 w-10" />
-                    </div>
-                  )}
+                  <GalleryMediaPreview
+                    media={item.media}
+                    alt={item.media?.altText || item.media?.originalName || 'Medya'}
+                  />
                 </div>
                 <div className="flex-1 space-y-3">
                   <div>
@@ -213,10 +230,15 @@ export default function GalleryManager() {
 
   const deleteMutation = useMutation({
     mutationFn: galleriesAPI.remove,
+    onMutate: () => setErrorMessage(''),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['galleries'] })
       resetForm()
     },
+    onError: (error) => {
+      const message = error?.response?.data?.message || error.message || 'Galeri silinemedi.'
+      setErrorMessage(message)
+    }
   })
 
   const handleFormChange = (event) => {
@@ -288,7 +310,9 @@ export default function GalleryManager() {
 
   const handleDelete = () => {
     if (!selectedGalleryId) return
-    const confirmDelete = window.confirm('Bu galeriyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')
+    const confirmDelete = window.confirm(
+      'Bu taslak galeri silinecek ve içeriklerle ilişkisi kaldırılacak. Medya kütüphanesindeki görseller ve videolar silinmeyecek. Devam edilsin mi?'
+    )
     if (!confirmDelete) return
     deleteMutation.mutate(selectedGalleryId)
   }
@@ -337,30 +361,18 @@ export default function GalleryManager() {
               <div className="p-4 text-sm text-gray-500">Henüz galeri oluşturulmamış.</div>
             ) : (
               galleries.map((gallery) => {
-                const active = selectedGalleryId === gallery.id
-                const thumbnail = gallery.items?.[0]?.media?.publicUrl
+                const galleryId = getGalleryId(gallery)
+                const active = selectedGalleryId === galleryId
                 return (
                   <button
-                    key={gallery.id}
+                    key={galleryId}
                     type="button"
-                    onClick={() => setSelectedGalleryId(gallery.id)}
+                    onClick={() => galleryId && setSelectedGalleryId(galleryId)}
+                    disabled={!galleryId}
                     className={clsx('flex w-full items-center gap-3 p-3 text-left hover:bg-gray-50 focus:outline-none', active && 'bg-blue-50 border-l-4 border-blue-500')}
                   >
                     <div className="h-14 w-14 flex-none overflow-hidden rounded-md bg-gray-100 relative">
-                      {thumbnail ? (
-                        <>
-                          <img src={thumbnail} alt={gallery.title} className="h-full w-full object-cover" />
-                          {gallery.items?.[0]?.media?.sourceType === 'external' && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <PlayIcon className="h-4 w-4 text-white drop-shadow" />
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-gray-300">
-                          <PhotoIcon className="h-6 w-6" />
-                        </div>
-                      )}
+                      <GalleryMediaPreview media={gallery.items?.[0]?.media} alt={gallery.title} compact />
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-gray-900">{gallery.title}</p>
@@ -403,13 +415,14 @@ export default function GalleryManager() {
               <h2 className="text-lg font-semibold text-gray-900">{selectedGalleryId ? 'Galeriyi Düzenle' : 'Yeni Galeri'}</h2>
               <p className="text-sm text-gray-600">Başlık, açıklama ve medya öğelerini düzenleyebilirsin.</p>
             </div>
-            {selectedGalleryId && (
+            {selectedGalleryId && selectedGalleryQuery.data?.status === 'draft' && (
               <button
                 type="button"
                 onClick={handleDelete}
-                className="inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                disabled={deleteMutation.isLoading}
+                className="inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
               >
-                Sil
+                {deleteMutation.isLoading ? 'Siliniyor...' : 'Taslak Galeriyi Sil'}
               </button>
             )}
           </div>
@@ -459,6 +472,12 @@ export default function GalleryManager() {
               onChange={handleItemsChange}
               openMediaPicker={() => setMediaPickerOpen(true)}
             />
+
+            {selectedGalleryId && selectedGalleryQuery.data?.status === 'published' && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Yayındaki galeriler doğrudan silinmez. Silmek için durumu “Taslak” yapıp kaydedin; galeri silindiğinde medya kütüphanesindeki dosyalar korunur.
+              </p>
+            )}
 
             {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
 
