@@ -126,6 +126,7 @@ function normalizeCustomFieldValue(definition, value) {
     case 'date':
       return normalizeDateValue(value)
     case 'multi-select':
+    case 'multi-reference':
       return Array.isArray(value)
         ? value.map(normalizeTextValue).filter(Boolean)
         : String(value).split(',').map(normalizeTextValue).filter(Boolean)
@@ -247,7 +248,8 @@ function buildIndexValue(definition, value) {
       payload.valueTokens = [date.toISOString().slice(0, 10)]
       return payload
     }
-    case 'multi-select': {
+    case 'multi-select':
+    case 'multi-reference': {
       const values = Array.isArray(value) ? value.map(normalizeTextValue).filter(Boolean) : []
       if (!values.length) return null
       payload.valueString = values.join(',')
@@ -918,6 +920,7 @@ function buildCustomIndexCriteria(definition, rawValue) {
       return dates.length ? { valueDate: { $in: dates } } : null
     }
     case 'multi-select':
+    case 'multi-reference':
       return { valueTokens: { $in: values } }
     case 'select':
     case 'url':
@@ -1125,14 +1128,16 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
     }
   }
 
-  // Handle text search in title and summary
+  // Handle text search in title, summary and exact slug match
   if (search) {
     const normalised = search.trim().split(/\s+/).join(' ')
     const customSearchContentIds = await resolveCustomSearchContentIds({ tenantId, search: normalised })
     const searchPattern = new RegExp(escapeRegExp(normalised), 'i')
+    const exactSlug = normalised.toLowerCase()
     query.$or = [
       { title: searchPattern },
       { summary: searchPattern },
+      { slug: exactSlug },
       ...(customSearchContentIds.length ? [{ _id: { $in: customSearchContentIds } }] : [])
     ]
   }

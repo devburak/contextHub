@@ -10,7 +10,8 @@ const CUSTOM_FIELD_TYPES = [
   'multi-select',
   'url',
   'json',
-  'reference'
+  'reference',
+  'multi-reference'
 ]
 
 const customFieldDefinitionSchema = new Schema({
