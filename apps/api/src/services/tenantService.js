@@ -95,9 +95,11 @@ class TenantService {
     });
     await membership.save();
 
-    edgeGatewaySyncService.syncTenantConfig({ tenantId: tenant._id, tenant }).catch((error) => {
+    try {
+      await edgeGatewaySyncService.syncTenantBundle({ tenantId: tenant._id, tenant });
+    } catch (error) {
       console.error('[TenantService] Edge gateway sync failed after tenant create:', error.message);
-    });
+    }
 
     return { tenant, membership };
   }

@@ -86,9 +86,9 @@ function buildTenantQuery(tenantFilter) {
 
 async function syncTenantAndTokens(tenant, options) {
   const tenantId = tenant._id.toString();
-  const tokens = await ApiToken.find({ tenantId: tenant._id }).lean();
 
   if (options.dryRun) {
+    const tokens = await ApiToken.find({ tenantId: tenant._id }).lean();
     return {
       tenantId,
       slug: tenant.slug,
@@ -98,18 +98,13 @@ async function syncTenantAndTokens(tenant, options) {
     };
   }
 
-  const tenantResult = await edgeGatewaySyncService.syncTenantConfig({ tenantId, tenant });
-  const tokenResults = [];
-
-  for (const token of tokens) {
-    tokenResults.push(await edgeGatewaySyncService.syncApiTokenConfig({ apiToken: token, tenant }));
-  }
+  const bundleResult = await edgeGatewaySyncService.syncTenantBundle({ tenantId, tenant });
 
   return {
     tenantId,
     slug: tenant.slug,
-    tenantKey: tenantResult.key,
-    tokenKeys: tokenResults.map((result) => result.key).filter(Boolean),
+    tenantKey: bundleResult.key,
+    tokenKeys: bundleResult.tokenKeys || [],
     dryRun: false,
   };
 }

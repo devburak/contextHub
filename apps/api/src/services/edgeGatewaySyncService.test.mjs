@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import edgeGatewaySyncService from './edgeGatewaySyncService.js';
-import { Domain, TenantSettings } from '@contexthub/common';
+import { ApiToken, Domain, TenantSettings } from '@contexthub/common';
 
 const originalFetch = globalThis.fetch;
 const EDGE_ENV_KEYS = [
@@ -88,6 +88,20 @@ describe('edgeGatewaySyncService', () => {
 
     expect(result).toEqual({ skipped: true, reason: 'edge_gateway_disabled' });
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('fails visibly when KV sync is enabled with incomplete Cloudflare configuration', async () => {
+    process.env.CF_EDGE_GATEWAY_ENABLED = 'true';
+    process.env.CF_ACCOUNT_ID = 'account-id';
+    delete process.env.CF_KV_NAMESPACE_ID;
+    process.env.CF_API_TOKEN = 'cf-token';
+
+    await expect(edgeGatewaySyncService.syncTenantBundle({
+      tenant: {
+        _id: { toString: () => 'tenant-object-id' },
+        status: 'active',
+      },
+    })).rejects.toThrow('missing env: CF_KV_NAMESPACE_ID');
   });
 
   it('defaults localhost access on when tenant settings do not override it', () => {
@@ -207,6 +221,110 @@ describe('edgeGatewaySyncService', () => {
       allowedOrigins: ['https://kesk.org.tr'],
       allowLocalhost: true,
     });
+  });
+
+  it('writes the tenant and all API token configs together with the same policy', async () => {
+    process.env.CF_EDGE_GATEWAY_ENABLED = 'true';
+    process.env.CF_ACCOUNT_ID = 'account-id';
+    process.env.CF_KV_NAMESPACE_ID = 'namespace-id';
+    process.env.CF_API_TOKEN = 'cf-token';
+
+    vi.spyOn(TenantSettings, 'findOne').mockReturnValue({
+      lean: () => Promise.resolve({
+        edgeGateway: {
+          publicReadEnabled: false,
+          allowLocalhost: false,
+          allowedOrigins: ['https://tenant.example.com'],
+        },
+      }),
+    });
+    mockNoVerifiedDomains();
+    vi.spyOn(ApiToken, 'find').mockReturnValue({
+      lean: () => Promise.resolve([
+        {
+          _id: { toString: () => 'token-1' },
+          hash: 'hash-1',
+          role: 'viewer',
+          scopes: ['read'],
+        },
+        {
+          _id: { toString: () => 'token-2' },
+          hash: 'hash-2',
+          role: 'editor',
+          scopes: ['read', 'write'],
+        },
+      ]),
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ success: true, result: { unsuccessful_keys: [] } }),
+    });
+
+    const result = await edgeGatewaySyncService.syncTenantBundle({
+      tenant: {
+        _id: { toString: () => 'tenant-object-id' },
+        status: 'active',
+      },
+    });
+
+    expect(result).toEqual({
+      skipped: false,
+      tenantId: 'tenant-object-id',
+      key: 'tenant:tenant-object-id',
+      tokenKeys: ['apikey:hash-1', 'apikey:hash-2'],
+      written: 3,
+    });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    const [url, options] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.cloudflare.com/client/v4/accounts/account-id/storage/kv/namespaces/namespace-id/bulk');
+    expect(options.method).toBe('PUT');
+    const entries = JSON.parse(options.body);
+    expect(entries.map((entry) => entry.key)).toEqual([
+      'tenant:tenant-object-id',
+      'apikey:hash-1',
+      'apikey:hash-2',
+    ]);
+    entries.forEach((entry) => {
+      const payload = JSON.parse(entry.value);
+      expect(payload).toMatchObject({
+        tenantId: 'tenant-object-id',
+        publicReadEnabled: false,
+        allowedOrigins: ['https://tenant.example.com'],
+        allowLocalhost: false,
+      });
+    });
+  });
+
+  it('fails a tenant bundle sync when Cloudflare reports unsuccessful keys', async () => {
+    process.env.CF_EDGE_GATEWAY_ENABLED = 'true';
+    process.env.CF_ACCOUNT_ID = 'account-id';
+    process.env.CF_KV_NAMESPACE_ID = 'namespace-id';
+    process.env.CF_API_TOKEN = 'cf-token';
+
+    vi.spyOn(TenantSettings, 'findOne').mockReturnValue({
+      lean: () => Promise.resolve(null),
+    });
+    mockNoVerifiedDomains();
+    vi.spyOn(ApiToken, 'find').mockReturnValue({
+      lean: () => Promise.resolve([]),
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        success: true,
+        result: { unsuccessful_keys: [{ key: 'tenant:tenant-object-id' }] },
+      }),
+    });
+
+    await expect(edgeGatewaySyncService.syncTenantBundle({
+      tenant: {
+        _id: { toString: () => 'tenant-object-id' },
+        status: 'active',
+      },
+    })).rejects.toThrow('Cloudflare KV bulk put failed for 1 key(s)');
   });
 
   it('deletes API token config from Cloudflare KV by hash key', async () => {

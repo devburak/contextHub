@@ -1,6 +1,7 @@
 const { TenantSettings } = require('@contexthub/common');
 const { encryptSecret, decryptSecret, isEncrypted } = require('../utils/secretUtils');
 const edgeGatewaySyncService = require('./edgeGatewaySyncService');
+const edgeCachePurgeService = require('./edgeCachePurgeService');
 const { invalidateTenantOriginPolicyCache } = require('./tenantOriginPolicy');
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -222,8 +223,13 @@ class TenantSettingsService {
 
     const saved = await target.save();
     invalidateTenantOriginPolicyCache();
-    edgeGatewaySyncService.syncTenantConfig({ tenantId }).catch((error) => {
+    try {
+      await edgeGatewaySyncService.syncTenantBundle({ tenantId });
+    } catch (error) {
       console.error('[TenantSettings] Edge gateway sync failed:', error.message);
+    }
+    edgeCachePurgeService.purgeTenantCache(tenantId).catch((error) => {
+      console.error('[TenantSettings] Edge cache purge failed:', error.message);
     });
     return this.#serialize(tenantId, saved.toObject({ depopulate: true }));
   }

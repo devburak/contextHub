@@ -1,4 +1,4 @@
-const { Domain, Tenant, TenantSettings } = require('@contexthub/common');
+const { ApiToken, Domain, Tenant, TenantSettings } = require('@contexthub/common');
 
 const DEFAULT_SCHEMA_VERSION = 1;
 
@@ -15,6 +15,20 @@ function isEnabled() {
     && Boolean(process.env.CF_ACCOUNT_ID)
     && Boolean(process.env.CF_KV_NAMESPACE_ID)
     && Boolean(process.env.CF_API_TOKEN);
+}
+
+function getSyncSkipReason() {
+  if (!envFlag('CF_EDGE_GATEWAY_ENABLED', false)) {
+    return 'edge_gateway_disabled';
+  }
+
+  const missing = ['CF_ACCOUNT_ID', 'CF_KV_NAMESPACE_ID', 'CF_API_TOKEN']
+    .filter((name) => !process.env[name]);
+  if (missing.length > 0) {
+    throw new Error(`Edge gateway KV sync is enabled but missing env: ${missing.join(', ')}`);
+  }
+
+  return null;
 }
 
 function normalizeAllowedOrigins(value) {
@@ -91,6 +105,42 @@ async function putKvJson(key, payload) {
   return response.json().catch(() => ({ success: true }));
 }
 
+async function putKvJsonBulk(entries = []) {
+  if (entries.length === 0) {
+    return { success: true, written: 0 };
+  }
+
+  const accountId = process.env.CF_ACCOUNT_ID;
+  const namespaceId = process.env.CF_KV_NAMESPACE_ID;
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${namespaceId}/bulk`;
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${process.env.CF_API_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(entries.map(({ key, payload }) => ({
+      key,
+      value: JSON.stringify(payload),
+    }))),
+  });
+
+  const result = await response.json().catch(() => null);
+  if (!response.ok || result?.success === false) {
+    throw new Error(`Cloudflare KV bulk put failed (${response.status})`);
+  }
+
+  const unsuccessfulKeys = result?.result?.unsuccessful_keys;
+  if (Array.isArray(unsuccessfulKeys) && unsuccessfulKeys.length > 0) {
+    throw new Error(`Cloudflare KV bulk put failed for ${unsuccessfulKeys.length} key(s)`);
+  }
+
+  return {
+    ...(result || { success: true }),
+    written: entries.length,
+  };
+}
+
 async function deleteKvKey(key) {
   const accountId = process.env.CF_ACCOUNT_ID;
   const namespaceId = process.env.CF_KV_NAMESPACE_ID;
@@ -112,8 +162,9 @@ async function deleteKvKey(key) {
 }
 
 async function syncTenantConfig({ tenantId, tenant: tenantInput } = {}) {
-  if (!isEnabled()) {
-    return { skipped: true, reason: 'edge_gateway_disabled' };
+  const skipReason = getSyncSkipReason();
+  if (skipReason) {
+    return { skipped: true, reason: skipReason };
   }
 
   const tenant = tenantInput || await Tenant.findById(tenantId).lean();
@@ -139,8 +190,9 @@ async function syncTenantConfig({ tenantId, tenant: tenantInput } = {}) {
 }
 
 async function syncApiTokenConfig({ apiToken, tenant: tenantInput } = {}) {
-  if (!isEnabled()) {
-    return { skipped: true, reason: 'edge_gateway_disabled' };
+  const skipReason = getSyncSkipReason();
+  if (skipReason) {
+    return { skipped: true, reason: skipReason };
   }
 
   if (!apiToken?.hash) {
@@ -171,9 +223,51 @@ async function syncApiTokenConfig({ apiToken, tenant: tenantInput } = {}) {
   };
 }
 
+async function syncTenantBundle({ tenantId, tenant: tenantInput } = {}) {
+  const skipReason = getSyncSkipReason();
+  if (skipReason) {
+    return { skipped: true, reason: skipReason };
+  }
+
+  const tenant = tenantInput || await Tenant.findById(tenantId).lean();
+  if (!tenant) {
+    return { skipped: true, reason: 'tenant_not_found' };
+  }
+
+  const [settings, domains, apiTokens] = await Promise.all([
+    TenantSettings.findOne({ tenantId: tenant._id }).lean(),
+    Domain.find({ tenantId: tenant._id, status: 'verified' }).select('host status').lean(),
+    ApiToken.find({ tenantId: tenant._id }).lean(),
+  ]);
+
+  const tenantIdString = tenant._id.toString();
+  const tenantEntry = {
+    key: getKvKey(`tenant:${tenantIdString}`),
+    payload: buildTenantPayload({ tenant, settings, domains }),
+  };
+  const tokenEntries = apiTokens
+    .filter((apiToken) => Boolean(apiToken?.hash))
+    .map((apiToken) => ({
+      key: getKvKey(`apikey:${apiToken.hash}`),
+      payload: buildApiTokenPayload({ apiToken, tenant, settings, domains }),
+    }));
+  const entries = [tenantEntry, ...tokenEntries];
+
+  await putKvJsonBulk(entries);
+
+  return {
+    skipped: false,
+    tenantId: tenantIdString,
+    key: tenantEntry.key,
+    tokenKeys: tokenEntries.map((entry) => entry.key),
+    written: entries.length,
+  };
+}
+
 async function deleteApiTokenConfig({ hash } = {}) {
-  if (!isEnabled()) {
-    return { skipped: true, reason: 'edge_gateway_disabled' };
+  const skipReason = getSyncSkipReason();
+  if (skipReason) {
+    return { skipped: true, reason: skipReason };
   }
 
   if (!hash) {
@@ -194,6 +288,7 @@ module.exports = {
   buildTenantPayload,
   buildApiTokenPayload,
   syncTenantConfig,
+  syncTenantBundle,
   syncApiTokenConfig,
   deleteApiTokenConfig,
 };

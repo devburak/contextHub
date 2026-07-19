@@ -1,5 +1,6 @@
 const { mongoose } = require('@contexthub/common');
 const { buildWebhookOutboxJobs } = require('./webhooks');
+const { purgeTenantCacheForDomainEvent } = require('../services/edgeCachePurgeService');
 
 const DEFAULT_BATCH_LIMIT = 50;
 // Events locked to 'processing' for longer than this are considered orphaned
@@ -158,6 +159,19 @@ async function processDomainEventsBatch(options = {}) {
     }
 
     try {
+      try {
+        await purgeTenantCacheForDomainEvent(event);
+      } catch (error) {
+        // Cache entries also have a short TTL, so purge failures must not block
+        // tenant webhooks or leave the domain event stuck in processing.
+        console.error('[domainEventsBatch] Edge cache purge failed', {
+          tenantId: event.tenantId,
+          eventId: event.id,
+          eventType: event.type,
+          errorName: error?.name || 'Error'
+        });
+      }
+
       const tenantMatchValues = await buildTenantMatchValues(event.tenantId, {
         findTenantSlug: (id) => lookupTenantSlug(id, tenants)
       });
