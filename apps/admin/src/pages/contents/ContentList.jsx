@@ -127,7 +127,7 @@ export default function ContentList() {
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Başlık veya özet..."
+            placeholder="Başlık, özet veya tam slug..."
             className={clsx('mt-1 w-72', filterInputClass)}
           />
         </div>

@@ -88,6 +88,7 @@ import {
 } from './nodes/TableNode.jsx'
 import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
+import RefFieldAutocomplete from '../collections/components/RefFieldAutocomplete.jsx'
 import { mediaToImagePayload } from './utils/mediaHelpers.js'
 import { buildEmbedPayloadFromIframe, buildEmbedPayloadFromUrl } from './utils/embedHelpers.js'
 import { normalizeLexicalStateString } from './utils/lexicalStateNormalizer.js'
@@ -2578,6 +2579,23 @@ function CustomFieldsPanel({
       case 'url':
         return <input type="url" value={value ?? ''} onChange={(event) => onFieldChange(definition.key, event.target.value)} className={commonClass} />
       case 'reference':
+      case 'multi-reference':
+        if (!definition.referenceCollectionKey) {
+          return (
+            <div className="mt-1 rounded-md border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Bu alan için hedef koleksiyon tanımlanmamış. Varlık Ayarları&apos;ndan düzenleyebilirsin.
+            </div>
+          )
+        }
+        return (
+          <RefFieldAutocomplete
+            refTarget={definition.referenceCollectionKey}
+            value={value}
+            onChange={(nextValue) => onFieldChange(definition.key, nextValue)}
+            multiple={definition.type === 'multi-reference'}
+            placeholder={`${definition.referenceCollectionKey} koleksiyonundan seçim yapın`}
+          />
+        )
       case 'text':
       default:
         return <input type="text" value={value ?? ''} onChange={(event) => onFieldChange(definition.key, event.target.value)} className={commonClass} />

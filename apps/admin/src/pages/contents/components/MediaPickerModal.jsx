@@ -16,7 +16,7 @@ const MODE_LABELS = {
   image: 'Görsel',
   video: 'Video',
   file: 'Dosya',
-  any: 'Varlık',
+  any: 'Medya',
 }
 
 function useDebouncedValue(value, delay = 400) {
@@ -324,7 +324,7 @@ export default function MediaPickerModal({
                 <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                   <div>
                     <Dialog.Title className="text-lg font-semibold text-gray-900">
-                      {MODE_LABELS[mode] || 'Varlık'} seç
+                      {MODE_LABELS[mode] || 'Medya'} seç
                     </Dialog.Title>
                     <p className="mt-1 text-sm text-gray-500">
                       Medya kütüphanesinden seçim yapabilir veya yeni dosya yükleyebilirsin.
@@ -389,18 +389,28 @@ export default function MediaPickerModal({
                             type="search"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            placeholder={`${MODE_LABELS[mode] || 'Varlık'} ara`}
+                            placeholder={`${MODE_LABELS[mode] || 'Medya'} ara`}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                           />
                         </div>
                         {showUpload && (
-                          <label className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer">
-                            <CloudArrowUpIcon className="h-5 w-5" aria-hidden="true" />
-                            <span>Dosya yükle</span>
+                          <label
+                            className={clsx(
+                              'inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+                              isUploading ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+                            )}
+                          >
+                            {isUploading ? (
+                              <span className="h-5 w-5 flex-none animate-spin rounded-full border-2 border-white border-r-transparent" />
+                            ) : (
+                              <CloudArrowUpIcon className="h-5 w-5" aria-hidden="true" />
+                            )}
+                            <span>{isUploading ? 'Yükleniyor…' : 'Dosya yükle'}</span>
                             <input
                               type="file"
                               className="hidden"
                               multiple
+                              disabled={isUploading}
                               onChange={(event) => {
                                 handleFiles(event.target.files)
                                 event.target.value = ''
@@ -505,8 +515,9 @@ export default function MediaPickerModal({
                       </div>
 
                       {isUploading && (
-                        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">
-                          Dosya yükleniyor…
+                        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">
+                          <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-blue-700 border-r-transparent" />
+                          Dosya yükleniyor, lütfen bekleyin…
                         </div>
                       )}
                     </>
@@ -537,8 +548,11 @@ export default function MediaPickerModal({
                           type="button"
                           onClick={handleVideoUrlSubmit}
                           disabled={!videoUrl || isUploading}
-                          className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center justify-center gap-2 rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
+                          {isUploading && (
+                            <span className="h-4 w-4 flex-none animate-spin rounded-full border-2 border-white border-r-transparent" />
+                          )}
                           {isUploading ? 'Ekleniyor...' : 'Ekle'}
                         </button>
                       </div>

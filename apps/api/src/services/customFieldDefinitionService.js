@@ -12,7 +12,8 @@ const FIELD_TYPES = new Set([
   'multi-select',
   'url',
   'json',
-  'reference'
+  'reference',
+  'multi-reference'
 ])
 
 function normalizeFieldKey(value = '') {
@@ -83,7 +84,8 @@ function buildIndexValue(definition, value) {
       payload.valueTokens = [date.toISOString().slice(0, 10)]
       return payload
     }
-    case 'multi-select': {
+    case 'multi-select':
+    case 'multi-reference': {
       const values = Array.isArray(value) ? value.map(normalizeTextValue).filter(Boolean) : []
       if (!values.length) return null
       payload.valueString = values.join(',')

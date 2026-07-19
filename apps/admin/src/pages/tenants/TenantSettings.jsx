@@ -8,6 +8,7 @@ import {
   updateCustomFieldDefinition,
   deleteCustomFieldDefinition
 } from '../../lib/api/customFieldDefinitions'
+import { collectionsApi } from '../../lib/api/collections.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
 import ApiTokenManager from '../../components/ApiTokenManager.jsx'
@@ -67,8 +68,11 @@ const CUSTOM_FIELD_TYPES = [
   { value: 'multi-select', label: 'Multi-select' },
   { value: 'url', label: 'URL' },
   { value: 'json', label: 'JSON' },
-  { value: 'reference', label: 'Reference' },
+  { value: 'reference', label: 'Reference (Tekli)' },
+  { value: 'multi-reference', label: 'Reference (Çoklu)' },
 ]
+
+const REFERENCE_FIELD_TYPES = new Set(['reference', 'multi-reference'])
 
 const toStringValue = (value) => {
   if (value === undefined || value === null) {
@@ -260,7 +264,8 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
     public: false,
     filterable: false,
     searchable: false,
-    optionsText: ''
+    optionsText: '',
+    referenceCollectionKey: ''
   })
   const [feedback, setFeedback] = useState({ type: '', message: '' })
   const optionTypes = new Set(['select', 'multi-select'])
@@ -271,6 +276,13 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
     enabled: Boolean(tenantId)
   })
 
+  const collectionTypesQuery = useQuery({
+    queryKey: ['collectionTypes', { tenant: tenantId }],
+    queryFn: () => collectionsApi.listCollectionTypes(),
+    enabled: Boolean(tenantId)
+  })
+  const collectionTypes = collectionTypesQuery.data || []
+
   const resetDraft = () => {
     setDraft({
       key: '',
@@ -280,7 +292,8 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
       public: false,
       filterable: false,
       searchable: false,
-      optionsText: ''
+      optionsText: '',
+      referenceCollectionKey: ''
     })
   }
 
@@ -349,7 +362,8 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
       public: draft.public,
       filterable: draft.filterable,
       searchable: draft.searchable,
-      options: parseOptions()
+      options: parseOptions(),
+      referenceCollectionKey: REFERENCE_FIELD_TYPES.has(draft.type) ? draft.referenceCollectionKey : ''
     })
   }
 
@@ -398,6 +412,9 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
                     <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-gray-500">
                       <span className="rounded bg-white px-1.5 py-0.5">{definition.key}</span>
                       <span className="rounded bg-white px-1.5 py-0.5">{definition.type}</span>
+                      {definition.referenceCollectionKey && (
+                        <span className="rounded bg-purple-50 px-1.5 py-0.5 text-purple-700">→ {definition.referenceCollectionKey}</span>
+                      )}
                       {definition.public && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">public</span>}
                       {definition.filterable && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">filterable</span>}
                       {definition.searchable && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">searchable</span>}
@@ -442,6 +459,20 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
             {optionTypes.has(draft.type) && (
               <textarea value={draft.optionsText} onChange={(event) => setDraft((prev) => ({ ...prev, optionsText: event.target.value }))} rows={3} className={`${FIELD_INPUT_CLASS} sm:col-span-2`} placeholder={'Seçenekler\nEtiket|value'} />
             )}
+            {REFERENCE_FIELD_TYPES.has(draft.type) && (
+              <select
+                value={draft.referenceCollectionKey}
+                onChange={(event) => setDraft((prev) => ({ ...prev, referenceCollectionKey: event.target.value }))}
+                className={`${FIELD_INPUT_CLASS} sm:col-span-2`}
+              >
+                <option value="">Hedef koleksiyon seçin</option>
+                {collectionTypes.map((collection) => (
+                  <option key={collection.key} value={collection.key}>
+                    {collection.name?.tr || collection.name?.en || collection.key}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs text-gray-700 sm:grid-cols-4">
             {[['required', 'Zorunlu'], ['public', 'Public API'], ['filterable', 'Filtrelenebilir'], ['searchable', 'Aranabilir']].map(([key, label]) => (
@@ -455,7 +486,7 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
             <button
               type="button"
               onClick={handleCreate}
-              disabled={isMutating || !draft.key.trim()}
+              disabled={isMutating || !draft.key.trim() || (REFERENCE_FIELD_TYPES.has(draft.type) && !draft.referenceCollectionKey)}
               className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
             >
               {createMutation.isLoading || createMutation.isPending ? 'Ekleniyor...' : 'Alan Ekle'}

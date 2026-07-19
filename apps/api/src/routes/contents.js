@@ -39,7 +39,7 @@ async function contentRoutes(fastify) {
         type: 'object',
         properties: {
           status: { type: 'string', description: 'Filter by content status (draft, published, scheduled, archived)' },
-          search: { type: 'string', description: 'Search in title and summary fields' },
+          search: { type: 'string', description: 'Search in title and summary fields (partial match), plus exact match on slug' },
           category: { type: 'string', description: 'Filter by category ID (single)' },
           categories: { type: 'string', description: 'Filter by category IDs (comma-separated: id1,id2,id3)' },
           categoryName: { type: 'string', description: 'Search categories by name' },
