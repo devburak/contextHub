@@ -131,7 +131,7 @@ pnpm-lock.yaml.bak
 apps/api/scripts/migrate-image-urls.cjs
 apps/api/scripts/import-mulkiye-bultenler.js
 
-# Local/private Cloudflare Worker workspace
+# Standalone Cloudflare Worker lives in the ctxhub-edge-gateway repository
 apps/edge-gateway/
 
 /docs
