@@ -22,6 +22,7 @@ const DOMAIN_EVENT_TYPES = Object.freeze([
   'media.updated',
   'collection.created',
   'collection.updated',
+  'collection.deleted',
   'collection.entry.created',
   'collection.entry.updated',
   'collection.entry.deleted'
@@ -32,7 +33,7 @@ const DOMAIN_EVENT_TYPES = Object.freeze([
  * @typedef {'content.created' | 'content.updated' | 'content.published' | 'content.unpublished' | 'content.deleted' |
  * 'form.created' | 'form.updated' | 'form.submitted' | 'placement.created' | 'placement.updated' | 'placement.deleted' |
  * 'menu.created' | 'menu.updated' | 'menu.deleted' | 'tenantSettings.updated' | 'media.updated' |
- * 'collection.created' | 'collection.updated' |
+ * 'collection.created' | 'collection.updated' | 'collection.deleted' |
  * 'collection.entry.created' | 'collection.entry.updated' | 'collection.entry.deleted'} DomainEventType
  */
 

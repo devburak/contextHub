@@ -69,6 +69,7 @@ describe('edgeCachePurgeService', () => {
   it('invalidates content changes but ignores form submissions', () => {
     expect(edgeCachePurgeService.shouldPurgeForEvent('content.updated')).toBe(true);
     expect(edgeCachePurgeService.shouldPurgeForEvent('menu.deleted')).toBe(true);
+    expect(edgeCachePurgeService.shouldPurgeForEvent('collection.deleted')).toBe(true);
     expect(edgeCachePurgeService.shouldPurgeForEvent('form.submitted')).toBe(false);
   });
 });

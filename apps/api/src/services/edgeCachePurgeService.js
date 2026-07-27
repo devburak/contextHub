@@ -16,6 +16,7 @@ const CACHE_INVALIDATING_EVENT_TYPES = new Set([
   'media.updated',
   'collection.created',
   'collection.updated',
+  'collection.deleted',
   'collection.entry.created',
   'collection.entry.updated',
   'collection.entry.deleted',
