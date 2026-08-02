@@ -1943,7 +1943,7 @@ export default function ContentEditor() {
               <TagSelector selectedTags={selectedTagRecords} onAdd={handleTagAdd} onRemove={handleTagRemove} />
             </section>
 
-	            <section className={`${cardClass} space-y-3 p-5`}>
+            <section className={`${cardClass} space-y-3 p-5`}>
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold text-gray-900">Sürümler</h3>
                 {!isNew && (

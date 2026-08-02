@@ -2,7 +2,7 @@ const localRedisClient = require('../lib/localRedis');
 const apiUsageService = require('./apiUsageService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
 const Tenant = require('@contexthub/common/src/models/Tenant');
-const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan'); // Pre-load for populate
+require('@contexthub/common/src/models/SubscriptionPlan'); // Pre-load for populate
 const Membership = require('@contexthub/common/src/models/Membership');
 const Media = require('@contexthub/common/src/models/Media');
 

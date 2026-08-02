@@ -11,7 +11,7 @@ const { rbac } = require('@contexthub/common');
 
 const { PERMISSIONS, ROLE_KEYS } = rbac;
 
-async function userRoutes(fastify, options) {
+async function userRoutes(fastify) {
   // NOT: Global tenantContext hook'u kaldırıldı
   // Tenant gerektiren endpoint'ler kendi preHandler'larında tenantContext kullanacak
 

@@ -903,7 +903,7 @@ function resolveEntryValue(entryDoc, segments = []) {
         return entryDoc.indexed?.date || entryDoc.data?.date;
       }
       break;
-    default:
+    default: {
       if (rest.length === 0) {
         if (entryDoc.data && entryDoc.data[current] !== undefined) {
           return entryDoc.data[current];
@@ -916,6 +916,8 @@ function resolveEntryValue(entryDoc, segments = []) {
       if (nextSource && typeof nextSource === 'object') {
         return rest.reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), nextSource);
       }
+      break;
+    }
   }
 
   return undefined;

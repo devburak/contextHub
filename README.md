@@ -90,6 +90,41 @@ The deploy script will:
 
 For more details, see [DEPLOY.md](./DEPLOY.md) or [DEPLOY-QUICK.md](./DEPLOY-QUICK.md).
 
+## Versioning and releases
+
+The deployable core is released as a **single version**: the root `package.json`, `apps/*` and `packages/common` always carry the same number, and an annotated git tag points at it.  `@contexthub/promo-sdk` is excluded — it is published separately and keeps its own version.
+
+Versions follow `MAJOR.MINOR.PATCH`.  While the core is below `1.0.0`, a minor bump may contain breaking changes; from `1.0.0` onward, breaking changes require a major bump.
+
+```bash
+# keep every core manifest on the same number
+pnpm version:set 0.1.1
+
+# verify they have not drifted (also runs in CI)
+pnpm version:check
+```
+
+Cutting a release:
+
+```bash
+git checkout main && git merge --no-ff develop
+pnpm version:set 0.1.1
+git commit -am "chore(release): v0.1.1"
+git tag -a v0.1.1 -m "v0.1.1"
+git push origin main --follow-tags
+```
+
+Tags are **immutable**: never move or re-point a tag that has been pushed.  Deployments and downstream builds pin to a tag *and* its verified commit SHA, never to a branch.
+
+## Extensions
+
+The domain event contract and supported event types are documented in the
+[Webhook & Domain Event Primer](./WEBHOOK_EVENTS.md).
+
+> **On extensions:** the core stays open source, and no capability that is already in this
+> repository will be moved behind a paid tier.  Commercial add‑ons are built as separate
+> plugins against the documented extension API, never as patches to the core.
+
 ### Contributing
 
 The project uses conventional commits and enforces code style via ESLint and Prettier.  Tests should be written using `vitest`.  Pull requests must include unit tests and updates to documentation when relevant.
@@ -97,4 +132,3 @@ The project uses conventional commits and enforces code style via ESLint and Pre
 ### License
 
 This project is released under the MIT license.
-
