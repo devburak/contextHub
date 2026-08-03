@@ -44,6 +44,9 @@ const WebhookOutbox = require('./WebhookOutbox');
 const RevokedToken = require('./RevokedToken');
 const ActivityLog = require('./ActivityLog');
 const DomainEvent = require('./DomainEvent');
+const DomainEventCounter = require('./DomainEventCounter');
+const DomainEventCursor = require('./DomainEventCursor');
+const DomainEventDeadLetter = require('./DomainEventDeadLetter');
 
 module.exports = {
   Tenant,
@@ -85,5 +88,8 @@ module.exports = {
   RevokedToken,
   ActivityLog,
   DomainEvent,
+  DomainEventCounter,
+  DomainEventCursor,
+  DomainEventDeadLetter,
   mongoose
 };

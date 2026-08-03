@@ -29,6 +29,7 @@
     "create:index": "node scripts/create-indexes.mjs",
     "db:seed": "turbo dev --filter=@contexthub/api -- --seed",
     "db:migrate": "turbo dev --filter=@contexthub/api -- --migrate",
+    "db:backfill-domain-event-sequences": "node apps/api/scripts/backfill-domain-event-sequences.js",
     "dispatch:webhooks": "node apps/api/scripts/dispatch-webhooks.js",
     "cron:webhooks": "node apps/api/scripts/webhook-cron.js"
   },
