@@ -14,12 +14,20 @@ describe('domain event delivery models', () => {
       tenantId: 1,
       sequence: 1
     });
+    const tenantTypeSequence = findIndex(models.DomainEvent, {
+      tenantId: 1,
+      type: 1,
+      sequence: 1
+    });
 
     expect(globalSequence?.[1]).toMatchObject({
       unique: true,
       partialFilterExpression: { sequence: { $type: 'number' } }
     });
     expect(tenantSequence?.[1]).toMatchObject({
+      partialFilterExpression: { sequence: { $type: 'number' } }
+    });
+    expect(tenantTypeSequence?.[1]).toMatchObject({
       partialFilterExpression: { sequence: { $type: 'number' } }
     });
     expect(models.DomainEvent.schema.path('sequence').isRequired).toBeFalsy();
@@ -32,6 +40,9 @@ describe('domain event delivery models', () => {
     expect(
       findIndex(models.DomainEventCursor, { consumer: 1, partition: 1 })?.[1]
     ).toMatchObject({ unique: true });
+    expect(models.DomainEventCursor.schema.path('backfillStatus').enumValues).toEqual(
+      ['pending', 'completed', 'failed']
+    );
   });
 
   it('deduplicates dead letters by consumer partition and event sequence', () => {
