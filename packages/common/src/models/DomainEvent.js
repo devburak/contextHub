@@ -7,6 +7,8 @@ const domainEventSchema = new Schema(
   {
     _id: { type: String, required: true },
     id: { type: String, required: true },
+    // Optional during the controlled F2 backfill; all newly emitted events have it.
+    sequence: { type: Number, min: 1 },
     tenantId: { type: String, required: true },
     type: { type: String, required: true },
     occurredAt: { type: String, required: true },
@@ -30,6 +32,17 @@ const domainEventSchema = new Schema(
 );
 
 domainEventSchema.index({ status: 1, createdAt: 1 });
+domainEventSchema.index(
+  { sequence: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { sequence: { $type: 'number' } }
+  }
+);
+domainEventSchema.index(
+  { tenantId: 1, sequence: 1 },
+  { partialFilterExpression: { sequence: { $type: 'number' } } }
+);
 domainEventSchema.index(
   { createdAt: 1 },
   { expireAfterSeconds: DOMAIN_EVENT_RETENTION_SECONDS }
