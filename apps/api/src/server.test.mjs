@@ -1,15 +1,27 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createRequire } from 'module';
-import buildServer from './server.js';
 
 const require = createRequire(import.meta.url);
 const AuthService = require('./services/authService');
+const TEST_R2_ENV = {
+  R2_BUCKET: 'test-media-bucket',
+  R2_PUBLIC_DOMAIN: 'https://media.example.test',
+  R2_S3_ENDPOINT: 'https://r2.example.test',
+  R2_ACCESS_KEY: 'test-access-key',
+  R2_SECRET_KEY: 'test-secret-key',
+};
+const originalR2Env = new Map(
+  Object.keys(TEST_R2_ENV).map((key) => [key, process.env[key]])
+);
 
 describe('API server', () => {
   let app;
   let originalLogin;
 
   beforeAll(async () => {
+    Object.assign(process.env, TEST_R2_ENV);
+    const { default: buildServer } = await import('./server.js');
+
     originalLogin = AuthService.prototype.login;
     AuthService.prototype.login = async function mockLogin(email, password, tenantId) {
       if (email === 'test@example.com' && password === '123456') {
@@ -46,8 +58,13 @@ describe('API server', () => {
     app = await buildServer();
   });
   afterAll(async () => {
-    await app.close();
-    AuthService.prototype.login = originalLogin;
+    if (app) await app.close();
+    if (originalLogin) AuthService.prototype.login = originalLogin;
+
+    for (const [key, value] of originalR2Env) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   });
 
   it('returns ok from /health', async () => {

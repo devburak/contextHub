@@ -8,8 +8,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node ../../scripts/run-tool.mjs vitest",
-    "lint": "node ../../scripts/run-tool.mjs eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "test": "node ../../scripts/run-tool.mjs vitest run",
+    "test:watch": "node ../../scripts/run-tool.mjs vitest",
+    "lint": "node ../../scripts/run-tool.mjs eslint . --ext js,jsx --report-unused-disable-directives",
     "format": "node ../../scripts/run-tool.mjs prettier --write \"src/**/*.{js,jsx}\"",
     "clean": "rm -rf dist .turbo node_modules"
   },

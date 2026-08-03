@@ -295,7 +295,7 @@ function buildFormSubmissionSchema(fields) {
         break;
         
       case 'phone':
-        fieldSchema = z.string().regex(/^[\d\s\-\+\(\)]+$/);
+        fieldSchema = z.string().regex(/^[\d\s+()-]+$/);
         break;
         
       case 'number':

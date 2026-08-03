@@ -430,7 +430,7 @@ async function generateSlug(name, tenantId) {
   let uniqueSlug = slug;
   let counter = 1;
 
-  while (true) {
+  for (;;) {
     const existing = await PlacementDefinition.findOne({ tenantId, slug: uniqueSlug });
     if (!existing) break;
     uniqueSlug = `${slug}-${counter}`;

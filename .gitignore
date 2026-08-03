@@ -134,4 +134,5 @@ apps/api/scripts/import-mulkiye-bultenler.js
 # Standalone Cloudflare Worker lives in the ctxhub-edge-gateway repository
 apps/edge-gateway/
 
+# Architecture, release and internal decision documents remain local.
 /docs

@@ -721,7 +721,6 @@ async function deleteVersions({ tenantId, contentId, versionIds = [], user }) {
     deletedAt: null,
   })
 
-  const candidateIds = candidateVersions.map((item) => item._id.toString())
   const remainingActiveVersions = totalActiveVersions - candidateVersions.length
 
   if (remainingActiveVersions < 1) {

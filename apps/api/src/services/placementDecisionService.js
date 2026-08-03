@@ -463,7 +463,7 @@ function matchCookieRule(cookies, rule) {
 /**
  * Check if schedule is currently active
  */
-function isScheduleActive(schedule, timezone = 'UTC') {
+function isScheduleActive(schedule, _timezone = 'UTC') {
   const now = new Date();
 
   // Date range check
