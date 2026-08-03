@@ -44,6 +44,10 @@ domainEventSchema.index(
   { partialFilterExpression: { sequence: { $type: 'number' } } }
 );
 domainEventSchema.index(
+  { tenantId: 1, type: 1, sequence: 1 },
+  { partialFilterExpression: { sequence: { $type: 'number' } } }
+);
+domainEventSchema.index(
   { createdAt: 1 },
   { expireAfterSeconds: DOMAIN_EVENT_RETENTION_SECONDS }
 );

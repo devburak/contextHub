@@ -14,6 +14,12 @@ const domainEventCursorSchema = new Schema(
     },
     lastSequence: { type: Number, min: 0, default: 0 },
     highWatermark: { type: Number, min: 0, default: null },
+    backfillStatus: {
+      type: String,
+      enum: ['pending', 'completed', 'failed'],
+      default: null
+    },
+    backfillCompletedAt: { type: Date, default: null },
     leaseOwner: { type: String, default: null },
     leaseUntil: { type: Date, default: null },
     failureSequence: { type: Number, min: 1, default: null },
