@@ -42,6 +42,8 @@ const Role = require('./Role');
 const Webhook = require('./Webhook');
 const WebhookOutbox = require('./WebhookOutbox');
 const RevokedToken = require('./RevokedToken');
+const ActivityLog = require('./ActivityLog');
+const DomainEvent = require('./DomainEvent');
 
 module.exports = {
   Tenant,
@@ -81,5 +83,7 @@ module.exports = {
   Webhook,
   WebhookOutbox,
   RevokedToken,
+  ActivityLog,
+  DomainEvent,
   mongoose
 };

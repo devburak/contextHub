@@ -1,6 +1,8 @@
 const mongoose = require('mongoose')
 const { Schema } = mongoose
 
+const ACTIVITY_LOG_RETENTION_SECONDS = 180 * 24 * 60 * 60
+
 const activityLogSchema = new Schema({
   user: {
     type: Schema.Types.ObjectId,
@@ -72,8 +74,7 @@ const activityLogSchema = new Schema({
   },
   createdAt: {
     type: Date,
-    default: Date.now,
-    index: true
+    default: Date.now
   }
 }, {
   timestamps: { createdAt: true, updatedAt: false }
@@ -83,6 +84,10 @@ const activityLogSchema = new Schema({
 activityLogSchema.index({ tenant: 1, createdAt: -1 })
 activityLogSchema.index({ user: 1, createdAt: -1 })
 activityLogSchema.index({ action: 1, createdAt: -1 })
+activityLogSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: ACTIVITY_LOG_RETENTION_SECONDS }
+)
 
 const ActivityLog = mongoose.model('ActivityLog', activityLogSchema)
 
