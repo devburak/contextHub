@@ -52,6 +52,7 @@ A domain event is an immutable plain JavaScript object describing something that
 - `media.updated`
 - `collection.created`
 - `collection.updated`
+- `collection.deleted`
 - `collection.entry.created`
 - `collection.entry.updated`
 - `collection.entry.deleted`

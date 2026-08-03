@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const { Schema } = mongoose;
+const WEBHOOK_OUTBOX_RETENTION_SECONDS = 180 * 24 * 60 * 60;
 
 /**
  * @typedef {Object} WebhookOutboxJob
@@ -20,30 +21,33 @@ const { Schema } = mongoose;
  * @property {Date} createdAt
  * @property {Date|null} [updatedAt]
  */
-const webhookOutboxSchema = new Schema({
-  tenantId: { type: String, required: true, index: true },
-  webhookId: { type: Schema.Types.ObjectId, ref: 'Webhook', required: true },
-  eventId: { type: String, required: true },
-  type: { type: String, required: true },
-  payload: { type: Schema.Types.Mixed, required: true },
-  status: {
-    type: String,
-    enum: ['pending', 'processing', 'done', 'failed', 'dead'],
-    default: 'pending'
+const webhookOutboxSchema = new Schema(
+  {
+    tenantId: { type: String, required: true, index: true },
+    webhookId: { type: Schema.Types.ObjectId, ref: 'Webhook', required: true },
+    eventId: { type: String, required: true },
+    type: { type: String, required: true },
+    payload: { type: Schema.Types.Mixed, required: true },
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'done', 'failed', 'dead'],
+      default: 'pending'
+    },
+    retryCount: { type: Number, default: 0 },
+    lastError: { type: String, default: null },
+    errorType: {
+      type: String,
+      enum: ['transient', 'permanent', 'timeout', null],
+      default: null
+    },
+    lastHttpStatus: { type: Number, default: null },
+    lastDurationMs: { type: Number, default: null },
+    nextRetryAt: { type: Date, default: null },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: null }
   },
-  retryCount: { type: Number, default: 0 },
-  lastError: { type: String, default: null },
-  errorType: {
-    type: String,
-    enum: ['transient', 'permanent', 'timeout', null],
-    default: null
-  },
-  lastHttpStatus: { type: Number, default: null },
-  lastDurationMs: { type: Number, default: null },
-  nextRetryAt: { type: Date, default: null },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: null }
-});
+  { collection: 'WebhookOutbox' }
+);
 
 webhookOutboxSchema.pre('save', function setUpdatedAt(next) {
   if (!this.isNew) {
@@ -56,6 +60,10 @@ webhookOutboxSchema.index({ status: 1, createdAt: 1 });
 webhookOutboxSchema.index({ webhookId: 1, status: 1 });
 webhookOutboxSchema.index({ status: 1, nextRetryAt: 1 }); // Retry zamanına göre sorgulama için
 webhookOutboxSchema.index({ tenantId: 1, status: 1, nextRetryAt: 1 }); // Tenant bazlı retry sorgulama
+webhookOutboxSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: WEBHOOK_OUTBOX_RETENTION_SECONDS }
+);
 
 const WebhookOutbox = mongoose.model('WebhookOutbox', webhookOutboxSchema);
 

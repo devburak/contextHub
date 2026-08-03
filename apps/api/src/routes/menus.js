@@ -24,7 +24,7 @@ const { tenantContext, authenticate } = require('../middleware/auth');
  * - GET    /api/public/menus/slug/:slug - Get menu by slug
  */
 
-module.exports = async function(fastify, opts) {
+module.exports = async function(fastify) {
   
   // ==================== ADMIN ROUTES ====================
   
@@ -223,8 +223,9 @@ module.exports = async function(fastify, opts) {
   }, async (request, reply) => {
     try {
       const { id } = request.params;
+      const userId = request.user?.id;
 
-      const menu = await menuService.addMenuItem(request.tenantId, id, request.body);
+      const menu = await menuService.addMenuItem(request.tenantId, id, request.body, userId);
 
       reply.code(201).send({
         success: true,
@@ -249,8 +250,9 @@ module.exports = async function(fastify, opts) {
   }, async (request, reply) => {
     try {
       const { id, itemId } = request.params;
+      const userId = request.user?.id;
 
-      const menu = await menuService.updateMenuItem(request.tenantId, id, itemId, request.body);
+      const menu = await menuService.updateMenuItem(request.tenantId, id, itemId, request.body, userId);
 
       reply.send({
         success: true,
@@ -275,8 +277,9 @@ module.exports = async function(fastify, opts) {
   }, async (request, reply) => {
     try {
       const { id, itemId } = request.params;
+      const userId = request.user?.id;
 
-      const menu = await menuService.deleteMenuItem(request.tenantId, id, itemId);
+      const menu = await menuService.deleteMenuItem(request.tenantId, id, itemId, userId);
 
       reply.send({
         success: true,
@@ -297,12 +300,13 @@ module.exports = async function(fastify, opts) {
     try {
       const { id } = request.params;
       const { items } = request.body; // [{ id, order, parentId }]
+      const userId = request.user?.id;
 
       if (!items || !Array.isArray(items)) {
         return reply.code(400).send({ error: 'Items array required' });
       }
 
-      const menu = await menuService.reorderMenuItems(request.tenantId, id, items);
+      const menu = await menuService.reorderMenuItems(request.tenantId, id, items, userId);
 
       reply.send({
         success: true,
@@ -328,8 +332,9 @@ module.exports = async function(fastify, opts) {
     try {
       const { id, itemId } = request.params;
       const { parentId, order } = request.body;
+      const userId = request.user?.id;
 
-      const menu = await menuService.moveMenuItem(request.tenantId, id, itemId, parentId, order);
+      const menu = await menuService.moveMenuItem(request.tenantId, id, itemId, parentId, order, userId);
 
       reply.send({
         success: true,

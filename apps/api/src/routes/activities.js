@@ -1,7 +1,7 @@
 const { authenticate, tenantContext } = require('../middleware/auth');
 const ActivityLog = require('@contexthub/common/src/models/ActivityLog');
 
-async function activityRoutes(fastify, options) {
+async function activityRoutes(fastify) {
   // GET /activities - Get activity logs
   fastify.get('/activities', {
     preHandler: authenticate,

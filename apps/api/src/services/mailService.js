@@ -224,7 +224,7 @@ class MailService {
    */
   clearAllTransporters() {
     // Close all tenant transporters
-    for (const [tenantId, transporter] of this.tenantTransporters) {
+    for (const transporter of this.tenantTransporters.values()) {
       transporter.close();
     }
     this.tenantTransporters.clear();
@@ -239,7 +239,7 @@ class MailService {
   /**
    * Get email statistics (basic implementation)
    */
-  async getEmailStats(tenantId = null) {
+  async getEmailStats(_tenantId = null) {
     // TODO: Implement proper email statistics tracking
     // This is a placeholder for future implementation
     return {

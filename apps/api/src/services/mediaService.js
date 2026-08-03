@@ -109,7 +109,7 @@ function slugifyFileName(name) {
   return name
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9-_\.]+/g, '-')
+    .replace(/[^a-zA-Z0-9-_.]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase()
@@ -576,7 +576,7 @@ async function uploadVariantBuffer({ key, buffer, contentType }) {
 
 
 function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\$&')
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 const ACCENT_VARIANTS = {

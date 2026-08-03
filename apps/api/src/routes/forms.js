@@ -8,8 +8,7 @@ const formService = require('../services/formService');
 const {
   createFormSchema,
   updateFormSchema,
-  formListQuerySchema,
-  validateSubmissionSafe
+  formListQuerySchema
 } = require('../services/formValidation');
 
 /**

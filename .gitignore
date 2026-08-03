@@ -130,8 +130,11 @@ pnpm-lock.yaml.bak
 # Tek seferlik / local migration araçları (repo'ya gönderilmez)
 apps/api/scripts/migrate-image-urls.cjs
 apps/api/scripts/import-mulkiye-bultenler.js
+scripts/backup-mongo-collections.local.mjs
+mongo-json-backups/
 
 # Standalone Cloudflare Worker lives in the ctxhub-edge-gateway repository
 apps/edge-gateway/
 
+# Architecture, release and internal decision documents remain local.
 /docs

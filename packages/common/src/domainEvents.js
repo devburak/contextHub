@@ -22,6 +22,7 @@ const DOMAIN_EVENT_TYPES = Object.freeze([
   'media.updated',
   'collection.created',
   'collection.updated',
+  'collection.deleted',
   'collection.entry.created',
   'collection.entry.updated',
   'collection.entry.deleted'
@@ -32,7 +33,7 @@ const DOMAIN_EVENT_TYPES = Object.freeze([
  * @typedef {'content.created' | 'content.updated' | 'content.published' | 'content.unpublished' | 'content.deleted' |
  * 'form.created' | 'form.updated' | 'form.submitted' | 'placement.created' | 'placement.updated' | 'placement.deleted' |
  * 'menu.created' | 'menu.updated' | 'menu.deleted' | 'tenantSettings.updated' | 'media.updated' |
- * 'collection.created' | 'collection.updated' |
+ * 'collection.created' | 'collection.updated' | 'collection.deleted' |
  * 'collection.entry.created' | 'collection.entry.updated' | 'collection.entry.deleted'} DomainEventType
  */
 
@@ -49,6 +50,7 @@ const DOMAIN_EVENT_TYPES = Object.freeze([
  * Canonical domain event contract shared across services.
  * @typedef {Object} DomainEvent
  * @property {string} id - Unique identifier (UUID v4 preferred)
+ * @property {number} sequence - Global monotonically increasing delivery sequence
  * @property {string} tenantId - Tenant slug/id to enforce isolation
  * @property {DomainEventType} type - Event type name
  * @property {string} occurredAt - ISO string representing when the event finished

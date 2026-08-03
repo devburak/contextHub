@@ -2,6 +2,16 @@ const { Menu } = require('@contexthub/common/src/models');
 const { emitDomainEvent } = require('../lib/domainEvents');
 const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 
+const menuEventDeps = {
+  emitDomainEvent,
+  triggerWebhooksForTenant
+};
+
+function setMenuEventDeps(overrides = null) {
+  menuEventDeps.emitDomainEvent = overrides?.emitDomainEvent || emitDomainEvent;
+  menuEventDeps.triggerWebhooksForTenant = overrides?.triggerWebhooksForTenant || triggerWebhooksForTenant;
+}
+
 /**
  * Menu Service - WordPress benzeri menu yönetimi
  */
@@ -43,9 +53,9 @@ async function emitMenuEvent({ tenantId, type, menu, userId }) {
   }
 
   try {
-    const eventId = await emitDomainEvent(tenantId, type, payload, metadata);
+    const eventId = await menuEventDeps.emitDomainEvent(tenantId, type, payload, metadata);
     if (eventId) {
-      triggerWebhooksForTenant(tenantId);
+      menuEventDeps.triggerWebhooksForTenant(tenantId);
     }
   } catch (error) {
     console.error('[menuService] Failed to emit domain event', { tenantId, type, error });
@@ -235,6 +245,7 @@ class MenuService {
     });
     
     await duplicated.save();
+    await emitMenuEvent({ tenantId, type: 'menu.created', menu: duplicated, userId });
     return duplicated;
   }
   
@@ -243,7 +254,7 @@ class MenuService {
   /**
    * Menu item ekle
    */
-  async addMenuItem(tenantId, menuId, itemData) {
+  async addMenuItem(tenantId, menuId, itemData, userId) {
     const menu = await this.getMenu(tenantId, menuId);
     
     // Validate parentId if exists
@@ -255,31 +266,34 @@ class MenuService {
     }
     
     await menu.addItem(itemData);
+    await emitMenuEvent({ tenantId, type: 'menu.updated', menu, userId });
     return menu;
   }
   
   /**
    * Menu item güncelle
    */
-  async updateMenuItem(tenantId, menuId, itemId, updates) {
+  async updateMenuItem(tenantId, menuId, itemId, updates, userId) {
     const menu = await this.getMenu(tenantId, menuId);
     await menu.updateItem(itemId, updates);
+    await emitMenuEvent({ tenantId, type: 'menu.updated', menu, userId });
     return menu;
   }
   
   /**
    * Menu item sil
    */
-  async deleteMenuItem(tenantId, menuId, itemId) {
+  async deleteMenuItem(tenantId, menuId, itemId, userId) {
     const menu = await this.getMenu(tenantId, menuId);
     await menu.deleteItem(itemId);
+    await emitMenuEvent({ tenantId, type: 'menu.updated', menu, userId });
     return menu;
   }
   
   /**
    * Menu items'ı yeniden sırala
    */
-  async reorderMenuItems(tenantId, menuId, itemOrders) {
+  async reorderMenuItems(tenantId, menuId, itemOrders, userId) {
     const menu = await this.getMenu(tenantId, menuId);
     
     // Validate all item IDs exist
@@ -289,13 +303,14 @@ class MenuService {
     }
     
     await menu.reorderItems(itemOrders);
+    await emitMenuEvent({ tenantId, type: 'menu.updated', menu, userId });
     return menu;
   }
   
   /**
    * Menu item'ı taşı (parent değiştir)
    */
-  async moveMenuItem(tenantId, menuId, itemId, newParentId, newOrder) {
+  async moveMenuItem(tenantId, menuId, itemId, newParentId, newOrder, userId) {
     const menu = await this.getMenu(tenantId, menuId);
     
     const item = menu.getItem(itemId);
@@ -331,6 +346,7 @@ class MenuService {
     item.order = newOrder || 0;
     
     await menu.save();
+    await emitMenuEvent({ tenantId, type: 'menu.updated', menu, userId });
     return menu;
   }
   
@@ -360,3 +376,4 @@ class MenuService {
 }
 
 module.exports = new MenuService();
+module.exports.__setMenuEventDeps = setMenuEventDeps;

@@ -21,6 +21,7 @@
     "db:bootstrap": "node src/scripts/bootstrapCore.js",
     "db:migrate": "node scripts/migrate.js",
     "db:backfill-subscriptions": "node src/scripts/backfillTenantSubscriptions.js",
+    "db:backfill-domain-event-sequences": "node scripts/backfill-domain-event-sequences.js",
     "db:seed-plans": "node src/scripts/seedSubscriptionPlans.js",
     "db:seed-flags": "node src/scripts/seedFeatureFlags.js",
     "edge:sync-kv": "node src/scripts/syncEdgeGatewayKv.js"

@@ -10,7 +10,6 @@ const {
   decisionContextSchema,
   trackEventSchema,
   batchTrackSchema,
-  statsQuerySchema,
   experienceSchema
 } = require('../services/placementValidation');
 
@@ -115,7 +114,7 @@ const publicPlacementDetailsSchema = {
 /**
  * Placement API Routes
  */
-async function placementRoutes(fastify, options) {
+async function placementRoutes(fastify) {
   // Apply tenant context to all routes
   fastify.addHook('preHandler', tenantContext);
   

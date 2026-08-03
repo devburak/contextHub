@@ -41,6 +41,9 @@ module.exports = {
       env: {
         node: true,
       },
+      parserOptions: {
+        sourceType: 'module',
+      },
       globals: {
         describe: 'readonly',
         it: 'readonly',
@@ -52,4 +55,7 @@ module.exports = {
       },
     },
   ],
+  rules: {
+    'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+  },
 };

@@ -1,12 +1,9 @@
 const { FormDefinition, FormResponse, FormVersion } = require('@contexthub/common');
-const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const { emitDomainEvent } = require('../lib/domainEvents');
 const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 const { mailService } = require('./mailService');
 const tenantSettingsService = require('./tenantSettingsService');
-
-const ObjectId = mongoose.Types.ObjectId;
 
 // Turkish character mapping for slug generation
 const TURKISH_CHAR_MAP = {
