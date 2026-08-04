@@ -315,16 +315,11 @@ async function subscriptionPlanRoutes(fastify) {
 
       await tenant.save();
 
-      // Invalidate cache
-      const localRedisClient = require('../lib/localRedis');
-      await localRedisClient.invalidateTenantCache(tenantId);
-
-      // Refresh monthly request limit flag (limit may have changed)
-      try {
-        await apiUsageService.refreshMonthlyLimitFlag(tenantId);
-      } catch (error) {
-        console.warn('[Tenant] Failed to refresh limit flag:', error.message);
-      }
+      // Yetki degisimi tek noktadan yayilir: cache invalidation + kota bayragi
+      // + edge KV. Gecikmesiz olmali, bu yuzden senkron beklenir.
+      await tenantSubscriptionService.syncEntitlementState(tenantId, {
+        reason: 'subscription_updated',
+      });
 
       const plan = await tenantSubscriptionService.getPlanPayloadForTenant(tenant);
 
