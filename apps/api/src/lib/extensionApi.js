@@ -5,6 +5,7 @@ const {
   EXTENSION_API_REVISION,
   EXTENSION_API_VERSION
 } = require('./extensionContract');
+const { createExtensionSourceFacade } = require('./extensionSourceFacade');
 
 class ExtensionApiError extends Error {
   constructor(message, code = 'EXTENSION_API_ERROR') {
@@ -61,16 +62,35 @@ function createLoggerFacade(logger) {
   return Object.freeze(facade);
 }
 
+function createSourceFacade(sources) {
+  if (
+    !sources ||
+    typeof sources.getContentSnapshot !== 'function' ||
+    typeof sources.getCollectionEntrySnapshot !== 'function'
+  ) {
+    throw new ExtensionApiError(
+      'extension source facade is incomplete',
+      'EXTENSION_SOURCE_FACADE_INVALID'
+    );
+  }
+  return Object.freeze({
+    getContentSnapshot: sources.getContentSnapshot.bind(sources),
+    getCollectionEntrySnapshot: sources.getCollectionEntrySnapshot.bind(sources)
+  });
+}
+
 function createExtensionApi(options) {
   const manifest = options.manifest;
   const eventRegistry = options.eventRegistry || domainEventConsumerRegistry;
   const logger = options.logger || console;
+  const sources = options.sources || createExtensionSourceFacade();
 
   return Object.freeze({
     version: EXTENSION_API_VERSION,
     revision: EXTENSION_API_REVISION,
     plugin: Object.freeze({ name: manifest.name, version: manifest.version }),
     events: createEventFacade(manifest, eventRegistry),
+    sources: createSourceFacade(sources),
     log: createLoggerFacade(logger)
   });
 }
@@ -80,5 +100,6 @@ module.exports = {
   EXTENSION_API_VERSION,
   ExtensionApiError,
   createExtensionApi,
-  createLoggerFacade
+  createLoggerFacade,
+  createSourceFacade
 };

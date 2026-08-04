@@ -20,7 +20,8 @@ export class ImageNode extends DecoratorNode {
     this.__width = width
     this.__height = height
     this.__alignment = alignment
-    this.__caption = caption || altText // Default caption is altText
+    // Alt text is accessibility metadata; captions are optional editorial copy.
+    this.__caption = caption || ''
     this.__showCaption = showCaption
     this.__linkUrl = linkUrl || ''
     this.__linkTarget = linkTarget || '_blank'
@@ -247,7 +248,7 @@ export function $createImageNode({ src, altText = '', width, height, alignment =
       width,
       height,
       alignment,
-      caption: caption || altText, // Default caption is altText
+      caption,
       showCaption,
       linkUrl,
       linkTarget,
