@@ -351,6 +351,18 @@ async function refreshMonthlyLimitFlag(tenantId, date = new Date(), options = {}
   return state;
 }
 
+/**
+ * @deprecated Hot path'te KULLANMAYIN.
+ *
+ * Bu fonksiyon istek basina 3 Mongo sorgusu (tenant + plan + ApiUsage aggregate)
+ * ve fatura dongusu boyunca periyot basina bir Redis okumasi (~180) yapar.
+ * `requestLimitGuard` artik bunun yerine `localRedis.getRequestLimitFlag` ile
+ * tek bir GET yapiyor; bayrak `refreshMonthlyLimitFlag` tarafindan hot path
+ * disinda yaziliyor.
+ *
+ * Geriye donuk uyumluluk icin export edilmeye devam ediyor. Yeni bir cagri
+ * eklemeden once neden hot path'te olmadigindan emin olun.
+ */
 async function reserveRequestQuota(tenantId, date = new Date()) {
   const initialState = await resolveRequestLimitState(tenantId, date);
   if (initialState.skipped) {

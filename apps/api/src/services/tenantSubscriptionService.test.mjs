@@ -120,4 +120,61 @@ describe('tenantSubscriptionService', () => {
       monthlyRequestLimit: -1,
     });
   });
+
+  describe('syncEntitlementState', () => {
+    const localRedisClient = require('../lib/localRedis');
+    const apiUsageService = require('./apiUsageService');
+    const edgeGatewaySyncService = require('./edgeGatewaySyncService');
+
+    it('propagates an entitlement change to cache, quota gate and edge KV', async () => {
+      const invalidate = vi.spyOn(localRedisClient, 'invalidateTenantCache').mockResolvedValue(true);
+      const refresh = vi.spyOn(apiUsageService, 'refreshMonthlyLimitFlag').mockResolvedValue({
+        limit: 5000,
+        usage: 120,
+        exceeded: false,
+        periodKey: '2026-08',
+      });
+      const edgeSync = vi
+        .spyOn(edgeGatewaySyncService, 'syncTenantConfig')
+        .mockResolvedValue({ skipped: false, key: 'tenant:t1' });
+
+      const result = await tenantSubscriptionService.syncEntitlementState('t1', {
+        reason: 'subscription_updated',
+      });
+
+      expect(invalidate).toHaveBeenCalledWith('t1');
+      expect(refresh).toHaveBeenCalledWith('t1');
+      expect(edgeSync).toHaveBeenCalledWith({ tenantId: 't1' });
+      expect(result).toMatchObject({
+        tenantId: 't1',
+        reason: 'subscription_updated',
+        cacheInvalidated: true,
+        limitFlag: { limit: 5000, usage: 120, exceeded: false, periodKey: '2026-08' },
+      });
+    });
+
+    it('still writes the quota gate when edge KV sync fails', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(localRedisClient, 'invalidateTenantCache').mockResolvedValue(true);
+      const refresh = vi.spyOn(apiUsageService, 'refreshMonthlyLimitFlag').mockResolvedValue({
+        limit: 100,
+        usage: 100,
+        exceeded: true,
+        periodKey: '2026-08',
+      });
+      vi.spyOn(edgeGatewaySyncService, 'syncTenantConfig').mockRejectedValue(new Error('KV down'));
+
+      const result = await tenantSubscriptionService.syncEntitlementState('t2');
+
+      expect(refresh).toHaveBeenCalledWith('t2');
+      expect(result.limitFlag.exceeded).toBe(true);
+      expect(result.edge).toMatchObject({ skipped: true, reason: 'edge_sync_failed' });
+    });
+
+    it('requires a tenantId', async () => {
+      await expect(tenantSubscriptionService.syncEntitlementState(null)).rejects.toThrow(
+        'tenantId is required'
+      );
+    });
+  });
 });

@@ -272,13 +272,11 @@ class LocalRedisClient extends EventEmitter {
       return null;
     }
 
-    try {
-      const value = await this.client.get(this.getRequestLimitFlagKey(tenantId, cycleKey));
-      return value ? JSON.parse(value) : null;
-    } catch (error) {
-      console.error('[LocalRedis] Failed to get request limit flag:', error.message);
-      return null;
-    }
+    // The quota guard owns the fail-open policy and throttled warning. Preserve
+    // read/parse failures so it can distinguish an unavailable gate from a
+    // valid "not exceeded" result without logging on every request here.
+    const value = await this.client.get(this.getRequestLimitFlagKey(tenantId, cycleKey));
+    return value ? JSON.parse(value) : null;
   }
 
   async clearRequestLimitFlag(tenantId, cycleKey = getCurrentMonthKey()) {
