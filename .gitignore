@@ -136,5 +136,7 @@ mongo-json-backups/
 # Standalone Cloudflare Worker lives in the ctxhub-edge-gateway repository
 apps/edge-gateway/
 
-# Architecture, release and internal decision documents remain local.
-/docs
+# Architecture, release and internal decision documents remain local. The public
+# extension contract is intentionally published.
+/docs/*
+!/docs/PLUGIN_API.md

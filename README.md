@@ -119,7 +119,9 @@ Tags are **immutable**: never move or re-point a tag that has been pushed.  Depl
 ## Extensions
 
 The domain event contract and supported event types are documented in the
-[Webhook & Domain Event Primer](./WEBHOOK_EVENTS.md).
+[Webhook & Domain Event Primer](./WEBHOOK_EVENTS.md). Runtime manifests, versioning,
+consumer registration and the tenant-scoped read-only source facade are documented in
+the [Plugin API](./docs/PLUGIN_API.md).
 
 > **On extensions:** the core stays open source, and no capability that is already in this
 > repository will be moved behind a paid tier.  Commercial add‑ons are built as separate
