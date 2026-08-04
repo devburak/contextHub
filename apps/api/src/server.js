@@ -11,6 +11,7 @@ const { database } = require('@contexthub/common');
 const roleService = require('./services/roleService');
 const tenantContext = require('@contexthub/common/src/tenantContext');
 const apiLogger = require('./middleware/apiLogger');
+const { createOriginProtectionHook } = require('./middleware/originProtection');
 const localRedisClient = require('./lib/localRedis');
 const { getSessionCookieName } = require('./services/sessionSecurity');
 const { resolveCorsOptions } = require('./services/tenantOriginPolicy');
@@ -95,6 +96,11 @@ async function buildServer() {
   // the intended cap.
   const maxParamLength = Number(process.env.API_MAX_PARAM_LENGTH) || 240;
   const app = fastify({ logger: true, trustProxy: true, bodyLimit, maxParamLength });
+
+  // Validate the edge-to-origin credential before CORS, auth, plugins or routes run.
+  // Production is fail-closed: startup fails when protection is disabled or the
+  // shared secret is missing/weak.
+  app.addHook('onRequest', createOriginProtectionHook());
 
   app.addHook('onSend', async (_request, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff');
