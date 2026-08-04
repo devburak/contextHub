@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "dummy",
+  "version": "0.1.0",
+  "coreVersionRange": ">=0.1.0 <0.2.0",
+  "apiVersion": 1,
+  "apiRevision": 1,
+  "adminApiVersion": 1,
+  "adminApiRevision": 1,
+  "eventSchemaVersion": 1,
+  "routePrefix": "/api/dummy",
+  "permissions": ["dummy.read"],
+  "featureKeys": ["dummy.enabled"],
+  "consumesDomainEvents": ["content.updated"],
+  "consumers": [
+    {
+      "name": "dummy-consumer",
+      "types": ["content.updated"]
+    }
+  ],
+  "entrypoints": {
+    "api": "./index.mjs"
+  }
+}
