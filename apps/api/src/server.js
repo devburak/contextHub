@@ -356,7 +356,54 @@ async function start() {
   });
 
   await localRedisClient.initialize();
-  
+
+  // Kota bayragini tazeleyen zamanlanmis is.
+  //
+  // Hot path artik kullanimi yeniden hesaplamiyor, sadece bu isin yazdigi
+  // bayragi okuyor. Dolayisiyla bu is calismazsa aylik istek limitleri hic
+  // uygulanmaz. Disaridaki cron'a (POST /api-usage-sync/trigger) bagimli
+  // kalmamak icin surec ici bir zamanlayici da tutuyoruz; ikisi ayni Redis
+  // kilidini (usage:sync:4hour) paylastigi icin pm2 cluster'da veya harici
+  // cron ile birlikte cakismaz.
+  //
+  // Bu araligin uzunlugu, kotasi dolan bir tenant'in ne kadar sure fazladan
+  // servis alabilecegini belirler. 0 verilirse surec ici zamanlayici kapanir
+  // (yalniz harici cron kullanilir).
+  const usageSyncIntervalMinutes = Number.parseInt(
+    process.env.USAGE_SYNC_INTERVAL_MINUTES ?? '60',
+    10
+  );
+
+  if (Number.isFinite(usageSyncIntervalMinutes) && usageSyncIntervalMinutes > 0) {
+    const intervalMs = usageSyncIntervalMinutes * 60 * 1000;
+    const apiUsageSyncService = require('./services/apiUsageSyncService');
+    let usageSyncRunning = false;
+
+    const timer = setInterval(() => {
+      if (usageSyncRunning) {
+        return;
+      }
+      usageSyncRunning = true;
+      apiUsageSyncService
+        .runScheduledSync({ includeCurrent: true })
+        .catch((error) => {
+          console.error('[Server] Scheduled usage sync failed:', error.message);
+        })
+        .finally(() => {
+          usageSyncRunning = false;
+        });
+    }, intervalMs);
+
+    timer.unref();
+    console.log(`[Server] Usage quota gate refresh scheduled every ${usageSyncIntervalMinutes}m`);
+  } else {
+    console.warn(
+      '[Server] In-process usage sync disabled (USAGE_SYNC_INTERVAL_MINUTES=0). ' +
+        'Request limits will only be enforced if an external cron calls POST /api-usage-sync/trigger.'
+    );
+  }
+
+
   const app = await buildServer();
   const port = process.env.PORT || 3000;
   const host = process.env.HOST || '0.0.0.0';

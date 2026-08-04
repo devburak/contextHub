@@ -228,6 +228,63 @@ class TenantSubscriptionService {
     return next;
   }
 
+  /**
+   * Yetki (entitlement) degisimini calisan sisteme yayar.
+   *
+   * Plan degisimi, ozel limit guncellemesi ve ileride eklenecek odeme
+   * webhook'lari bu tek noktadan gecmelidir. Kullanim sayaci gecikmeli
+   * calisabilir, ama YETKI gecikmeli olamaz: musteri paketini yukselttiginde
+   * bir sonraki istegi acik olmali, dusurdugunde/odemesi basarisiz oldugunda
+   * gecikmeden kisitlanmalidir.
+   *
+   * Tenant `save()` edildikten SONRA cagrilmalidir; kaynak dogruluk Mongo'dur.
+   *
+   * Yapilan is:
+   *  1. tenant limit cache'ini dusur (Redis)
+   *  2. aylik istek kota bayragini yeniden hesaplayip yaz (hot path bunu okur)
+   *  3. tenant config'ini edge KV'ye it (edge gateway kapaliysa no-op)
+   */
+  async syncEntitlementState(tenantId, { reason = 'entitlement_change' } = {}) {
+    if (!tenantId) {
+      throw new Error('tenantId is required');
+    }
+
+    const id = String(tenantId);
+    const result = { tenantId: id, reason, cacheInvalidated: false, limitFlag: null, edge: null };
+
+    // Dongusel import olmamasi icin lazy require.
+    const localRedisClient = require('../lib/localRedis');
+    const apiUsageService = require('./apiUsageService');
+    const edgeGatewaySyncService = require('./edgeGatewaySyncService');
+
+    try {
+      result.cacheInvalidated = await localRedisClient.invalidateTenantCache(id);
+    } catch (error) {
+      console.warn(`[TenantSubscription] Failed to invalidate tenant cache (${id}):`, error.message);
+    }
+
+    try {
+      const state = await apiUsageService.refreshMonthlyLimitFlag(id);
+      result.limitFlag = {
+        limit: state?.limit ?? null,
+        usage: state?.usage ?? null,
+        exceeded: state?.exceeded ?? false,
+        periodKey: state?.periodKey ?? null,
+      };
+    } catch (error) {
+      console.error(`[TenantSubscription] Failed to refresh request limit flag (${id}):`, error.message);
+    }
+
+    try {
+      result.edge = await edgeGatewaySyncService.syncTenantConfig({ tenantId: id });
+    } catch (error) {
+      console.error(`[TenantSubscription] Failed to sync tenant config to edge KV (${id}):`, error.message);
+      result.edge = { skipped: true, reason: 'edge_sync_failed', error: error.message };
+    }
+
+    return result;
+  }
+
   applyCustomLimits(tenant, customLimits = {}) {
     if (!tenant) {
       throw new Error('Tenant is required');
