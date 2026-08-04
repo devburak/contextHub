@@ -52,7 +52,7 @@ describe('plugin host', () => {
       ok: true,
       plugin: 'dummy',
       apiVersion: 1,
-      apiRevision: 1
+      apiRevision: 2
     })
     expect(result.registry.inventory()).toEqual([
       expect.objectContaining({ name: 'dummy', routePrefix: '/api/dummy' })
@@ -100,7 +100,7 @@ describe('plugin host', () => {
       code: 'PLUGIN_CORE_VERSION_INCOMPATIBLE'
     }))
     expect(() =>
-      validatePluginManifest(validManifest({ apiRevision: 2 }), {
+      validatePluginManifest(validManifest({ apiRevision: 3 }), {
         coreVersion: '0.1.0'
       })
     ).toThrowError(expect.objectContaining({
@@ -208,5 +208,29 @@ describe('plugin host', () => {
     })).toThrowError(
       expect.objectContaining({ code: 'EXTENSION_EVENT_NOT_DECLARED' })
     )
+  })
+
+  it('exposes only the frozen, tenant-scoped source facade contract', async () => {
+    const manifest = validatePluginManifest(validManifest(), { coreVersion: '0.1.0' })
+    const { createExtensionApi } = await import('./extensionApi.js')
+    const getContentSnapshot = vi.fn()
+    const getCollectionEntrySnapshot = vi.fn()
+    const context = createExtensionApi({
+      manifest,
+      logger: {},
+      sources: {
+        getContentSnapshot,
+        getCollectionEntrySnapshot,
+        unsafeRawDatabase: {}
+      }
+    })
+
+    expect(context.revision).toBe(2)
+    expect(Object.isFrozen(context.sources)).toBe(true)
+    expect(context.sources).toEqual({
+      getContentSnapshot: expect.any(Function),
+      getCollectionEntrySnapshot: expect.any(Function)
+    })
+    expect(context.sources).not.toHaveProperty('unsafeRawDatabase')
   })
 })

@@ -255,6 +255,7 @@ async function bootstrapExtensions(options = {}) {
   }
 
   const coreVersion = options.coreVersion || await getCoreVersion();
+  const sourceFacade = options.sourceFacade;
   const plugins = [];
   for (const entry of entries) {
     const plugin = await loadPlugin(entry, coreVersion);
@@ -274,6 +275,7 @@ async function bootstrapExtensions(options = {}) {
           const context = createExtensionApi({
             manifest: plugin.manifest,
             eventRegistry: options.eventRegistry,
+            sources: sourceFacade,
             logger: scopedApp.log
           });
           await hook(scopedApp, context);
@@ -284,6 +286,7 @@ async function bootstrapExtensions(options = {}) {
       const context = createExtensionApi({
         manifest: plugin.manifest,
         eventRegistry: options.eventRegistry,
+        sources: sourceFacade,
         logger: options.logger || console
       });
       await hook(context);
