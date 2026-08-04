@@ -6,6 +6,48 @@ const { PERMISSIONS } = rbac;
 class RoleService {
   constructor() {
     this.validPermissions = new Set(Object.values(PERMISSIONS));
+    this.extensionPermissions = new Map();
+  }
+
+  registerExtensionPermissions(pluginName, permissions = []) {
+    const name = String(pluginName || '').trim();
+    if (!name) {
+      throw new Error('Plugin name is required to register extension permissions');
+    }
+
+    const normalized = Array.from(new Set(
+      permissions.map((permission) => String(permission || '').trim()).filter(Boolean)
+    ));
+    const existing = this.extensionPermissions.get(name);
+    if (existing) {
+      const unchanged = existing.length === normalized.length
+        && existing.every((permission) => normalized.includes(permission));
+      if (!unchanged) {
+        throw new Error(`Extension permission registration changed during runtime: ${name}`);
+      }
+      return existing;
+    }
+
+    for (const permission of normalized) {
+      if (this.validPermissions.has(permission)) {
+        throw new Error(`Extension permission collision with core: ${permission} (${name})`);
+      }
+      const owner = Array.from(this.extensionPermissions.entries())
+        .find(([, values]) => values.includes(permission))?.[0];
+      if (owner) {
+        throw new Error(`Extension permission collision: ${permission} (${owner}/${name})`);
+      }
+    }
+    for (const permission of normalized) this.validPermissions.add(permission);
+    const frozen = Object.freeze(normalized);
+    this.extensionPermissions.set(name, frozen);
+    return frozen;
+  }
+
+  listExtensionPermissions() {
+    return Object.freeze(Array.from(this.extensionPermissions.entries()).map(
+      ([plugin, permissions]) => Object.freeze({ plugin, permissions })
+    ));
   }
 
   normalizeKey(input) {
@@ -343,3 +385,4 @@ class RoleService {
 }
 
 module.exports = new RoleService();
+module.exports.RoleService = RoleService;

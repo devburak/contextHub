@@ -52,7 +52,7 @@ describe('plugin host', () => {
       ok: true,
       plugin: 'dummy',
       apiVersion: 1,
-      apiRevision: 2
+      apiRevision: 3
     })
     expect(result.registry.inventory()).toEqual([
       expect.objectContaining({ name: 'dummy', routePrefix: '/api/dummy' })
@@ -100,14 +100,14 @@ describe('plugin host', () => {
       code: 'PLUGIN_CORE_VERSION_INCOMPATIBLE'
     }))
     expect(() =>
-      validatePluginManifest(validManifest({ apiRevision: 3 }), {
+      validatePluginManifest(validManifest({ apiRevision: 4 }), {
         coreVersion: '0.1.0'
       })
     ).toThrowError(expect.objectContaining({
       code: 'PLUGIN_API_VERSION_INCOMPATIBLE'
     }))
     expect(() =>
-      validatePluginManifest(validManifest({ adminApiRevision: 2 }), {
+      validatePluginManifest(validManifest({ adminApiRevision: 3 }), {
         coreVersion: '0.1.0'
       })
     ).toThrowError(expect.objectContaining({
@@ -225,7 +225,7 @@ describe('plugin host', () => {
       }
     })
 
-    expect(context.revision).toBe(2)
+    expect(context.revision).toBe(3)
     expect(Object.isFrozen(context.sources)).toBe(true)
     expect(context.sources).toEqual({
       getContentSnapshot: expect.any(Function),

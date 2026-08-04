@@ -2,6 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+const adminPluginEntry = process.env.CTXHUB_ADMIN_PLUGIN_ENTRY
+  ? path.resolve(process.env.CTXHUB_ADMIN_PLUGIN_ENTRY)
+  : path.resolve(process.cwd(), './src/plugins/noPlugins.js')
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -32,7 +36,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(process.cwd(), './src'),
+      'virtual:ctxhub-plugins': adminPluginEntry,
     },
+    dedupe: ['react', 'react-dom', 'react-router-dom', 'i18next'],
   },
   test: {
     environment: 'jsdom',

@@ -47,6 +47,7 @@ const DomainEvent = require('./DomainEvent');
 const DomainEventCounter = require('./DomainEventCounter');
 const DomainEventCursor = require('./DomainEventCursor');
 const DomainEventDeadLetter = require('./DomainEventDeadLetter');
+const ExtensionTenantSetting = require('./ExtensionTenantSetting');
 
 module.exports = {
   Tenant,
@@ -91,5 +92,6 @@ module.exports = {
   DomainEventCounter,
   DomainEventCursor,
   DomainEventDeadLetter,
+  ExtensionTenantSetting,
   mongoose
 };

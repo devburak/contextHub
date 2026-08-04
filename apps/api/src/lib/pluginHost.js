@@ -12,6 +12,7 @@ const {
   EXTENSION_API_VERSION
 } = require('./extensionContract');
 const { createExtensionRegistry } = require('./extensionRegistry');
+const roleService = require('../services/roleService');
 
 const CORE_PACKAGE_PATH = path.resolve(__dirname, '../../../../package.json');
 const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -267,6 +268,16 @@ async function bootstrapExtensions(options = {}) {
     plugin,
     hook: hookForMode(plugin, mode)
   }));
+
+  if (mode === 'api') {
+    const permissionRegistry = options.permissionRegistry || roleService;
+    for (const plugin of plugins) {
+      permissionRegistry.registerExtensionPermissions(
+        plugin.manifest.name,
+        plugin.manifest.permissions
+      );
+    }
+  }
 
   for (const { plugin, hook } of preparedPlugins) {
     if (mode === 'api') {

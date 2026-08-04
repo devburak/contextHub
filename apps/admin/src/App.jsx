@@ -1,5 +1,5 @@
 import { Routes, Route, BrowserRouter, Navigate } from 'react-router-dom'
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { Suspense, useState, useMemo, useCallback, useEffect } from 'react'
 import Layout from './components/Layout.jsx'
 import Login from './pages/auth/Login.jsx'
 import SignUp from './pages/auth/SignUp.jsx'
@@ -42,6 +42,7 @@ import {
   setActiveTenantId as setApiActiveTenantId,
   setCsrfToken,
 } from './lib/api.js'
+import { adminPluginPages } from './plugins/registry.jsx'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -226,6 +227,10 @@ function App() {
       return true
     }
 
+    if (activeMembership?.role === 'owner') {
+      return true
+    }
+
     const mode = options.mode || 'all'
     const available = new Set(activePermissions)
 
@@ -238,7 +243,7 @@ function App() {
     }
 
     return required.every((permission) => available.has(permission))
-  }, [activePermissions])
+  }, [activeMembership?.role, activePermissions])
 
   const hasAnyPermission = useCallback((permissionsInput) => {
     return hasPermission(permissionsInput, { mode: 'any' })
@@ -350,6 +355,19 @@ function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
               <Route path="/apidocs" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><ApiDocs /></PermissionRoute>} />
+              {adminPluginPages.map((page) => (
+                <Route
+                  key={page.id}
+                  path={page.path}
+                  element={(
+                    <PermissionRoute permissions={page.permission}>
+                      <Suspense fallback={<div className="p-6 text-sm text-gray-600">Eklenti yükleniyor...</div>}>
+                        {page.element}
+                      </Suspense>
+                    </PermissionRoute>
+                  )}
+                />
+              ))}
             </Route>
             {/* Fallback catch-all when authenticated */}
             <Route path="*" element={<Navigate to="/" replace />} />

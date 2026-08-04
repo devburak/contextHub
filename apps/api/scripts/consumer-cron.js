@@ -5,7 +5,7 @@ const dotenv = require('dotenv');
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-const { database, mongoose, Tenant } = require('@contexthub/common');
+const { database, Tenant } = require('@contexthub/common');
 const {
   createDomainEventConsumerRegistry
 } = require('../src/lib/domainEventConsumerRegistry');
@@ -14,6 +14,9 @@ const {
 } = require('../src/lib/domainEventConsumerRunner');
 const { runConsumerBatch } = require('../src/lib/domainEventConsumerProcess');
 const { bootstrapExtensions } = require('../src/lib/pluginHost');
+const {
+  resolveConsumerTenantQuery
+} = require('../src/lib/consumerTenantTarget');
 
 const targetArg = process.argv.find((argument) => argument.startsWith('--tenant='));
 const targetTenant = targetArg ? targetArg.slice('--tenant='.length).trim() : null;
@@ -23,9 +26,7 @@ async function fetchTenants() {
     return Tenant.find({ status: { $ne: 'archived' } }, '_id slug status').lean();
   }
 
-  const query = mongoose.Types.ObjectId.isValid(targetTenant)
-    ? { _id: targetTenant }
-    : { slug: targetTenant };
+  const query = resolveConsumerTenantQuery(targetTenant);
   const tenant = await Tenant.findOne(query, '_id slug status').lean();
   return tenant ? [tenant] : [];
 }
