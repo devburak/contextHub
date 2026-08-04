@@ -20,8 +20,8 @@ cakismasinda process fail-fast durur.
 Guncel public extension contract'i:
 
 - API version: `1`
-- API revision: `2`
-- Admin API version/revision: `1/1`
+- API revision: `3`
+- Admin API version/revision: `1/2`
 - Domain event schema version: `1`
 
 Major `version` kirici degisikliklerde, `revision` ayni major icindeki geriye uyumlu
@@ -67,6 +67,8 @@ Context dondurulmus, dar ve versioned bir yuzeydir:
   plugin: { name, version },
   events,
   sources,
+  auth,
+  settings,
   log,
 }
 ```
@@ -91,6 +93,16 @@ alanlarini tasir. Raw Mongoose model, Mongo client veya credential aciga cikmaz.
 Source facade salt okunurdur. Plugin kaynak Content/CollectionEntry kayitlarini bu
 yuzeyden olusturamaz, guncelleyemez veya silemez.
 
+`context.auth` ve `context.settings` API revision 3 ile eklenmistir. Auth facade
+yalniz manifestte bildirilen izinler icin session/JWT guard'i uretir; tenant ve user
+kimligini dogrulanmis request context'inden verir. Settings facade plugin adiyla
+namespace edilmis, tenant-scoped JSON ayarlarini optimistic revision kontroluyle
+okur/yazar. Raw model veya baska plugin namespace'i aciga cikmaz.
+
+Admin API revision 2, community fallback'li `virtual:ctxhub-plugins` girisini,
+plugin page/menu kaydini ve path/menu fail-fast kontrolunu ekler. Hosted composition
+commercial admin kaynagini local workspace'ten verir; private npm registry gerekmez.
+
 ## Guvenlik siniri
 
 - Manifest yollarini yalniz deploy composition belirler.
@@ -98,5 +110,7 @@ yuzeyden olusturamaz, guncelleyemez veya silemez.
 - Private plugin core ic servis/model dosyalarini import etmemeli, yalniz context
   facade'larini kullanmalidir.
 - Secret degerleri manifest, Git, log veya public health cevabina yazilmaz.
-- Permission ve entitlement guard'lari API revision 2'nin parcasi degildir; F3
-  tamamlanmadan commercial route acilmamalidir.
+- Manifest permission kaydi ve authenticated permission guard'i revision 3'te
+  vardir. Feature entitlement/rollout guard'i F3'te acik kalir; bu nedenle ilk
+  commercial query route'u yalniz authenticated admin/internal beta olarak acilir,
+  public tenant rollout'u entitlement tamamlanana kadar kapali kalir.

@@ -1,9 +1,12 @@
+import process from 'node:process'
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+    process.env.CTXHUB_ADMIN_PLUGIN_SOURCE,
+  ].filter(Boolean),
   theme: {
     extend: {
       animation: {

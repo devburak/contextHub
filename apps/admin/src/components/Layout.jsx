@@ -6,6 +6,7 @@ import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
 import { PERMISSIONS } from '../constants/permissions.js'
+import { adminPluginNavigation } from '../plugins/registry.jsx'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -80,6 +81,7 @@ export default function Layout() {
       icon: DocumentTextIcon,
       permission: PERMISSIONS.CONTENT_VIEW
     },
+    ...adminPluginNavigation,
     {
       id: 'collections',
       name: 'Koleksiyonlar',
