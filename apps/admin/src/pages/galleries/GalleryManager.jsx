@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { galleriesAPI } from '../../lib/galleriesAPI.js'
 import MediaPickerModal from '../contents/components/MediaPickerModal.jsx'
@@ -338,8 +338,8 @@ export default function GalleryManager() {
         </button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
-        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <section className="min-w-0 space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Galeriler</h2>
             <input
@@ -369,13 +369,13 @@ export default function GalleryManager() {
                     type="button"
                     onClick={() => galleryId && setSelectedGalleryId(galleryId)}
                     disabled={!galleryId}
-                    className={clsx('flex w-full items-center gap-3 p-3 text-left hover:bg-gray-50 focus:outline-none', active && 'bg-blue-50 border-l-4 border-blue-500')}
+                    className={clsx('flex w-full min-w-0 items-center gap-3 overflow-hidden p-3 text-left hover:bg-gray-50 focus:outline-none', active && 'bg-blue-50 border-l-4 border-blue-500')}
                   >
                     <div className="h-14 w-14 flex-none overflow-hidden rounded-md bg-gray-100 relative">
                       <GalleryMediaPreview media={gallery.items?.[0]?.media} alt={gallery.title} compact />
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-900">{gallery.title}</p>
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <p className="truncate text-sm font-semibold text-gray-900" title={gallery.title}>{gallery.title}</p>
                       <p className="truncate text-xs text-gray-500">{gallery.items?.length || 0} medya · {gallery.status === 'published' ? 'Yayında' : 'Taslak'}</p>
                     </div>
                   </button>
@@ -409,7 +409,7 @@ export default function GalleryManager() {
           )}
         </section>
 
-        <section className="space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <section className="min-w-0 space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">{selectedGalleryId ? 'Galeriyi Düzenle' : 'Yeni Galeri'}</h2>
