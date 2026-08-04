@@ -14,6 +14,7 @@ const apiLogger = require('./middleware/apiLogger');
 const localRedisClient = require('./lib/localRedis');
 const { getSessionCookieName } = require('./services/sessionSecurity');
 const { resolveCorsOptions } = require('./services/tenantOriginPolicy');
+const { bootstrapExtensions } = require('./lib/pluginHost');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -82,7 +83,7 @@ const jwtPlugin = fp(async function (app) {
   });
 });
 
-async function buildServer() {
+async function buildServer(options = {}) {
   // Validate production cookie configuration during startup instead of failing
   // on the first login request.
   getSessionCookieName();
@@ -290,6 +291,12 @@ async function buildServer() {
   await app.register(require('./routes/apiTokens'), { prefix: '/api' });
   await app.register(require('./routes/webhooks'), { prefix: '/api' });
   await app.register(require('./routes/cronWebhooks'), { prefix: '/api' });
+
+  await bootstrapExtensions({
+    mode: 'api',
+    app,
+    entries: options.pluginEntries
+  });
 
   // Health check
   app.get('/health', async () => {

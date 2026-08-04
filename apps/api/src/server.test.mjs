@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createRequire } from 'module';
+import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const AuthService = require('./services/authService');
@@ -55,7 +56,14 @@ describe('API server', () => {
       }
       throw new Error('Invalid credentials');
     };
-    app = await buildServer();
+    app = await buildServer({
+      pluginEntries: [
+        path.resolve(
+          process.cwd(),
+          'src/lib/__fixtures__/dummy-plugin/plugin.manifest.json'
+        )
+      ]
+    });
   });
   afterAll(async () => {
     if (app) await app.close();
@@ -74,6 +82,17 @@ describe('API server', () => {
     expect(body.status).toBe('ok');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['x-frame-options']).toBe('DENY');
+  });
+
+  it('boots configured API extensions under their declared prefix', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/dummy/ping' });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.payload)).toMatchObject({
+      ok: true,
+      plugin: 'dummy',
+      apiVersion: 1,
+      apiRevision: 1
+    });
   });
 
   it('creates a tenant-selection session when tenantId is omitted', async () => {

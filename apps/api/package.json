@@ -22,6 +22,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:backfill-subscriptions": "node src/scripts/backfillTenantSubscriptions.js",
     "db:backfill-domain-event-sequences": "node scripts/backfill-domain-event-sequences.js",
+    "cron:consumers": "node scripts/consumer-cron.js",
     "db:seed-plans": "node src/scripts/seedSubscriptionPlans.js",
     "db:seed-flags": "node src/scripts/seedFeatureFlags.js",
     "edge:sync-kv": "node src/scripts/syncEdgeGatewayKv.js"
@@ -42,6 +43,7 @@
     "marked": "^16.4.2",
     "nodemailer": "^6.10.1",
     "redis": "^5.12.1",
+    "semver": "7.8.5",
     "sharp": "^0.33.5",
     "undici": "^6.27.0",
     "uuid": "^13.0.2",
