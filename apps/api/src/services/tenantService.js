@@ -24,6 +24,7 @@ class TenantService {
       plan: plan.slug,
       planName: plan.name,
       currentPlan: plan,
+      features: plan.features || [],
       status: tenantDoc.status,
       createdAt: tenantDoc.createdAt
     };

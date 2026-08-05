@@ -35,6 +35,10 @@ function parseArgs(argv = []) {
   };
 }
 
+function resolveTargetPlanSlug(tenant, requestedPlanSlug = null) {
+  return requestedPlanSlug || tenant?.currentPlan?.slug || tenant?.plan || 'free';
+}
+
 async function backfillTenantSubscriptions(options = {}) {
   const args = {
     ...parseArgs(process.argv.slice(2)),
@@ -53,7 +57,9 @@ async function backfillTenantSubscriptions(options = {}) {
       throw new Error(`Tenant not found for slug: ${args.tenantSlug}`);
     }
 
-    const targetPlanSlug = args.planSlug || tenant.plan || tenant.currentPlan?.slug || 'free';
+    // currentPlan is the canonical reference. Prefer it over the legacy mirrored
+    // string so a stale `plan=free` value cannot downgrade a paid tenant.
+    const targetPlanSlug = resolveTargetPlanSlug(tenant, args.planSlug);
     const planResult = await tenantSubscriptionService.applyPlanToTenant(tenant, targetPlanSlug);
 
     let limitsChanged = false;
@@ -68,6 +74,9 @@ async function backfillTenantSubscriptions(options = {}) {
 
     if (changed && !args.dryRun) {
       await tenant.save();
+      await tenantSubscriptionService.syncEntitlementState(tenant._id, {
+        reason: 'subscription_backfill',
+      });
     }
 
     const summary = {
@@ -100,3 +109,4 @@ if (require.main === module) {
 }
 
 module.exports = backfillTenantSubscriptions;
+module.exports.resolveTargetPlanSlug = resolveTargetPlanSlug;
