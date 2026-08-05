@@ -33,6 +33,8 @@ import { ToastProvider } from './contexts/ToastContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
 import { PermissionRoute } from './components/PermissionRoute.jsx'
+import { FeatureRoute } from './components/FeatureRoute.jsx'
+import TenantTabs from './components/TenantTabs.jsx'
 import { PERMISSIONS, expandPermissions } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
 import ApiDocs from './pages/ApiDocs.jsx'
@@ -249,6 +251,22 @@ function App() {
     return hasPermission(permissionsInput, { mode: 'any' })
   }, [hasPermission])
 
+  const activeFeatures = useMemo(
+    () => Array.isArray(activeMembership?.tenant?.features) ? activeMembership.tenant.features : [],
+    [activeMembership]
+  )
+
+  const hasFeature = useCallback((featuresInput, options = {}) => {
+    const required = Array.isArray(featuresInput)
+      ? featuresInput.filter(Boolean)
+      : [featuresInput].filter(Boolean)
+    if (!required.length) return true
+    const available = new Set(activeFeatures)
+    return options.mode === 'any'
+      ? required.some((feature) => available.has(feature))
+      : required.every((feature) => available.has(feature))
+  }, [activeFeatures])
+
   const authValue = useMemo(() => ({
     user,
     memberships,
@@ -269,7 +287,9 @@ function App() {
     authReady,
     isAuthenticated: Boolean(user),
     hasPermission,
-    hasAnyPermission
+    hasAnyPermission,
+    features: activeFeatures,
+    hasFeature
   }), [
     user,
     memberships,
@@ -287,7 +307,9 @@ function App() {
     refreshSession,
     authReady,
     hasPermission,
-    hasAnyPermission
+    hasAnyPermission,
+    activeFeatures,
+    hasFeature
   ])
 
   if (!authReady) {
@@ -362,7 +384,8 @@ function App() {
                   element={(
                     <PermissionRoute permissions={page.permission}>
                       <Suspense fallback={<div className="p-6 text-sm text-gray-600">Eklenti yükleniyor...</div>}>
-                        {page.element}
+                        {page.tenantTab && <TenantTabs active={page.id} />}
+                        <FeatureRoute feature={page.feature}>{page.element}</FeatureRoute>
                       </Suspense>
                     </PermissionRoute>
                   )}

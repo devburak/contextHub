@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { cloneElement, useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getContent, createContent, updateContent, listVersions, deleteContentVersions, deleteContent, setContentGalleries, checkSlugAvailability } from '../../lib/api/contents'
@@ -93,6 +93,7 @@ import { mediaToImagePayload } from './utils/mediaHelpers.js'
 import { buildEmbedPayloadFromIframe, buildEmbedPayloadFromUrl } from './utils/embedHelpers.js'
 import { normalizeLexicalStateString } from './utils/lexicalStateNormalizer.js'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
+import { adminPluginContentEditorPanels } from '../../plugins/registry.jsx'
 
 const DEFAULT_FONT_SIZE = 12
 const FONT_MIN = 10
@@ -372,7 +373,7 @@ export default function ContentEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isNew = id === 'new'
-  const { isAuthenticated, activeTenantId, role } = useAuth()
+  const { isAuthenticated, activeTenantId, role, hasPermission, hasFeature } = useAuth()
   const queryClient = useQueryClient()
 
   const { data: tenantSettingsData } = useQuery({
@@ -436,6 +437,15 @@ export default function ContentEditor() {
   const inputClass = 'mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:bg-white focus:ring-blue-500'
   const textareaClass = inputClass
   const canUseHtmlMode = role === 'owner'
+  const availableExtensionPanels = adminPluginContentEditorPanels.filter((item) => (
+    (!item.permission || hasPermission(item.permission))
+    && (!item.feature || hasFeature(item.feature))
+  ))
+  const hasLockedExtensionPanel = adminPluginContentEditorPanels.some((item) => (
+    (!item.permission || hasPermission(item.permission))
+    && item.feature
+    && !hasFeature(item.feature)
+  ))
 
   const syncPendingHtmlToEditor = useCallback(async () => {
     if (renderMode !== 'json') return
@@ -1702,6 +1712,34 @@ export default function ContentEditor() {
               )}
             </div>
           </section>
+
+          {availableExtensionPanels.map((panel) => (
+            <div key={panel.id}>
+              {cloneElement(panel.element, {
+                contentId: isNew ? null : id,
+                isNew,
+                content: {
+                  title,
+                  summary,
+                  html,
+                  status,
+                  categories,
+                  tags,
+                  customFields,
+                },
+                savedContent: contentData || null,
+              })}
+            </div>
+          ))}
+
+          {hasLockedExtensionPanel && (
+            <section className={`${cardClass} border-amber-200 bg-amber-50 p-5`}>
+              <h3 className="text-sm font-semibold text-amber-900">Benzer içerikler</h3>
+              <p className="mt-1 text-sm text-amber-800">
+                Yapay zekâ destekli benzer içerik önerileri Pro, Pro Max ve Enterprise planlarında kullanılabilir.
+              </p>
+            </section>
+          )}
 
           <CustomFieldsPanel
             cardClass={cardClass}

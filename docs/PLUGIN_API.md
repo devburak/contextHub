@@ -99,8 +99,13 @@ kimligini dogrulanmis request context'inden verir. Settings facade plugin adiyla
 namespace edilmis, tenant-scoped JSON ayarlarini optimistic revision kontroluyle
 okur/yazar. Raw model veya baska plugin namespace'i aciga cikmaz.
 
-Admin API revision 2, community fallback'li `virtual:ctxhub-plugins` girisini,
-plugin page/menu kaydini ve path/menu fail-fast kontrolunu ekler. Hosted composition
+API revision 4 `context.entitlements` facade'ini ekler. Plugin yalniz manifestinde
+bildirdigi feature key'ler icin guard uretebilir; aktif tenant planinda feature yoksa
+route `403 FeatureNotEntitled` doner. Commercial feature key'leri public core'da sabitlenmez.
+
+Admin API revision 3, community fallback'li `virtual:ctxhub-plugins` girisini,
+plugin page/menu kaydina ek olarak tenant tab, content-search ve content-editor panel
+katkilarini ve bunlarin fail-fast kontrolunu ekler. Hosted composition
 commercial admin kaynagini local workspace'ten verir; private npm registry gerekmez.
 
 ## Guvenlik siniri
@@ -110,7 +115,7 @@ commercial admin kaynagini local workspace'ten verir; private npm registry gerek
 - Private plugin core ic servis/model dosyalarini import etmemeli, yalniz context
   facade'larini kullanmalidir.
 - Secret degerleri manifest, Git, log veya public health cevabina yazilmaz.
-- Manifest permission kaydi ve authenticated permission guard'i revision 3'te
-  vardir. Feature entitlement/rollout guard'i F3'te acik kalir; bu nedenle ilk
-  commercial query route'u yalniz authenticated admin/internal beta olarak acilir,
-  public tenant rollout'u entitlement tamamlanana kadar kapali kalir.
+- Manifest permission guard'i revision 3, plan feature entitlement guard'i revision
+  4'tedir. Authenticated commercial route'lar hem permission hem entitlement uygular.
+  Public tenant aramasi ayrica opt-in, public entitlement ve rate limit tamamlanana
+  kadar kapali kalir.

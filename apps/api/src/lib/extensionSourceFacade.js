@@ -50,6 +50,12 @@ function serializeTag(value) {
   return title ? Object.freeze({ title }) : null
 }
 
+function serializeId(value) {
+  const item = toPlainObject(value)
+  const id = item?._id ?? item?.id
+  return id ? String(id) : null
+}
+
 function serializeDefinition(value) {
   const definition = toPlainObject(value)
   return Object.freeze({
@@ -116,11 +122,14 @@ function createExtensionSourceFacade(options = {}) {
         id: String(content._id ?? content.id),
         status: content.status,
         title: content.title,
+        slug: content.slug,
         summary: content.summary,
         html: content.html,
         lexical: content.lexical,
         categories: Object.freeze((content.categories || []).map(serializeCategory).filter(Boolean)),
         tags: Object.freeze((content.tags || []).map(serializeTag).filter(Boolean)),
+        categoryIds: Object.freeze((content.categories || []).map(serializeId).filter(Boolean)),
+        tagIds: Object.freeze((content.tags || []).map(serializeId).filter(Boolean)),
         customFields: content.customFields,
         customFieldDefinitions: Object.freeze((definitions || []).map(serializeDefinition)),
         version: content.version,
@@ -159,6 +168,7 @@ module.exports = {
     normalizeLocalizedLabel,
     serializeCategory,
     serializeDefinition,
+    serializeId,
     serializeTag
   }
 }

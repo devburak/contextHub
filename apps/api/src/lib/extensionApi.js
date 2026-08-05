@@ -8,6 +8,7 @@ const {
 const { createExtensionSourceFacade } = require('./extensionSourceFacade');
 const { createExtensionAuthFacade } = require('./extensionAuthFacade');
 const { createExtensionSettingsFacade } = require('./extensionSettingsFacade');
+const { createExtensionEntitlementFacade } = require('./extensionEntitlementFacade');
 
 class ExtensionApiError extends Error {
   constructor(message, code = 'EXTENSION_API_ERROR') {
@@ -90,6 +91,7 @@ function createExtensionApi(options) {
   const settings = options.settings || createExtensionSettingsFacade({
     plugin: manifest.name
   });
+  const entitlements = options.entitlements || createExtensionEntitlementFacade(manifest);
 
   return Object.freeze({
     version: EXTENSION_API_VERSION,
@@ -98,6 +100,7 @@ function createExtensionApi(options) {
     events: createEventFacade(manifest, eventRegistry),
     sources: createSourceFacade(sources),
     auth,
+    entitlements,
     settings,
     log: createLoggerFacade(logger)
   });

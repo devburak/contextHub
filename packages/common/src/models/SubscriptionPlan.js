@@ -11,7 +11,9 @@ const subscriptionPlanSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      enum: ['free', 'pro', 'promax', 'enterprise'],
+      trim: true,
+      lowercase: true,
+      match: /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/,
     },
     
     // Display name
@@ -65,6 +67,22 @@ const subscriptionPlanSchema = new mongoose.Schema(
       type: Number,
       required: false, // null = unlimited
       default: null,
+    },
+
+    // Namespaced capabilities granted by this plan. Commercial feature keys are
+    // data, never hard-coded into the public core.
+    features: {
+      type: [String],
+      default: [],
+      set: (values) => Array.from(new Set(
+        (Array.isArray(values) ? values : [])
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      )),
+      validate: {
+        validator: (values) => values.every((value) => /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/.test(value)),
+        message: 'Feature keys must be namespaced lowercase identifiers',
+      },
     },
     
     // === ENTERPRISE PRICING (usage-based) ===

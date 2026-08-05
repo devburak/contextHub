@@ -1,4 +1,7 @@
 import { NavLink } from 'react-router-dom'
+import { LockClosedIcon } from '@heroicons/react/20/solid'
+import { useAuth } from '../contexts/AuthContext.jsx'
+import { adminPluginTenantTabs } from '../plugins/registry.jsx'
 
 const TABS = [
   { id: 'settings', label: 'Genel Ayarlar', to: '/varliklar/ayarlar' },
@@ -6,10 +9,16 @@ const TABS = [
 ]
 
 export default function TenantTabs({ active }) {
+  const { hasPermission, hasFeature } = useAuth()
+  const tabs = [...TABS, ...adminPluginTenantTabs]
+    .filter((tab) => !tab.permission || hasPermission(tab.permission))
+
   return (
     <div className="border-b border-gray-200 mb-6">
       <nav className="-mb-px flex space-x-6" aria-label="Tenant tabs">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => {
+          const locked = Boolean(tab.feature && !hasFeature(tab.feature))
+          return (
           <NavLink
             key={tab.id}
             to={tab.to}
@@ -20,9 +29,13 @@ export default function TenantTabs({ active }) {
               }`
             }}
           >
-            {tab.label}
+            <span className="inline-flex items-center gap-1.5">
+              {tab.label}
+              {locked && <LockClosedIcon className="h-3.5 w-3.5 text-amber-500" aria-label="Plan yükseltme gerekli" />}
+            </span>
           </NavLink>
-        ))}
+          )
+        })}
       </nav>
     </div>
   )

@@ -91,7 +91,7 @@ describe('API server', () => {
       ok: true,
       plugin: 'dummy',
       apiVersion: 1,
-      apiRevision: 3
+      apiRevision: 4
     });
   });
 
