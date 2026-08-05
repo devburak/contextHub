@@ -162,7 +162,10 @@ function createDomainEventConsumerRunner(options = {}) {
         handled += 1;
       } catch (error) {
         const normalizedError = serializeError(error);
-        if (attempt < registration.maxAttempts) {
+        const shouldRetry =
+          normalizedError.retryable !== false &&
+          attempt < registration.maxAttempts;
+        if (shouldRetry) {
           const delayMs = calculateRetryDelay(registration.retry, attempt);
           const nextAttemptAt = new Date(now().getTime() + delayMs);
           await store.scheduleRetry({
@@ -209,6 +212,7 @@ function createDomainEventConsumerRunner(options = {}) {
           eventId: event.id,
           eventSequence: event.sequence,
           attempt,
+          retryable: normalizedError.retryable,
           handledBeforeFailure: handled
         };
       }
