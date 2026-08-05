@@ -22,7 +22,10 @@ function normalizeRequiredFeatures(features) {
 function createExtensionEntitlementFacade(manifest, options = {}) {
   const declaredFeatures = new Set(manifest.featureKeys);
   const loadTenantFeatures = options.loadTenantFeatures || (async (tenantId) => {
-    const tenant = await Tenant.findById(tenantId).select('plan currentPlan').lean();
+    const tenant = await Tenant.findById(tenantId)
+      .select('plan currentPlan')
+      .populate('currentPlan')
+      .lean();
     if (!tenant) return [];
     const plan = await tenantSubscriptionService.getPlanPayloadForTenant(tenant);
     return plan.features || [];

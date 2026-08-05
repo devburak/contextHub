@@ -65,7 +65,11 @@ async function getActiveMembershipDetails(userId) {
   const memberships = await Membership.find({
     userId,
     status: 'active'
-  }).populate('tenantId', 'name slug plan status createdAt');
+  }).populate({
+    path: 'tenantId',
+    select: 'name slug plan currentPlan status createdAt',
+    populate: { path: 'currentPlan' }
+  });
 
   return Promise.all(
     memberships.map(async (membershipDoc) => {
@@ -88,8 +92,9 @@ async function getActiveMembershipDetails(userId) {
               id: tenant._id.toString(),
               name: tenant.name,
               slug: tenant.slug,
-              plan: tenant.plan,
+              plan: plan?.slug || tenant.plan,
               planName: plan?.name || tenant.plan,
+              currentPlan: plan,
               features: plan?.features || [],
               status: tenant.status,
               createdAt: tenant.createdAt,
