@@ -1,8 +1,8 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
 const { DEFAULT_SUBSCRIPTION_PLANS } = require('../lib/defaultSubscriptionPlans');
 
-const VALID_PLAN_SLUGS = new Set(DEFAULT_SUBSCRIPTION_PLANS.map((plan) => plan.slug));
 const DEFAULT_PLAN_BY_SLUG = new Map(DEFAULT_SUBSCRIPTION_PLANS.map((plan) => [plan.slug, plan]));
+const PLAN_SLUG_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const DEFAULT_RECOVERY_CUSTOM_LIMITS = Object.freeze({
   userLimit: 25,
   ownerLimit: 5,
@@ -19,7 +19,7 @@ const LIMIT_FIELD_TO_PLAN_FIELD = Object.freeze({
 class TenantSubscriptionService {
   normalizePlanSlug(planSlug = 'free') {
     const normalized = String(planSlug || 'free').trim().toLowerCase();
-    if (!VALID_PLAN_SLUGS.has(normalized)) {
+    if (!PLAN_SLUG_PATTERN.test(normalized)) {
       throw new Error(`Unsupported subscription plan: ${planSlug}`);
     }
     return normalized;
@@ -38,8 +38,7 @@ class TenantSubscriptionService {
   }
 
   getDefaultPlanBySlug(planSlug = 'free') {
-    const normalizedPlanSlug = VALID_PLAN_SLUGS.has(planSlug) ? planSlug : 'free';
-    return DEFAULT_PLAN_BY_SLUG.get(normalizedPlanSlug) || DEFAULT_PLAN_BY_SLUG.get('free');
+    return DEFAULT_PLAN_BY_SLUG.get(planSlug) || DEFAULT_PLAN_BY_SLUG.get('free');
   }
 
   getEffectivePlanSlug(tenant) {
@@ -50,16 +49,16 @@ class TenantSubscriptionService {
         ? tenant.currentPlan.slug.trim().toLowerCase()
         : null;
 
-    if (referencedSlug && VALID_PLAN_SLUGS.has(referencedSlug)) {
+    if (referencedSlug && PLAN_SLUG_PATTERN.test(referencedSlug)) {
       return referencedSlug;
     }
 
     const storedSlug = String(tenant?.plan || 'free').trim().toLowerCase();
-    return VALID_PLAN_SLUGS.has(storedSlug) ? storedSlug : 'free';
+    return PLAN_SLUG_PATTERN.test(storedSlug) ? storedSlug : 'free';
   }
 
   buildPlanPayload(plan, fallbackSlug = 'free') {
-    const normalizedFallback = VALID_PLAN_SLUGS.has(fallbackSlug) ? fallbackSlug : 'free';
+    const normalizedFallback = PLAN_SLUG_PATTERN.test(fallbackSlug) ? fallbackSlug : 'free';
     const defaults = this.getDefaultPlanBySlug(normalizedFallback);
     const source = plan || defaults;
     const slug = source.slug || normalizedFallback;
@@ -72,6 +71,7 @@ class TenantSubscriptionService {
       description: getValue('description'),
       price: getValue('price'),
       billingType: getValue('billingType'),
+      features: Array.from(new Set(Array.isArray(getValue('features')) ? getValue('features') : [])),
       limits: {
         users: getValue('userLimit'),
         owners: getValue('ownerLimit'),
@@ -89,7 +89,7 @@ class TenantSubscriptionService {
       currentPlan &&
       typeof currentPlan === 'object' &&
       typeof currentPlan.slug === 'string' &&
-      VALID_PLAN_SLUGS.has(currentPlan.slug)
+      PLAN_SLUG_PATTERN.test(currentPlan.slug)
     ) {
       return currentPlan;
     }
@@ -310,4 +310,5 @@ const tenantSubscriptionService = new TenantSubscriptionService();
 
 module.exports = tenantSubscriptionService;
 module.exports.DEFAULT_RECOVERY_CUSTOM_LIMITS = DEFAULT_RECOVERY_CUSTOM_LIMITS;
-module.exports.VALID_PLAN_SLUGS = Array.from(VALID_PLAN_SLUGS);
+// Backward-compatible inventory of built-in plans; custom normalized slugs are also valid.
+module.exports.VALID_PLAN_SLUGS = DEFAULT_SUBSCRIPTION_PLANS.map((plan) => plan.slug);

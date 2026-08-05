@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { cloneElement, useState, useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { listContents } from '../../lib/api/contents'
 import { useAuth } from '../../contexts/AuthContext.jsx'
@@ -7,9 +7,10 @@ import { searchTags } from '../../lib/api/tags'
 import { categoryAPI } from '../../lib/categoryAPI'
 import clsx from 'clsx'
 import { ChevronDownIcon } from '@heroicons/react/20/solid'
+import { adminPluginContentSearch } from '../../plugins/registry.jsx'
 
 export default function ContentList() {
-  const { isAuthenticated, activeTenantId } = useAuth()
+  const { isAuthenticated, activeTenantId, hasPermission, hasFeature } = useAuth()
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('')
   const [category, setCategory] = useState('')
@@ -82,6 +83,15 @@ export default function ContentList() {
   const tagOptions = useMemo(() => tagQuery.data?.tags ?? [], [tagQuery.data])
 
   const filterInputClass = 'block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 placeholder:text-gray-400'
+  const availableSemanticSearch = adminPluginContentSearch.filter((item) => (
+    (!item.permission || hasPermission(item.permission))
+    && (!item.feature || hasFeature(item.feature))
+  ))
+  const hasLockedSemanticSearch = adminPluginContentSearch.some((item) => (
+    (!item.permission || hasPermission(item.permission))
+    && item.feature
+    && !hasFeature(item.feature)
+  ))
 
   return (
     <div className="space-y-6">
@@ -220,6 +230,22 @@ export default function ContentList() {
           >Yenile</button>
         </div>
       </div>
+
+      {debouncedSearch.length >= 2 && availableSemanticSearch.map((contribution) => (
+        <div key={contribution.id}>
+          {cloneElement(contribution.element, {
+            query: debouncedSearch,
+            filters: { status, category, tag: selectedTag?._id || null },
+            exactItemIds: items.map((item) => String(item._id)),
+          })}
+        </div>
+      ))}
+
+      {debouncedSearch.length >= 2 && hasLockedSemanticSearch && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Semantik eşleşmeler Pro, Pro Max ve Enterprise planlarında otomatik olarak aramaya eklenir.
+        </div>
+      )}
 
       {isLoading && <div>Yükleniyor...</div>}
       {isError && <div className="text-red-600 text-sm">İçerikler yüklenirken hata oluştu.</div>}

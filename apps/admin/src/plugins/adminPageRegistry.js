@@ -56,15 +56,55 @@ export function validateAdminPluginPages(value) {
       })
     }
 
+    let tenantTab = null
+    if (page.tenantTab) {
+      tenantTab = Object.freeze({
+        label: requiredString(page.tenantTab.label, `admin page ${id} tenant tab label`),
+        order: Number.isFinite(page.tenantTab.order) ? page.tenantTab.order : 100
+      })
+    }
+
     return Object.freeze({
       id,
       path,
       element: page.element,
       permission: page.permission || null,
       feature: page.feature || null,
-      menu
+      menu,
+      tenantTab
     })
   }))
+}
+
+function validateSlots(value, label) {
+  if (value === undefined) return Object.freeze([])
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`)
+  const ids = new Set()
+  return Object.freeze(value.map((slot) => {
+    const id = requiredString(slot?.id, `${label} id`)
+    if (ids.has(id)) throw new Error(`${label} id collision: ${id}`)
+    if (!slot.element) throw new Error(`${label} element is required: ${id}`)
+    ids.add(id)
+    return Object.freeze({
+      id,
+      element: slot.element,
+      permission: slot.permission || null,
+      feature: slot.feature || null,
+      order: Number.isFinite(slot.order) ? slot.order : 100
+    })
+  }).sort((left, right) => left.order - right.order))
+}
+
+export function validateAdminPluginContributions(value) {
+  const normalized = Array.isArray(value) ? { pages: value } : value
+  if (!normalized || typeof normalized !== 'object') {
+    throw new Error('admin plugin factory must return an array or contribution object')
+  }
+  return Object.freeze({
+    pages: validateAdminPluginPages(normalized.pages || []),
+    contentSearch: validateSlots(normalized.contentSearch, 'content search contribution'),
+    contentEditorPanels: validateSlots(normalized.contentEditorPanels, 'content editor panel')
+  })
 }
 
 export function navigationFromAdminPages(pages) {
@@ -76,6 +116,19 @@ export function navigationFromAdminPages(pages) {
       name: page.menu.name,
       href: page.path,
       icon: page.menu.icon,
+      permission: page.permission,
+      feature: page.feature
+    })))
+}
+
+export function tenantTabsFromAdminPages(pages) {
+  return Object.freeze(pages
+    .filter((page) => page.tenantTab)
+    .sort((left, right) => left.tenantTab.order - right.tenantTab.order)
+    .map((page) => Object.freeze({
+      id: page.id,
+      label: page.tenantTab.label,
+      to: page.path,
       permission: page.permission,
       feature: page.feature
     })))

@@ -60,6 +60,7 @@ describe('tenantSubscriptionService', () => {
         ownerLimit: 5,
         storageLimit: 5 * 1024 * 1024 * 1024,
         monthlyRequestLimit: 10000,
+        features: ['search.semantic'],
       },
       customLimits: {},
     };
@@ -69,6 +70,7 @@ describe('tenantSubscriptionService', () => {
 
     expect(plan.slug).toBe('pro');
     expect(plan.name).toBe('Pro');
+    expect(plan.features).toEqual(['search.semantic']);
     expect(limits).toEqual({
       userLimit: 10,
       ownerLimit: 5,
@@ -106,6 +108,24 @@ describe('tenantSubscriptionService', () => {
     expect(limits.ownerLimit).toBeNull();
     expect(limits.storageLimit).toBe(10 * 1024 * 1024 * 1024);
     expect(limits.monthlyRequestLimit).toBe(-1);
+  });
+
+  it('resolves data-defined plan slugs outside the original four defaults', async () => {
+    vi.spyOn(SubscriptionPlan, 'getPlanBySlug').mockResolvedValue({
+      _id: 'plan-agency',
+      slug: 'agency-plus',
+      name: 'Agency Plus',
+      features: ['search.semantic'],
+    });
+
+    const plan = await tenantSubscriptionService.getPlanPayloadForTenant({
+      plan: 'agency-plus',
+      currentPlan: null,
+    });
+
+    expect(plan.slug).toBe('agency-plus');
+    expect(plan.name).toBe('Agency Plus');
+    expect(plan.features).toEqual(['search.semantic']);
   });
 
   it('builds recovery custom limits with defaults and overrides', () => {

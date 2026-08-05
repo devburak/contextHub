@@ -2,6 +2,7 @@ const { User, Tenant, Membership } = require('@contexthub/common');
 const ActivityLog = require('@contexthub/common/src/models/ActivityLog');
 const roleService = require('./roleService');
 const tenantService = require('./tenantService');
+const tenantSubscriptionService = require('./tenantSubscriptionService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { mailService } = require('./mailService');
@@ -75,6 +76,9 @@ async function getActiveMembershipDetails(userId) {
         tenantId
       );
       const roleMeta = roleService.formatRole(roleDoc);
+      const plan = tenant
+        ? await tenantSubscriptionService.getPlanPayloadForTenant(tenant)
+        : null;
 
       return {
         id: membershipDoc._id.toString(),
@@ -85,6 +89,8 @@ async function getActiveMembershipDetails(userId) {
               name: tenant.name,
               slug: tenant.slug,
               plan: tenant.plan,
+              planName: plan?.name || tenant.plan,
+              features: plan?.features || [],
               status: tenant.status,
               createdAt: tenant.createdAt,
             }

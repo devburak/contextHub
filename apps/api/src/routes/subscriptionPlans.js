@@ -81,6 +81,7 @@ async function subscriptionPlanRoutes(fastify) {
           description: plan.description,
           price: plan.price,
           billingType: plan.billingType,
+          features: plan.features || [],
           limits: {
             users: plan.userLimit,
             owners: plan.ownerLimit,
@@ -130,6 +131,7 @@ async function subscriptionPlanRoutes(fastify) {
           description: plan.description,
           price: plan.price,
           billingType: plan.billingType,
+          features: plan.features || [],
           limits: {
             users: plan.userLimit,
             owners: plan.ownerLimit,
@@ -170,6 +172,11 @@ async function subscriptionPlanRoutes(fastify) {
           ownerLimit: { type: ['number', 'null'] },
           storageLimit: { type: 'number' },
           monthlyRequestLimit: { type: 'number' },
+          features: {
+            type: 'array',
+            items: { type: 'string', pattern: '^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$' },
+            uniqueItems: true,
+          },
           pricePerGBStorage: { type: 'number' },
           pricePerThousandRequests: { type: 'number' },
           isActive: { type: 'boolean' },
@@ -204,6 +211,7 @@ async function subscriptionPlanRoutes(fastify) {
         'name', 'description', 'price', 
         'userLimit', 'ownerLimit', 'storageLimit', 'monthlyRequestLimit',
         'pricePerGBStorage', 'pricePerThousandRequests',
+        'features',
         'isActive', 'sortOrder',
       ];
 
@@ -224,6 +232,7 @@ async function subscriptionPlanRoutes(fastify) {
           slug: plan.slug,
           name: plan.name,
           price: plan.price,
+          features: plan.features || [],
           limits: {
             users: plan.userLimit,
             owners: plan.ownerLimit,

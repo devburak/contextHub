@@ -26,9 +26,13 @@ async function seedSubscriptionPlans(options = {}) {
       
       if (existing) {
         console.log(`✓ Plan '${planData.slug}' already exists, updating...`);
+        // Commercial/plugin feature keys are data owned by the deployment overlay.
+        // Core seeding must preserve unknown entitlements on existing plan records.
+        const corePlanData = { ...planData };
+        delete corePlanData.features;
         await SubscriptionPlan.findOneAndUpdate(
           { slug: planData.slug },
-          { $set: planData },
+          { $set: corePlanData },
           { new: true }
         );
       } else {
