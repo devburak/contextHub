@@ -157,6 +157,45 @@ describe('domain event consumer runner', () => {
     expect(handle).toHaveBeenCalledOnce()
   })
 
+  it('dead-letters a permanent error on the first attempt without scheduling retry', async () => {
+    const error = Object.assign(new Error('queue payload is too large'), {
+      code: 'QUEUE_MESSAGE_TOO_LARGE',
+      retryable: false
+    })
+    const handle = vi.fn().mockRejectedValue(error)
+    const context = setup({ handle, maxAttempts: 8 })
+    context.store.readEvents.mockResolvedValue([event(7), event(8)])
+
+    await expect(
+      context.runner.runPartition('test-consumer', 'tenant-a')
+    ).resolves.toMatchObject({
+      status: 'dead-lettered',
+      eventSequence: 7,
+      attempt: 1,
+      retryable: false
+    })
+    expect(context.store.scheduleRetry).not.toHaveBeenCalled()
+    expect(context.store.persistDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({ sequence: 7 }),
+        attempt: 1,
+        error: expect.objectContaining({
+          code: 'QUEUE_MESSAGE_TOO_LARGE',
+          retryable: false
+        })
+      })
+    )
+    expect(context.store.advanceCursor).toHaveBeenCalledWith(
+      context.storedCursor,
+      'runner-1',
+      0,
+      7
+    )
+    expect(
+      context.store.persistDeadLetter.mock.invocationCallOrder[0]
+    ).toBeLessThan(context.store.advanceCursor.mock.invocationCallOrder[0])
+  })
+
   it('recovers a DLQ-first crash without invoking the handler again', async () => {
     const context = setup()
     context.store.readEvents.mockResolvedValue([event(4)])
