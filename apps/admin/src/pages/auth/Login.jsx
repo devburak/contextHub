@@ -327,7 +327,7 @@ export default function Login() {
           </form>
         </div>
       </div>
-      <Footer />
+      <Footer showDeveloperDocs />
     </div>
   )
 }
