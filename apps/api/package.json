@@ -33,6 +33,7 @@
     "@contexthub/common": "workspace:*",
     "@fastify/cors": "^8.5.0",
     "@fastify/jwt": "^7.2.4",
+    "@fastify/rate-limit": "^9.1.0",
     "@fastify/swagger": "^8.15.0",
     "@fastify/swagger-ui": "^4.2.0",
     "bcryptjs": "^2.4.3",

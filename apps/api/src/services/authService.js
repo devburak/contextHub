@@ -10,6 +10,7 @@ const loginRateLimiter = require('./loginRateLimiter');
 const tokenBlacklist = require('./tokenBlacklist');
 const { issueSessionToken } = require('./sessionSecurity');
 const { hashIdentifier, logSecurityEvent } = require('./auditService');
+const { extractTrustedClientIp } = require('./clientIp');
 
 // Session token lifetime and absolute session cap. A JWT lives for TOKEN_TTL and can
 // be refreshed, but refresh cannot keep a session alive past MAX_SESSION_AGE_SECONDS
@@ -25,41 +26,6 @@ function nowInSeconds() {
 // comparison when the email is unknown, so login response timing does not reveal
 // whether an account exists (account-enumeration defense).
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('contexthub-nonexistent-account-placeholder', 12);
-
-function extractClientIp(request) {
-  // Fastify will populate request.ips when trustProxy is enabled
-  if (Array.isArray(request?.ips) && request.ips.length) {
-    const candidate = request.ips.find(Boolean);
-    if (candidate) return candidate;
-  }
-
-  const xfwd = request?.headers?.['x-forwarded-for'];
-  if (xfwd && typeof xfwd === 'string') {
-    const forwardedIp = xfwd.split(',').map((ip) => ip.trim()).find(Boolean);
-    if (forwardedIp) return forwardedIp;
-  }
-
-  const xReal = request?.headers?.['x-real-ip'];
-  if (xReal) return xReal;
-
-  const cfIp = request?.headers?.['cf-connecting-ip'];
-  if (cfIp) return cfIp;
-
-  const forwardedHeader = request?.headers?.forwarded;
-  if (forwardedHeader && typeof forwardedHeader === 'string') {
-    const match = forwardedHeader.match(/for=([^;]+)/i);
-    if (match && match[1]) {
-      return match[1].replace(/["[\]]/g, '');
-    }
-  }
-
-  return (
-    request?.ip ||
-    request?.socket?.remoteAddress ||
-    request?.raw?.socket?.remoteAddress ||
-    'unknown'
-  );
-}
 
 async function getActiveMembershipDetails(userId) {
   const memberships = await Membership.find({
@@ -241,7 +207,7 @@ class AuthService {
   }
 
   async login(email, password, tenantId, request = null) {
-    const clientIp = extractClientIp(request);
+    const clientIp = extractTrustedClientIp(request);
     const userAgent = request?.headers?.['user-agent'] || 'unknown';
 
     const blockStatus = await loginRateLimiter.isBlocked(email, clientIp);
