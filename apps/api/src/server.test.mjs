@@ -4,6 +4,8 @@ import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const AuthService = require('./services/authService');
+const TEST_LOGIN_EMAIL = 'server-fixture@example.invalid';
+const TEST_LOGIN_PASSWORD = 'server-fixture-password';
 const TEST_R2_ENV = {
   R2_BUCKET: 'test-media-bucket',
   R2_PUBLIC_DOMAIN: 'https://media.example.test',
@@ -27,13 +29,13 @@ describe('API server', () => {
 
     originalLogin = AuthService.prototype.login;
     AuthService.prototype.login = async function mockLogin(email, password, tenantId) {
-      if (email === 'test@example.com' && password === '123456') {
+      if (email === TEST_LOGIN_EMAIL && password === TEST_LOGIN_PASSWORD) {
         const activeMembership = tenantId
           ? {
               id: 'membership-1',
               tenantId,
               tenant: { id: tenantId, name: 'Test Tenant', slug: 'test-tenant' },
-              role: 'admin',
+              role: 'editor',
               roleMeta: null,
               permissions: [],
               status: 'active',
@@ -110,7 +112,7 @@ describe('API server', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { email: 'test@example.com', password: '123456' },
+      payload: { email: TEST_LOGIN_EMAIL, password: TEST_LOGIN_PASSWORD },
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
@@ -123,14 +125,14 @@ describe('API server', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/login?tenantId=mock-tenant-id',
-      payload: { email: 'test@example.com', password: '123456' },
+      payload: { email: TEST_LOGIN_EMAIL, password: TEST_LOGIN_PASSWORD },
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
     expect(body).not.toHaveProperty('token');
     expect(body.csrfToken).toBe('mock-csrf-token');
     expect(body).toHaveProperty('user');
-    expect(body.user.email).toBe('test@example.com');
+    expect(body.user.email).toBe(TEST_LOGIN_EMAIL);
     expect(res.headers['set-cookie']).toContain('ctx_session=mock-token');
     expect(res.headers['set-cookie']).toContain('HttpOnly');
     expect(res.headers['set-cookie']).toContain('SameSite=Strict');

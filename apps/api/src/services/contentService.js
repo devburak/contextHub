@@ -797,7 +797,7 @@ async function getContent({ tenantId, contentId }) {
   }
 
   const content = await Content.findOne({ _id: contentId, tenantId })
-    .populate('featuredMediaId')
+    .populate({ path: 'featuredMediaId', match: { tenantId } })
     .lean()
 
   if (!content) {
@@ -1001,7 +1001,7 @@ async function getContentBySlug({ tenantId, slug, status = null, publishedFrom =
 
   let content = await Content.findOne(query)
     .sort({ publishedAt: -1, createdAt: -1, _id: -1 })
-    .populate('featuredMediaId')
+    .populate({ path: 'featuredMediaId', match: { tenantId } })
     .lean()
 
   if (!content && publishedRange) {
@@ -1011,7 +1011,7 @@ async function getContentBySlug({ tenantId, slug, status = null, publishedFrom =
 
     content = await Content.findOne(scheduleQuery)
       .sort({ publishAt: -1, createdAt: -1, _id: -1 })
-      .populate('featuredMediaId')
+      .populate({ path: 'featuredMediaId', match: { tenantId } })
       .lean()
   }
 
@@ -1171,9 +1171,13 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
       .sort({ publishedAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('categories', 'name slug')
-      .populate('tags', 'slug title')
-      .populate('featuredMediaId', 'url title altText variants')
+      .populate({ path: 'categories', match: { tenantId }, select: 'name slug' })
+      .populate({ path: 'tags', match: { tenantId }, select: 'slug title' })
+      .populate({
+        path: 'featuredMediaId',
+        match: { tenantId },
+        select: 'url title altText variants'
+      })
       .lean(),
     Content.countDocuments(query)
   ])
