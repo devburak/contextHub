@@ -1,6 +1,5 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import ApiDocs from './ApiDocs.jsx'
 
@@ -23,11 +22,7 @@ describe('ApiDocs', () => {
 
   it('links to the public developer documentation', async () => {
     await act(async () => {
-      root.render(
-        <MemoryRouter>
-          <ApiDocs apiUrl="https://api.ctxhub.net/api/" />
-        </MemoryRouter>,
-      )
+      root.render(<ApiDocs apiUrl="https://api.ctxhub.net/api/" />)
     })
 
     const docsLink = container.querySelector('a[href="/docs"]')
@@ -37,11 +32,7 @@ describe('ApiDocs', () => {
 
   it('resolves Swagger under the Edge Gateway bypass path', async () => {
     await act(async () => {
-      root.render(
-        <MemoryRouter>
-          <ApiDocs apiUrl="https://api.ctxhub.net" />
-        </MemoryRouter>,
-      )
+      root.render(<ApiDocs apiUrl="https://api.ctxhub.net" />)
     })
 
     expect(container.querySelector('iframe')?.getAttribute('src'))
@@ -52,11 +43,7 @@ describe('ApiDocs', () => {
 
   it('preserves an explicit local API override', async () => {
     await act(async () => {
-      root.render(
-        <MemoryRouter>
-          <ApiDocs apiUrl="http://localhost:3000" />
-        </MemoryRouter>,
-      )
+      root.render(<ApiDocs apiUrl="http://localhost:3000" />)
     })
 
     expect(container.querySelector('iframe')?.getAttribute('src'))

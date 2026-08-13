@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { BookOpen, ExternalLink, FileJson, MousePointerClick, RefreshCw, Server, ShieldCheck } from 'lucide-react'
 
 const placementEndpoints = [
@@ -61,14 +60,14 @@ export default function ApiDocs({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              to="/docs"
+            <a
+              href="/docs"
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
               title="Geliştirici dokümanlarını aç"
             >
               <BookOpen size={16} aria-hidden="true" />
               Developer Docs
-            </Link>
+            </a>
             <button
               onClick={handleRefresh}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
