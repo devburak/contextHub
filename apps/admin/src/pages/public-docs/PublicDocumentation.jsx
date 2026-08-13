@@ -276,9 +276,9 @@ export default function PublicDocumentation() {
     <div className="docs-app">
       <header className="docs-header">
         <a className="docs-brand" href="/docs" aria-label="ContextHub Cloud developer documentation">
-          <span className="docs-brand-mark">CH</span>
+          <span className="docs-brand-mark">C</span>
           <span>
-            <strong>ContextHub Cloud</strong>
+            <strong>ContextHub</strong>
             <small>{labels.fieldManual}</small>
           </span>
         </a>
