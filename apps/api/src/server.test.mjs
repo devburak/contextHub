@@ -86,6 +86,15 @@ describe('API server', () => {
     expect(res.headers['x-frame-options']).toBe('DENY');
   });
 
+  it('serves Swagger from the Edge Gateway bypass path', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/docs/json' });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.payload).info.title).toBe('ContextHub API');
+
+    const legacy = await app.inject({ method: 'GET', url: '/docs/json' });
+    expect(legacy.statusCode).toBe(404);
+  });
+
   it('boots configured API extensions under their declared prefix', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/dummy/ping' });
     expect(res.statusCode).toBe(200);

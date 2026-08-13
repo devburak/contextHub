@@ -91,13 +91,13 @@ export default function Documentation() {
           </p>
           <pre className="rounded bg-gray-900 p-4 text-xs text-gray-100 overflow-x-auto">
 {`curl -H "Authorization: Bearer ctx_your_token_here" \\
-     https://api.contexthub.com/api/contents`}
+     https://api.ctxhub.net/api/contents`}
           </pre>
           <p>
             <strong>JavaScript Örneği:</strong>
           </p>
           <pre className="rounded bg-gray-900 p-4 text-xs text-gray-100 overflow-x-auto">
-{`const response = await fetch('https://api.contexthub.com/api/contents', {
+{`const response = await fetch('https://api.ctxhub.net/api/contents', {
   headers: {
     'Authorization': 'Bearer ctx_your_token_here'
   }
@@ -109,7 +109,7 @@ const data = await response.json();`}
             Frontend'de token kullanırken dikkatli olun; backend proxy kullanmanız önerilir. Her uygulama için ayrı token oluşturun ve sadece gerekli izinleri verin.
           </p>
           <p>
-            <strong>Detaylı Dokümantasyon:</strong> API Token kullanımı, kod örnekleri ve en iyi uygulamalar için <a href="http://localhost:3000/docs" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 font-medium">Swagger UI</a> dokümantasyonunu ziyaret edin
+            <strong>Detaylı Dokümantasyon:</strong> API Token kullanımı, kod örnekleri ve en iyi uygulamalar için <a href="https://api.ctxhub.net/api/docs" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 font-medium">Swagger UI</a> dokümantasyonunu ziyaret edin
             veya projedeki <code className="rounded bg-gray-100 px-1 py-0.5">docs/API-TOKEN-USAGE.md</code> dosyasını inceleyin.
           </p>
         </div>

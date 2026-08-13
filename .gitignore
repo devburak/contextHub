@@ -140,3 +140,5 @@ apps/edge-gateway/
 # extension contract is intentionally published.
 /docs/*
 !/docs/PLUGIN_API.md
+!/docs/saas/
+!/docs/saas/**

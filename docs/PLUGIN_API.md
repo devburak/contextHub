@@ -20,8 +20,8 @@ cakismasinda process fail-fast durur.
 Guncel public extension contract'i:
 
 - API version: `1`
-- API revision: `3`
-- Admin API version/revision: `1/2`
+- API revision: `4`
+- Admin API version/revision: `1/3`
 - Domain event schema version: `1`
 
 Major `version` kirici degisikliklerde, `revision` ayni major icindeki geriye uyumlu

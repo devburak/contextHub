@@ -65,6 +65,54 @@ function getResetAt(periodKey) {
   return new Date(Date.UTC(year, month, 1, 0, 0, 0, 0)).toISOString();
 }
 
+function buildQuotaSnapshot(flag, now = Date.now()) {
+  const limit = Number(flag?.limit);
+  const usage = Number(flag?.usage);
+  if (!Number.isFinite(limit) || limit < 0 || !Number.isFinite(usage) || usage < 0) {
+    return null;
+  }
+
+  const resetAt = flag.resetAt || getResetAt(flag.periodKey);
+  const resetTimestamp = resetAt ? Date.parse(resetAt) : Number.NaN;
+  const resetSeconds = Number.isFinite(resetTimestamp)
+    ? Math.max(0, Math.ceil((resetTimestamp - now) / 1000))
+    : null;
+
+  return {
+    limit: Math.floor(limit),
+    usage: Math.floor(usage),
+    remaining: Math.max(0, Math.floor(limit - usage)),
+    periodKey: flag.periodKey || null,
+    resetAt: resetAt || null,
+    resetTimestamp: Number.isFinite(resetTimestamp) ? Math.floor(resetTimestamp / 1000) : null,
+    resetSeconds,
+  };
+}
+
+function setQuotaHeaders(reply, snapshot, { exceeded = false } = {}) {
+  if (!snapshot || typeof reply.header !== 'function') {
+    return;
+  }
+
+  const effectiveWindow = snapshot.resetSeconds !== null ? `;t=${snapshot.resetSeconds}` : '';
+
+  // The structured fields follow the active IETF HTTPAPI draft. X-RateLimit-*
+  // remains available for existing clients while the draft stabilises.
+  reply.header('RateLimit-Policy', `"monthly";q=${snapshot.limit}`);
+  reply.header('RateLimit', `"monthly";r=${snapshot.remaining}${effectiveWindow}`);
+  reply.header('X-RateLimit-Limit', String(snapshot.limit));
+  reply.header('X-RateLimit-Remaining', String(snapshot.remaining));
+  if (snapshot.resetTimestamp !== null) {
+    reply.header('X-RateLimit-Reset', String(snapshot.resetTimestamp));
+  }
+  if (snapshot.periodKey) {
+    reply.header('X-RateLimit-Period', snapshot.periodKey);
+  }
+  if (exceeded && snapshot.resetSeconds !== null) {
+    reply.header('Retry-After', String(snapshot.resetSeconds));
+  }
+}
+
 /**
  * Hot path kota kontrolu.
  *
@@ -102,7 +150,10 @@ async function checkRequestLimit(request, reply) {
     return false;
   }
 
-  // Only an explicit, valid exceeded flag may reject traffic. Missing or
+  const quotaSnapshot = buildQuotaSnapshot(flag);
+  setQuotaHeaders(reply, quotaSnapshot, { exceeded: flag?.exceeded === true });
+
+  // Only an explicit, valid exceeded snapshot may reject traffic. Missing or
   // malformed state follows the documented metering fail-open policy.
   if (flag?.exceeded !== true) {
     return false;
@@ -123,13 +174,15 @@ async function checkRequestLimit(request, reply) {
     limit: flag.limit ?? null,
     usage: flag.usage ?? null,
     periodKey: flag.periodKey ?? null,
-    resetAt: flag.resetAt || getResetAt(flag.periodKey),
+    resetAt: quotaSnapshot?.resetAt || flag.resetAt || getResetAt(flag.periodKey),
   });
 
   return true;
 }
 
 module.exports = {
+  buildQuotaSnapshot,
   checkRequestLimit,
+  setQuotaHeaders,
   shouldSkipLimitGuard,
 };

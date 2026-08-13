@@ -332,21 +332,21 @@ async function refreshMonthlyLimitFlag(tenantId, date = new Date(), options = {}
 
   await localRedisClient.cacheRequestQuota(tenantId, state.remaining, ttlSeconds, state.periodKey);
 
-  if (state.exceeded) {
-    await localRedisClient.setRequestLimitFlag(
-      tenantId,
-      buildLimitFlagPayload({
-        limit: state.limit,
-        usage: state.usage,
-        periodKey: state.periodKey,
-        resetAt: state.resetAt,
-      }),
-      ttlSeconds,
-      state.periodKey
-    );
-  } else {
-    await localRedisClient.clearRequestLimitFlag(tenantId, state.periodKey);
-  }
+  // Keep one quota snapshot for every limited plan. The hot-path guard still
+  // rejects only `exceeded: true`, while successful responses can expose
+  // programmatic remaining-quota headers from the same single Redis read.
+  await localRedisClient.setRequestLimitFlag(
+    tenantId,
+    buildLimitFlagPayload({
+      limit: state.limit,
+      usage: state.usage,
+      periodKey: state.periodKey,
+      resetAt: state.resetAt,
+      exceeded: state.exceeded,
+    }),
+    ttlSeconds,
+    state.periodKey
+  );
 
   return state;
 }
@@ -459,21 +459,18 @@ async function reserveRequestQuota(tenantId, date = new Date()) {
   }
 
   const usageAfterReservation = initialState.limit - newRemaining;
-  if (newRemaining === 0) {
-    await localRedisClient.setRequestLimitFlag(
-      tenantId,
-      buildLimitFlagPayload({
-        limit: initialState.limit,
-        usage: usageAfterReservation,
-        periodKey: initialState.periodKey,
-        resetAt: initialState.resetAt,
-      }),
-      ttlSeconds,
-      initialState.periodKey
-    );
-  } else {
-    await localRedisClient.clearRequestLimitFlag(tenantId, initialState.periodKey);
-  }
+  await localRedisClient.setRequestLimitFlag(
+    tenantId,
+    buildLimitFlagPayload({
+      limit: initialState.limit,
+      usage: usageAfterReservation,
+      periodKey: initialState.periodKey,
+      resetAt: initialState.resetAt,
+      exceeded: newRemaining === 0,
+    }),
+    ttlSeconds,
+    initialState.periodKey
+  );
 
   return {
     ...initialState,

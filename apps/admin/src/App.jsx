@@ -31,6 +31,7 @@ import { CollectionsList, CollectionDetail } from './pages/collections/index.js'
 import { AuthContext } from './contexts/AuthContext.jsx'
 import { ToastProvider } from './contexts/ToastContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
+import PublicDocumentation from './pages/public-docs/PublicDocumentation.jsx'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
 import { PermissionRoute } from './components/PermissionRoute.jsx'
 import { FeatureRoute } from './components/FeatureRoute.jsx'
@@ -51,6 +52,8 @@ function App() {
   const [memberships, setMembershipsState] = useState([])
   const [activeTenantId, setActiveTenantId] = useState(null)
   const [authReady, setAuthReady] = useState(false)
+  const isPublicDocsPath =
+    window.location.pathname === '/docs' || window.location.pathname.startsWith('/docs/')
 
   // Set default language to Turkish on app mount
   useEffect(() => {
@@ -312,7 +315,7 @@ function App() {
     hasFeature
   ])
 
-  if (!authReady) {
+  if (!authReady && !isPublicDocsPath) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 text-sm text-gray-600">
         Güvenli oturum yükleniyor...
@@ -324,7 +327,13 @@ function App() {
     <BrowserRouter>
       <ToastProvider>
         <AuthContext.Provider value={authValue}>
-          {pendingTenantSelection ? (
+          {isPublicDocsPath ? (
+            <Routes>
+              <Route path="/docs" element={<PublicDocumentation />} />
+              <Route path="/docs/:slug" element={<PublicDocumentation />} />
+              <Route path="*" element={<Navigate to="/docs" replace />} />
+            </Routes>
+          ) : pendingTenantSelection ? (
             <Routes>
               <Route path="/accept-invite" element={<AcceptInvite />} />
               <Route path="/select-tenant" element={<TenantSelection />} />

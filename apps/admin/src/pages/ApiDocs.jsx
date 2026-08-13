@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, FileJson, MousePointerClick, RefreshCw, Server, ShieldCheck } from 'lucide-react'
+import { BookOpen, ExternalLink, FileJson, MousePointerClick, RefreshCw, Server, ShieldCheck } from 'lucide-react'
 
 const placementEndpoints = [
   {
@@ -28,14 +28,17 @@ const placementEndpoints = [
   }
 ]
 
-export default function ApiDocs() {
-  const [iframeKey, setIframeKey] = useState(0)
-  const [apiUrl] = useState(() => {
-    // Get API base URL from environment or default to localhost:3000
-    return import.meta.env.VITE_API_URL || 'http://localhost:3000'
-  })
+function resolveSwaggerUrl(apiUrl) {
+  const normalized = String(apiUrl || '').replace(/\/+$/, '')
+  return normalized.endsWith('/api') ? `${normalized}/docs` : `${normalized}/api/docs`
+}
 
-  const docsUrl = `${apiUrl}/docs`
+export default function ApiDocs({
+  apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000',
+}) {
+  const [iframeKey, setIframeKey] = useState(0)
+
+  const docsUrl = resolveSwaggerUrl(apiUrl)
 
   const handleRefresh = () => {
     setIframeKey(prev => prev + 1)
@@ -49,14 +52,22 @@ export default function ApiDocs() {
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">API Dokümantasyonu</h1>
             <p className="mt-1 text-sm text-gray-600">
               ContextHub API endpoint'lerini keşfedin ve test edin
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <a
+              href="/docs"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+              title="Geliştirici dokümanlarını aç"
+            >
+              <BookOpen size={16} aria-hidden="true" />
+              Developer Docs
+            </a>
             <button
               onClick={handleRefresh}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -153,7 +164,7 @@ export default function ApiDocs() {
         <div className="flex items-center gap-4 text-sm">
           <span className="text-gray-600 font-medium">Hızlı Erişim:</span>
           <a
-            href={`${apiUrl}/docs/json`}
+            href={`${docsUrl}/json`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:text-blue-800 hover:underline"
@@ -162,7 +173,7 @@ export default function ApiDocs() {
           </a>
           <span className="text-gray-300">|</span>
           <a
-            href={`${apiUrl}/docs/yaml`}
+            href={`${docsUrl}/yaml`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:text-blue-800 hover:underline"

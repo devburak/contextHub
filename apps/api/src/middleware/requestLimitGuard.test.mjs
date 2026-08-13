@@ -10,6 +10,7 @@ function createReply() {
   const reply = {
     statusCode: null,
     payload: null,
+    headers: {},
   };
   reply.code = vi.fn((value) => {
     reply.statusCode = value;
@@ -17,6 +18,10 @@ function createReply() {
   });
   reply.send = vi.fn((value) => {
     reply.payload = value;
+    return reply;
+  });
+  reply.header = vi.fn((name, value) => {
+    reply.headers[name.toLowerCase()] = value;
     return reply;
   });
   return reply;
@@ -84,6 +89,8 @@ describe('requestLimitGuard', () => {
       exceeded: false,
       limit: 1000,
       usage: 12,
+      periodKey: '2026-08',
+      resetAt: '2026-09-01T00:00:00.000Z',
     });
     const reply = createReply();
 
@@ -91,6 +98,14 @@ describe('requestLimitGuard', () => {
 
     expect(blocked).toBe(false);
     expect(reply.code).not.toHaveBeenCalled();
+    expect(reply.headers).toMatchObject({
+      'x-ratelimit-limit': '1000',
+      'x-ratelimit-remaining': '988',
+      'x-ratelimit-reset': '1788220800',
+      'x-ratelimit-period': '2026-08',
+    });
+    expect(reply.headers.ratelimit).toContain('"monthly";r=988');
+    expect(reply.headers['ratelimit-policy']).toContain('"monthly";q=1000');
   });
 
   it('fails open for malformed quota state', async () => {
@@ -131,6 +146,8 @@ describe('requestLimitGuard', () => {
       periodKey: '2026-08',
       resetAt: '2026-09-01T00:00:00.000Z',
     });
+    expect(reply.headers['x-ratelimit-remaining']).toBe('0');
+    expect(Number(reply.headers['retry-after'])).toBeGreaterThanOrEqual(0);
   });
 
   it('localises the 429 message from accept-language', async () => {
