@@ -41,4 +41,11 @@ Build a safe integration.
     expect(result.html).toContain('target="_blank"')
     expect(result.html).toContain('rel="noreferrer noopener"')
   })
+
+  it('localizes prompt copy controls without translating the prompt', () => {
+    const result = renderDocumentationMarkdown('```prompt\nKeep this English.\n```', { locale: 'tr' })
+    expect(result.html).toContain('aria-label="Promptu kopyala"')
+    expect(result.html).toContain('PROMPTU KOPYALA')
+    expect(result.html).toContain('Keep this English.')
+  })
 })

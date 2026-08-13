@@ -64,7 +64,7 @@ function unwrapElement(element) {
   parent.removeChild(element)
 }
 
-export function renderDocumentationMarkdown(markdown) {
+export function renderDocumentationMarkdown(markdown, { locale = 'en' } = {}) {
   const unsafeHtml = marked.parse(String(markdown || ''), {
     gfm: true,
     breaks: false,
@@ -125,11 +125,20 @@ export function renderDocumentationMarkdown(markdown) {
       .find((className) => className.startsWith('language-'))
       ?.slice('language-'.length)
     const button = document.createElement('button')
+    const isPrompt = language === 'prompt'
     button.setAttribute('type', 'button')
     button.setAttribute('data-docs-copy', String(codeIndex))
-    button.setAttribute('aria-label', language === 'prompt' ? 'Copy prompt' : 'Copy code')
+    button.setAttribute('data-copy-kind', isPrompt ? 'prompt' : 'code')
+    button.setAttribute(
+      'aria-label',
+      locale === 'tr'
+        ? (isPrompt ? 'Promptu kopyala' : 'Kodu kopyala')
+        : (isPrompt ? 'Copy prompt' : 'Copy code'),
+    )
     button.className = 'docs-copy-button'
-    button.textContent = language === 'prompt' ? 'COPY PROMPT' : 'COPY'
+    button.textContent = locale === 'tr'
+      ? (isPrompt ? 'PROMPTU KOPYALA' : 'KOPYALA')
+      : (isPrompt ? 'COPY PROMPT' : 'COPY')
     code.parentElement.setAttribute('data-code-index', String(codeIndex))
     code.parentElement.insertBefore(button, code)
     codeIndex += 1

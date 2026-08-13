@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
 const repositoryRoot = resolve(scriptDirectory, '..')
 
-export const defaultSourceDirectory = join(repositoryRoot, 'docs', 'public')
+export const defaultSourceDirectory = join(repositoryRoot, 'docs', 'saas')
 export const defaultOutputDirectory = join(
   repositoryRoot,
   'apps',
@@ -69,30 +69,50 @@ export function toSearchText(markdown) {
 }
 
 export function validateManifest(manifest) {
-  if (!manifest || manifest.schemaVersion !== 1) {
-    throw new Error('Public docs manifest must use schemaVersion 1')
+  if (!manifest || manifest.schemaVersion !== 2) {
+    throw new Error('SaaS docs manifest must use schemaVersion 2')
   }
   if (!Array.isArray(manifest.documents) || manifest.documents.length === 0) {
     throw new Error('Public docs manifest must contain documents')
   }
 
   const slugs = new Set()
+  const locales = new Set((manifest.locales || []).map((locale) => locale.code))
+  if (!locales.has(manifest.defaultLocale) || !locales.has(manifest.aiLocale)) {
+    throw new Error('SaaS docs locales must include defaultLocale and aiLocale')
+  }
+
   const files = new Set()
   for (const document of manifest.documents) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(document.slug || '')) {
       throw new Error(`Invalid documentation slug: ${document.slug || '<empty>'}`)
     }
-    if (document.file !== `${document.slug}.md`) {
-      throw new Error(`Document ${document.slug} must use ${document.slug}.md`)
-    }
-    if (!document.title || !document.description || !document.category) {
+    if (!document.title || !document.description || !document.category || !document.audience) {
       throw new Error(`Document ${document.slug} is missing navigation metadata`)
     }
-    if (slugs.has(document.slug) || files.has(document.file)) {
+    if (slugs.has(document.slug)) {
       throw new Error(`Duplicate documentation entry: ${document.slug}`)
     }
+
+    for (const locale of locales) {
+      const expectedFile = `${locale}/${document.slug}.md`
+      if (document.files?.[locale] !== expectedFile) {
+        throw new Error(`Document ${document.slug} must use ${expectedFile} for ${locale}`)
+      }
+      if (
+        !document.title[locale] ||
+        !document.description[locale] ||
+        !document.category[locale] ||
+        !Array.isArray(document.audience[locale])
+      ) {
+        throw new Error(`Document ${document.slug} is missing ${locale} metadata`)
+      }
+      if (files.has(expectedFile)) {
+        throw new Error(`Duplicate documentation file: ${expectedFile}`)
+      }
+      files.add(expectedFile)
+    }
     slugs.add(document.slug)
-    files.add(document.file)
   }
 
   if (!slugs.has(manifest.defaultSlug)) {
@@ -128,10 +148,11 @@ function checksum(content) {
 }
 
 function buildLlmsIndex(manifest, documents) {
+  const locale = manifest.aiLocale
   const lines = [
-    `# ${manifest.title}`,
+    `# ${manifest.title[locale]}`,
     '',
-    `> ${manifest.description}`,
+    `> ${manifest.description[locale]}`,
     '',
     `Version: ${manifest.version}`,
     `Updated: ${manifest.updatedAt}`,
@@ -142,7 +163,7 @@ function buildLlmsIndex(manifest, documents) {
 
   for (const document of documents) {
     lines.push(
-      `- [${document.title}](${manifest.basePath}/${document.slug}.md): ${document.description}`,
+      `- [${document.title[locale]}](${manifest.basePath}/${locale}/${document.slug}.md): ${document.description[locale]}`,
     )
   }
 
@@ -150,24 +171,26 @@ function buildLlmsIndex(manifest, documents) {
 }
 
 function buildLlmsFull(manifest, documents) {
+  const locale = manifest.aiLocale
   const sections = [
-    `# ${manifest.title}`,
+    `# ${manifest.title[locale]}`,
     '',
-    `> ${manifest.description}`,
+    `> ${manifest.description[locale]}`,
     '',
     `Version: ${manifest.version}`,
     `Updated: ${manifest.updatedAt}`,
   ]
 
   for (const document of documents) {
+    const localized = document.locales[locale]
     sections.push(
       '',
       '---',
       '',
-      `Source: ${manifest.basePath}/${document.slug}.md`,
-      `Checksum-SHA256: ${document.checksum}`,
+      `Source: ${localized.sourceUrl}`,
+      `Checksum-SHA256: ${localized.checksum}`,
       '',
-      document.markdown.trim(),
+      localized.markdown.trim(),
     )
   }
 
@@ -183,33 +206,61 @@ export async function buildPublicDocs({
   validateManifest(manifest)
 
   const documents = []
+  const localeCodes = manifest.locales.map((locale) => locale.code)
   for (const metadata of [...manifest.documents].sort((a, b) => a.order - b.order)) {
-    const markdown = await readFile(join(sourceDirectory, metadata.file), 'utf8')
-    const headings = extractHeadings(markdown)
-    if (!headings.some((heading) => heading.depth === 1)) {
-      throw new Error(`Document ${metadata.slug} must contain an H1 heading`)
+    const localizedDocuments = {}
+    for (const locale of localeCodes) {
+      const markdown = await readFile(join(sourceDirectory, metadata.files[locale]), 'utf8')
+      const headings = extractHeadings(markdown)
+      if (!headings.some((heading) => heading.depth === 1)) {
+        throw new Error(`Document ${metadata.slug} must contain an H1 heading for ${locale}`)
+      }
+      localizedDocuments[locale] = {
+        checksum: checksum(markdown),
+        headings,
+        markdown,
+        searchText: toSearchText(markdown),
+        sourceUrl: `${manifest.basePath}/${locale}/${metadata.slug}.md`,
+      }
     }
 
     documents.push({
       ...metadata,
-      checksum: checksum(markdown),
-      headings,
-      markdown,
-      searchText: toSearchText(markdown),
-      sourceUrl: `${manifest.basePath}/${metadata.slug}.md`,
+      locales: localizedDocuments,
     })
   }
 
-  validateInternalLinks(documents)
+  for (const locale of localeCodes) {
+    validateInternalLinks(documents.map((document) => ({
+      slug: document.slug,
+      headings: document.locales[locale].headings,
+      markdown: document.locales[locale].markdown,
+    })))
+  }
 
   await rm(outputDirectory, { recursive: true, force: true })
   await mkdir(outputDirectory, { recursive: true })
 
+  for (const locale of localeCodes) {
+    await mkdir(join(outputDirectory, locale), { recursive: true })
+  }
   for (const document of documents) {
-    await writeFile(join(outputDirectory, `${document.slug}.md`), document.markdown, 'utf8')
+    for (const locale of localeCodes) {
+      await writeFile(
+        join(outputDirectory, locale, `${document.slug}.md`),
+        document.locales[locale].markdown,
+        'utf8',
+      )
+    }
   }
 
-  const publicDocuments = documents.map(({ markdown, ...document }) => document)
+  const publicDocuments = documents.map((document) => ({
+    ...document,
+    locales: Object.fromEntries(localeCodes.map((locale) => {
+      const { markdown: _markdown, ...localized } = document.locales[locale]
+      return [locale, localized]
+    })),
+  }))
   const catalog = {
     schemaVersion: manifest.schemaVersion,
     title: manifest.title,
@@ -217,7 +268,10 @@ export async function buildPublicDocs({
     version: manifest.version,
     updatedAt: manifest.updatedAt,
     defaultSlug: manifest.defaultSlug,
+    defaultLocale: manifest.defaultLocale,
+    aiLocale: manifest.aiLocale,
     basePath: manifest.basePath,
+    locales: manifest.locales,
     documents: publicDocuments,
   }
 
@@ -234,5 +288,7 @@ export async function buildPublicDocs({
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const catalog = await buildPublicDocs()
-  console.log(`Built ${catalog.documents.length} public documentation pages (${catalog.version}).`)
+  console.log(
+    `Built ${catalog.documents.length} ContextHub Cloud pages in ${catalog.locales.length} locales (${catalog.version}).`,
+  )
 }

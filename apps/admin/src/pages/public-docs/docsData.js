@@ -9,7 +9,7 @@ function assertSuccessful(response, resourceName) {
 export function validateCatalog(catalog) {
   if (
     !catalog ||
-    catalog.schemaVersion !== 1 ||
+    catalog.schemaVersion !== 2 ||
     !Array.isArray(catalog.documents) ||
     catalog.documents.length === 0
   ) {
@@ -20,23 +20,45 @@ export function validateCatalog(catalog) {
 
 export async function loadCatalog(fetchImplementation = fetch) {
   const response = await fetchImplementation(`${DOCS_BASE_PATH}/catalog.json`, {
-    cache: 'force-cache',
+    cache: 'no-cache',
   })
   assertSuccessful(response, 'the documentation catalog')
   return validateCatalog(await response.json())
 }
 
-export async function loadDocument(slug, fetchImplementation = fetch, signal) {
+export async function loadDocument(slug, locale, checksum, fetchImplementation = fetch, signal) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug || '')) {
     throw new Error('The requested documentation slug is invalid')
   }
+  if (!/^[a-z]{2}$/.test(locale || '')) {
+    throw new Error('The requested documentation locale is invalid')
+  }
 
-  const response = await fetchImplementation(`${DOCS_BASE_PATH}/${slug}.md`, {
+  const version = /^[a-f0-9]{64}$/.test(checksum || '') ? `?v=${checksum}` : ''
+  const response = await fetchImplementation(`${DOCS_BASE_PATH}/${locale}/${slug}.md${version}`, {
     cache: 'force-cache',
     signal,
   })
   assertSuccessful(response, `documentation page “${slug}”`)
   return response.text()
+}
+
+export function localizeDocuments(catalog, locale) {
+  if (!catalog) return []
+  const activeLocale = catalog.locales.some((item) => item.code === locale)
+    ? locale
+    : catalog.defaultLocale
+
+  return catalog.documents.map((document) => ({
+    slug: document.slug,
+    title: document.title[activeLocale],
+    description: document.description[activeLocale],
+    category: document.category[activeLocale],
+    audience: document.audience[activeLocale],
+    order: document.order,
+    tags: document.tags,
+    ...document.locales[activeLocale],
+  }))
 }
 
 export function searchDocuments(documents, query) {

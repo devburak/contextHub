@@ -88,6 +88,39 @@
   gap: 12px;
 }
 
+.docs-language-switcher {
+  display: inline-flex;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+}
+
+.docs-language-switcher button {
+  min-width: 34px;
+  min-height: 28px;
+  padding: 4px 7px;
+  color: #aebdb4;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.docs-language-switcher button:hover,
+.docs-language-switcher button:focus-visible {
+  color: white;
+}
+
+.docs-language-switcher button.is-active {
+  color: var(--docs-code);
+  background: var(--docs-signal);
+  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.22);
+}
+
 .docs-header-actions > a,
 .docs-offline,
 .docs-version {
@@ -573,6 +606,7 @@ pre:has(code.language-prompt) .docs-copy-button {
   .docs-brand small { display: none; }
   .docs-header-actions > a:not(.docs-admin-link),
   .docs-version { display: none; }
+  .docs-language-switcher button { min-width: 31px; padding-inline: 5px; }
   .docs-mobile-menu { display: grid; }
   .docs-shell { display: block; min-height: calc(100vh - 64px); }
   .docs-navigation {

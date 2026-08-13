@@ -5,22 +5,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PublicDocumentation from './PublicDocumentation.jsx'
 
 const catalog = {
-  schemaVersion: 1,
-  title: 'ContextHub Developer Docs',
-  description: 'Developer documentation',
+  schemaVersion: 2,
+  title: { en: 'ContextHub Cloud Developer Docs', tr: 'ContextHub Cloud Geliştirici Dokümanları' },
+  description: { en: 'Developer documentation', tr: 'Geliştirici dokümanları' },
   version: 'test',
   defaultSlug: 'overview',
+  defaultLocale: 'en',
+  aiLocale: 'en',
+  locales: [
+    { code: 'en', label: 'English', shortLabel: 'EN' },
+    { code: 'tr', label: 'Türkçe', shortLabel: 'TR' },
+  ],
   documents: [
     {
       slug: 'overview',
-      title: 'Developer overview',
-      description: 'Platform model',
-      category: 'Start here',
+      title: { en: 'Cloud overview', tr: 'Cloud genel bakış' },
+      description: { en: 'Platform model', tr: 'Platform modeli' },
+      category: { en: 'Start here', tr: 'Başlangıç' },
       order: 10,
-      audience: ['frontend'],
+      audience: { en: ['frontend'], tr: ['frontend'] },
       tags: ['overview'],
-      searchText: 'platform tenant model',
-      sourceUrl: '/developer-docs/overview.md',
+      locales: {
+        en: {
+          searchText: 'platform tenant model',
+          sourceUrl: '/developer-docs/en/overview.md',
+          checksum: 'a'.repeat(64),
+        },
+        tr: {
+          searchText: 'platform tenant modeli',
+          sourceUrl: '/developer-docs/tr/overview.md',
+          checksum: 'b'.repeat(64),
+        },
+      },
     },
   ],
 }
@@ -34,13 +50,16 @@ describe('PublicDocumentation', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
+    localStorage.setItem('docs.locale', 'en')
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (url.endsWith('catalog.json')) {
         return { ok: true, json: async () => catalog }
       }
       return {
         ok: true,
-        text: async () => '# Developer overview\n\nPublic content for developers.\n\n## Integration model\n\nUse tenant boundaries.',
+        text: async () => url.includes('/tr/')
+          ? '# Cloud genel bakış\n\nMüşteriler için SaaS dokümanı.\n\n## Entegrasyon modeli\n\nTenant sınırlarını kullanın.'
+          : '# Cloud overview\n\nSaaS documentation for customers.\n\n## Integration model\n\nUse tenant boundaries.',
       }
     }))
     vi.stubGlobal('scrollTo', vi.fn())
@@ -50,6 +69,7 @@ describe('PublicDocumentation', () => {
     await act(async () => root.unmount())
     container.remove()
     vi.unstubAllGlobals()
+    localStorage.removeItem('docs.locale')
     delete globalThis.IS_REACT_ACT_ENVIRONMENT
   })
 
@@ -70,13 +90,41 @@ describe('PublicDocumentation', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
 
-    expect(container.querySelector('.docs-article h1')?.textContent).toBe('Developer overview')
+    expect(container.querySelector('.docs-article h1')?.textContent).toBe('Cloud overview')
     expect(container.querySelector('.docs-toc a')?.textContent).toBe('Integration model')
-    expect(container.textContent).toContain('Public content for developers.')
-    expect(fetch).toHaveBeenCalledWith('/developer-docs/catalog.json', { cache: 'force-cache' })
+    expect(container.textContent).toContain('SaaS documentation for customers.')
+    expect(fetch).toHaveBeenCalledWith('/developer-docs/catalog.json', { cache: 'no-cache' })
     expect(fetch).toHaveBeenCalledWith(
-      '/developer-docs/overview.md',
+      `/developer-docs/en/overview.md?v=${'a'.repeat(64)}`,
       expect.objectContaining({ cache: 'force-cache' }),
     )
+  })
+
+  it('switches the human documentation to Turkish while the AI index remains English', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/docs/overview']}>
+          <Routes>
+            <Route path="/docs/:slug" element={<PublicDocumentation />} />
+          </Routes>
+        </MemoryRouter>,
+      )
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    const turkishButton = Array.from(container.querySelectorAll('.docs-language-switcher button'))
+      .find((button) => button.textContent === 'TR')
+    await act(async () => turkishButton.click())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(container.querySelector('.docs-article h1')?.textContent).toBe('Cloud genel bakış')
+    expect(container.textContent).toContain('Müşteriler için SaaS dokümanı.')
+    expect(container.querySelector('a[href="/developer-docs/llms.txt"]')).not.toBeNull()
+    expect(localStorage.getItem('docs.locale')).toBe('tr')
   })
 })

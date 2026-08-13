@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 2,
+  "title": {
+    "en": "ContextHub Cloud Developer Docs",
+    "tr": "ContextHub Cloud Geliştirici Dokümanları"
+  },
+  "description": {
+    "en": "Build secure, cache-aware applications with the managed ContextHub service at ctxhub.net.",
+    "tr": "ctxhub.net üzerindeki yönetilen ContextHub servisiyle güvenli ve cache uyumlu uygulamalar geliştirin."
+  },
+  "version": "2026.08",
+  "updatedAt": "2026-08-13",
+  "defaultSlug": "overview",
+  "defaultLocale": "en",
+  "aiLocale": "en",
+  "basePath": "/developer-docs",
+  "locales": [
+    { "code": "en", "label": "English", "shortLabel": "EN" },
+    { "code": "tr", "label": "Türkçe", "shortLabel": "TR" }
+  ],
+  "documents": [
+    {
+      "slug": "overview",
+      "files": { "en": "en/overview.md", "tr": "tr/overview.md" },
+      "title": { "en": "ContextHub Cloud overview", "tr": "ContextHub Cloud genel bakış" },
+      "description": { "en": "Understand the managed SaaS boundary and integration model.", "tr": "Yönetilen SaaS sınırını ve entegrasyon modelini anlayın." },
+      "category": { "en": "Start here", "tr": "Başlangıç" },
+      "audience": { "en": ["frontend", "backend", "platform"], "tr": ["frontend", "backend", "platform"] },
+      "order": 10,
+      "tags": ["saas", "overview", "tenancy"]
+    },
+    {
+      "slug": "quickstart",
+      "files": { "en": "en/quickstart.md", "tr": "tr/quickstart.md" },
+      "title": { "en": "Quickstart", "tr": "Hızlı başlangıç" },
+      "description": { "en": "Connect a server and make your first ctxhub.net requests.", "tr": "Bir sunucuyu bağlayın ve ilk ctxhub.net isteklerinizi yapın." },
+      "category": { "en": "Start here", "tr": "Başlangıç" },
+      "audience": { "en": ["frontend", "backend"], "tr": ["frontend", "backend"] },
+      "order": 20,
+      "tags": ["api", "content", "example"]
+    },
+    {
+      "slug": "authentication",
+      "files": { "en": "en/authentication.md", "tr": "tr/authentication.md" },
+      "title": { "en": "Authentication and tenancy", "tr": "Kimlik doğrulama ve tenant yapısı" },
+      "description": { "en": "Choose the correct public, API-token, or admin-session boundary.", "tr": "Doğru public, API token veya admin oturumu sınırını seçin." },
+      "category": { "en": "Core APIs", "tr": "Temel API'ler" },
+      "audience": { "en": ["backend", "platform"], "tr": ["backend", "platform"] },
+      "order": 30,
+      "tags": ["token", "tenant", "security", "cors"]
+    },
+    {
+      "slug": "content",
+      "files": { "en": "en/content.md", "tr": "tr/content.md" },
+      "title": { "en": "Content", "tr": "Content" },
+      "description": { "en": "Model and deliver editorial pages, articles, and reusable content.", "tr": "Sayfaları, yazıları ve yeniden kullanılabilir içerikleri modelleyip sunun." },
+      "category": { "en": "Content model", "tr": "İçerik modeli" },
+      "audience": { "en": ["frontend", "backend", "editor"], "tr": ["frontend", "backend", "editör"] },
+      "order": 40,
+      "tags": ["content", "slug", "custom fields", "publishing"]
+    },
+    {
+      "slug": "collections",
+      "files": { "en": "en/collections.md", "tr": "tr/collections.md" },
+      "title": { "en": "Collections", "tr": "Collections" },
+      "description": { "en": "Create typed, repeatable business data and query published entries.", "tr": "Tipli, tekrarlanabilir iş verileri oluşturun ve yayınlanmış kayıtları sorgulayın." },
+      "category": { "en": "Content model", "tr": "İçerik modeli" },
+      "audience": { "en": ["frontend", "backend", "editor"], "tr": ["frontend", "backend", "editör"] },
+      "order": 50,
+      "tags": ["collections", "structured data", "dsl", "geojson"]
+    },
+    {
+      "slug": "media",
+      "files": { "en": "en/media.md", "tr": "tr/media.md" },
+      "title": { "en": "Media", "tr": "Medya" },
+      "description": { "en": "Upload, organize, transform, and render images and external media.", "tr": "Görselleri ve harici medyayı yükleyin, düzenleyin, dönüştürün ve gösterin." },
+      "category": { "en": "Content model", "tr": "İçerik modeli" },
+      "audience": { "en": ["frontend", "backend", "editor"], "tr": ["frontend", "backend", "editör"] },
+      "order": 60,
+      "tags": ["media", "images", "variants", "upload"]
+    },
+    {
+      "slug": "delivery-experiences",
+      "files": { "en": "en/delivery-experiences.md", "tr": "tr/delivery-experiences.md" },
+      "title": { "en": "Menus, forms, and placements", "tr": "Menüler, formlar ve placements" },
+      "description": { "en": "Use managed delivery resources beyond pages and structured entries.", "tr": "Sayfalar ve yapılandırılmış kayıtların dışındaki yönetilen sunum kaynaklarını kullanın." },
+      "category": { "en": "Content model", "tr": "İçerik modeli" },
+      "audience": { "en": ["frontend", "backend"], "tr": ["frontend", "backend"] },
+      "order": 70,
+      "tags": ["menus", "forms", "placements"]
+    },
+    {
+      "slug": "caching",
+      "files": { "en": "en/caching.md", "tr": "tr/caching.md" },
+      "title": { "en": "Caching and freshness", "tr": "Cache ve güncellik" },
+      "description": { "en": "Protect latency and quotas without serving the wrong tenant or stale drafts.", "tr": "Yanlış tenant veya eski taslakları sunmadan gecikmeyi ve kotaları koruyun." },
+      "category": { "en": "Production", "tr": "Canlı ortam" },
+      "audience": { "en": ["frontend", "backend", "platform"], "tr": ["frontend", "backend", "platform"] },
+      "order": 80,
+      "tags": ["cache", "webhook", "freshness"]
+    },
+    {
+      "slug": "webhooks",
+      "files": { "en": "en/webhooks.md", "tr": "tr/webhooks.md" },
+      "title": { "en": "Webhooks and invalidation", "tr": "Webhook ve invalidation" },
+      "description": { "en": "Verify events, handle retries, and refresh derived data.", "tr": "Event'leri doğrulayın, retry akışını yönetin ve türetilmiş veriyi yenileyin." },
+      "category": { "en": "Production", "tr": "Canlı ortam" },
+      "audience": { "en": ["backend", "platform"], "tr": ["backend", "platform"] },
+      "order": 90,
+      "tags": ["webhook", "signature", "retry", "cache"]
+    },
+    {
+      "slug": "edge-gateway",
+      "files": { "en": "en/edge-gateway.md", "tr": "tr/edge-gateway.md" },
+      "title": { "en": "ContextHub Edge Gateway", "tr": "ContextHub Edge Gateway" },
+      "description": { "en": "Understand the managed ctxhub.net API edge boundary.", "tr": "Yönetilen ctxhub.net API edge sınırını anlayın." },
+      "category": { "en": "Production", "tr": "Canlı ortam" },
+      "audience": { "en": ["platform", "backend"], "tr": ["platform", "backend"] },
+      "order": 100,
+      "tags": ["edge gateway", "cors", "origin protection", "rate limit"]
+    },
+    {
+      "slug": "semantic-search",
+      "files": { "en": "en/semantic-search.md", "tr": "tr/semantic-search.md" },
+      "title": { "en": "Managed semantic search", "tr": "Yönetilen semantic search" },
+      "description": { "en": "Enable tenant-safe semantic retrieval as a ContextHub Cloud capability.", "tr": "ContextHub Cloud hizmeti olarak tenant güvenli semantic retrieval'ı etkinleştirin." },
+      "category": { "en": "Managed capabilities", "tr": "Yönetilen yetenekler" },
+      "audience": { "en": ["product", "backend", "ai"], "tr": ["ürün", "backend", "ai"] },
+      "order": 110,
+      "tags": ["semantic search", "managed", "commercial"]
+    },
+    {
+      "slug": "managed-capabilities",
+      "files": { "en": "en/managed-capabilities.md", "tr": "tr/managed-capabilities.md" },
+      "title": { "en": "Managed and commercial capabilities", "tr": "Yönetilen ve ticari yetenekler" },
+      "description": { "en": "Distinguish ContextHub Cloud services from community-repository features.", "tr": "ContextHub Cloud servislerini community repo özelliklerinden ayırın." },
+      "category": { "en": "Managed capabilities", "tr": "Yönetilen yetenekler" },
+      "audience": { "en": ["product", "platform"], "tr": ["ürün", "platform"] },
+      "order": 120,
+      "tags": ["saas", "commercial", "plugins", "support"]
+    },
+    {
+      "slug": "ai-mcp",
+      "files": { "en": "en/ai-mcp.md", "tr": "tr/ai-mcp.md" },
+      "title": { "en": "AI assistants and MCP", "tr": "AI asistanları ve MCP" },
+      "description": { "en": "Use the English documentation corpus for grounded assistants and MCP tools.", "tr": "Grounded asistanlar ve MCP araçları için İngilizce doküman corpusunu kullanın." },
+      "category": { "en": "AI integration", "tr": "AI entegrasyonu" },
+      "audience": { "en": ["ai", "platform", "backend"], "tr": ["ai", "platform", "backend"] },
+      "order": 130,
+      "tags": ["mcp", "rag", "chatbot", "ai"]
+    },
+    {
+      "slug": "prompt-library",
+      "files": { "en": "en/prompt-library.md", "tr": "tr/prompt-library.md" },
+      "title": { "en": "Prompt library", "tr": "Prompt kütüphanesi" },
+      "description": { "en": "Copy English prompts for ContextHub Cloud integration work.", "tr": "ContextHub Cloud entegrasyonları için İngilizce promptları kopyalayın." },
+      "category": { "en": "AI integration", "tr": "AI entegrasyonu" },
+      "audience": { "en": ["frontend", "backend", "platform", "ai"], "tr": ["frontend", "backend", "platform", "ai"] },
+      "order": 140,
+      "tags": ["prompts", "examples", "agents"]
+    }
+  ]
+}

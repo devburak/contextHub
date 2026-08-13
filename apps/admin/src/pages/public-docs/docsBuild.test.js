@@ -16,12 +16,19 @@ describe('public documentation build', () => {
     expect(() => validateManifest(manifest)).not.toThrow()
     expect(catalog.version).toBe(manifest.version)
     expect(catalog.documents).toHaveLength(manifest.documents.length)
-    expect(catalog.documents.every((document) => /^[a-f0-9]{64}$/.test(document.checksum))).toBe(true)
+    expect(catalog.aiLocale).toBe('en')
+    expect(catalog.locales.map((locale) => locale.code)).toEqual(['en', 'tr'])
+    expect(catalog.documents.every((document) => (
+      /^[a-f0-9]{64}$/.test(document.locales.en.checksum)
+      && /^[a-f0-9]{64}$/.test(document.locales.tr.checksum)
+    ))).toBe(true)
 
     const fullCorpus = await readFile(`${defaultOutputDirectory}/llms-full.txt`, 'utf8')
-    expect(fullCorpus).toContain('# ContextHub Developer Docs')
+    expect(fullCorpus).toContain('# ContextHub Cloud Developer Docs')
     expect(fullCorpus).toContain('# Caching and freshness')
     expect(fullCorpus).toContain('# AI assistants and MCP')
+    expect(fullCorpus).not.toContain('# Cache ve güncellik')
+    expect(fullCorpus).not.toContain('/developer-docs/tr/')
   })
 
   it('does not treat headings inside fenced code as navigation headings', () => {

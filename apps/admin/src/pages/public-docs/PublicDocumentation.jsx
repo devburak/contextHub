@@ -22,14 +22,86 @@ import {
   groupDocuments,
   loadCatalog,
   loadDocument,
+  localizeDocuments,
   searchDocuments,
 } from './docsData.js'
 import { renderDocumentationMarkdown } from './markdown.js'
 import './PublicDocumentation.css'
 
-function LoadingDocument() {
+const COPY = {
+  en: {
+    fieldManual: 'CLOUD DEVELOPER MANUAL',
+    offline: 'Offline',
+    aiIndex: 'AI index',
+    searchPlaceholder: 'Search ContextHub Cloud docs',
+    searchLabel: 'Search documentation',
+    clearSearch: 'Clear search',
+    pagesLabel: 'Documentation pages',
+    noResults: (query) => `No pages match “${query}”.`,
+    machineTitle: 'Built for customers + agents',
+    machineBody: 'Bilingual SaaS docs. The AI corpus stays English-only.',
+    markdown: 'Markdown',
+    previous: 'PREVIOUS',
+    next: 'NEXT',
+    pagination: 'Previous and next documentation pages',
+    onThisPage: 'ON THIS PAGE',
+    onThisPageLabel: 'On this page',
+    sourceContract: 'SOURCE CONTRACT',
+    canonical: 'Markdown canonical',
+    checksummed: 'SHA-256 tracked',
+    saas: 'ctxhub.net SaaS',
+    unavailable: 'DOCUMENT UNAVAILABLE',
+    loadFailed: 'We could not load this page.',
+    retry: 'Retry',
+    loading: 'Loading documentation',
+    copiedPrompt: 'Prompt copied',
+    copiedCode: 'Code copied',
+    copyFailed: 'Copy failed — select the text manually',
+    toggleNavigation: 'Toggle documentation navigation',
+    language: 'Documentation language',
+  },
+  tr: {
+    fieldManual: 'CLOUD GELİŞTİRİCİ KILAVUZU',
+    offline: 'Çevrimdışı',
+    aiIndex: 'AI indeksi',
+    searchPlaceholder: 'ContextHub Cloud dokümanlarında ara',
+    searchLabel: 'Dokümanlarda ara',
+    clearSearch: 'Aramayı temizle',
+    pagesLabel: 'Doküman sayfaları',
+    noResults: (query) => `“${query}” ile eşleşen sayfa yok.`,
+    machineTitle: 'Müşteriler + agent’lar için',
+    machineBody: 'İki dilli SaaS dokümanı. AI corpus yalnızca İngilizcedir.',
+    markdown: 'Markdown',
+    previous: 'ÖNCEKİ',
+    next: 'SONRAKİ',
+    pagination: 'Önceki ve sonraki doküman sayfaları',
+    onThisPage: 'BU SAYFADA',
+    onThisPageLabel: 'Bu sayfada',
+    sourceContract: 'KAYNAK SÖZLEŞMESİ',
+    canonical: 'Markdown canonical',
+    checksummed: 'SHA-256 takipli',
+    saas: 'ctxhub.net SaaS',
+    unavailable: 'DOKÜMAN AÇILAMADI',
+    loadFailed: 'Bu sayfayı yükleyemedik.',
+    retry: 'Tekrar dene',
+    loading: 'Doküman yükleniyor',
+    copiedPrompt: 'Prompt kopyalandı',
+    copiedCode: 'Kod kopyalandı',
+    copyFailed: 'Kopyalanamadı — metni elle seçin',
+    toggleNavigation: 'Doküman navigasyonunu aç veya kapat',
+    language: 'Doküman dili',
+  },
+}
+
+function initialLocale() {
+  const stored = localStorage.getItem('docs.locale') || localStorage.getItem('language')
+  if (stored === 'tr' || stored === 'en') return stored
+  return navigator.language?.toLowerCase().startsWith('tr') ? 'tr' : 'en'
+}
+
+function LoadingDocument({ labels }) {
   return (
-    <div className="docs-skeleton" aria-label="Loading documentation">
+    <div className="docs-skeleton" aria-label={labels.loading}>
       <div className="docs-skeleton-line docs-skeleton-title" />
       <div className="docs-skeleton-line docs-skeleton-lead" />
       <div className="docs-skeleton-line" />
@@ -40,15 +112,15 @@ function LoadingDocument() {
   )
 }
 
-function ErrorPanel({ message, onRetry }) {
+function ErrorPanel({ labels, message, onRetry }) {
   return (
     <div className="docs-state-panel" role="alert">
       <WifiOff aria-hidden="true" />
-      <p className="docs-state-kicker">DOCUMENT UNAVAILABLE</p>
-      <h2>We could not load this page.</h2>
+      <p className="docs-state-kicker">{labels.unavailable}</p>
+      <h2>{labels.loadFailed}</h2>
       <p>{message}</p>
       <button type="button" onClick={onRetry}>
-        <RefreshCw size={16} aria-hidden="true" /> Retry
+        <RefreshCw size={16} aria-hidden="true" /> {labels.retry}
       </button>
     </div>
   )
@@ -57,6 +129,7 @@ function ErrorPanel({ message, onRetry }) {
 export default function PublicDocumentation() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const [locale, setLocale] = useState(initialLocale)
   const [catalog, setCatalog] = useState(null)
   const [catalogError, setCatalogError] = useState(null)
   const [catalogAttempt, setCatalogAttempt] = useState(0)
@@ -68,6 +141,12 @@ export default function PublicDocumentation() {
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false)
   const [online, setOnline] = useState(() => navigator.onLine)
   const [copyNotice, setCopyNotice] = useState('')
+  const labels = COPY[locale]
+
+  useEffect(() => {
+    localStorage.setItem('docs.locale', locale)
+    document.documentElement.lang = locale
+  }, [locale])
 
   useEffect(() => {
     const handleOnline = () => setOnline(true)
@@ -95,8 +174,12 @@ export default function PublicDocumentation() {
     }
   }, [catalogAttempt])
 
+  const localizedDocuments = useMemo(
+    () => localizeDocuments(catalog, locale),
+    [catalog, locale],
+  )
   const activeSlug = slug || catalog?.defaultSlug
-  const selectedDocument = catalog?.documents.find((document) => document.slug === activeSlug)
+  const selectedDocument = localizedDocuments.find((document) => document.slug === activeSlug)
 
   useEffect(() => {
     if (!catalog) return
@@ -104,9 +187,7 @@ export default function PublicDocumentation() {
       navigate(`/docs/${catalog.defaultSlug}`, { replace: true })
       return
     }
-    if (!selectedDocument) {
-      navigate(`/docs/${catalog.defaultSlug}`, { replace: true })
-    }
+    if (!selectedDocument) navigate(`/docs/${catalog.defaultSlug}`, { replace: true })
   }, [catalog, navigate, selectedDocument, slug])
 
   useEffect(() => {
@@ -116,7 +197,13 @@ export default function PublicDocumentation() {
     setDocumentError(null)
     setMarkdown('')
 
-    loadDocument(selectedDocument.slug, fetch, controller.signal)
+    loadDocument(
+      selectedDocument.slug,
+      locale,
+      selectedDocument.checksum,
+      fetch,
+      controller.signal,
+    )
       .then(setMarkdown)
       .catch((error) => {
         if (error.name !== 'AbortError') setDocumentError(error.message)
@@ -127,20 +214,22 @@ export default function PublicDocumentation() {
 
     window.scrollTo({ top: 0, behavior: 'instant' })
     return () => controller.abort()
-  }, [documentAttempt, selectedDocument])
+  }, [documentAttempt, locale, selectedDocument])
 
   const renderedDocument = useMemo(
-    () => (markdown ? renderDocumentationMarkdown(markdown) : { html: '', headings: [] }),
-    [markdown],
+    () => (markdown
+      ? renderDocumentationMarkdown(markdown, { locale })
+      : { html: '', headings: [] }),
+    [locale, markdown],
   )
   const filteredDocuments = useMemo(
-    () => searchDocuments(catalog?.documents || [], query),
-    [catalog?.documents, query],
+    () => searchDocuments(localizedDocuments, query),
+    [localizedDocuments, query],
   )
   const documentGroups = useMemo(() => groupDocuments(filteredDocuments), [filteredDocuments])
   const adjacent = useMemo(
-    () => getAdjacentDocuments(catalog?.documents || [], activeSlug),
-    [activeSlug, catalog?.documents],
+    () => getAdjacentDocuments(localizedDocuments, activeSlug),
+    [activeSlug, localizedDocuments],
   )
 
   const selectDocument = useCallback(() => {
@@ -148,27 +237,37 @@ export default function PublicDocumentation() {
     setQuery('')
   }, [])
 
+  const changeLocale = useCallback((nextLocale) => {
+    setLocale(nextLocale)
+    setQuery('')
+    setMobileNavigationOpen(false)
+  }, [])
+
   const handleArticleClick = useCallback(async (event) => {
     const copyButton = event.target.closest('[data-docs-copy]')
     if (!copyButton) return
-    const pre = copyButton.closest('pre')
-    const code = pre?.querySelector('code')
+    const code = copyButton.closest('pre')?.querySelector('code')
     if (!code) return
 
     try {
       await navigator.clipboard.writeText(code.textContent)
-      const isPrompt = copyButton.getAttribute('aria-label') === 'Copy prompt'
-      setCopyNotice(isPrompt ? 'Prompt copied' : 'Code copied')
+      setCopyNotice(
+        copyButton.dataset.copyKind === 'prompt' ? labels.copiedPrompt : labels.copiedCode,
+      )
       window.setTimeout(() => setCopyNotice(''), 1800)
     } catch {
-      setCopyNotice('Copy failed — select the text manually')
+      setCopyNotice(labels.copyFailed)
     }
-  }, [])
+  }, [labels])
 
   if (catalogError) {
     return (
       <div className="docs-standalone-state">
-        <ErrorPanel message={catalogError} onRetry={() => setCatalogAttempt((value) => value + 1)} />
+        <ErrorPanel
+          labels={labels}
+          message={catalogError}
+          onRetry={() => setCatalogAttempt((value) => value + 1)}
+        />
       </div>
     )
   }
@@ -176,25 +275,39 @@ export default function PublicDocumentation() {
   return (
     <div className="docs-app">
       <header className="docs-header">
-        <a className="docs-brand" href="/docs" aria-label="ContextHub developer documentation">
+        <a className="docs-brand" href="/docs" aria-label="ContextHub Cloud developer documentation">
           <span className="docs-brand-mark">CH</span>
           <span>
-            <strong>ContextHub</strong>
-            <small>DEVELOPER FIELD MANUAL</small>
+            <strong>ContextHub Cloud</strong>
+            <small>{labels.fieldManual}</small>
           </span>
         </a>
         <div className="docs-header-actions">
-          {!online && <span className="docs-offline"><WifiOff size={14} /> Offline</span>}
+          {!online && <span className="docs-offline"><WifiOff size={14} /> {labels.offline}</span>}
+          <div className="docs-language-switcher" aria-label={labels.language} role="group">
+            {(catalog?.locales || [{ code: 'en', shortLabel: 'EN' }, { code: 'tr', shortLabel: 'TR' }])
+              .map((item) => (
+                <button
+                  key={item.code}
+                  type="button"
+                  className={item.code === locale ? 'is-active' : ''}
+                  aria-pressed={item.code === locale}
+                  onClick={() => changeLocale(item.code)}
+                >
+                  {item.shortLabel}
+                </button>
+              ))}
+          </div>
           {catalog && <span className="docs-version">DOCS {catalog.version}</span>}
           <a href={`${DOCS_BASE_PATH}/llms.txt`} target="_blank" rel="noreferrer">
-            AI index <ExternalLink size={14} />
+            {labels.aiIndex} <ExternalLink size={14} />
           </a>
           <a className="docs-admin-link" href="/login">Admin</a>
           <button
             className="docs-mobile-menu"
             type="button"
             onClick={() => setMobileNavigationOpen((value) => !value)}
-            aria-label="Toggle documentation navigation"
+            aria-label={labels.toggleNavigation}
             aria-expanded={mobileNavigationOpen}
           >
             {mobileNavigationOpen ? <X /> : <Menu />}
@@ -210,29 +323,29 @@ export default function PublicDocumentation() {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search the field manual"
-              aria-label="Search documentation"
+              placeholder={labels.searchPlaceholder}
+              aria-label={labels.searchLabel}
             />
             {query && (
-              <button type="button" onClick={() => setQuery('')} aria-label="Clear search">
+              <button type="button" onClick={() => setQuery('')} aria-label={labels.clearSearch}>
                 <X size={15} />
               </button>
             )}
           </div>
 
-          <nav aria-label="Documentation pages">
+          <nav aria-label={labels.pagesLabel}>
             {documentGroups.map((group) => (
               <div className="docs-nav-group" key={group.category}>
                 <p>{group.category}</p>
-                {group.items.map((document) => (
+                {group.items.map((item) => (
                   <Link
-                    key={document.slug}
-                    to={`/docs/${document.slug}`}
-                    className={document.slug === activeSlug ? 'is-active' : ''}
+                    key={item.slug}
+                    to={`/docs/${item.slug}`}
+                    className={item.slug === activeSlug ? 'is-active' : ''}
                     onClick={selectDocument}
                   >
-                    <span>{document.title}</span>
-                    {document.slug === activeSlug && <ChevronRight size={15} aria-hidden="true" />}
+                    <span>{item.title}</span>
+                    {item.slug === activeSlug && <ChevronRight size={15} aria-hidden="true" />}
                   </Link>
                 ))}
               </div>
@@ -240,8 +353,8 @@ export default function PublicDocumentation() {
             {catalog && documentGroups.length === 0 && (
               <div className="docs-empty-search">
                 <Search size={18} />
-                <p>No pages match “{query}”.</p>
-                <button type="button" onClick={() => setQuery('')}>Clear search</button>
+                <p>{labels.noResults(query)}</p>
+                <button type="button" onClick={() => setQuery('')}>{labels.clearSearch}</button>
               </div>
             )}
           </nav>
@@ -249,8 +362,8 @@ export default function PublicDocumentation() {
           <div className="docs-machine-card">
             <Cloud size={18} aria-hidden="true" />
             <div>
-              <strong>Built for humans + agents</strong>
-              <p>Versioned Markdown, checksums, LLM indexes, and MCP guidance.</p>
+              <strong>{labels.machineTitle}</strong>
+              <p>{labels.machineBody}</p>
             </div>
           </div>
         </aside>
@@ -261,14 +374,15 @@ export default function PublicDocumentation() {
               <span><BookOpen size={14} /> {selectedDocument.category}</span>
               <span>{selectedDocument.audience.join(' · ')}</span>
               <a href={selectedDocument.sourceUrl} target="_blank" rel="noreferrer">
-                <FileText size={14} /> Markdown
+                <FileText size={14} /> {labels.markdown} · {locale.toUpperCase()}
               </a>
             </div>
           )}
 
-          {documentLoading && <LoadingDocument />}
+          {documentLoading && <LoadingDocument labels={labels} />}
           {documentError && (
             <ErrorPanel
+              labels={labels}
               message={documentError}
               onRetry={() => setDocumentAttempt((value) => value + 1)}
             />
@@ -282,16 +396,16 @@ export default function PublicDocumentation() {
           )}
 
           {!documentLoading && !documentError && selectedDocument && (
-            <nav className="docs-pagination" aria-label="Previous and next documentation pages">
+            <nav className="docs-pagination" aria-label={labels.pagination}>
               {adjacent.previous ? (
                 <Link to={`/docs/${adjacent.previous.slug}`}>
                   <ArrowLeft size={17} />
-                  <span><small>PREVIOUS</small>{adjacent.previous.title}</span>
+                  <span><small>{labels.previous}</small>{adjacent.previous.title}</span>
                 </Link>
               ) : <span />}
               {adjacent.next && (
                 <Link to={`/docs/${adjacent.next.slug}`} className="docs-pagination-next">
-                  <span><small>NEXT</small>{adjacent.next.title}</span>
+                  <span><small>{labels.next}</small>{adjacent.next.title}</span>
                   <ArrowRight size={17} />
                 </Link>
               )}
@@ -300,8 +414,8 @@ export default function PublicDocumentation() {
         </main>
 
         <aside className="docs-toc">
-          <p>ON THIS PAGE</p>
-          <nav aria-label="On this page">
+          <p>{labels.onThisPage}</p>
+          <nav aria-label={labels.onThisPageLabel}>
             {renderedDocument.headings
               .filter((heading) => heading.depth > 1)
               .map((heading) => (
@@ -315,10 +429,10 @@ export default function PublicDocumentation() {
               ))}
           </nav>
           <div className="docs-toc-source">
-            <p>SOURCE CONTRACT</p>
-            <span><Check size={14} /> Markdown canonical</span>
-            <span><Check size={14} /> SHA-256 tracked</span>
-            <span><Check size={14} /> Public + read-only</span>
+            <p>{labels.sourceContract}</p>
+            <span><Check size={14} /> {labels.canonical}</span>
+            <span><Check size={14} /> {labels.checksummed}</span>
+            <span><Check size={14} /> {labels.saas}</span>
           </div>
         </aside>
       </div>
