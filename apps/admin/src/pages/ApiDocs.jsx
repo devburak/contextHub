@@ -34,12 +34,10 @@ function resolveSwaggerUrl(apiUrl) {
   return normalized.endsWith('/api') ? `${normalized}/docs` : `${normalized}/api/docs`
 }
 
-export default function ApiDocs() {
+export default function ApiDocs({
+  apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000',
+}) {
   const [iframeKey, setIframeKey] = useState(0)
-  const [apiUrl] = useState(() => {
-    // Get API base URL from environment or default to localhost:3000
-    return import.meta.env.VITE_API_URL || 'http://localhost:3000'
-  })
 
   const docsUrl = resolveSwaggerUrl(apiUrl)
 

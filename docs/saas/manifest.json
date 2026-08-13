@@ -70,6 +70,16 @@
       "tags": ["token", "tenant", "security", "cors"]
     },
     {
+      "slug": "api-token-lifecycle",
+      "files": { "en": "en/api-token-lifecycle.md", "tr": "tr/api-token-lifecycle.md" },
+      "title": { "en": "API token lifecycle", "tr": "API token yaşam döngüsü" },
+      "description": { "en": "Create, scope, rotate, expire, and revoke server integration tokens safely.", "tr": "Sunucu entegrasyon token'larını güvenle oluşturun, scope verin, döndürün, sürelendirin ve revoke edin." },
+      "category": { "en": "Core APIs", "tr": "Temel API'ler" },
+      "audience": { "en": ["backend", "platform", "owner"], "tr": ["backend", "platform", "owner"] },
+      "order": 32,
+      "tags": ["token", "rotation", "expiry", "scopes", "security"]
+    },
+    {
       "slug": "errors",
       "files": { "en": "en/errors.md", "tr": "tr/errors.md" },
       "title": { "en": "Errors and retries", "tr": "Hatalar ve retry" },
@@ -80,14 +90,64 @@
       "tags": ["errors", "http", "retry", "429"]
     },
     {
+      "slug": "placements",
+      "files": { "en": "en/placements.md", "tr": "tr/placements.md" },
+      "title": { "en": "Placements and personalization", "tr": "Placements ve kişiselleştirme" },
+      "description": { "en": "Model targeted delivery surfaces and their frontend lifecycle.", "tr": "Hedefli sunum yüzeylerini ve frontend yaşam döngülerini modelleyin." },
+      "category": { "en": "Personalization", "tr": "Kişiselleştirme" },
+      "audience": { "en": ["frontend", "backend", "growth"], "tr": ["frontend", "backend", "growth"] },
+      "order": 40,
+      "tags": ["placements", "personalization", "experiences", "targeting"]
+    },
+    {
+      "slug": "placement-decisions",
+      "files": { "en": "en/placement-decisions.md", "tr": "tr/placement-decisions.md" },
+      "title": { "en": "Decision engine and targeting", "tr": "Karar motoru ve hedefleme" },
+      "description": { "en": "Evaluate rules, priorities, weights, schedules, and frequency caps.", "tr": "Kural, priority, weight, schedule ve frequency cap değerlendirmesini anlayın." },
+      "category": { "en": "Personalization", "tr": "Kişiselleştirme" },
+      "audience": { "en": ["frontend", "backend", "growth"], "tr": ["frontend", "backend", "growth"] },
+      "order": 42,
+      "tags": ["decision engine", "rules", "frequency cap", "batch"]
+    },
+    {
+      "slug": "placement-experiments",
+      "files": { "en": "en/placement-experiments.md", "tr": "tr/placement-experiments.md" },
+      "title": { "en": "Experiences and A/B tests", "tr": "Experience ve A/B testleri" },
+      "description": { "en": "Configure weighted variants, measure funnels, and release a winner.", "tr": "Ağırlıklı varyantları ayarlayın, funnel ölçün ve kazananı yayınlayın." },
+      "category": { "en": "Personalization", "tr": "Kişiselleştirme" },
+      "audience": { "en": ["growth", "product", "frontend"], "tr": ["growth", "ürün", "frontend"] },
+      "order": 44,
+      "tags": ["ab test", "experiments", "weights", "funnel"]
+    },
+    {
+      "slug": "placement-events",
+      "files": { "en": "en/placement-events.md", "tr": "tr/placement-events.md" },
+      "title": { "en": "Events and analytics", "tr": "Event ve analitik" },
+      "description": { "en": "Collect placement outcomes and use realtime, breakdown, funnel, and journey reports.", "tr": "Placement sonuçlarını toplayın; realtime, breakdown, funnel ve journey raporlarını kullanın." },
+      "category": { "en": "Personalization", "tr": "Kişiselleştirme" },
+      "audience": { "en": ["frontend", "backend", "analytics"], "tr": ["frontend", "backend", "analytics"] },
+      "order": 46,
+      "tags": ["events", "analytics", "realtime", "journey", "conversion"]
+    },
+    {
       "slug": "content",
       "files": { "en": "en/content.md", "tr": "tr/content.md" },
       "title": { "en": "Content", "tr": "Content" },
       "description": { "en": "Model and deliver editorial pages, articles, and reusable content.", "tr": "Sayfaları, yazıları ve yeniden kullanılabilir içerikleri modelleyip sunun." },
       "category": { "en": "Content model", "tr": "İçerik modeli" },
       "audience": { "en": ["frontend", "backend", "editor"], "tr": ["frontend", "backend", "editör"] },
-      "order": 40,
+      "order": 50,
       "tags": ["content", "slug", "custom fields", "publishing"]
+    },
+    {
+      "slug": "custom-fields",
+      "files": { "en": "en/custom-fields.md", "tr": "tr/custom-fields.md" },
+      "title": { "en": "Custom field definitions", "tr": "Custom field tanımları" },
+      "description": { "en": "Define typed tenant-wide editorial fields and their delivery controls.", "tr": "Tenant genelinde tipli editoryal alanları ve sunum kontrollerini tanımlayın." },
+      "category": { "en": "Content model", "tr": "İçerik modeli" },
+      "audience": { "en": ["backend", "editor"], "tr": ["backend", "editör"] },
+      "order": 52,
+      "tags": ["custom fields", "schema", "search", "references"]
     },
     {
       "slug": "collections",
@@ -96,7 +156,7 @@
       "description": { "en": "Create typed, repeatable business data and query published entries.", "tr": "Tipli, tekrarlanabilir iş verileri oluşturun ve yayınlanmış kayıtları sorgulayın." },
       "category": { "en": "Content model", "tr": "İçerik modeli" },
       "audience": { "en": ["frontend", "backend", "editor"], "tr": ["frontend", "backend", "editör"] },
-      "order": 50,
+      "order": 55,
       "tags": ["collections", "structured data", "dsl", "geojson"]
     },
     {
@@ -110,14 +170,74 @@
       "tags": ["media", "images", "variants", "upload"]
     },
     {
+      "slug": "galleries",
+      "files": { "en": "en/galleries.md", "tr": "tr/galleries.md" },
+      "title": { "en": "Galleries", "tr": "Galeriler" },
+      "description": { "en": "Group ordered media into reusable, content-linked editorial galleries.", "tr": "Sıralı medyayı tekrar kullanılabilir ve content'e bağlı galerilerde gruplayın." },
+      "category": { "en": "Content model", "tr": "İçerik modeli" },
+      "audience": { "en": ["frontend", "editor"], "tr": ["frontend", "editör"] },
+      "order": 62,
+      "tags": ["galleries", "media", "content", "images"]
+    },
+    {
       "slug": "delivery-experiences",
       "files": { "en": "en/delivery-experiences.md", "tr": "tr/delivery-experiences.md" },
-      "title": { "en": "Menus, forms, and placements", "tr": "Menüler, formlar ve placements" },
-      "description": { "en": "Use managed delivery resources beyond pages and structured entries.", "tr": "Sayfalar ve yapılandırılmış kayıtların dışındaki yönetilen sunum kaynaklarını kullanın." },
+      "title": { "en": "Menus and forms", "tr": "Menüler ve formlar" },
+      "description": { "en": "Deliver navigation trees and managed form schemas.", "tr": "Navigasyon ağaçlarını ve yönetilen form şemalarını sunun." },
       "category": { "en": "Content model", "tr": "İçerik modeli" },
       "audience": { "en": ["frontend", "backend"], "tr": ["frontend", "backend"] },
+      "order": 65,
+      "tags": ["menus", "forms", "navigation"]
+    },
+    {
+      "slug": "roles-permissions",
+      "files": { "en": "en/roles-permissions.md", "tr": "tr/roles-permissions.md" },
+      "title": { "en": "Roles and permissions", "tr": "Roller ve izinler" },
+      "description": { "en": "Model agency and client access with tenant-scoped custom roles.", "tr": "Ajans ve müşteri erişimini tenant-scoped özel rollerle modelleyin." },
+      "category": { "en": "Teams and governance", "tr": "Ekip ve yönetişim" },
+      "audience": { "en": ["owner", "agency", "security"], "tr": ["owner", "ajans", "güvenlik"] },
       "order": 70,
-      "tags": ["menus", "forms", "placements"]
+      "tags": ["rbac", "roles", "permissions", "agency"]
+    },
+    {
+      "slug": "feature-flags",
+      "files": { "en": "en/feature-flags.md", "tr": "tr/feature-flags.md" },
+      "title": { "en": "Feature flags", "tr": "Feature flags" },
+      "description": { "en": "Define flags and roll application behavior out per tenant.", "tr": "Flag tanımlayın ve uygulama davranışını tenant bazında açın." },
+      "category": { "en": "Teams and governance", "tr": "Ekip ve yönetişim" },
+      "audience": { "en": ["platform", "product", "backend"], "tr": ["platform", "ürün", "backend"] },
+      "order": 72,
+      "tags": ["feature flags", "tenant settings", "rollout"]
+    },
+    {
+      "slug": "audit-activity",
+      "files": { "en": "en/audit-activity.md", "tr": "tr/audit-activity.md" },
+      "title": { "en": "Audit log and activity", "tr": "Audit log ve activity" },
+      "description": { "en": "Distinguish persisted security records from the recent editorial feed.", "tr": "Kalıcı security kayıtlarını son editoryal feed'den ayırın." },
+      "category": { "en": "Teams and governance", "tr": "Ekip ve yönetişim" },
+      "audience": { "en": ["security", "owner", "agency"], "tr": ["güvenlik", "owner", "ajans"] },
+      "order": 74,
+      "tags": ["audit", "activity", "retention", "security"]
+    },
+    {
+      "slug": "dashboard-analytics",
+      "files": { "en": "en/dashboard-analytics.md", "tr": "tr/dashboard-analytics.md" },
+      "title": { "en": "Dashboard and API analytics", "tr": "Dashboard ve API analytics" },
+      "description": { "en": "Build tenant dashboards from summary, activity, and API-usage endpoints.", "tr": "Summary, activity ve API kullanım endpoint'lerinden tenant dashboard'u oluşturun." },
+      "category": { "en": "Teams and governance", "tr": "Ekip ve yönetişim" },
+      "audience": { "en": ["agency", "product", "platform"], "tr": ["ajans", "ürün", "platform"] },
+      "order": 76,
+      "tags": ["dashboard", "analytics", "api stats", "summary"]
+    },
+    {
+      "slug": "extensions",
+      "files": { "en": "en/extensions.md", "tr": "tr/extensions.md" },
+      "title": { "en": "Extensions and Plugin API", "tr": "Extensions ve Plugin API" },
+      "description": { "en": "Build trusted deployment plugins against the public versioned host contract.", "tr": "Public versioned host sözleşmesiyle güvenilir deployment plugin'leri geliştirin." },
+      "category": { "en": "Extensions", "tr": "Extensions" },
+      "audience": { "en": ["plugin author", "backend", "platform"], "tr": ["plugin geliştirici", "backend", "platform"] },
+      "order": 80,
+      "tags": ["plugins", "extensions", "events", "admin", "open core"]
     },
     {
       "slug": "wordpress-migration",
@@ -126,7 +246,7 @@
       "description": { "en": "Move posts, categories, media, galleries, and video references with the ContextHub Migrator.", "tr": "ContextHub Migrator ile yazıları, kategorileri, medyayı, galerileri ve video referanslarını taşıyın." },
       "category": { "en": "Migration", "tr": "Migrasyon" },
       "audience": { "en": ["agency", "editor", "platform"], "tr": ["ajans", "editör", "platform"] },
-      "order": 75,
+      "order": 90,
       "tags": ["wordpress", "migration", "agency", "media"]
     },
     {
@@ -136,7 +256,7 @@
       "description": { "en": "Protect latency and quotas without serving the wrong tenant or stale drafts.", "tr": "Yanlış tenant veya eski taslakları sunmadan gecikmeyi ve kotaları koruyun." },
       "category": { "en": "Production", "tr": "Canlı ortam" },
       "audience": { "en": ["frontend", "backend", "platform"], "tr": ["frontend", "backend", "platform"] },
-      "order": 80,
+      "order": 100,
       "tags": ["cache", "webhook", "freshness"]
     },
     {
@@ -146,7 +266,7 @@
       "description": { "en": "Verify events, handle retries, and refresh derived data.", "tr": "Event'leri doğrulayın, retry akışını yönetin ve türetilmiş veriyi yenileyin." },
       "category": { "en": "Production", "tr": "Canlı ortam" },
       "audience": { "en": ["backend", "platform"], "tr": ["backend", "platform"] },
-      "order": 90,
+      "order": 105,
       "tags": ["webhook", "signature", "retry", "cache"]
     },
     {
@@ -156,7 +276,7 @@
       "description": { "en": "Read monthly request quota headers, query current usage, and recover from 429 responses.", "tr": "Aylık istek kotası header'larını okuyun, güncel kullanımı sorgulayın ve 429 yanıtlarını yönetin." },
       "category": { "en": "Production", "tr": "Canlı ortam" },
       "audience": { "en": ["backend", "platform", "product"], "tr": ["backend", "platform", "ürün"] },
-      "order": 95,
+      "order": 110,
       "tags": ["quota", "usage", "rate limit", "429", "billing"]
     },
     {
@@ -166,7 +286,7 @@
       "description": { "en": "Understand the managed ctxhub.net API edge boundary.", "tr": "Yönetilen ctxhub.net API edge sınırını anlayın." },
       "category": { "en": "Production", "tr": "Canlı ortam" },
       "audience": { "en": ["platform", "backend"], "tr": ["platform", "backend"] },
-      "order": 100,
+      "order": 115,
       "tags": ["edge gateway", "cors", "origin protection", "rate limit"]
     },
     {
@@ -176,7 +296,7 @@
       "description": { "en": "Enable tenant-safe semantic retrieval as a ContextHub Cloud capability.", "tr": "ContextHub Cloud hizmeti olarak tenant güvenli semantic retrieval'ı etkinleştirin." },
       "category": { "en": "Managed capabilities", "tr": "Yönetilen yetenekler" },
       "audience": { "en": ["product", "backend", "ai"], "tr": ["ürün", "backend", "ai"] },
-      "order": 110,
+      "order": 120,
       "tags": ["semantic search", "managed", "commercial"]
     },
     {
@@ -186,7 +306,7 @@
       "description": { "en": "Distinguish ContextHub Cloud services from community-repository features.", "tr": "ContextHub Cloud servislerini community repo özelliklerinden ayırın." },
       "category": { "en": "Managed capabilities", "tr": "Yönetilen yetenekler" },
       "audience": { "en": ["product", "platform"], "tr": ["ürün", "platform"] },
-      "order": 120,
+      "order": 125,
       "tags": ["saas", "commercial", "plugins", "support"]
     },
     {

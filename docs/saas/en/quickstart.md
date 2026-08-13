@@ -68,4 +68,4 @@ curl --request GET \
 - Redact authorization values from logs.
 - Keep an explicit distinction between ContextHub Cloud services and community-repository features.
 
-Next, open the [API reference](./api-reference.md), then read [Content](./content.md), [Collections](./collections.md), and [Media](./media.md).
+Next, open the [API reference](./api-reference.md). For editorial delivery read [Content](./content.md), [Collections](./collections.md), and [Media](./media.md); for ContextHub's personalization surface start with [Placements](./placements.md).

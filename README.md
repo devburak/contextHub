@@ -4,17 +4,19 @@ contextHub is a multi‑tenant headless CMS and content‑services platform buil
 
 ## Features
 
-* **Multi‑tenant by design** – a single deployment can serve multiple domains/tenants.  Each tenant has its own users, roles, content and configuration.  The API ensures that data is always partitioned by `tenantId`.
-* **Headless CMS** – content is stored as structured data (Lexical JSON) and served as JSON or HTML.  The system supports multiple content types (pages, posts, custom types), versioning, drafts and scheduled publishing.
+* **Multi‑tenant by design** – a single deployment can serve multiple tenants and sites. Each tenant has its own users, roles, content and configuration. The API partitions tenant data by `tenantId`.
+* **Headless content platform** – editorial content is stored as structured data (Lexical JSON) and served as JSON or HTML, with drafts and scheduled publishing.
 * **Storage service** – integrated with [Cloudflare R2](https://www.cloudflare.com/products/r2/) for storing images, documents and other assets.  Files can be delivered via signed URLs or public links.
-* **User management and RBAC** – users can be members of multiple tenants.  Roles (`Owner`, `Admin`, `Editor`, `Author`, `Viewer`) and domain‑scoped overrides define permissions.
+* **Placements and experiments** – tenant-aware decision rules, weighted experiences, frequency caps, event collection, A/B-test reporting, funnels, realtime statistics and journeys power personalized banners, popups and inline experiences.
+* **User management and RBAC** – users can be members of multiple tenants. System roles (`Owner`, `Admin`, `Editor`, `Author`, `Viewer`) and tenant-scoped custom roles define permissions.
 * **Generic forms** – custom forms can be defined without code.  Submitted data is stored in the database and can trigger webhooks or notifications.
-* **Analytics** – simple page‑view and event tracking endpoints with daily aggregations.
-* **Presentation integration** – starter templates and an SDK allow building front‑end sites on top of contextHub.  APIs are provided to fetch content, sitemaps and navigation structures.
-* **Tokens for service integration** – API tokens with fine‑grained scopes enable third‑party applications to consume the API securely.
-* **Commerce lite** – a basic product catalogue (similar to WooCommerce) can be enabled per tenant.
+* **Analytics** – placement events, A/B-test and funnel reports, realtime breakdowns, journeys and dashboard API-usage summaries are available through tenant-scoped endpoints.
+* **Presentation integration** – APIs and SDKs support content, collections, media, menus, forms and placements in custom frontends.
+* **Tokens for service integration** – owner-managed API tokens combine a role with read, write and delete scopes, optional expiry and revocation.
 * **Flexible custom data** – tenants can define their own collections based on JSON schema for bespoke applications (e.g. election campaigns).
-* **Third‑party communication** – e‑mail, SMS and push notification providers can be configured per tenant.  Message templates are managed through the CMS.
+* **Open extension contract** – trusted deployment plugins can register API routes, event consumers, tenant settings and admin contributions through the versioned [Plugin API](./docs/PLUGIN_API.md).
+
+The hosted ContextHub Cloud product, operational guidance and managed capabilities are documented at [ctxhub.net/docs](https://ctxhub.net/docs). Features that are not backed by a working route or service are intentionally not listed above.
 
 ## Monorepo structure
 

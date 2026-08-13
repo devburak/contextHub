@@ -68,4 +68,4 @@ curl --request GET \
 - Authorization değerlerini loglardan çıkarın.
 - ContextHub Cloud servisleriyle community repo özelliklerini açıkça ayırın.
 
-[API referansını](./api-reference.md) açın; ardından [Content](./content.md), [Collections](./collections.md) ve [Medya](./media.md) ile devam edin.
+[API referansını](./api-reference.md) açın. Editoryal sunum için [Content](./content.md), [Collections](./collections.md) ve [Medya](./media.md); ContextHub'ın kişiselleştirme yüzeyi için [Placements](./placements.md) ile devam edin.

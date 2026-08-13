@@ -30,8 +30,16 @@ describe('public documentation build', () => {
     expect(fullCorpus).toContain('# ContextHub Cloud Developer Docs')
     expect(fullCorpus).toContain('# Caching and freshness')
     expect(fullCorpus).toContain('# AI assistants and MCP')
+    expect(fullCorpus).toContain('# Placements and personalization')
+    expect(fullCorpus).toContain('# Placement decision engine and targeting')
+    expect(fullCorpus).toContain('# Roles and permissions')
+    expect(fullCorpus).toContain('# Extensions and Plugin API')
+    expect(fullCorpus).toContain('POST https://api.ctxhub.net/api/public/placements/decide')
+    expect(fullCorpus).toContain('API version/revision: `1/4`')
     expect(fullCorpus).not.toContain('# Cache ve güncellik')
     expect(fullCorpus).not.toContain('/developer-docs/tr/')
+    expect(fullCorpus).not.toContain('# Commerce lite')
+    expect(fullCorpus).not.toContain('# Content versioning')
   })
 
   it('does not treat headings inside fenced code as navigation headings', () => {

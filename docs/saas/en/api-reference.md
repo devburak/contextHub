@@ -29,7 +29,11 @@ See [Authentication and tenancy](./authentication.md) for the complete boundary.
 | Media | `POST /api/media/presign`, `POST /api/media`, `GET /api/media` | Upload registration, metadata, variants, and external media |
 | Menus | `GET /api/public/menus/slug/:slug` | Public navigation trees |
 | Forms | `GET /api/public/forms/:slug`, `POST /api/public/forms/:id/submit` | Form definitions and submissions |
-| Placements | `POST /api/public/placements/decide`, `POST /api/public/placements/event` | Popup, inline, custom-view, and tracking flows |
+| Placements | `POST /api/public/placements/decide`, `POST /api/public/placements/events/batch` | Personalization, experiments, event collection, funnels, realtime reports, and journeys |
+| Galleries | `GET /api/galleries`, `PUT /api/contents/:id/galleries` | Ordered media sets linked to editorial content |
+| Roles | `GET /api/roles`, `PUT /api/users/:id/role` | Tenant-scoped system and custom role management |
+| Activity | `GET /api/activities`, `GET /api/dashboard/api-stats` | Security activity and operational dashboard data |
+| Extensions | Versioned Plugin API | Trusted routes, event consumers, settings, entitlements, and admin contributions |
 | Tenant | `GET /api/tenant/info` | Tenant identity, branding, and integration metadata |
 | Usage | `GET /api/tenants/current/limits` | Plan limits and current tenant usage |
 
@@ -49,4 +53,4 @@ Treat status families deliberately:
 - `429` for throttling or an exhausted plan quota.
 - `5xx` for transient service failures.
 
-Continue with [Errors and retries](./errors.md) and [Quotas and usage](./quotas.md).
+Continue with [Placements and personalization](./placements.md), [Roles and permissions](./roles-permissions.md), [Extensions](./extensions.md), [Errors and retries](./errors.md), and [Quotas and usage](./quotas.md).

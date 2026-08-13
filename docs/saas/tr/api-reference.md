@@ -29,7 +29,11 @@ Tam sınır için [Kimlik doğrulama ve tenant yapısı](./authentication.md) sa
 | Media | `POST /api/media/presign`, `POST /api/media`, `GET /api/media` | Upload kaydı, metadata, variant ve harici medya |
 | Menus | `GET /api/public/menus/slug/:slug` | Public navigasyon ağaçları |
 | Forms | `GET /api/public/forms/:slug`, `POST /api/public/forms/:id/submit` | Form tanımları ve gönderimler |
-| Placements | `POST /api/public/placements/decide`, `POST /api/public/placements/event` | Popup, inline, custom-view ve tracking akışları |
+| Placements | `POST /api/public/placements/decide`, `POST /api/public/placements/events/batch` | Kişiselleştirme, deney, event toplama, funnel, realtime rapor ve journey |
+| Galeriler | `GET /api/galleries`, `PUT /api/contents/:id/galleries` | Editoryal content'e bağlı sıralı media setleri |
+| Roller | `GET /api/roles`, `PUT /api/users/:id/role` | Tenant-scoped sistem ve custom rol yönetimi |
+| Activity | `GET /api/activities`, `GET /api/dashboard/api-stats` | Security activity ve operasyon dashboard verisi |
+| Extensions | Versioned Plugin API | Güvenilir route, event consumer, settings, entitlement ve admin katkıları |
 | Tenant | `GET /api/tenant/info` | Tenant kimliği, branding ve entegrasyon metadata'sı |
 | Usage | `GET /api/tenants/current/limits` | Plan limitleri ve güncel tenant kullanımı |
 
@@ -49,4 +53,4 @@ Status ailelerini ayrı yönetin:
 - Throttle veya tükenmiş plan kotası için `429`.
 - Geçici servis hataları için `5xx`.
 
-[Hatalar ve retry](./errors.md) ve [Kotalar ve kullanım](./quotas.md) ile devam edin.
+[Placements ve kişiselleştirme](./placements.md), [Roller ve izinler](./roles-permissions.md), [Extensions](./extensions.md), [Hatalar ve retry](./errors.md) ve [Kotalar ve kullanım](./quotas.md) ile devam edin.

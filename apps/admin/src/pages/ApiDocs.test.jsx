@@ -25,7 +25,7 @@ describe('ApiDocs', () => {
     await act(async () => {
       root.render(
         <MemoryRouter>
-          <ApiDocs />
+          <ApiDocs apiUrl="https://api.ctxhub.net/api/" />
         </MemoryRouter>,
       )
     })
@@ -39,7 +39,7 @@ describe('ApiDocs', () => {
     await act(async () => {
       root.render(
         <MemoryRouter>
-          <ApiDocs />
+          <ApiDocs apiUrl="https://api.ctxhub.net" />
         </MemoryRouter>,
       )
     })
@@ -48,5 +48,18 @@ describe('ApiDocs', () => {
       .toBe('https://api.ctxhub.net/api/docs')
     expect(container.querySelector('a[href="https://api.ctxhub.net/api/docs/json"]')).not.toBeNull()
     expect(container.querySelector('a[href="https://api.ctxhub.net/api/docs/yaml"]')).not.toBeNull()
+  })
+
+  it('preserves an explicit local API override', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ApiDocs apiUrl="http://localhost:3000" />
+        </MemoryRouter>,
+      )
+    })
+
+    expect(container.querySelector('iframe')?.getAttribute('src'))
+      .toBe('http://localhost:3000/api/docs')
   })
 })

@@ -8,7 +8,8 @@ ContextHub Cloud combines the core content platform with operated infrastructure
 
 | Area | ContextHub Cloud responsibility |
 | --- | --- |
-| Content platform | Tenant-aware content, collections, media, menus, forms, placements, and admin workflows |
+| Content platform | Tenant-aware content, collections, media, galleries, menus, forms, roles, and admin workflows |
+| Personalization | Placement decisions, targeting rules, weighted experiences, A/B-test reporting, funnels, realtime analytics, and journeys |
 | API edge | `https://api.ctxhub.net` routing, tenant CORS, origin protection, and public/private route policy |
 | Managed delivery | Hosted API operations, media delivery, monitoring, upgrades, and support |
 | Managed capabilities | Plan-dependent services such as Semantic Search and commercial plugins |
@@ -37,15 +38,24 @@ Use a server-side `ctx_...` API token for authenticated content, media, schema, 
 - **Media** manages uploaded files, image variants, accessibility metadata, and external video records.
 - **Menus** describe navigation trees.
 - **Forms** describe input schemas and collect submissions.
-- **Placements** select targeted popups, banners, inline experiences, or custom views.
+- **Placements** are personalization and experimentation surfaces with rule-based decisions, weighted experiences, frequency controls, event collection, A/B tests, funnels, and journeys.
+
+## What differentiates ContextHub Cloud
+
+- Multi-tenant memberships and custom roles support agency/client separation in one control plane.
+- Forms and galleries are first-class managed resources, not fields improvised inside generic entries.
+- Placements combine personalized delivery, experimentation, and analytics without requiring a separate optimization product.
+- The public Plugin API lets trusted extensions add APIs, consumers, settings, entitlements, and admin surfaces without forking core.
+- Dashboard, activity, token, and feature-flag APIs let agencies build their own operational workflows.
 
 ## Recommended production path
 
 1. Create the tenant and configure allowed browser origins in ContextHub Cloud.
-2. Create a least-privilege API token for server-side integration.
+2. Create a least-privilege, expiring API token for server-side integration.
 3. Model editorial information with Content and structured records with Collections.
 4. Add a 30–60 second application cache for safe reads.
 5. Invalidate affected cache keys from verified webhooks.
-6. Ask ContextHub about plan-dependent managed capabilities before building against them.
+6. Add tenant roles, audit export, and token rotation to the operating checklist.
+7. Ask ContextHub about plan-dependent managed capabilities before building against them.
 
-Continue with [Quickstart](./quickstart.md) and [Authentication and tenancy](./authentication.md).
+Continue with [Quickstart](./quickstart.md), [Placements and personalization](./placements.md), and [Roles and permissions](./roles-permissions.md).
