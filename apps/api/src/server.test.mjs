@@ -19,9 +19,31 @@ const originalR2Env = new Map(
   Object.keys(TEST_R2_ENV).map((key) => [key, process.env[key]])
 );
 
+class TestRateLimitStore {
+  constructor(options = {}) {
+    this.timeWindow = options.timeWindow;
+    this.counters = new Map();
+  }
+
+  incr(key, callback, max, ban) {
+    const current = (this.counters.get(key) || 0) + 1;
+    this.counters.set(key, current);
+    callback(null, {
+      current,
+      ttl: this.timeWindow,
+      ban: ban !== -1 && current - max > ban,
+    });
+  }
+
+  child(options) {
+    return new TestRateLimitStore(options);
+  }
+}
+
 describe('API server', () => {
   let app;
   let originalLogin;
+  let databaseReady = true;
 
   beforeAll(async () => {
     Object.assign(process.env, TEST_R2_ENV);
@@ -61,6 +83,8 @@ describe('API server', () => {
       throw new Error('Invalid credentials');
     };
     app = await buildServer({
+      readinessCheck: () => databaseReady,
+      rateLimitStore: TestRateLimitStore,
       pluginEntries: [
         path.resolve(
           process.cwd(),
@@ -86,6 +110,19 @@ describe('API server', () => {
     expect(body.status).toBe('ok');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['x-frame-options']).toBe('DENY');
+  });
+
+  it('reports database readiness and returns 503 when it is unavailable', async () => {
+    databaseReady = true;
+    const ready = await app.inject({ method: 'GET', url: '/ready' });
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json().status).toBe('ready');
+
+    databaseReady = false;
+    const unavailable = await app.inject({ method: 'GET', url: '/ready' });
+    expect(unavailable.statusCode).toBe(503);
+    expect(unavailable.json().status).toBe('not_ready');
+    databaseReady = true;
   });
 
   it('serves Swagger from the Edge Gateway bypass path', async () => {

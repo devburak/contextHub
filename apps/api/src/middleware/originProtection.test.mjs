@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 const fastify = require("fastify");
 const {
   createOriginProtectionHook,
+  isPublicProbePath,
   resolveOriginProtectionConfig,
   timingSafeSecretEqual,
 } = require("./originProtection");
@@ -20,6 +21,8 @@ async function buildApp(env) {
     status: "ok",
     secretVisibleToRoute: Boolean(request.headers["x-ctx-origin-secret"]),
   }));
+  app.get("/ready", async () => ({ status: "ready" }));
+  app.get("/api/private", async () => ({ status: "ok" }));
   return app;
 }
 
@@ -68,17 +71,25 @@ describe("originProtection", () => {
     expect(timingSafeSecretEqual(undefined, TEST_SECRET)).toBe(false);
   });
 
-  it("blocks health requests without a secret", async () => {
+  it("matches probe paths exactly while allowing query strings", () => {
+    expect(isPublicProbePath("/ready?source=lb")).toBe(true);
+    expect(isPublicProbePath("/health/details")).toBe(false);
+  });
+
+  it("allows liveness and readiness probes without a secret", async () => {
     const app = await buildApp({
       NODE_ENV: "production",
       ORIGIN_PROTECTION_ENABLED: "true",
       ORIGIN_SHARED_SECRET: TEST_SECRET,
     });
 
-    const response = await app.inject({ method: "GET", url: "/health" });
-    expect(response.statusCode).toBe(403);
-    expect(response.headers["cache-control"]).toBe("private, no-store");
-    expect(response.json()).toMatchObject({ error: "OriginAccessDenied" });
+    const health = await app.inject({ method: "GET", url: "/health" });
+    const ready = await app.inject({ method: "GET", url: "/ready?probe=1" });
+
+    expect(health.statusCode).toBe(200);
+    expect(health.json()).toMatchObject({ status: "ok" });
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json()).toEqual({ status: "ready" });
   });
 
   it("blocks an incorrect secret", async () => {
@@ -90,7 +101,7 @@ describe("originProtection", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/health",
+      url: "/api/private",
       headers: { "x-ctx-origin-secret": "incorrect-secret" },
     });
     expect(response.statusCode).toBe(403);
@@ -105,13 +116,10 @@ describe("originProtection", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/health",
+      url: "/api/private",
       headers: { "x-ctx-origin-secret": TEST_SECRET },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      status: "ok",
-      secretVisibleToRoute: false,
-    });
+    expect(response.json()).toEqual({ status: "ok" });
   });
 });
