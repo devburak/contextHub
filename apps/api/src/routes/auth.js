@@ -8,9 +8,29 @@ const {
 
 async function authRoutes(fastify) {
   const authService = new AuthService(fastify);
+  const configuredLoginRateLimitMax = Number.parseInt(
+    process.env.AUTH_LOGIN_RATE_LIMIT_MAX || '',
+    10
+  );
+  const configuredLoginRateLimitWindowMs = Number.parseInt(
+    process.env.AUTH_LOGIN_RATE_LIMIT_WINDOW_MS || '',
+    10
+  );
+  const loginRateLimitMax = configuredLoginRateLimitMax > 0
+    ? configuredLoginRateLimitMax
+    : 10;
+  const loginRateLimitWindowMs = configuredLoginRateLimitWindowMs > 0
+    ? configuredLoginRateLimitWindowMs
+    : 60 * 1000;
 
   // POST /auth/login - Giriş yap
   fastify.post('/auth/login', {
+    config: {
+      rateLimit: {
+        max: loginRateLimitMax,
+        timeWindow: loginRateLimitWindowMs,
+      },
+    },
     schema: {
       description: 'Authenticate user with email and password',
       summary: 'User login',

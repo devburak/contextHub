@@ -10,6 +10,8 @@ const TEST_R2_ENV = {
   R2_S3_ENDPOINT: 'https://r2.example.test',
   R2_ACCESS_KEY: 'test-access-key',
   R2_SECRET_KEY: 'test-secret-key',
+  AUTH_LOGIN_RATE_LIMIT_MAX: '3',
+  AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: '60000',
 };
 const originalR2Env = new Map(
   Object.keys(TEST_R2_ENV).map((key) => [key, process.env[key]])
@@ -123,5 +125,24 @@ describe('API server', () => {
     expect(res.headers['set-cookie']).toContain('ctx_session=mock-token');
     expect(res.headers['set-cookie']).toContain('HttpOnly');
     expect(res.headers['set-cookie']).toContain('SameSite=Strict');
+  });
+
+  it('throttles repeated login requests independently from the global API limit', async () => {
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'invalid@example.com', password: 'wrong' },
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'invalid@example.com', password: 'wrong' },
+    });
+
+    expect(first.statusCode).toBe(401);
+    expect(second.statusCode).toBe(429);
+    expect(JSON.parse(second.payload)).toMatchObject({
+      error: 'RateLimitExceeded',
+    });
   });
 });

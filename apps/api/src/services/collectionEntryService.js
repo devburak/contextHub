@@ -390,7 +390,62 @@ async function generateUniqueSlug({ tenantId, collectionKey, baseSlug, excludeId
   return candidate;
 }
 
-async function normaliseAndValidateData({ collectionType, data }) {
+async function validateDataReferenceOwnership({ tenantId, collectionType, data }) {
+  const errors = [];
+  const refFields = (collectionType.fields || []).filter((field) => field.type === 'ref');
+  const mediaFields = (collectionType.fields || []).filter((field) => field.type === 'media');
+  const refIds = new Set();
+  const mediaIds = new Set();
+
+  refFields.forEach((field) => {
+    ensureArrayValue(data[field.key]).forEach((id) => refIds.add(id.toString()));
+  });
+  mediaFields.forEach((field) => {
+    ensureArrayValue(data[field.key]).forEach((id) => mediaIds.add(id.toString()));
+  });
+
+  const [refDocs, mediaDocs] = await Promise.all([
+    refIds.size
+      ? CollectionEntry.find({ tenantId, _id: { $in: Array.from(refIds) } })
+          .select('_id collectionKey')
+          .lean()
+      : [],
+    mediaIds.size
+      ? Media.find({ tenantId, _id: { $in: Array.from(mediaIds) } })
+          .select('_id')
+          .lean()
+      : [],
+  ]);
+
+  const ownedRefs = new Map(refDocs.map((doc) => [doc._id.toString(), doc.collectionKey]));
+  const ownedMedia = new Set(mediaDocs.map((doc) => doc._id.toString()));
+
+  refFields.forEach((field) => {
+    const invalid = ensureArrayValue(data[field.key]).some((id) => (
+      ownedRefs.get(id.toString()) !== field.ref
+    ));
+    if (invalid) {
+      errors.push({
+        field: field.key,
+        message: `Referenced entries must belong to this tenant and collection '${field.ref}'`,
+      });
+    }
+  });
+
+  mediaFields.forEach((field) => {
+    const invalid = ensureArrayValue(data[field.key]).some((id) => !ownedMedia.has(id.toString()));
+    if (invalid) {
+      errors.push({
+        field: field.key,
+        message: 'Referenced media must belong to this tenant',
+      });
+    }
+  });
+
+  return errors;
+}
+
+async function normaliseAndValidateData({ tenantId, collectionType, data }) {
   const output = {};
   const errors = [];
   const fields = collectionType.fields || [];
@@ -426,7 +481,62 @@ async function normaliseAndValidateData({ collectionType, data }) {
     }
   }
 
+  errors.push(...await validateDataReferenceOwnership({
+    tenantId,
+    collectionType,
+    data: output,
+  }));
+
   return { data: output, errors };
+}
+
+async function validateRelationsOwnership({ tenantId, relations }) {
+  const contentIds = (relations.contents || []).map((id) => id.toString());
+  const mediaIds = (relations.media || []).map((id) => id.toString());
+  const refIds = (relations.refs || []).map((ref) => ref.entryId.toString());
+
+  const [contentDocs, mediaDocs, refDocs] = await Promise.all([
+    contentIds.length
+      ? Content.find({ tenantId, _id: { $in: contentIds } }).select('_id').lean()
+      : [],
+    mediaIds.length
+      ? Media.find({ tenantId, _id: { $in: mediaIds } }).select('_id').lean()
+      : [],
+    refIds.length
+      ? CollectionEntry.find({ tenantId, _id: { $in: refIds } })
+          .select('_id collectionKey')
+          .lean()
+      : [],
+  ]);
+
+  const ownedContents = new Set(contentDocs.map((doc) => doc._id.toString()));
+  const ownedMedia = new Set(mediaDocs.map((doc) => doc._id.toString()));
+  const ownedRefs = new Map(refDocs.map((doc) => [doc._id.toString(), doc.collectionKey]));
+  const errors = [];
+
+  if (contentIds.some((id) => !ownedContents.has(id))) {
+    errors.push({ field: 'relations.contents', message: 'Related content must belong to this tenant' });
+  }
+  if (mediaIds.some((id) => !ownedMedia.has(id))) {
+    errors.push({ field: 'relations.media', message: 'Related media must belong to this tenant' });
+  }
+  if ((relations.refs || []).some((ref) => (
+    ownedRefs.get(ref.entryId.toString()) !== ref.collectionKey
+  ))) {
+    errors.push({
+      field: 'relations.refs',
+      message: 'Related entries must belong to this tenant and the declared collection',
+    });
+  }
+
+  return errors;
+}
+
+function throwEntryValidationError(details) {
+  const error = new Error('Entry validation failed');
+  error.code = 'EntryValidationFailed';
+  error.details = details;
+  throw error;
 }
 
 async function ensureUniqueFields({ tenantId, collectionKey, fields, data, excludeId }) {
@@ -616,17 +726,22 @@ async function listEntries({ tenantId, collectionKey, query }) {
 async function createEntry({ tenantId, collectionKey, payload, userId }) {
   const collectionType = await getCollectionType({ tenantId, key: collectionKey });
 
-  const { data, errors } = await normaliseAndValidateData({ collectionType, data: payload.data });
+  const { data, errors } = await normaliseAndValidateData({
+    tenantId,
+    collectionType,
+    data: payload.data,
+  });
   if (errors.length) {
-    const error = new Error('Entry validation failed');
-    error.code = 'EntryValidationFailed';
-    error.details = errors;
-    throw error;
+    throwEntryValidationError(errors);
   }
 
   await ensureUniqueFields({ tenantId, collectionKey, fields: collectionType.fields || [], data });
 
   const relations = normaliseRelations(payload.relations || {});
+  const relationErrors = await validateRelationsOwnership({ tenantId, relations });
+  if (relationErrors.length) {
+    throwEntryValidationError(relationErrors);
+  }
   const slug = await resolveSlug({ collectionType, tenantId, collectionKey, payload, data });
   const status = payload.status || 'draft';
 
@@ -676,17 +791,22 @@ async function updateEntry({ tenantId, collectionKey, entryId, payload, userId }
     ...(payload.data || {})
   };
 
-  const { data, errors } = await normaliseAndValidateData({ collectionType, data: mergedData });
+  const { data, errors } = await normaliseAndValidateData({
+    tenantId,
+    collectionType,
+    data: mergedData,
+  });
   if (errors.length) {
-    const error = new Error('Entry validation failed');
-    error.code = 'EntryValidationFailed';
-    error.details = errors;
-    throw error;
+    throwEntryValidationError(errors);
   }
 
   await ensureUniqueFields({ tenantId, collectionKey, fields: collectionType.fields || [], data, excludeId: existing._id });
 
   const relations = normaliseRelations(mergeRelations(existing.relations || {}, payload.relations || {}));
+  const relationErrors = await validateRelationsOwnership({ tenantId, relations });
+  if (relationErrors.length) {
+    throwEntryValidationError(relationErrors);
+  }
   const status = payload.status || existing.status;
 
   const slug = await resolveSlug({
@@ -937,7 +1057,8 @@ async function runCollectionQuery({ tenantId, payload }) {
 
   const baseQuery = {
     tenantId,
-    collectionKey: payload.collection
+    collectionKey: payload.collection,
+    status: 'published',
   };
 
   const whereClauses = [];
@@ -1101,9 +1222,28 @@ async function runCollectionQuery({ tenantId, payload }) {
   }
 
   const [refDocs, mediaDocs, contentDocs] = await Promise.all([
-    refIdSet.size ? CollectionEntry.find({ _id: { $in: Array.from(refIdSet) } }).lean() : [],
-    mediaIdSet.size ? Media.find({ _id: { $in: Array.from(mediaIdSet) } }).lean() : [],
-    contentIdSet.size ? Content.find({ _id: { $in: Array.from(contentIdSet) } }).lean() : []
+    refIdSet.size
+      ? CollectionEntry.find({
+          tenantId,
+          status: 'published',
+          _id: { $in: Array.from(refIdSet) },
+        }).lean()
+      : [],
+    mediaIdSet.size
+      ? Media.find({
+          tenantId,
+          status: 'active',
+          isPublic: { $ne: false },
+          _id: { $in: Array.from(mediaIdSet) },
+        }).lean()
+      : [],
+    contentIdSet.size
+      ? Content.find({
+          tenantId,
+          status: 'published',
+          _id: { $in: Array.from(contentIdSet) },
+        }).lean()
+      : []
   ]);
 
   const refCache = new Map(refDocs.map((doc) => [doc._id.toString(), doc]));

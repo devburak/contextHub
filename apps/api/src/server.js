@@ -3,6 +3,7 @@ const fp = require('fastify-plugin');
 const crypto = require('crypto');
 const jwt = require('@fastify/jwt');
 const cors = require('@fastify/cors');
+const rateLimit = require('@fastify/rate-limit');
 const swagger = require('@fastify/swagger');
 const swaggerUi = require('@fastify/swagger-ui');
 const dotenv = require('dotenv');
@@ -16,6 +17,7 @@ const localRedisClient = require('./lib/localRedis');
 const { getSessionCookieName } = require('./services/sessionSecurity');
 const { resolveCorsOptions } = require('./services/tenantOriginPolicy');
 const { bootstrapExtensions } = require('./lib/pluginHost');
+const { extractTrustedClientIp } = require('./services/clientIp');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -37,6 +39,11 @@ function envList(name, defaultValue = '') {
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function positiveIntegerEnv(name, defaultValue) {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
 }
 
 // Minimum acceptable JWT secret length in bytes (256-bit).  Anything shorter is
@@ -89,7 +96,9 @@ async function buildServer(options = {}) {
   // on the first login request.
   getSessionCookieName();
 
-  // trustProxy true ensures request.ip reflects real client IP when behind Nginx/ELB
+  // Some non-security logging still uses Fastify's proxy-aware request.ip. Security
+  // controls use extractTrustedClientIp so a forged left-most X-Forwarded-For value
+  // cannot select the limiter key.
   const bodyLimit = Number(process.env.API_BODY_LIMIT_BYTES) || 10 * 1024 * 1024;
   // Fastify's default maxParamLength is 100; long slugs (e.g. migrated `id-detail`
   // slugs) exceed it and make the router 404 on /contents/slug/:slug. Raise the ceiling
@@ -112,6 +121,20 @@ async function buildServer(options = {}) {
       reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
     return payload;
+  });
+
+  await app.register(rateLimit, {
+    global: true,
+    max: positiveIntegerEnv('API_RATE_LIMIT_MAX', 1000),
+    timeWindow: positiveIntegerEnv('API_RATE_LIMIT_WINDOW_MS', 60 * 1000),
+    keyGenerator: extractTrustedClientIp,
+    allowList: (request) => request.raw.url === '/health' || request.raw.url === '/ready',
+    errorResponseBuilder: (_request, context) => ({
+      statusCode: 429,
+      error: 'RateLimitExceeded',
+      message: 'Too many requests. Please retry later.',
+      retryAfter: context.after,
+    }),
   });
 
   // Register Swagger for OpenAPI documentation

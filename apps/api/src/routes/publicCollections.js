@@ -11,6 +11,7 @@ const {
 const {
   getCollectionType
 } = require('../services/collectionTypeService');
+const { extractTrustedClientIp } = require('../services/clientIp');
 const {
   entryListQuerySchema,
   collectionQuerySchema
@@ -357,7 +358,7 @@ async function publicCollectionRoutes(fastify) {
     }
   }, async (request, reply) => {
     try {
-      enforceRateLimit(request.tenantId, request.ip || request.headers['x-forwarded-for'] || 'unknown');
+      enforceRateLimit(request.tenantId, extractTrustedClientIp(request));
     } catch (error) {
       request.log.warn({ err: error }, 'Public query rate limit exceeded');
       return reply
