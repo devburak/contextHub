@@ -313,7 +313,6 @@ export default function PublicDocumentation() {
             aria-label={labels.communityRepository}
           >
             <Github size={16} aria-hidden="true" />
-            <span>{labels.communityRepository}</span>
           </a>
           <a className="docs-admin-link" href="/login">Admin</a>
           <button

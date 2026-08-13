@@ -154,6 +154,9 @@
 }
 
 .docs-header-actions .docs-github-link {
+  width: 34px;
+  justify-content: center;
+  padding: 7px;
   color: var(--docs-ink);
   background: var(--docs-panel);
 }
@@ -648,12 +651,6 @@
   .docs-header-actions { gap: 8px; }
   .docs-header-actions > a:not(.docs-admin-link):not(.docs-github-link),
   .docs-version { display: none; }
-  .docs-header-actions .docs-github-link {
-    width: 34px;
-    justify-content: center;
-    padding: 7px;
-  }
-  .docs-github-link span { display: none; }
   .docs-language-switcher button { min-width: 31px; padding-inline: 5px; }
   .docs-mobile-menu { display: grid; }
   .docs-shell { display: block; min-height: calc(100vh - 64px); }

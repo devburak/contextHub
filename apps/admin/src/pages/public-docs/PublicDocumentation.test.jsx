@@ -93,8 +93,11 @@ describe('PublicDocumentation', () => {
     expect(container.querySelector('.docs-article h1')?.textContent).toBe('Cloud overview')
     expect(container.querySelector('.docs-toc a')?.textContent).toBe('Integration model')
     expect(container.textContent).toContain('SaaS documentation for customers.')
-    expect(container.querySelector('.docs-github-link')?.getAttribute('href'))
+    const communityLink = container.querySelector('.docs-github-link')
+    expect(communityLink?.getAttribute('href'))
       .toBe('https://github.com/devburak/contextHub')
+    expect(communityLink?.getAttribute('aria-label')).toBe('Community repository')
+    expect(communityLink?.textContent).toBe('')
     expect(fetch).toHaveBeenCalledWith('/developer-docs/catalog.json', { cache: 'no-cache' })
     expect(fetch).toHaveBeenCalledWith(
       `/developer-docs/en/overview.md?v=${'a'.repeat(64)}`,
