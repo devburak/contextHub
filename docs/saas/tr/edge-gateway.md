@@ -26,6 +26,8 @@ Gateway işletilen bir `ctxhub.net` servisidir. Deployment kodu, provider yapıl
 
 ## Public ve private path'ler
 
+İnteraktif OpenAPI referansı `https://api.ctxhub.net/api/docs` adresinde sunulur. `/api/docs` ailesi explicit bypass path'tir; böylece Swagger asset'leri ve JSON/YAML sözleşmeleri tenant token olmadan yüklenebilir. `https://api.ctxhub.net/docs` desteklenen public path değildir.
+
 ```text
 /api/public/*  -> public sunum politikası + tenant kimliği
 diğer /api/*   -> authenticated API veya admin politikası

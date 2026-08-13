@@ -40,6 +40,26 @@
       "tags": ["api", "content", "example"]
     },
     {
+      "slug": "cloud-vs-self-hosted",
+      "files": { "en": "en/cloud-vs-self-hosted.md", "tr": "tr/cloud-vs-self-hosted.md" },
+      "title": { "en": "ContextHub Cloud vs self-hosted", "tr": "ContextHub Cloud ve self-hosted" },
+      "description": { "en": "Understand the open-core trust boundary, responsibilities, and capability differences.", "tr": "Open-core güven sınırını, sorumlulukları ve yetenek farklarını anlayın." },
+      "category": { "en": "Start here", "tr": "Başlangıç" },
+      "audience": { "en": ["product", "platform", "procurement"], "tr": ["ürün", "platform", "satın alma"] },
+      "order": 15,
+      "tags": ["open core", "cloud", "self hosted", "trust"]
+    },
+    {
+      "slug": "api-reference",
+      "files": { "en": "en/api-reference.md", "tr": "tr/api-reference.md" },
+      "title": { "en": "API reference", "tr": "API referansı" },
+      "description": { "en": "Find the canonical API base URL, interactive Swagger, and route families.", "tr": "Canonical API base URL'i, interaktif Swagger'ı ve route ailelerini bulun." },
+      "category": { "en": "Core APIs", "tr": "Temel API'ler" },
+      "audience": { "en": ["frontend", "backend", "platform"], "tr": ["frontend", "backend", "platform"] },
+      "order": 25,
+      "tags": ["api", "swagger", "openapi", "reference"]
+    },
+    {
       "slug": "authentication",
       "files": { "en": "en/authentication.md", "tr": "tr/authentication.md" },
       "title": { "en": "Authentication and tenancy", "tr": "Kimlik doğrulama ve tenant yapısı" },
@@ -48,6 +68,16 @@
       "audience": { "en": ["backend", "platform"], "tr": ["backend", "platform"] },
       "order": 30,
       "tags": ["token", "tenant", "security", "cors"]
+    },
+    {
+      "slug": "errors",
+      "files": { "en": "en/errors.md", "tr": "tr/errors.md" },
+      "title": { "en": "Errors and retries", "tr": "Hatalar ve retry" },
+      "description": { "en": "Handle API and Edge Gateway failures without hiding actionable context.", "tr": "API ve Edge Gateway hatalarını eyleme dönük bağlamı kaybetmeden yönetin." },
+      "category": { "en": "Core APIs", "tr": "Temel API'ler" },
+      "audience": { "en": ["frontend", "backend", "platform"], "tr": ["frontend", "backend", "platform"] },
+      "order": 35,
+      "tags": ["errors", "http", "retry", "429"]
     },
     {
       "slug": "content",
@@ -90,6 +120,16 @@
       "tags": ["menus", "forms", "placements"]
     },
     {
+      "slug": "wordpress-migration",
+      "files": { "en": "en/wordpress-migration.md", "tr": "tr/wordpress-migration.md" },
+      "title": { "en": "Migrate from WordPress", "tr": "WordPress'ten geçiş" },
+      "description": { "en": "Move posts, categories, media, galleries, and video references with the ContextHub Migrator.", "tr": "ContextHub Migrator ile yazıları, kategorileri, medyayı, galerileri ve video referanslarını taşıyın." },
+      "category": { "en": "Migration", "tr": "Migrasyon" },
+      "audience": { "en": ["agency", "editor", "platform"], "tr": ["ajans", "editör", "platform"] },
+      "order": 75,
+      "tags": ["wordpress", "migration", "agency", "media"]
+    },
+    {
       "slug": "caching",
       "files": { "en": "en/caching.md", "tr": "tr/caching.md" },
       "title": { "en": "Caching and freshness", "tr": "Cache ve güncellik" },
@@ -108,6 +148,16 @@
       "audience": { "en": ["backend", "platform"], "tr": ["backend", "platform"] },
       "order": 90,
       "tags": ["webhook", "signature", "retry", "cache"]
+    },
+    {
+      "slug": "quotas",
+      "files": { "en": "en/quotas.md", "tr": "tr/quotas.md" },
+      "title": { "en": "Quotas and usage", "tr": "Kotalar ve kullanım" },
+      "description": { "en": "Read monthly request quota headers, query current usage, and recover from 429 responses.", "tr": "Aylık istek kotası header'larını okuyun, güncel kullanımı sorgulayın ve 429 yanıtlarını yönetin." },
+      "category": { "en": "Production", "tr": "Canlı ortam" },
+      "audience": { "en": ["backend", "platform", "product"], "tr": ["backend", "platform", "ürün"] },
+      "order": 95,
+      "tags": ["quota", "usage", "rate limit", "429", "billing"]
     },
     {
       "slug": "edge-gateway",

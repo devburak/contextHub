@@ -98,6 +98,7 @@ describe('PublicDocumentation', () => {
       .toBe('https://github.com/devburak/contextHub')
     expect(communityLink?.getAttribute('aria-label')).toBe('Community repository')
     expect(communityLink?.textContent).toBe('')
+    expect(container.querySelector('a[href="https://api.ctxhub.net/api/docs"]')).not.toBeNull()
     expect(fetch).toHaveBeenCalledWith('/developer-docs/catalog.json', { cache: 'no-cache' })
     expect(fetch).toHaveBeenCalledWith(
       `/developer-docs/en/overview.md?v=${'a'.repeat(64)}`,

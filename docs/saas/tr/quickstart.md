@@ -61,10 +61,11 @@ curl --request GET \
 ## Canlı ortam kontrol listesi
 
 - Abort signal ve timeout ekleyin.
-- `401`, `403`, `404`, `429` ve `5xx` durumlarını ayrı yönetin.
+- `401`, `403`, `404`, `429` ve `5xx` durumlarını [Hatalar ve retry](./errors.md) rehberine göre ayrı yönetin.
+- Aylık kullanımı [kota header'ları ve kullanım endpoint'i](./quotas.md) ile gözlemleyin.
 - Güvenli published okumaları kısa süre cache'leyin; webhook ile invalidation yapın.
 - Rich HTML'i sayfaya eklemeden önce sanitize edin.
 - Authorization değerlerini loglardan çıkarın.
 - ContextHub Cloud servisleriyle community repo özelliklerini açıkça ayırın.
 
-[Content](./content.md), [Collections](./collections.md) ve [Medya](./media.md) ile devam edin.
+[API referansını](./api-reference.md) açın; ardından [Content](./content.md), [Collections](./collections.md) ve [Medya](./media.md) ile devam edin.

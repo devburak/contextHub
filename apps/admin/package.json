@@ -10,6 +10,7 @@
     "dev": "vite",
     "prebuild": "pnpm docs:build",
     "build": "vite build",
+    "postbuild": "node ../../scripts/prerender-public-docs.mjs",
     "preview": "vite preview",
     "pretest": "pnpm docs:build",
     "test": "node ../../scripts/run-tool.mjs vitest run",

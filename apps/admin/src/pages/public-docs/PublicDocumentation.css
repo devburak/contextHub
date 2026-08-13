@@ -670,7 +670,11 @@
   .docs-article > h1:first-child { font-size: clamp(36px, 12vw, 52px); }
   .docs-article > p:first-of-type { font-size: 17px; }
   .docs-article h2 { font-size: 24px; }
-  .docs-article table { display: block; overflow-x: auto; }
+  .docs-article table { display: block; overflow-x: auto; table-layout: auto; }
+  .docs-article th,
+  .docs-article td { min-width: 140px; }
+  .docs-article th:last-child,
+  .docs-article td:last-child { min-width: 260px; }
   .docs-pagination { grid-template-columns: 1fr; }
   .docs-pagination > span:empty { display: none; }
 }

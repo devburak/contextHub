@@ -191,7 +191,9 @@ async function buildServer(options = {}) {
 
   // Register Swagger UI for interactive documentation
   await app.register(swaggerUi, {
-    routePrefix: '/docs',
+    // Keep Swagger under /api so the managed Edge Gateway can expose it via
+    // its existing /api/docs bypass policy without opening private routes.
+    routePrefix: '/api/docs',
     uiConfig: {
       docExpansion: 'list',
       deepLinking: true,

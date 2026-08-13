@@ -61,6 +61,7 @@ const COPY = {
     toggleNavigation: 'Toggle documentation navigation',
     language: 'Documentation language',
     communityRepository: 'Community repository',
+    apiReference: 'Interactive API reference',
   },
   tr: {
     fieldManual: 'CLOUD GELİŞTİRİCİ KILAVUZU',
@@ -93,6 +94,7 @@ const COPY = {
     toggleNavigation: 'Doküman navigasyonunu aç veya kapat',
     language: 'Doküman dili',
     communityRepository: 'Topluluk reposu',
+    apiReference: 'İnteraktif API referansı',
   },
 }
 
@@ -302,6 +304,13 @@ export default function PublicDocumentation() {
               ))}
           </div>
           {catalog && <span className="docs-version">DOCS {catalog.version}</span>}
+          <a
+            href="https://api.ctxhub.net/api/docs"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            {labels.apiReference} <ExternalLink size={14} aria-hidden="true" />
+          </a>
           <a href={`${DOCS_BASE_PATH}/llms.txt`} target="_blank" rel="noreferrer">
             {labels.aiIndex} <ExternalLink size={14} />
           </a>

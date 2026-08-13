@@ -2,6 +2,8 @@
 
 ContextHub uses an open-core model. This documentation describes the `ctxhub.net` SaaS, so some capabilities are operated services or commercial plugins rather than features delivered by cloning the community repository.
 
+For the operational responsibility and trust comparison, start with [ContextHub Cloud vs self-hosted](./cloud-vs-self-hosted.md).
+
 ## Capability boundary
 
 | Capability | Community repository | ContextHub Cloud |

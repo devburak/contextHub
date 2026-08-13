@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   defaultOutputDirectory,
@@ -7,6 +9,7 @@ import {
   validateInternalLinks,
   validateManifest,
 } from '../../../../../scripts/build-public-docs.mjs'
+import { prerenderPublicDocs } from '../../../../../scripts/prerender-public-docs.mjs'
 
 describe('public documentation build', () => {
   it('keeps the generated catalog aligned with the Markdown manifest', async () => {
@@ -46,5 +49,38 @@ describe('public documentation build', () => {
         markdown: '[Missing](./not-here.md)',
       },
     ])).toThrow(/links to missing page not-here/i)
+  })
+
+  it('prerenders crawlable docs routes, robots, and a sitemap', async () => {
+    const distDirectory = await mkdtemp(join(tmpdir(), 'ctxhub-docs-prerender-'))
+    await mkdir(distDirectory, { recursive: true })
+    await writeFile(
+      join(distDirectory, 'index.html'),
+      '<!doctype html><html lang="tr"><head><title>Admin</title></head><body><div id="root"></div><script src="/assets/app.js"></script></body></html>',
+      'utf8',
+    )
+
+    try {
+      const result = await prerenderPublicDocs({
+        sourceDirectory: defaultSourceDirectory,
+        distDirectory,
+        siteUrl: 'https://ctxhub.test',
+      })
+      const contentPage = await readFile(join(distDirectory, 'docs', 'content', 'index.html'), 'utf8')
+      const robots = await readFile(join(distDirectory, 'robots.txt'), 'utf8')
+      const sitemap = await readFile(join(distDirectory, 'sitemap.xml'), 'utf8')
+
+      expect(result.pages).toBeGreaterThan(14)
+      expect(contentPage).toContain('<h1 id="content">Content</h1>')
+      expect(contentPage).toContain('rel="canonical" href="https://ctxhub.test/docs/content"')
+      expect(contentPage).toContain('data-docs-prerendered="true"')
+      expect(contentPage).toContain('/assets/app.js')
+      expect(robots).toContain('Allow: /docs')
+      expect(robots).toContain('Sitemap: https://ctxhub.test/sitemap.xml')
+      expect(sitemap).toContain('<loc>https://ctxhub.test/docs/content</loc>')
+      expect(sitemap).toContain('<loc>https://ctxhub.test/docs</loc>')
+    } finally {
+      await rm(distDirectory, { recursive: true, force: true })
+    }
   })
 })

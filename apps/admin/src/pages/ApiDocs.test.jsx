@@ -34,4 +34,19 @@ describe('ApiDocs', () => {
     expect(docsLink?.textContent).toContain('Developer Docs')
     expect(docsLink?.querySelector('svg')).not.toBeNull()
   })
+
+  it('resolves Swagger under the Edge Gateway bypass path', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ApiDocs />
+        </MemoryRouter>,
+      )
+    })
+
+    expect(container.querySelector('iframe')?.getAttribute('src'))
+      .toBe('https://api.ctxhub.net/api/docs')
+    expect(container.querySelector('a[href="https://api.ctxhub.net/api/docs/json"]')).not.toBeNull()
+    expect(container.querySelector('a[href="https://api.ctxhub.net/api/docs/yaml"]')).not.toBeNull()
+  })
 })

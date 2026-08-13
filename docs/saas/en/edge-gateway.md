@@ -26,6 +26,8 @@ The gateway is an operated `ctxhub.net` service. Its deployment code, provider c
 
 ## Public and private paths
 
+The interactive OpenAPI reference is served at `https://api.ctxhub.net/api/docs`. The `/api/docs` family is an explicit bypass path so Swagger assets and the JSON/YAML contracts can load without a tenant token. `https://api.ctxhub.net/docs` is not a supported public path.
+
 ```text
 /api/public/*  -> public delivery policy + tenant identity
 other /api/*   -> authenticated API or admin policy

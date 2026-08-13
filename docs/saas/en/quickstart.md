@@ -61,10 +61,11 @@ curl --request GET \
 ## Production checklist
 
 - Add an abort signal and request timeout.
-- Handle `401`, `403`, `404`, `429`, and `5xx` separately.
+- Handle `401`, `403`, `404`, `429`, and `5xx` separately using [Errors and retries](./errors.md).
+- Observe monthly usage through [quota headers and the usage endpoint](./quotas.md).
 - Cache safe published reads briefly and invalidate them from webhooks.
 - Sanitize rich HTML before injecting it into a page.
 - Redact authorization values from logs.
 - Keep an explicit distinction between ContextHub Cloud services and community-repository features.
 
-Next, read [Content](./content.md), [Collections](./collections.md), and [Media](./media.md).
+Next, open the [API reference](./api-reference.md), then read [Content](./content.md), [Collections](./collections.md), and [Media](./media.md).

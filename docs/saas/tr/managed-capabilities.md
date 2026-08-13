@@ -2,6 +2,8 @@
 
 ContextHub open-core model kullanır. Bu doküman `ctxhub.net` SaaS hizmetini anlattığı için bazı yetenekler community repoyu clone ederek elde edilen özellikler değil, işletilen servis veya ticari pluginlerdir.
 
+Operasyonel sorumluluk ve güven karşılaştırması için [ContextHub Cloud ve self-hosted](./cloud-vs-self-hosted.md) sayfasından başlayın.
+
 ## Yetenek sınırı
 
 | Yetenek | Community repo | ContextHub Cloud |
