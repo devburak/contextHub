@@ -2,7 +2,14 @@
 
 ContextHub Migrator moves WordPress posts and related media into ContextHub Cloud from the WordPress admin. It is designed for staged agency migrations where editors need dry-run visibility, category mapping, duplicate-safe content writes, and resumable media processing.
 
-The migrator is a separately distributed WordPress plugin for ContextHub Cloud. It is not part of the community repository's Node runtime. Obtain the current signed package and release notes from ContextHub support or your managed-service channel.
+The migrator is a separately maintained public WordPress plugin for ContextHub Cloud. It is not part of the ContextHub community repository's Node runtime.
+
+## Download the plugin
+
+- Source code and issue tracking: [devburak/contexthub-wp-migrator](https://github.com/devburak/contexthub-wp-migrator)
+- Current documented release: [ContextHub Migrator 2.1.2](https://github.com/devburak/contexthub-wp-migrator/releases/tag/v2.1.2)
+
+Download the installable `contexthub-migrator-2.1.2.zip` asset from the release page. Do not download GitHub's automatically generated **Source code** archives for WordPress installation.
 
 ## Before you start
 
@@ -18,7 +25,7 @@ The published plugin package requires PHP 7.4 or newer. Verify the WordPress min
 ## Install and connect
 
 1. In WordPress Admin, open **Plugins → Add New → Upload Plugin**.
-2. Upload the supplied ContextHub Migrator ZIP and activate it.
+2. Upload the `contexthub-migrator-2.1.2.zip` release asset and activate it.
 3. Open **ContextHub → Settings**.
 4. Set API URL to `https://api.ctxhub.net/api`.
 5. Enter the dedicated `ctx_` API token and target tenant ID.

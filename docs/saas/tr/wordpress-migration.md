@@ -2,7 +2,14 @@
 
 ContextHub Migrator, WordPress yazılarını ve ilişkili medyayı WordPress admin içinden ContextHub Cloud'a taşır. Editörlerin dry-run görünürlüğüne, kategori eşlemesine, duplicate-safe content write'a ve devam ettirilebilir medya işlemine ihtiyaç duyduğu aşamalı ajans migrasyonları için tasarlanmıştır.
 
-Migrator, ContextHub Cloud için ayrı dağıtılan bir WordPress pluginidir. Community reponun Node runtime'ının parçası değildir. Güncel imzalı paketi ve release note'larını ContextHub destekten veya yönetilen servis kanalınızdan alın.
+Migrator, ContextHub Cloud için ayrı geliştirilen public bir WordPress pluginidir. ContextHub community reposunun Node runtime'ının parçası değildir.
+
+## Plugini indirme
+
+- Kaynak kod ve issue takibi: [devburak/contexthub-wp-migrator](https://github.com/devburak/contexthub-wp-migrator)
+- Dokümante edilen güncel sürüm: [ContextHub Migrator 2.1.2](https://github.com/devburak/contexthub-wp-migrator/releases/tag/v2.1.2)
+
+WordPress kurulumu için release sayfasındaki `contexthub-migrator-2.1.2.zip` asset'ini indirin. GitHub'ın otomatik oluşturduğu **Source code** arşivlerini plugin kurulumu için kullanmayın.
 
 ## Başlamadan önce
 
@@ -18,7 +25,7 @@ Yayınlanan plugin paketi PHP 7.4 veya üzerini ister. Kurulumdan önce WordPres
 ## Kurulum ve bağlantı
 
 1. WordPress Admin içinde **Plugins → Add New → Upload Plugin** yolunu açın.
-2. Sağlanan ContextHub Migrator ZIP'ini yükleyip etkinleştirin.
+2. `contexthub-migrator-2.1.2.zip` release asset'ini yükleyip etkinleştirin.
 3. **ContextHub → Settings** sayfasını açın.
 4. API URL olarak `https://api.ctxhub.net/api` girin.
 5. Migrasyona özel `ctx_` API token'ı ve hedef tenant ID'yi girin.
