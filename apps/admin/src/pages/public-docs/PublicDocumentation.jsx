@@ -10,6 +10,7 @@ import {
   Copy,
   ExternalLink,
   FileText,
+  Github,
   Menu,
   RefreshCw,
   Search,
@@ -59,6 +60,7 @@ const COPY = {
     copyFailed: 'Copy failed — select the text manually',
     toggleNavigation: 'Toggle documentation navigation',
     language: 'Documentation language',
+    communityRepository: 'Community repository',
   },
   tr: {
     fieldManual: 'CLOUD GELİŞTİRİCİ KILAVUZU',
@@ -90,6 +92,7 @@ const COPY = {
     copyFailed: 'Kopyalanamadı — metni elle seçin',
     toggleNavigation: 'Doküman navigasyonunu aç veya kapat',
     language: 'Doküman dili',
+    communityRepository: 'Topluluk reposu',
   },
 }
 
@@ -246,7 +249,7 @@ export default function PublicDocumentation() {
   const handleArticleClick = useCallback(async (event) => {
     const copyButton = event.target.closest('[data-docs-copy]')
     if (!copyButton) return
-    const code = copyButton.closest('pre')?.querySelector('code')
+    const code = copyButton.closest('.docs-code-card')?.querySelector('pre code')
     if (!code) return
 
     try {
@@ -301,6 +304,16 @@ export default function PublicDocumentation() {
           {catalog && <span className="docs-version">DOCS {catalog.version}</span>}
           <a href={`${DOCS_BASE_PATH}/llms.txt`} target="_blank" rel="noreferrer">
             {labels.aiIndex} <ExternalLink size={14} />
+          </a>
+          <a
+            className="docs-github-link"
+            href="https://github.com/devburak/contextHub"
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label={labels.communityRepository}
+          >
+            <Github size={16} aria-hidden="true" />
+            <span>{labels.communityRepository}</span>
           </a>
           <a className="docs-admin-link" href="/login">Admin</a>
           <button

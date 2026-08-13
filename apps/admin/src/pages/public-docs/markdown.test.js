@@ -22,6 +22,13 @@ Build a safe integration.
     expect(result.html).toContain('href="/docs/caching#cache-key-design"')
     expect(result.html).toContain('data-docs-copy="0"')
     expect(result.html).toContain('COPY PROMPT')
+    const output = document.createElement('div')
+    output.innerHTML = result.html
+    const copyButton = output.querySelector('.docs-copy-button')
+    expect(copyButton.closest('.docs-code-toolbar')).not.toBeNull()
+    expect(copyButton.closest('pre')).toBeNull()
+    expect(output.querySelector('.docs-code-card.is-prompt pre code')?.textContent)
+      .toContain('Build a safe integration.')
   })
 
   it('removes executable HTML and unsafe links', () => {

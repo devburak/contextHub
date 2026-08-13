@@ -124,8 +124,20 @@ export function renderDocumentationMarkdown(markdown, { locale = 'en' } = {}) {
     const language = Array.from(code.classList)
       .find((className) => className.startsWith('language-'))
       ?.slice('language-'.length)
-    const button = document.createElement('button')
     const isPrompt = language === 'prompt'
+    const pre = code.parentElement
+    const card = document.createElement('div')
+    const toolbar = document.createElement('div')
+    const toolbarLabel = document.createElement('span')
+    const button = document.createElement('button')
+
+    card.className = `docs-code-card${isPrompt ? ' is-prompt' : ''}`
+    card.setAttribute('data-code-index', String(codeIndex))
+    toolbar.className = 'docs-code-toolbar'
+    toolbarLabel.className = 'docs-code-label'
+    toolbarLabel.textContent = isPrompt
+      ? 'AGENT PROMPT · ENGLISH'
+      : (language ? language.toUpperCase() : 'SOURCE')
     button.setAttribute('type', 'button')
     button.setAttribute('data-docs-copy', String(codeIndex))
     button.setAttribute('data-copy-kind', isPrompt ? 'prompt' : 'code')
@@ -139,8 +151,10 @@ export function renderDocumentationMarkdown(markdown, { locale = 'en' } = {}) {
     button.textContent = locale === 'tr'
       ? (isPrompt ? 'PROMPTU KOPYALA' : 'KOPYALA')
       : (isPrompt ? 'COPY PROMPT' : 'COPY')
-    code.parentElement.setAttribute('data-code-index', String(codeIndex))
-    code.parentElement.insertBefore(button, code)
+
+    pre.parentElement.insertBefore(card, pre)
+    toolbar.append(toolbarLabel, button)
+    card.append(toolbar, pre)
     codeIndex += 1
   }
 

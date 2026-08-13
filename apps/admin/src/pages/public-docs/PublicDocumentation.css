@@ -153,6 +153,13 @@
   border-color: var(--docs-accent);
 }
 
+.docs-header-actions .docs-github-link {
+  color: var(--docs-ink);
+  background: var(--docs-panel);
+}
+
+.docs-github-link svg { flex: 0 0 auto; }
+
 .docs-offline {
   color: #b45309;
   background: #fffbeb;
@@ -392,48 +399,73 @@
   font-size: 0.88em;
 }
 
-.docs-article pre {
-  position: relative;
+.docs-code-card {
   max-width: 100%;
   margin: 24px 0 28px;
-  padding: 48px 20px 20px;
-  overflow: auto;
-  color: #e5e7eb;
   background: var(--docs-code);
   border: 1px solid #374151;
   border-radius: 12px;
+  overflow: hidden;
   box-shadow: 0 16px 34px rgba(17, 24, 39, 0.14);
+}
+
+.docs-code-toolbar {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 20px;
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+}
+
+.docs-code-label {
+  min-width: 0;
+  overflow: hidden;
+  color: #9ca3af;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docs-article .docs-code-card pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 18px 20px 20px;
+  overflow: auto;
+  color: #e5e7eb;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   font-size: 13px;
   line-height: 1.65;
   tab-size: 2;
 }
 
-.docs-article pre::before {
-  content: "SOURCE";
-  position: absolute;
-  top: 15px;
-  left: 20px;
-  color: #9ca3af;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-}
-
-.docs-article pre:has(code.language-prompt) {
+.docs-code-card.is-prompt {
   color: var(--docs-ink);
   background: #eff6ff;
   border-color: #93c5fd;
   box-shadow: 0 15px 32px rgba(37, 99, 235, 0.1);
 }
 
-.docs-article pre:has(code.language-prompt)::before { content: "AGENT PROMPT · ENGLISH"; color: var(--docs-accent-strong); }
+.docs-code-card.is-prompt .docs-code-toolbar {
+  background: #dbeafe;
+  border-bottom-color: #bfdbfe;
+}
+
+.docs-code-card.is-prompt .docs-code-label { color: var(--docs-accent-strong); }
+.docs-article .docs-code-card.is-prompt pre { color: var(--docs-ink); }
 
 .docs-copy-button {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 2;
-  padding: 6px 9px;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 6px 10px;
   color: #e5e7eb;
   background: #374151;
   border: 1px solid #4b5563;
@@ -443,14 +475,19 @@
   letter-spacing: 0.12em;
 }
 
-pre:has(code.language-prompt) .docs-copy-button {
+.docs-code-card.is-prompt .docs-copy-button {
   color: white;
   background: var(--docs-accent);
   border-color: var(--docs-accent);
 }
 
-.docs-copy-button:hover,
-.docs-copy-button:focus-visible { filter: brightness(1.16); }
+.docs-copy-button:hover { filter: brightness(1.08); }
+
+.docs-copy-button:focus-visible {
+  filter: brightness(1.08);
+  outline: 3px solid rgba(147, 197, 253, 0.55);
+  outline-offset: 2px;
+}
 
 .docs-article table {
   width: 100%;
@@ -608,8 +645,15 @@ pre:has(code.language-prompt) .docs-copy-button {
 @media (max-width: 800px) {
   .docs-header { min-height: 64px; padding: 10px 16px; }
   .docs-brand small { display: none; }
-  .docs-header-actions > a:not(.docs-admin-link),
+  .docs-header-actions { gap: 8px; }
+  .docs-header-actions > a:not(.docs-admin-link):not(.docs-github-link),
   .docs-version { display: none; }
+  .docs-header-actions .docs-github-link {
+    width: 34px;
+    justify-content: center;
+    padding: 7px;
+  }
+  .docs-github-link span { display: none; }
   .docs-language-switcher button { min-width: 31px; padding-inline: 5px; }
   .docs-mobile-menu { display: grid; }
   .docs-shell { display: block; min-height: calc(100vh - 64px); }
@@ -632,6 +676,11 @@ pre:has(code.language-prompt) .docs-copy-button {
   .docs-article table { display: block; overflow-x: auto; }
   .docs-pagination { grid-template-columns: 1fr; }
   .docs-pagination > span:empty { display: none; }
+}
+
+@media (max-width: 480px) {
+  .docs-header { gap: 8px; }
+  .docs-brand > span:last-child { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
