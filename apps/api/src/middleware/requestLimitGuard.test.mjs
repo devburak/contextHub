@@ -53,6 +53,7 @@ describe('requestLimitGuard', () => {
 
     expect(blocked).toBe(false);
     expect(getFlag).not.toHaveBeenCalled();
+    expect(shouldSkipLimitGuard({ url: '/ready' })).toBe(true);
     expect(shouldSkipLimitGuard({ url: '/api/tenants/abc/limits' })).toBe(true);
   });
 

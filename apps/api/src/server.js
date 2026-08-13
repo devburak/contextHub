@@ -12,12 +12,16 @@ const { database } = require('@contexthub/common');
 const roleService = require('./services/roleService');
 const tenantContext = require('@contexthub/common/src/tenantContext');
 const apiLogger = require('./middleware/apiLogger');
-const { createOriginProtectionHook } = require('./middleware/originProtection');
+const {
+  createOriginProtectionHook,
+  isPublicProbePath,
+} = require('./middleware/originProtection');
 const localRedisClient = require('./lib/localRedis');
 const { getSessionCookieName } = require('./services/sessionSecurity');
 const { resolveCorsOptions } = require('./services/tenantOriginPolicy');
 const { bootstrapExtensions } = require('./lib/pluginHost');
 const { extractTrustedClientIp } = require('./services/clientIp');
+const RedisRateLimitStore = require('./services/redisRateLimitStore');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -128,7 +132,12 @@ async function buildServer(options = {}) {
     max: positiveIntegerEnv('API_RATE_LIMIT_MAX', 1000),
     timeWindow: positiveIntegerEnv('API_RATE_LIMIT_WINDOW_MS', 60 * 1000),
     keyGenerator: extractTrustedClientIp,
-    allowList: (request) => request.raw.url === '/health' || request.raw.url === '/ready',
+    store: options.rateLimitStore || RedisRateLimitStore,
+    // Redis is shared by every PM2 worker, so counters are cluster-global. Keep
+    // the API available during a Redis incident; localRedis reports the outage
+    // and the store emits a throttled warning while requests fail open.
+    skipOnError: true,
+    allowList: (request) => isPublicProbePath(request.raw.url),
     errorResponseBuilder: (_request, context) => ({
       statusCode: 429,
       error: 'RateLimitExceeded',
@@ -251,7 +260,7 @@ async function buildServer(options = {}) {
     const host = (request.headers.host || '').split(':')[0].toLowerCase();
 
     // Allow health checks and internal routes
-    if (request.url === '/health' || request.url === '/ready') {
+    if (isPublicProbePath(request.url)) {
       return done();
     }
 
@@ -332,6 +341,25 @@ async function buildServer(options = {}) {
   // Health check
   app.get('/health', async () => {
     return { status: 'ok', timestamp: Date.now() };
+  });
+
+  // Readiness is deliberately based on the essential datastore only. Redis-backed
+  // abuse/quota controls have an explicit fail-open availability policy, so a Redis
+  // incident must not drain every API worker from the load balancer.
+  const readinessCheck = options.readinessCheck || database.isReady;
+  app.get('/ready', async (_request, reply) => {
+    try {
+      if (await readinessCheck()) {
+        return { status: 'ready', timestamp: Date.now() };
+      }
+    } catch (error) {
+      app.log.error({ err: error }, 'Readiness check failed');
+    }
+
+    return reply.code(503).send({
+      status: 'not_ready',
+      timestamp: Date.now(),
+    });
   });
 
   return app;

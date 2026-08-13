@@ -95,8 +95,11 @@ const disconnectDB = async () => {
   }
 };
 
+const isReady = () => mongoose.connection.readyState === 1;
+
 module.exports = {
   connectDB,
   disconnectDB,
-  createIndexes
+  createIndexes,
+  isReady,
 };
