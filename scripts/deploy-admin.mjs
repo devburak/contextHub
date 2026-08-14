@@ -24,7 +24,7 @@ const config = {
   host: process.env.adminDeployServer,
   username: process.env.adminUser,
   password: process.env.adminPassword,
-  remotePath: process.env.adminDeployPath,
+  remotePath: process.env.adminDeployPath?.replace(/\/+$/, ''),
   localPath: join(rootDir, 'apps/admin/dist')
 };
 
