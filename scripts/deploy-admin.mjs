@@ -3,7 +3,7 @@
 import { NodeSSH } from 'node-ssh';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import * as dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,12 +40,34 @@ if (missingVars.length > 0) {
   process.exit(1);
 }
 
+function verifyProductionBuild(localPath) {
+  const assetsPath = join(localPath, 'assets');
+  if (!existsSync(assetsPath)) {
+    throw new Error(`Production asset klasoru bulunamadi: ${assetsPath}`);
+  }
+
+  const forbiddenApiUrls = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+  const javascriptAssets = readdirSync(assetsPath).filter((file) => file.endsWith('.js'));
+
+  for (const asset of javascriptAssets) {
+    const contents = readFileSync(join(assetsPath, asset), 'utf8');
+    const forbiddenUrl = forbiddenApiUrls.find((url) => contents.includes(url));
+    if (forbiddenUrl) {
+      throw new Error(
+        `Deploy durduruldu: ${asset} production icin gecersiz API adresi iceriyor (${forbiddenUrl}).`
+      );
+    }
+  }
+}
+
 // Build klasörünün varlığını kontrol et
 if (!existsSync(config.localPath)) {
   console.error('❌ Build klasörü bulunamadı:', config.localPath);
   console.error('💡 Önce "pnpm build:admin" komutunu çalıştırın.');
   process.exit(1);
 }
+
+verifyProductionBuild(config.localPath);
 
 console.log('🚀 Admin Panel Deploy Başlatılıyor...\n');
 console.log('📦 Kaynak:', config.localPath);
@@ -82,7 +104,7 @@ async function deploy() {
     // Dist klasörünü sunucuya yükle
     console.log('📤 Dosyalar yükleniyor...');
     console.log('⏳ Bu işlem birkaç dakika sürebilir...\n');
-    
+
     const uploadResult = await ssh.putDirectory(config.localPath, config.remotePath, {
       recursive: true,
       concurrency: 10,
@@ -104,32 +126,32 @@ async function deploy() {
     });
 
     console.log('\n');
-    
+
     if (uploadResult) {
       console.log('✅ Tüm dosyalar başarıyla yüklendi!\n');
-      
+
       // Dosya sayısını kontrol et
       const countResult = await ssh.execCommand(`find ${config.remotePath} -type f | wc -l`);
       console.log('📊 Yüklenen dosya sayısı:', countResult.stdout.trim());
-      
+
       // Dosya izinlerini ayarla
       console.log('\n🔒 Dosya izinleri ayarlanıyor...');
       await ssh.execCommand(`chmod -R 755 ${config.remotePath}`);
       console.log('✅ İzinler ayarlandı\n');
-      
+
       console.log('🎉 Deploy başarıyla tamamlandı!');
       console.log(`🌍 Site: https://${config.host.replace('cp1.', 'www.')}/`);
-      
+
       // Eski yedekleri temizle (30 günden eski)
       console.log('\n🧹 Eski yedekler temizleniyor...');
-      await ssh.execCommand(`find $(dirname ${config.remotePath}) -name "$(basename ${config.remotePath}).backup-*" -mtime +30 -exec rm -rf {} \\;`);
+      await ssh.execCommand(
+        `find $(dirname ${config.remotePath}) -name "$(basename ${config.remotePath}).backup-*" -mtime +30 -exec rm -rf {} \\;`
+      );
       console.log('✅ Temizleme tamamlandı');
-      
     } else {
       console.error('❌ Dosya yükleme başarısız!');
       process.exit(1);
     }
-
   } catch (error) {
     console.error('\n❌ Deploy sırasında hata oluştu:', error.message);
     if (error.code === 'ENOTFOUND') {
