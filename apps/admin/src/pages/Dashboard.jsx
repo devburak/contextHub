@@ -1,79 +1,52 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { fetchDashboardActivities, fetchDashboardSummary, fetchApiStats } from '../lib/api/dashboard.js'
 import { fetchTenantLimits, updateTenantSubscription } from '../lib/api/subscriptions.js'
 import { tenantAPI } from '../lib/tenantAPI.js'
+import { useApiError } from '../lib/useApiError.js'
 import RecentActivities from '../components/RecentActivities.jsx'
 import SubscriptionPlanSelector from '../components/SubscriptionPlanSelector.jsx'
 
 const ACTIVITY_PAGE_SIZE = 10
 
-const numberFormatter = new Intl.NumberFormat('tr-TR')
-const gigabyteFormatter = new Intl.NumberFormat('tr-TR', {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-})
-const datetimeFormatter = new Intl.DateTimeFormat('tr-TR', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
 const activityTypeConfig = {
   content: {
-    label: 'İçerik',
-    plural: 'İçerikler',
-    symbol: 'İ',
+    labelKey: 'dashboard.activity_type_content',
+    pluralKey: 'nav.contents',
     badgeClass: 'bg-emerald-100 text-emerald-700',
     iconClass: 'bg-emerald-500 text-white',
   },
   media: {
-    label: 'Medya',
-    plural: 'Medya',
-    symbol: 'M',
+    labelKey: 'nav.media',
+    pluralKey: 'nav.media',
     badgeClass: 'bg-sky-100 text-sky-700',
     iconClass: 'bg-sky-500 text-white',
   },
   form: {
-    label: 'Form',
-    plural: 'Formlar',
-    symbol: 'F',
+    labelKey: 'dashboard.activity_type_form',
+    pluralKey: 'nav.forms',
     badgeClass: 'bg-indigo-100 text-indigo-700',
     iconClass: 'bg-indigo-500 text-white',
   },
 }
 
-const statusDictionary = {
+const statusKeyDictionary = {
   content: {
-    draft: 'Taslak',
-    published: 'Yayınlandı',
-    scheduled: 'Planlandı',
-    archived: 'Arşivlendi',
+    draft: 'status.draft',
+    published: 'status.published',
+    scheduled: 'status.scheduled',
+    archived: 'status.archived',
   },
   media: {
-    active: 'Aktif',
-    archived: 'Arşivlendi',
+    active: 'status.active',
+    archived: 'status.archived',
   },
   form: {
-    draft: 'Taslak',
-    published: 'Yayında',
-    archived: 'Arşivlendi',
+    draft: 'status.draft',
+    published: 'status.published',
+    archived: 'status.archived',
   },
-}
-
-function formatNumber(value) {
-  if (!Number.isFinite(value)) {
-    return '—'
-  }
-  return numberFormatter.format(value)
-}
-
-function formatGigabytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return '0 GB'
-  }
-  const gigabytes = bytes / (1024 ** 3)
-  const precision = gigabytes >= 10 ? 1 : 2
-  return `${gigabyteFormatter.format(Number(gigabytes.toFixed(precision)))} GB`
 }
 
 function formatFileSize(bytes) {
@@ -94,61 +67,9 @@ function formatFileSize(bytes) {
   return `${Number(value.toFixed(precision))} ${units[unitIndex]}`
 }
 
-function formatTimestamp(isoString) {
-  if (!isoString) {
-    return ''
-  }
-  try {
-    return datetimeFormatter.format(new Date(isoString))
-  } catch (error) {
-    return isoString
-  }
-}
-
-function getStatusLabel(type, status) {
-  if (!status) {
-    return null
-  }
-  return statusDictionary[type]?.[status] || status
-}
-
-function getTypeMeta(type) {
-  return activityTypeConfig[type] || {
-    label: type,
-    plural: type,
-    symbol: type?.charAt(0)?.toUpperCase() || '?',
-    badgeClass: 'bg-gray-100 text-gray-600',
-    iconClass: 'bg-gray-200 text-gray-700',
-  }
-}
-
-function buildActivityDetails(item) {
-  const { entityType, metadata = {} } = item
-  const details = []
-
-  const actorName = item.actor?.name || 'Sistem'
-  details.push(actorName)
-
-  const statusLabel = getStatusLabel(entityType, metadata.status)
-  if (statusLabel) {
-    details.push(statusLabel)
-  }
-
-  if (entityType === 'media' && Number.isFinite(metadata.size)) {
-    const readableSize = formatFileSize(metadata.size)
-    if (readableSize) {
-      details.push(readableSize)
-    }
-  }
-
-  if (metadata.slug && entityType !== 'media') {
-    details.push(`/${metadata.slug}`)
-  }
-
-  return details.join(' • ')
-}
-
 export default function Dashboard() {
+  const { t, i18n } = useTranslation()
+  const describeError = useApiError()
   const { user, role, memberships, activeTenantId, updateMemberships } = useAuth()
   const isOwner = role === 'owner'
   const hasTenants = memberships && memberships.length > 0
@@ -392,7 +313,7 @@ export default function Dashboard() {
       setSelectedPlan(null)
     } catch (error) {
       console.error('Plan update failed:', error)
-      setPlanUpdateError(error?.response?.data?.message || 'Plan güncellenemedi')
+      setPlanUpdateError(describeError(error, 'dashboard.plan_update_failed'))
     } finally {
       setPlanUpdateLoading(false)
     }
@@ -430,18 +351,122 @@ export default function Dashboard() {
     }
   }
 
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language])
+  const gigabyteFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(i18n.language, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }),
+    [i18n.language]
+  )
+  const datetimeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(i18n.language, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }),
+    [i18n.language]
+  )
+
+  function formatNumber(value) {
+    if (!Number.isFinite(value)) {
+      return '—'
+    }
+    return numberFormatter.format(value)
+  }
+
+  function formatGigabytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+      return '0 GB'
+    }
+    const gigabytes = bytes / (1024 ** 3)
+    const precision = gigabytes >= 10 ? 1 : 2
+    return `${gigabyteFormatter.format(Number(gigabytes.toFixed(precision)))} GB`
+  }
+
+  function formatTimestamp(isoString) {
+    if (!isoString) {
+      return ''
+    }
+    try {
+      return datetimeFormatter.format(new Date(isoString))
+    } catch (error) {
+      return isoString
+    }
+  }
+
+  function getStatusLabel(type, status) {
+    if (!status) {
+      return null
+    }
+    const statusKey = statusKeyDictionary[type]?.[status]
+    return statusKey ? t(statusKey) : status
+  }
+
+  function getTypeMeta(type) {
+    const config = activityTypeConfig[type]
+    if (!config) {
+      return {
+        label: type,
+        plural: type,
+        symbol: type?.charAt(0)?.toLocaleUpperCase(i18n.language) || '?',
+        badgeClass: 'bg-gray-100 text-gray-600',
+        iconClass: 'bg-gray-200 text-gray-700',
+      }
+    }
+
+    const label = t(config.labelKey)
+    return {
+      label,
+      plural: t(config.pluralKey),
+      symbol: label.charAt(0).toLocaleUpperCase(i18n.language),
+      badgeClass: config.badgeClass,
+      iconClass: config.iconClass,
+    }
+  }
+
+  function buildActivityDetails(item) {
+    const { entityType, metadata = {} } = item
+    const details = []
+
+    const actorName = item.actor?.name || t('dashboard.system_actor')
+    details.push(actorName)
+
+    const statusLabel = getStatusLabel(entityType, metadata.status)
+    if (statusLabel) {
+      details.push(statusLabel)
+    }
+
+    if (entityType === 'media' && Number.isFinite(metadata.size)) {
+      const readableSize = formatFileSize(metadata.size)
+      if (readableSize) {
+        details.push(readableSize)
+      }
+    }
+
+    if (metadata.slug && entityType !== 'media') {
+      details.push(`/${metadata.slug}`)
+    }
+
+    return details.join(' • ')
+  }
+
   const activityTypeOptions = useMemo(() => {
     const baseTypes = activityAvailableTypes.length
       ? Array.from(new Set(activityAvailableTypes))
       : Object.keys(activityTypeConfig)
 
-    const options = baseTypes.map((value) => ({
-      value,
-      label: activityTypeConfig[value]?.plural || activityTypeConfig[value]?.label || value,
-    }))
+    const options = baseTypes.map((value) => {
+      const config = activityTypeConfig[value]
+      return {
+        value,
+        label: config ? t(config.pluralKey || config.labelKey) : value,
+      }
+    })
 
-    return [{ value: 'all', label: 'Tümü' }, ...options]
-  }, [activityAvailableTypes])
+    return [{ value: 'all', label: t('dashboard.filter_all') }, ...options]
+  }, [activityAvailableTypes, t])
 
   const summaryTotals = summary?.totals || {}
   const mediaTotals = summaryTotals.media || {}
@@ -454,9 +479,11 @@ export default function Dashboard() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Kontrol Paneli</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('nav.dashboard')}</h1>
         <p className="mt-2 text-gray-600">
-          Hoş geldiniz, {user?.name || user?.firstName || 'misafir'}! Burada varlık performansınızın genel bir görünümünü bulabilirsiniz.
+          {t('dashboard.welcome', {
+            name: user?.name || user?.firstName || t('dashboard.guest'),
+          })}
         </p>
       </div>
 
@@ -471,11 +498,11 @@ export default function Dashboard() {
             </div>
             <div className="ml-3 flex-1">
               <h3 className="text-sm font-medium text-yellow-800">
-                Henüz Bir Varlığınız Yok
+                {t('dashboard.no_tenant_title')}
               </h3>
               <div className="mt-2 text-sm text-yellow-700">
                 <p>
-                  ContextHub'ı kullanmaya başlamak için bir varlık (organizasyon) oluşturmanız veya mevcut bir varlığa katılmanız gerekmektedir.
+                  {t('dashboard.no_tenant_description')}
                 </p>
               </div>
               <div className="mt-4">
@@ -487,13 +514,13 @@ export default function Dashboard() {
                     <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                     </svg>
-                    Yeni Varlık Oluştur
+                    {t('nav.create_tenant')}
                   </a>
                   <a
                     href="/varliklar"
                     className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
                   >
-                    Varlıklarımı Görüntüle
+                    {t('dashboard.view_my_tenants')}
                   </a>
                 </div>
               </div>
@@ -508,13 +535,13 @@ export default function Dashboard() {
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500 text-sm font-semibold text-white">
-                  U
+                  {t('dashboard.badge_users')}
                 </div>
               </div>
               <div className="ml-5 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
-                    Toplam Kullanıcı
+                    {t('dashboard.total_users')}
                   </dt>
                   <dd className="text-lg font-semibold text-gray-900">
                     {summaryLoading ? '…' : formatNumber(summaryTotals.users)}
@@ -530,13 +557,13 @@ export default function Dashboard() {
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500 text-sm font-semibold text-white">
-                  İ
+                  {t('dashboard.badge_contents')}
                 </div>
               </div>
               <div className="ml-5 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
-                    Toplam İçerik
+                    {t('dashboard.total_contents')}
                   </dt>
                   <dd className="text-lg font-semibold text-gray-900">
                     {summaryLoading ? '…' : formatNumber(summaryTotals.contents)}
@@ -552,17 +579,17 @@ export default function Dashboard() {
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-500 text-sm font-semibold text-white">
-                  M
+                  {t('dashboard.badge_media')}
                 </div>
               </div>
               <div className="ml-5 flex-1">
                 <dt className="text-sm font-medium text-gray-500 truncate">
-                  Medya Dosyaları
+                  {t('dashboard.media_files')}
                 </dt>
                 <dd className="mt-1 text-lg font-semibold text-gray-900">
                   {summaryLoading
                     ? '…'
-                    : `${formatNumber(mediaTotals.count)} dosya`
+                    : t('dashboard.media_file_count', { value: formatNumber(mediaTotals.count) })
                   }
                 </dd>
                 <p className="mt-1 text-sm text-gray-500">
@@ -578,37 +605,37 @@ export default function Dashboard() {
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500 text-sm font-semibold text-white">
-                  A
+                  {t('dashboard.badge_api')}
                 </div>
               </div>
               <div className="ml-5 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
-                    API Çağrıları
+                    {t('dashboard.api_calls')}
                   </dt>
                   <dd className="text-lg font-semibold text-gray-900">
                     {apiStatsLoading ? '…' : (
                       apiStats?.enabled ? (
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-500">4 Saat:</span>
+                            <span className="text-sm text-gray-500">{t('dashboard.api_four_hour')}:</span>
                             <span className="font-semibold">{formatNumber(apiStats.fourHour ?? 0)}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-500">Gunluk:</span>
+                            <span className="text-sm text-gray-500">{t('dashboard.api_daily')}:</span>
                             <span className="font-semibold">{formatNumber(apiStats.daily ?? apiStats.today ?? 0)}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-500">Haftalik:</span>
+                            <span className="text-sm text-gray-500">{t('dashboard.api_weekly')}:</span>
                             <span className="font-semibold text-blue-600">{formatNumber(apiStats.weekly)}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-500">Aylik:</span>
+                            <span className="text-sm text-gray-500">{t('dashboard.api_monthly')}:</span>
                             <span className="font-semibold text-purple-600">{formatNumber(apiStats.monthly)}</span>
                           </div>
                         </div>
                       ) : (
-                        <span className="text-sm text-gray-400">Devre dışı</span>
+                        <span className="text-sm text-gray-400">{t('status.disabled')}</span>
                       )
                     )}
                   </dd>
@@ -622,7 +649,7 @@ export default function Dashboard() {
       {/* Limit & Usage Section */}
       {hasTenants && showLimits && (
         <div className="mt-8">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Limit & Kullanım</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">{t('dashboard.limits_usage')}</h2>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {/* Subscription Plan Card - Clickable */}
             {tenantLimits && (
@@ -632,7 +659,7 @@ export default function Dashboard() {
               >
                 <div className="p-5">
                   <div className="flex items-center justify-between mb-3">
-                    <dt className="text-sm font-medium text-gray-600">Mevcut Plan</dt>
+                    <dt className="text-sm font-medium text-gray-600">{t('dashboard.current_plan')}</dt>
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-md">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -644,14 +671,16 @@ export default function Dashboard() {
                       {tenantLimits.plan?.name || 'Free'}
                     </div>
                     {tenantLimits.plan?.price > 0 ? (
-                      <p className="text-sm text-gray-600 font-medium">${tenantLimits.plan.price}/ay</p>
+                      <p className="text-sm text-gray-600 font-medium">
+                        {t('dashboard.price_per_month', { price: tenantLimits.plan.price })}
+                      </p>
                     ) : (
-                      <p className="text-sm text-green-600 font-medium">Ücretsiz</p>
+                      <p className="text-sm text-green-600 font-medium">{t('dashboard.free_plan')}</p>
                     )}
                   </div>
                   <div className="mt-4 pt-3 border-t border-blue-200">
                     <div className="flex items-center justify-between text-xs text-gray-600">
-                      <span>Planı Değiştir</span>
+                      <span>{t('dashboard.change_plan')}</span>
                       <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
@@ -665,7 +694,7 @@ export default function Dashboard() {
             <div className="card">
               <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <dt className="text-sm font-medium text-gray-500">Depolama</dt>
+                  <dt className="text-sm font-medium text-gray-500">{t('dashboard.storage')}</dt>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500 text-xs font-semibold text-white">
                     💾
                   </div>
@@ -680,7 +709,7 @@ export default function Dashboard() {
                       </span>
                       <span className="text-sm text-gray-500">
                         {tenantLimits.usage.storage.isUnlimited ? (
-                          'Sınırsız'
+                          t('dashboard.unlimited')
                         ) : (
                           `/ ${formatGigabytes(tenantLimits.usage.storage.limit)}`
                         )}
@@ -700,14 +729,16 @@ export default function Dashboard() {
                     )}
                     <p className="mt-2 text-xs text-gray-500">
                       {tenantLimits.usage.storage.isUnlimited ? (
-                        'Sınırsız depolama'
+                        t('dashboard.unlimited_storage')
                       ) : (
-                        `${formatGigabytes(tenantLimits.usage.storage.remaining)} kaldı`
+                        t('dashboard.storage_remaining', {
+                          value: formatGigabytes(tenantLimits.usage.storage.remaining),
+                        })
                       )}
                     </p>
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-400">Yüklenemedi</div>
+                  <div className="text-sm text-gray-400">{t('dashboard.load_failed')}</div>
                 )}
               </div>
             </div>
@@ -716,7 +747,7 @@ export default function Dashboard() {
             <div className="card">
               <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <dt className="text-sm font-medium text-gray-500">API Çağrıları</dt>
+                  <dt className="text-sm font-medium text-gray-500">{t('dashboard.api_calls')}</dt>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500 text-xs font-semibold text-white">
                     📊
                   </div>
@@ -731,7 +762,7 @@ export default function Dashboard() {
                       </span>
                       <span className="text-sm text-gray-500">
                         {tenantLimits.usage.requests.isUnlimited ? (
-                          'Sınırsız'
+                          t('dashboard.unlimited')
                         ) : (
                           `/ ${formatNumber(tenantLimits.usage.requests.limit)}`
                         )}
@@ -751,14 +782,16 @@ export default function Dashboard() {
                     )}
                     <p className="mt-2 text-xs text-gray-500">
                       {tenantLimits.usage.requests.isUnlimited ? (
-                        'Sınırsız çağrı'
+                        t('dashboard.unlimited_requests')
                       ) : (
-                        `${formatNumber(tenantLimits.usage.requests.remaining)} kaldı (Bu ay)`
+                        t('dashboard.requests_remaining', {
+                          value: formatNumber(tenantLimits.usage.requests.remaining),
+                        })
                       )}
                     </p>
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-400">Yüklenemedi</div>
+                  <div className="text-sm text-gray-400">{t('dashboard.load_failed')}</div>
                 )}
               </div>
             </div>
@@ -767,7 +800,7 @@ export default function Dashboard() {
             <div className="card">
               <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <dt className="text-sm font-medium text-gray-500">Kullanıcılar</dt>
+                  <dt className="text-sm font-medium text-gray-500">{t('nav.users')}</dt>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 text-xs font-semibold text-white">
                     👥
                   </div>
@@ -782,7 +815,7 @@ export default function Dashboard() {
                       </span>
                       <span className="text-sm text-gray-500">
                         {tenantLimits.usage.users.isUnlimited ? (
-                          'Sınırsız'
+                          t('dashboard.unlimited')
                         ) : (
                           `/ ${tenantLimits.usage.users.limit}`
                         )}
@@ -802,14 +835,16 @@ export default function Dashboard() {
                     )}
                     <p className="mt-2 text-xs text-gray-500">
                       {tenantLimits.usage.users.isUnlimited ? (
-                        'Sınırsız kullanıcı'
+                        t('dashboard.unlimited_users')
                       ) : (
-                        `${tenantLimits.usage.users.remaining} slot kaldı`
+                        t('dashboard.user_slots_remaining', {
+                          value: tenantLimits.usage.users.remaining,
+                        })
                       )}
                     </p>
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-400">Yüklenemedi</div>
+                  <div className="text-sm text-gray-400">{t('dashboard.load_failed')}</div>
                 )}
               </div>
             </div>
@@ -856,20 +891,20 @@ export default function Dashboard() {
       {/* Statistics Section */}
       {showStatistics && (
         <div className="mt-8">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">İstatistikler</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">{t('dashboard.statistics')}</h2>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="card">
             <div className="p-5">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500 text-sm font-semibold text-white">
-                    K
+                    {t('dashboard.badge_users')}
                   </div>
                 </div>
                 <div className="ml-5 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      Toplam Kullanıcı
+                      {t('dashboard.total_users')}
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {summaryLoading ? '…' : formatNumber(summaryTotals.users)}
@@ -885,13 +920,13 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500 text-sm font-semibold text-white">
-                    İ
+                    {t('dashboard.badge_contents')}
                   </div>
                 </div>
                 <div className="ml-5 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      Toplam İçerik
+                      {t('dashboard.total_contents')}
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {summaryLoading ? '…' : formatNumber(summaryTotals.contents)}
@@ -907,17 +942,17 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-500 text-sm font-semibold text-white">
-                    M
+                    {t('dashboard.badge_media')}
                   </div>
                 </div>
                 <div className="ml-5 flex-1">
                   <dt className="text-sm font-medium text-gray-500 truncate">
-                    Medya Dosyaları
+                    {t('dashboard.media_files')}
                   </dt>
                   <dd className="mt-1 text-lg font-semibold text-gray-900">
                     {summaryLoading
                       ? '…'
-                      : `${formatNumber(mediaTotals.count)} dosya`
+                      : t('dashboard.media_file_count', { value: formatNumber(mediaTotals.count) })
                     }
                   </dd>
                   <p className="mt-1 text-sm text-gray-500">
@@ -933,37 +968,37 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500 text-sm font-semibold text-white">
-                    A
+                    {t('dashboard.badge_api')}
                   </div>
                 </div>
                 <div className="ml-5 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      API Çağrıları
+                      {t('dashboard.api_calls')}
                     </dt>
                     <dd className="text-lg font-semibold text-gray-900">
                       {apiStatsLoading ? '…' : (
                         apiStats?.enabled ? (
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-500">4 Saat:</span>
+                              <span className="text-sm text-gray-500">{t('dashboard.api_four_hour')}:</span>
                               <span className="font-semibold">{formatNumber(apiStats.fourHour ?? 0)}</span>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-500">Gunluk:</span>
+                              <span className="text-sm text-gray-500">{t('dashboard.api_daily')}:</span>
                               <span className="font-semibold">{formatNumber(apiStats.daily ?? apiStats.today ?? 0)}</span>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-500">Haftalik:</span>
+                              <span className="text-sm text-gray-500">{t('dashboard.api_weekly')}:</span>
                               <span className="font-semibold text-blue-600">{formatNumber(apiStats.weekly)}</span>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-500">Aylik:</span>
+                              <span className="text-sm text-gray-500">{t('dashboard.api_monthly')}:</span>
                               <span className="font-semibold text-purple-600">{formatNumber(apiStats.monthly)}</span>
                             </div>
                           </div>
                         ) : (
-                          <span className="text-sm text-gray-400">Devre dışı</span>
+                          <span className="text-sm text-gray-400">{t('status.disabled')}</span>
                         )
                       )}
                     </dd>
@@ -981,10 +1016,10 @@ export default function Dashboard() {
         <div className="card">
           <div className="px-4 py-5 sm:px-6 sm:py-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Son Aktiviteler</h3>
+              <h3 className="text-lg font-medium text-gray-900">{t('dashboard.recent_activities')}</h3>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <label className="flex flex-col text-sm text-gray-500">
-                  <span className="font-medium text-gray-600">Tür</span>
+                  <span className="font-medium text-gray-600">{t('common.type')}</span>
                   <select
                     className="mt-1 block w-48 rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-10 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     value={activityFilters.type}
@@ -1004,7 +1039,7 @@ export default function Dashboard() {
                 </label>
                 {isOwner && (
                   <label className="flex flex-col text-sm text-gray-500">
-                    <span className="font-medium text-gray-600">Görünüm</span>
+                    <span className="font-medium text-gray-600">{t('dashboard.activity_scope')}</span>
                     <select
                       className="mt-1 block w-48 rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-10 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       value={activityFilters.scope}
@@ -1015,8 +1050,8 @@ export default function Dashboard() {
                         }))
                       }}
                     >
-                      <option value="tenant">Tüm ekip</option>
-                      <option value="self">Sadece ben</option>
+                      <option value="tenant">{t('dashboard.activity_scope_tenant')}</option>
+                      <option value="self">{t('dashboard.activity_scope_self')}</option>
                     </select>
                   </label>
                 )}
@@ -1032,7 +1067,7 @@ export default function Dashboard() {
                 </div>
               ) : activityItems.length === 0 ? (
                 <div className="text-sm text-gray-500">
-                  Henüz aktivite bulunmuyor.
+                  {t('dashboard.no_activities')}
                 </div>
               ) : (
                 <div>
@@ -1049,7 +1084,7 @@ export default function Dashboard() {
                             <div className="flex-1">
                               <div className="flex flex-wrap items-baseline justify-between gap-2">
                                 <p className="text-sm font-medium text-gray-900">
-                                  {item.title || 'İsimsiz kayıt'}
+                                  {item.title || t('dashboard.untitled_record')}
                                 </p>
                                 <span className="text-xs text-gray-500">
                                   {formatTimestamp(item.timestamp)}
@@ -1074,7 +1109,7 @@ export default function Dashboard() {
                         onClick={handleLoadMoreActivities}
                         className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                       >
-                        {activitiesLoadingMore ? 'Yükleniyor…' : 'Daha fazla göster'}
+                        {activitiesLoadingMore ? t('common.loading') : t('common.show_more')}
                       </button>
                     </div>
                   )}
@@ -1105,9 +1140,9 @@ export default function Dashboard() {
 
             <div className="relative w-full max-w-6xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
               <div className="bg-white px-6 py-3 border-b border-gray-200">
-                <h3 className="text-xl font-semibold text-gray-900">Abonelik Planını Değiştir</h3>
+                <h3 className="text-xl font-semibold text-gray-900">{t('dashboard.change_plan_title')}</h3>
                 <p className="mt-1 text-sm text-gray-600">
-                  İhtiyaçlarınıza uygun planı seçin. Plan değişiklikleri anında etkinleşir.
+                  {t('dashboard.change_plan_description')}
                 </p>
               </div>
 
@@ -1138,7 +1173,7 @@ export default function Dashboard() {
                   disabled={planUpdateLoading}
                   className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
                 >
-                  İptal
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -1146,7 +1181,7 @@ export default function Dashboard() {
                   disabled={planUpdateLoading || !selectedPlan || selectedPlan === tenantLimits.plan?.slug}
                   className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {planUpdateLoading ? 'Güncelleniyor...' : 'Planı Değiştir'}
+                  {planUpdateLoading ? t('dashboard.updating') : t('dashboard.change_plan')}
                 </button>
               </div>
             </div>
