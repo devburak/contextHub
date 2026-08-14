@@ -84,6 +84,7 @@ describe('tenantOriginPolicy', () => {
       'X-RateLimit-Remaining',
       'Retry-After',
     ]));
+    expect(options.allowedHeaders).toContain('X-Locale');
   });
 
   it('allows tenant website origins without enabling session credentials', async () => {

@@ -1,12 +1,16 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import Footer from '../../components/Footer';
 import { authAPI } from '../../lib/api';
+import { useApiError } from '../../lib/useApiError.js';
 
 function SignUp() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const describeError = useApiError();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -39,29 +43,29 @@ function SignUp() {
     const newErrors = {};
 
     if (!formData.firstName.trim()) {
-      newErrors.firstName = 'Ad gereklidir';
+      newErrors.firstName = t('validation.required_named', { field: t('signup.first_name') });
     }
 
     if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Soyad gereklidir';
+      newErrors.lastName = t('validation.required_named', { field: t('signup.last_name') });
     }
 
     if (!formData.email.trim()) {
-      newErrors.email = 'Email gereklidir';
+      newErrors.email = t('validation.required_named', { field: t('signup.email') });
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Geçerli bir email adresi giriniz';
+      newErrors.email = t('validation.email');
     }
 
     if (!formData.password) {
-      newErrors.password = 'Şifre gereklidir';
+      newErrors.password = t('validation.required_named', { field: t('signup.password') });
     } else if (formData.password.length < 6) {
-      newErrors.password = 'Şifre en az 6 karakter olmalıdır';
+      newErrors.password = t('validation.min_length', { count: 6 });
     }
 
     if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Şifre tekrarı gereklidir';
+      newErrors.confirmPassword = t('validation.required_named', { field: t('signup.password_confirm') });
     } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Şifreler eşleşmiyor';
+      newErrors.confirmPassword = t('validation.passwords_match');
     }
 
     return newErrors;
@@ -90,17 +94,16 @@ function SignUp() {
       console.log('Registration successful:', response.data);
       
       // Başarılı kayıt sonrası login sayfasına yönlendir
-      navigate('/login', { 
-        state: { 
-          message: 'Hesabınız başarıyla oluşturuldu! Şimdi giriş yapabilirsiniz.' 
+      navigate('/login', {
+        state: {
+          message: t('signup.success_signin')
         }
       });
 
     } catch (error) {
       console.error('Registration error:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Kayıt işlemi sırasında bir hata oluştu';
       setErrors({
-        submit: errorMessage
+        submit: describeError(error, 'signup.failed')
       });
     } finally {
       setIsLoading(false);
@@ -112,12 +115,12 @@ function SignUp() {
       <div className="flex-1 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Hesap Oluştur 
+            {t('signup.title')}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Zaten hesabınız var mı?{' '}
+            {t('auth.have_account')}{' '}
             <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
-              Giriş yapın
+              {t('auth.signin_button')}
             </Link>
           </p>
         </div>
@@ -134,7 +137,7 @@ function SignUp() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                  Ad
+                  {t('signup.first_name')}
                 </label>
                 <div className="mt-1">
                   <input
@@ -154,7 +157,7 @@ function SignUp() {
 
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                  Soyad
+                  {t('signup.last_name')}
                 </label>
                 <div className="mt-1">
                   <input
@@ -175,7 +178,7 @@ function SignUp() {
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
+                {t('signup.email')}
               </label>
               <div className="mt-1">
                 <input
@@ -196,7 +199,7 @@ function SignUp() {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Şifre
+                {t('signup.password')}
               </label>
               <div className="mt-1 relative">
                 <input
@@ -228,7 +231,7 @@ function SignUp() {
 
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                Şifre Tekrarı
+                {t('signup.password_confirm')}
               </label>
               <div className="mt-1 relative">
                 <input
@@ -263,7 +266,7 @@ function SignUp() {
                 disabled={isLoading}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading ? 'Hesap Oluşturuluyor...' : 'Hesap Oluştur'}
+                {isLoading ? t('signup.submitting') : t('signup.submit')}
               </button>
             </div>
           </form>

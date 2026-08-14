@@ -1,0 +1,17 @@
+{
+  "validation.email": "Geçerli bir e-posta adresi girin.",
+  "validation.file_too_large": "Dosya çok büyük. En fazla {{size}} olabilir.",
+  "validation.invalid_json": "Geçerli bir JSON girin.",
+  "validation.max": "En fazla {{max}} olabilir.",
+  "validation.max_length": "En fazla {{count}} karakter olabilir.",
+  "validation.min": "En az {{min}} olmalıdır.",
+  "validation.min_length": "En az {{count}} karakter olmalıdır.",
+  "validation.number": "Geçerli bir sayı girin.",
+  "validation.passwords_match": "Şifreler eşleşmiyor.",
+  "validation.required": "Bu alan zorunludur.",
+  "validation.required_named": "{{field}} zorunludur.",
+  "validation.slug_format": "Kısa ad yalnızca küçük harf, rakam ve tire içerebilir.",
+  "validation.slug_taken": "Bu kısa ad zaten kullanılıyor.",
+  "validation.unsupported_file_type": "Bu dosya türü desteklenmiyor.",
+  "validation.url": "Geçerli bir bağlantı girin."
+}

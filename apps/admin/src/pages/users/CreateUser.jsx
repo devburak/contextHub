@@ -152,7 +152,7 @@ export default function CreateUser() {
             ? t('user.invite_existing', { email: variables.email })
             : t('user.invite_existing_generic'))
         const composedMessage = inviteExpiresAt
-          ? `${inviteMessage} (Son kullanım: ${inviteExpiresAt})`
+          ? t('user.invite_with_expiry', { message: inviteMessage, date: inviteExpiresAt })
           : inviteMessage
         toast.info(composedMessage)
       } else {
@@ -405,12 +405,12 @@ export default function CreateUser() {
                       </button>
                     </div>
                     <p className="mt-1 text-sm text-gray-500">
-                      Kullanıcı ilk girişte şifresini değiştirmek zorunda kalacaktır.
+                      {t('user.wizard.force_password_change_hint')}
                     </p>
                   </div>
                 ) : (
                   <div className="md:col-span-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                    Şifre yalnızca sahip tarafından belirlenebilir. Kullanıcı davet linkinden kendi şifresini oluşturacaktır.
+                    {t('user.wizard.password_owner_only')}
                   </div>
                 )}
               </>

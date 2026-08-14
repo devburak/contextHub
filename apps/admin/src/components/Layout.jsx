@@ -3,6 +3,7 @@ import { Dialog, Transition } from '@headlessui/react'
 import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
 import { PERMISSIONS } from '../constants/permissions.js'
@@ -16,37 +17,38 @@ export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
 
   const navigation = useMemo(() => [
     {
       id: 'create-tenant',
-      name: 'Yeni Varlık Oluştur',
+      name: t('nav.create_tenant'),
       href: '/varliklar/yeni',
       icon: PlusIcon,
       // Herkes varlık oluşturabilir - permission yok
     },
     {
       id: 'dashboard',
-      name: 'Kontrol Paneli',
+      name: t('nav.dashboard'),
       href: '/',
       icon: CogIcon,
       permission: PERMISSIONS.DASHBOARD_VIEW
     },
     {
       id: 'users-group',
-      name: 'Kullanıcı Yönetimi',
+      name: t('nav.user_management'),
       icon: UserIcon,
       children: [
         {
           id: 'users',
-          name: 'Kullanıcılar',
+          name: t('nav.users'),
           href: '/users',
           icon: UserIcon,
           permission: PERMISSIONS.USERS_VIEW
         },
         {
           id: 'roles',
-          name: 'Roller',
+          name: t('nav.roles'),
           href: '/roles',
           icon: ShieldCheckIcon,
           permission: PERMISSIONS.ROLES_VIEW
@@ -55,28 +57,28 @@ export default function Layout() {
     },
     {
       id: 'media',
-      name: 'Medya',
+      name: t('nav.media'),
       href: '/media',
       icon: PhotoIcon,
       permission: PERMISSIONS.MEDIA_VIEW
     },
     {
       id: 'galleries',
-      name: 'Galeriler',
+      name: t('nav.galleries'),
       href: '/galeriler',
       icon: Squares2X2Icon,
       permission: PERMISSIONS.MEDIA_VIEW
     },
     {
       id: 'categories',
-      name: 'Kategoriler',
+      name: t('nav.categories'),
       href: '/categories',
       icon: QueueListIcon,
       permission: PERMISSIONS.CATEGORIES_VIEW
     },
     {
       id: 'contents',
-      name: 'İçerikler',
+      name: t('nav.contents'),
       href: '/contents',
       icon: DocumentTextIcon,
       permission: PERMISSIONS.CONTENT_VIEW
@@ -84,48 +86,48 @@ export default function Layout() {
     ...adminPluginNavigation,
     {
       id: 'collections',
-      name: 'Koleksiyonlar',
+      name: t('nav.collections'),
       href: '/collections',
       icon: RectangleStackIcon,
       permission: PERMISSIONS.COLLECTIONS_VIEW
     },
     {
       id: 'forms',
-      name: 'Formlar',
+      name: t('nav.forms'),
       href: '/forms',
       icon: ClipboardDocumentListIcon,
       permission: PERMISSIONS.FORMS_VIEW
     },
     {
       id: 'placements',
-      name: 'Yerleşimler',
+      name: t('nav.placements'),
       href: '/placements',
       icon: SparklesIcon,
       permission: PERMISSIONS.PLACEMENTS_VIEW
     },
     {
       id: 'menus',
-      name: 'Menüler',
+      name: t('nav.menus'),
       href: '/menus',
       icon: Bars3BottomLeftIcon,
       permission: PERMISSIONS.MENUS_VIEW
     },
     {
       id: 'tenants-group',
-      name: 'Varlıklar',
+      name: t('nav.tenants'),
       icon: BuildingOfficeIcon,
       // Varlıklar menüsü herkes için görünür - permission yok
       children: [
         {
           id: 'tenants',
-          name: 'Varlık Listesi',
+          name: t('nav.tenant_list'),
           href: '/varliklar',
           icon: BuildingOfficeIcon,
           // Varlık listesi herkes görebilir - permission yok
         },
         {
           id: 'tenant-settings',
-          name: 'Varlık Ayarları',
+          name: t('nav.tenant_settings'),
           href: '/varliklar/ayarlar',
           icon: WrenchScrewdriverIcon,
           permission: PERMISSIONS.TENANTS_MANAGE // Sadece ayarlar yetkili olmalı
@@ -134,19 +136,19 @@ export default function Layout() {
     },
     {
       id: 'docs',
-      name: 'Belgeler',
+      name: t('nav.documents'),
       href: '/belgeler',
       icon: BookOpenIcon,
       permission: PERMISSIONS.DASHBOARD_VIEW
     },
     {
       id: 'apidocs',
-      name: 'API Dokümantasyonu',
+      name: t('nav.api_docs'),
       href: '/apidocs',
       icon: CodeBracketIcon,
       permission: PERMISSIONS.DASHBOARD_VIEW
     }
-  ], [])
+  ], [t])
 
   const filterNavigation = useCallback((items) => {
     return items
@@ -322,7 +324,7 @@ export default function Layout() {
                   >
                     <div className="absolute left-full top-0 flex w-16 justify-center pt-5">
                       <button type="button" className="-m-2.5 p-2.5" onClick={() => setSidebarOpen(false)}>
-                        <span className="sr-only">Close sidebar</span>
+                        <span className="sr-only">{t('nav.close_menu')}</span>
                         <XMarkIcon className="h-6 w-6 text-white" aria-hidden="true" />
                       </button>
                     </div>
@@ -340,7 +342,7 @@ export default function Layout() {
                           type="button"
                           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                           onClick={() => setSidebarOpen(false)}
-                          aria-label="Menüyü kapat"
+                          aria-label={t('nav.close_menu')}
                         >
                           <XMarkIcon className="h-5 w-5" aria-hidden="true" />
                         </button>
@@ -381,8 +383,8 @@ export default function Layout() {
                   type="button"
                   onClick={toggleSidebarCollapsed}
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
-                  title={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
+                  aria-label={sidebarCollapsed ? t('nav.expand_menu') : t('nav.collapse_menu')}
+                  title={sidebarCollapsed ? t('nav.expand_menu') : t('nav.collapse_menu')}
                 >
                   {sidebarCollapsed ? (
                     <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
@@ -409,7 +411,7 @@ export default function Layout() {
         <div className={classNames('transition-[padding] duration-200', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
           <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
             <button type="button" className="-m-2.5 p-2.5 text-gray-700 lg:hidden" onClick={() => setSidebarOpen(true)}>
-              <span className="sr-only">Open sidebar</span>
+              <span className="sr-only">{t('nav.open_menu')}</span>
               <Bars3Icon className="h-6 w-6" aria-hidden="true" />
             </button>
 
@@ -448,7 +450,7 @@ export default function Layout() {
                     >
                       {memberships.map((membership) => (
                         <option key={membership.tenantId} value={membership.tenantId}>
-                          {membership.tenant?.name || 'Varlık'}
+                          {membership.tenant?.name || t('tenant.unnamed')}
                         </option>
                       ))}
                     </select>
@@ -464,15 +466,15 @@ export default function Layout() {
                     to="/profile"
                     className="flex items-center gap-x-2 text-sm font-semibold leading-6 text-gray-900 hover:text-blue-600"
                   >
-                    <span className="sr-only">Profil</span>
+                    <span className="sr-only">{t('nav.profile')}</span>
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-800">
                       <span className="text-sm font-medium text-white">
                         {user?.firstName?.charAt(0)?.toUpperCase() || 'U'}
                       </span>
                     </div>
                     <span className="hidden lg:flex lg:flex-col lg:items-start">
-                      <span>{user?.firstName || 'Kullanıcı'}</span>
-                      <span className="text-xs font-normal text-gray-500">Profili görüntüle</span>
+                      <span>{user?.firstName || t('nav.user_fallback')}</span>
+                      <span className="text-xs font-normal text-gray-500">{t('nav.view_profile')}</span>
                     </span>
                   </Link>
                   <button
@@ -480,7 +482,7 @@ export default function Layout() {
                     onClick={logout}
                     className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
-                    Çıkış
+                    {t('nav.sign_out_short')}
                   </button>
                 </div>
               </div>
@@ -494,7 +496,7 @@ export default function Layout() {
           </main>
         </div>
       </div>
-      <Footer />
+      <Footer authenticated />
     </div>
   )
 }

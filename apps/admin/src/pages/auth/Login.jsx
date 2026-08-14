@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import Footer from '../../components/Footer.jsx'
-import i18n from '../../i18n.js'
 
 function Countdown({ target, onExpired }) {
   const [remaining, setRemaining] = useState(() => Math.max(target - Date.now(), 0))
@@ -45,17 +46,11 @@ export default function Login() {
     return stored ? parseInt(stored, 10) : null
   })
   const [lockReason, setLockReason] = useState(() => sessionStorage.getItem('login_lock_reason') || '')
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-
-  useEffect(() => {
-    // Set default language to Turkish if not set
-    if (!localStorage.getItem('language')) {
-      localStorage.setItem('language', 'tr')
-      i18n.changeLanguage('tr')
-    }
-  }, [])
 
   useEffect(() => {
     // Check if there's a success message from navigation state
@@ -128,7 +123,7 @@ export default function Login() {
 
       // E-posta doğrulanmamış hatası
       if (['EMAIL_NOT_VERIFIED', 'EMAIL_REVERIFICATION_REQUIRED'].includes(errorCode)) {
-        setEmailNotVerified({ email: errorEmail || email, message })
+        setEmailNotVerified({ email: errorEmail || email, message: describeError(error, 'auth.email_not_verified') })
         return
       }
 
@@ -137,7 +132,7 @@ export default function Login() {
 
       if (blocked && retryAfter) {
         const until = Date.now() + retryAfter * 1000
-        const reasonText = message || 'Çok fazla hatalı deneme tespit edildi. Lütfen daha sonra tekrar deneyin.'
+        const reasonText = describeError(error, 'auth.locked_message')
         setLockUntil(until)
         setLockReason(reasonText)
         sessionStorage.setItem('login_lock_until', String(until))
@@ -154,12 +149,12 @@ export default function Login() {
     setResendingVerification(true)
     try {
       await authAPI.resendVerification(emailNotVerified.email)
-      setSuccessMessage('Doğrulama e-postası gönderildi. Lütfen gelen kutunuzu kontrol edin.')
+      setSuccessMessage(t('auth.verification_sent_check_inbox'))
       setEmailNotVerified(null)
     } catch (err) {
       console.error('Resend verification failed:', err)
       // Hata olsa bile kullanıcıya mesaj göster
-      setSuccessMessage('Doğrulama e-postası gönderildi. Lütfen gelen kutunuzu kontrol edin.')
+      setSuccessMessage(t('auth.verification_sent_check_inbox'))
       setEmailNotVerified(null)
     } finally {
       setResendingVerification(false)
@@ -178,7 +173,7 @@ export default function Login() {
         <div className="max-w-md w-full space-y-8">
           <div>
             <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              ContextHub'a Giriş Yapın
+              {t('auth.title')}
             </h2>
           </div>
 
@@ -201,7 +196,7 @@ export default function Login() {
             <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="email" className="sr-only">
-                E-posta Adresi
+                {t('auth.email')}
               </label>
               <input
                 id="email"
@@ -210,7 +205,7 @@ export default function Login() {
                 autoComplete="email"
                 required
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="E-posta adresi"
+                placeholder={t('auth.email')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={isLocked}
@@ -218,7 +213,7 @@ export default function Login() {
             </div>
             <div className="relative">
               <label htmlFor="password" className="sr-only">
-                Şifre
+                {t('auth.password')}
               </label>
               <input
                 id="password"
@@ -227,7 +222,7 @@ export default function Login() {
                 autoComplete="current-password"
                 required
                 className="appearance-none rounded-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Şifre"
+                placeholder={t('auth.password')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLocked}
@@ -252,7 +247,7 @@ export default function Login() {
                   to="/forgot-password"
                   className="font-medium text-blue-600 hover:text-blue-500"
                 >
-                  Şifremi unuttum
+                  {t('auth.forgot_password')}
                 </Link>
               </div>
             </div>
@@ -264,14 +259,14 @@ export default function Login() {
                   disabled={loginMutation.isPending}
                   className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                 >
-                  {loginMutation.isPending ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+                  {loginMutation.isPending ? t('auth.signing_in') : t('auth.signin_button')}
                 </button>
               ) : (
                 <div className="w-full py-3 px-4 text-center rounded-md bg-red-50 text-red-700 border border-red-200 text-sm">
-                  {lockReason || 'Çok fazla hatalı deneme nedeniyle giriş geçici olarak devre dışı bırakıldı.'}
+                  {lockReason || t('auth.locked_message')}
                   {lockUntil && lockUntil > Date.now() && (
                     <div className="mt-1 text-xs text-red-600">
-                      Tekrar deneme süresi: <Countdown target={lockUntil} onExpired={() => {
+                      {t('auth.retry_countdown')} <Countdown target={lockUntil} onExpired={() => {
                         setLockUntil(null)
                         setLockReason('')
                         sessionStorage.removeItem('login_lock_until')
@@ -285,12 +280,12 @@ export default function Login() {
 
             <div className="text-center">
               <span className="text-sm text-gray-600">
-                Hesabınız yok mu?{' '}
+                {t('auth.no_account')}{' '}
                 <Link
                   to="/signup"
                   className="font-medium text-blue-600 hover:text-blue-500"
                 >
-                  Yeni Hesap Oluştur
+                  {t('auth.sign_up')}
                 </Link>
               </span>
             </div>
@@ -303,7 +298,7 @@ export default function Login() {
                       <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                     </svg>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-amber-800">E-posta Doğrulaması Gerekli</p>
+                      <p className="text-sm font-medium text-amber-800">{t('auth.verification_required_title')}</p>
                       <p className="text-sm text-amber-700 mt-1">{emailNotVerified.message}</p>
                     </div>
                   </div>
@@ -313,7 +308,7 @@ export default function Login() {
                     disabled={resendingVerification}
                     className="w-full py-2 px-4 border border-amber-300 text-sm font-medium rounded-md text-amber-800 bg-amber-100 hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 transition-colors"
                   >
-                    {resendingVerification ? 'Gönderiliyor...' : 'Doğrulama E-postasını Yeniden Gönder'}
+                    {resendingVerification ? t('auth.resending_verification') : t('auth.resend_verification')}
                   </button>
                 </div>
               </div>
@@ -321,7 +316,7 @@ export default function Login() {
 
             {loginMutation.isError && !emailNotVerified && (
               <div className="text-red-600 text-sm text-center">
-                Giriş başarısız. Lütfen bilgilerinizi kontrol edin.
+                {t('auth.login_failed')}
               </div>
             )}
           </form>

@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
+import { useApiError } from '../../lib/useApiError.js'
 import Footer from '../../components/Footer.jsx'
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const token = searchParams.get('token')
   
   const [password, setPassword] = useState('')
@@ -19,13 +23,13 @@ export default function ResetPassword() {
     onSuccess: () => {
       // Başarılı, login sayfasına yönlendir
       setTimeout(() => {
-        navigate('/login', { 
-          state: { message: 'Şifreniz başarıyla sıfırlandı. Giriş yapabilirsiniz.' } 
+        navigate('/login', {
+          state: { message: t('reset.success') }
         })
       }, 2000)
     },
     onError: (error) => {
-      setError(error.response?.data?.message || 'Şifre sıfırlama başarısız oldu')
+      setError(describeError(error, 'reset.failed'))
     },
   })
 
@@ -35,17 +39,17 @@ export default function ResetPassword() {
 
     // Validasyon
     if (password.length < 6) {
-      setError('Şifre en az 6 karakter olmalıdır')
+      setError(t('validation.min_length', { count: 6 }))
       return
     }
 
     if (password !== confirmPassword) {
-      setError('Şifreler eşleşmiyor')
+      setError(t('validation.passwords_match'))
       return
     }
 
     if (!token) {
-      setError('Geçersiz şifre sıfırlama bağlantısı')
+      setError(t('reset.invalid_link'))
       return
     }
 
@@ -59,10 +63,10 @@ export default function ResetPassword() {
           <div className="max-w-md w-full space-y-8">
             <div className="text-center">
               <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-                Geçersiz Bağlantı
+                {t('reset.invalid_link_title')}
               </h2>
               <p className="mt-2 text-sm text-gray-600">
-                Şifre sıfırlama bağlantısı geçersiz veya eksik
+                {t('reset.invalid_link')}
               </p>
               <div className="mt-6">
                 <Link
@@ -70,7 +74,7 @@ export default function ResetPassword() {
                   className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-500"
                 >
                   <ArrowLeftIcon className="h-4 w-4" />
-                  Yeni şifre sıfırlama talebi oluştur
+                  {t('reset.request_new_link')}
                 </Link>
               </div>
             </div>
@@ -93,10 +97,10 @@ export default function ResetPassword() {
                 </svg>
               </div>
               <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-                Şifre Sıfırlandı!
+                {t('reset.success_title')}
               </h2>
               <p className="mt-2 text-sm text-gray-600">
-                Şifreniz başarıyla güncellendi. Giriş sayfasına yönlendiriliyorsunuz...
+                {t('reset.success_redirecting')}
               </p>
               <div className="mt-6">
                 <Link
@@ -104,7 +108,7 @@ export default function ResetPassword() {
                   className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-500"
                 >
                   <ArrowLeftIcon className="h-4 w-4" />
-                  Giriş sayfasına git
+                  {t('verify.go_to_login')}
                 </Link>
               </div>
             </div>
@@ -121,10 +125,10 @@ export default function ResetPassword() {
         <div className="max-w-md w-full space-y-8">
           <div>
             <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              Yeni Şifre Belirleyin
+              {t('reset.title')}
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
-              Lütfen hesabınız için yeni bir şifre girin
+              {t('reset.description')}
             </p>
           </div>
           
@@ -132,7 +136,7 @@ export default function ResetPassword() {
             <div className="space-y-4">
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Yeni Şifre
+                  {t('reset.new_password')}
                 </label>
                 <input
                   id="password"
@@ -142,7 +146,7 @@ export default function ResetPassword() {
                   required
                   minLength={6}
                   className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="En az 6 karakter"
+                  placeholder={t('reset.password_placeholder')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -150,7 +154,7 @@ export default function ResetPassword() {
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                  Yeni Şifre (Tekrar)
+                  {t('reset.confirm_password')}
                 </label>
                 <input
                   id="confirmPassword"
@@ -159,7 +163,7 @@ export default function ResetPassword() {
                   autoComplete="new-password"
                   required
                   className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Şifrenizi tekrar girin"
+                  placeholder={t('reset.confirm_placeholder')}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
@@ -178,7 +182,7 @@ export default function ResetPassword() {
                 disabled={resetPasswordMutation.isPending}
                 className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {resetPasswordMutation.isPending ? 'Şifre Sıfırlanıyor...' : 'Şifreyi Sıfırla'}
+                {resetPasswordMutation.isPending ? t('reset.submitting') : t('reset.submit')}
               </button>
             </div>
 
@@ -188,7 +192,7 @@ export default function ResetPassword() {
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeftIcon className="h-4 w-4" />
-                Giriş sayfasına dön
+                {t('forgot.back_to_login')}
               </Link>
             </div>
           </form>
