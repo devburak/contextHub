@@ -535,10 +535,10 @@ export default function MenuEdit() {
   const tree = buildTree(menu.items);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
           <Link to="/menus" className="text-gray-600 hover:text-gray-900">
             <ArrowLeft size={24} />
           </Link>
@@ -562,9 +562,9 @@ export default function MenuEdit() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left: Basic Info */}
-        <div className="col-span-1 space-y-6">
+        <div className="space-y-6 lg:col-span-1">
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold mb-4">Temel Bilgiler</h2>
             
@@ -651,9 +651,9 @@ export default function MenuEdit() {
         </div>
 
         {/* Right: Menu Items */}
-        <div className="col-span-2">
+        <div className="min-w-0 lg:col-span-2">
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex justify-between items-center mb-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Menü Öğeleri</h2>
                 <p className="text-xs text-gray-500 mt-1">
@@ -743,8 +743,8 @@ export default function MenuEdit() {
 
       {/* Menu Item Form Modal */}
       {showItemForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black bg-opacity-50 p-0 sm:items-center sm:p-4">
+          <div className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-t-xl bg-white p-4 sm:rounded-lg sm:p-6">
             <h3 className="text-lg font-semibold mb-4">
               {editingItem._id ? 'Menü Öğesini Düzenle' : 'Yeni Menü Öğesi'}
             </h3>

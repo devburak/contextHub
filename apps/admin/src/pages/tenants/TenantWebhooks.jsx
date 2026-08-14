@@ -640,7 +640,8 @@ export default function TenantWebhooks() {
         ) : webhooks.length === 0 ? (
           <div className="p-6 text-sm text-gray-500">{t('tenantWebhooks.empty')}</div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
+          <div className="overflow-x-auto overscroll-x-contain">
+          <table className="min-w-[760px] divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{t('tenantWebhooks.col_url')}</th>
@@ -700,6 +701,7 @@ export default function TenantWebhooks() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

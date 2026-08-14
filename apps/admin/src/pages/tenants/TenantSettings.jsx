@@ -826,7 +826,7 @@ export default function TenantSettings() {
               <div className="text-center text-red-600 py-4">{t('tenantSettings.plan_load_error')}</div>
             ) : (
               <>
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-gray-50 p-4">
                   <div>
                     <p className="text-sm font-medium text-gray-700">{t('tenantSettings.current_plan')}</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">{limitsQuery.data?.plan?.name || 'Free'}</p>
@@ -846,7 +846,7 @@ export default function TenantSettings() {
                 </div>
 
                 {/* Current Usage Stats */}
-                <div className="grid grid-cols-2 gap-4 mt-4">
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
                     <p className="text-xs font-medium text-blue-600 uppercase">{t('tenantSettings.usage_users')}</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">

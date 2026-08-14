@@ -98,9 +98,9 @@ export default function ContentList() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-4">
-        <div>
+        <div className="w-full sm:w-auto">
           <label className="block text-sm font-medium text-gray-700">{t('common.status')}</label>
-          <div className="relative mt-1 w-44">
+          <div className="relative mt-1 w-full sm:w-44">
             <select
               value={status}
               onChange={(e) => { setStatus(e.target.value); setPage(1); }}
@@ -115,9 +115,9 @@ export default function ContentList() {
             <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
         </div>
-        <div>
+        <div className="w-full sm:w-auto">
           <label className="block text-sm font-medium text-gray-700">{t('content.category')}</label>
-          <div className="relative mt-1 w-48">
+          <div className="relative mt-1 w-full sm:w-48">
             <select
               value={category}
               onChange={(e) => { setCategory(e.target.value); setPage(1); }}
@@ -133,19 +133,19 @@ export default function ContentList() {
             <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
         </div>
-        <div className="relative w-72">
+        <div className="relative w-full sm:w-72">
           <label className="block text-sm font-medium text-gray-700">{t('common.search')}</label>
           <input
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder={t('content.search_placeholder')}
-            className={clsx('mt-1 w-72', filterInputClass)}
+            className={clsx('mt-1', filterInputClass)}
           />
         </div>
-        <div>
+        <div className="w-full sm:w-auto">
           <label className="block text-sm font-medium text-gray-700">{t('content.tag')}</label>
-          <div className="relative w-64" ref={tagContainerRef}>
+          <div className="relative w-full sm:w-64" ref={tagContainerRef}>
             <input
               type="search"
               value={tagInput}
@@ -221,7 +221,7 @@ export default function ContentList() {
             )}
           </div>
         </div>
-        <div className="ml-auto flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
           <Link
             to="/contents/new"
             className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
@@ -258,7 +258,8 @@ export default function ContentList() {
 
       {items.length > 0 && (
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <div className="overflow-x-auto overscroll-x-contain">
+          <table className="min-w-[680px] divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-2 text-left font-semibold text-gray-700">{t('common.title')}</th>
@@ -281,28 +282,29 @@ export default function ContentList() {
                     {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-'}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Link to={`/contents/${item._id}`} className="text-blue-600 hover:underline">{t('common.edit')}</Link>
+                    <Link to={`/contents/${item._id}`} className="inline-flex min-h-11 items-center rounded-md px-2 text-blue-600 hover:bg-blue-50 hover:underline">{t('common.edit')}</Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {items.length > 0 && (
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <div>{t('content.page_indicator', { current: pagination.page, total: pagination.pages })}</div>
           <div className="flex gap-2">
             <button
               disabled={pagination.page <= 1}
               onClick={() => setPage(p => p - 1)}
-              className="px-3 py-1 rounded border text-gray-700 disabled:opacity-40"
+              className="min-h-11 rounded border px-3 py-2 text-gray-700 disabled:opacity-40"
             >{t('common.previous')}</button>
             <button
               disabled={pagination.page >= pagination.pages}
               onClick={() => setPage(p => p + 1)}
-              className="px-3 py-1 rounded border text-gray-700 disabled:opacity-40"
+              className="min-h-11 rounded border px-3 py-2 text-gray-700 disabled:opacity-40"
             >{t('common.next')}</button>
           </div>
         </div>

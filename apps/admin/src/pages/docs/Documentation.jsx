@@ -46,8 +46,8 @@ export default function Documentation() {
             Aşağıdaki bayraklar platform tarafından desteklenir. Varsayılan durumu burada görebilirsiniz; gerçek kullanımda tenant ayarları geçerlidir.
           </p>
         </div>
-        <div className="overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
+        <div className="overflow-x-auto overscroll-x-contain">
+          <table className="min-w-[820px] divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Anahtar</th>
