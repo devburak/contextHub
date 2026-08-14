@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Trans, useTranslation } from 'react-i18next';
 import { fetchSubscriptionPlans } from '../lib/api/subscriptions';
+import { useApiError } from '../lib/useApiError.js';
 import { Check, Zap, TrendingUp, Building2 } from 'lucide-react';
 
 const PLAN_ICONS = {
@@ -29,6 +31,8 @@ export default function SubscriptionPlanSelector({
   compact = false
 }) {
   const [selected, setSelected] = useState(selectedPlan || 'free');
+  const { t } = useTranslation();
+  const describeError = useApiError();
 
   const { data: plans = [], isLoading, error } = useQuery({
     queryKey: ['subscription-plans'],
@@ -48,19 +52,19 @@ export default function SubscriptionPlanSelector({
   };
 
   const formatLimit = (value) => {
-    if (value === null || value === -1) return 'Sınırsız';
-    if (value === 0) return 'Yok';
+    if (value === null || value === -1) return t('plan.unlimited');
+    if (value === 0) return t('common.none');
     return value.toLocaleString('tr-TR');
   };
 
   const formatStorage = (bytes) => {
-    if (!bytes || bytes === null || bytes === -1) return 'Sınırsız';
+    if (!bytes || bytes === null || bytes === -1) return t('plan.unlimited');
     const gb = bytes / (1024 ** 3);
     return `${gb} GB`;
   };
 
   const formatRequests = (count) => {
-    if (!count || count === null || count === -1) return 'Sınırsız';
+    if (!count || count === null || count === -1) return t('plan.unlimited');
     if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
     if (count >= 1000) return `${(count / 1000).toFixed(0)}K`;
     return count.toLocaleString('tr-TR');
@@ -77,7 +81,7 @@ export default function SubscriptionPlanSelector({
   if (error) {
     return (
       <div className="text-center py-8">
-        <p className="text-red-600">Planlar yüklenemedi: {error.message}</p>
+        <p className="text-red-600">{describeError(error, 'plan.load_failed')}</p>
       </div>
     );
   }
@@ -112,13 +116,13 @@ export default function SubscriptionPlanSelector({
                       <h3 className="font-semibold text-gray-900">{plan.name}</h3>
                       {isCurrent && (
                         <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
-                          Mevcut Plan
+                          {t('plan.current_badge')}
                         </span>
                       )}
                     </div>
                     {showPricing && (
                       <p className="text-sm text-gray-600">
-                        {plan.price === 0 ? 'Ücretsiz' : `$${plan.price}/ay`}
+                        {plan.price === 0 ? t('plan.free') : t('plan.price_monthly', { price: plan.price })}
                       </p>
                     )}
                   </div>
@@ -159,7 +163,7 @@ export default function SubscriptionPlanSelector({
             {isCurrent && (
               <div className="absolute top-0 right-0 -mt-3 -mr-3">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 shadow-sm">
-                  Mevcut Plan
+                  {t('plan.current_badge')}
                 </span>
               </div>
             )}
@@ -184,11 +188,11 @@ export default function SubscriptionPlanSelector({
               {showPricing && (
                 <div className="mb-4">
                   {plan.price === 0 ? (
-                    <div className="text-2xl font-bold text-gray-900">{plan.name==="Free" ? "Ücretsiz":"Kullandıkca Öde"} </div>
+                    <div className="text-2xl font-bold text-gray-900">{plan.name === "Free" ? t('plan.free') : t('plan.pay_as_you_go')} </div>
                   ) : (
                     <div className="flex items-baseline">
                       <span className="text-3xl font-bold text-gray-900">${plan.price}</span>
-                      <span className="text-gray-600 ml-1">/ay</span>
+                      <span className="text-gray-600 ml-1">{t('plan.per_month')}</span>
                     </div>
                   )}
                 </div>
@@ -202,34 +206,34 @@ export default function SubscriptionPlanSelector({
                 <div className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                   <span className="text-sm text-gray-700">
-                    <strong>{formatLimit(plan.limits.users)}</strong> kullanıcı
+                    <Trans i18nKey="plan.limit_users" values={{ count: formatLimit(plan.limits.users) }} components={{ strong: <strong /> }} />
                   </span>
                 </div>
 
                 <div className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                   <span className="text-sm text-gray-700">
-                    <strong>{formatLimit(plan.limits.owners)}</strong> owner
+                    <Trans i18nKey="plan.limit_owners" values={{ count: formatLimit(plan.limits.owners) }} components={{ strong: <strong /> }} />
                   </span>
                 </div>
 
                 <div className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                   <span className="text-sm text-gray-700">
-                    <strong>{formatStorage(plan.limits.storage)}</strong> depolama
+                    <Trans i18nKey="plan.limit_storage" values={{ size: formatStorage(plan.limits.storage) }} components={{ strong: <strong /> }} />
                   </span>
                 </div>
 
                 <div className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                   <span className="text-sm text-gray-700">
-                    <strong>{formatRequests(plan.limits.requests)}</strong> API isteği/ay
+                    <Trans i18nKey="plan.limit_requests" values={{ count: formatRequests(plan.limits.requests) }} components={{ strong: <strong /> }} />
                   </span>
                 </div>
 
                 {plan.billingType === 'usage-based' && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
-                    <p className="text-xs text-gray-500">Kullanıma dayalı fiyatlandırma</p>
+                    <p className="text-xs text-gray-500">{t('plan.usage_based_note')}</p>
                   </div>
                 )}
               </div>
@@ -252,7 +256,7 @@ export default function SubscriptionPlanSelector({
                     : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
                 }`}
               >
-                {isCurrent ? 'Mevcut Planınız' : isSelected ? 'Seçildi ✓' : 'Seç'}
+                {isCurrent ? t('plan.current_plan_button') : isSelected ? t('plan.selected') : t('common.select')}
               </button>
             </div>
           </div>

@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import CollectionKeyAutocomplete from './CollectionKeyAutocomplete.jsx';
 
+// `value` alanları API'ye giden tip tanımlayıcılarıdır ve çevrilmez;
+// yalnızca ekranda gösterilen etiketler çeviri anahtarıyla tutulur.
 const FIELD_TYPES = [
-  { value: 'string', label: 'Metin' },
-  { value: 'text', label: 'Uzun Metin' },
-  { value: 'richText', label: 'Zengin Metin (Lexical)' },
-  { value: 'number', label: 'Sayı' },
-  { value: 'boolean', label: 'Mantıksal' },
-  { value: 'date', label: 'Tarih' },
-  { value: 'datetime', label: 'Tarih & Saat' },
-  { value: 'enum', label: 'Seçim (Enum)' },
-  { value: 'ref', label: 'Referans' },
-  { value: 'media', label: 'Medya' },
-  { value: 'geojson', label: 'Coğrafi (GeoJSON)' }
+  { value: 'string', labelKey: 'collection.type_string' },
+  { value: 'text', labelKey: 'collection.type_text' },
+  { value: 'richText', labelKey: 'collection.type_rich_text' },
+  { value: 'number', labelKey: 'collection.type_number' },
+  { value: 'boolean', labelKey: 'collection.type_boolean' },
+  { value: 'date', labelKey: 'collection.type_date' },
+  { value: 'datetime', labelKey: 'collection.type_datetime' },
+  { value: 'enum', labelKey: 'collection.type_enum' },
+  { value: 'ref', labelKey: 'collection.type_ref' },
+  { value: 'media', labelKey: 'collection.type_media' },
+  { value: 'geojson', labelKey: 'collection.type_geojson' }
 ];
 
 const STATUS_OPTIONS = [
-  { value: 'active', label: 'Aktif' },
-  { value: 'archived', label: 'Arşivlenmiş' }
+  { value: 'active', labelKey: 'status.active' },
+  { value: 'archived', labelKey: 'status.archived' }
 ];
 
 const createClientId = () => {
@@ -136,6 +139,7 @@ export function CollectionDefinitionForm({
   onSubmit,
   onCancel
 }) {
+  const { t } = useTranslation();
   const [key, setKey] = useState(initialValues?.key || '');
   const [nameTr, setNameTr] = useState(initialValues?.name?.tr || '');
   const [nameEn, setNameEn] = useState(initialValues?.name?.en || '');
@@ -225,18 +229,20 @@ export function CollectionDefinitionForm({
   };
 
   const renderFieldCard = (field) => {
+    // TR/EN ayrımı düzenlenen *içerik* dilini gösterir; arayüz dilinden bağımsızdır.
     const isTurkish = selectedLanguage === 'tr';
+    const localeCode = isTurkish ? 'TR' : 'EN';
     const labelKey = isTurkish ? 'labelTr' : 'labelEn';
     const descriptionKey = isTurkish ? 'descriptionTr' : 'descriptionEn';
-    const labelPlaceholder = isTurkish ? 'Örn. Başkan' : 'e.g. Chairperson';
-    const descriptionPlaceholder = isTurkish ? 'Örn. alan açıklaması' : 'Field description';
+    const labelPlaceholder = t(isTurkish ? 'collection.field_label_placeholder_tr' : 'collection.field_label_placeholder_en');
+    const descriptionPlaceholder = t(isTurkish ? 'collection.field_description_placeholder_tr' : 'collection.field_description_placeholder_en');
 
     return (
       <div key={field.clientId} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="text-sm font-semibold text-gray-900">Alan</h4>
-          <p className="text-xs text-gray-500">Alan anahtarı küçük harf ve tire ile olmalı.</p>
+          <h4 className="text-sm font-semibold text-gray-900">{t('collection.field_card_title')}</h4>
+          <p className="text-xs text-gray-500">{t('collection.field_key_hint')}</p>
         </div>
         <button
           type="button"
@@ -244,24 +250,24 @@ export function CollectionDefinitionForm({
           className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
         >
           <TrashIcon className="h-4 w-4" />
-          Sil
+          {t('common.delete')}
         </button>
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-gray-700">Alan Anahtarı</label>
+          <label className="block text-sm font-medium text-gray-700">{t('collection.field_key_label')}</label>
           <input
             type="text"
             value={field.key}
             onChange={(event) => handleFieldChange(field.clientId, { key: event.target.value })}
             onBlur={(event) => handleFieldChange(field.clientId, { key: slugifyKey(event.target.value) })}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            placeholder="ornegin-donem"
+            placeholder={t('collection.field_key_placeholder')}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">Tip</label>
+          <label className="block text-sm font-medium text-gray-700">{t('common.type')}</label>
           <select
             value={field.type}
             onChange={(event) => {
@@ -287,7 +293,7 @@ export function CollectionDefinitionForm({
           >
             {FIELD_TYPES.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {t(option.labelKey)}
               </option>
             ))}
           </select>
@@ -295,7 +301,7 @@ export function CollectionDefinitionForm({
       </div>
 
       <div className="mt-4">
-        <label className="block text-sm font-medium text-gray-700">{`Başlık (${isTurkish ? 'TR' : 'EN'})`}</label>
+        <label className="block text-sm font-medium text-gray-700">{t('collection.field_label_with_locale', { locale: localeCode })}</label>
         <input
           type="text"
           value={field[labelKey] || ''}
@@ -306,7 +312,7 @@ export function CollectionDefinitionForm({
       </div>
 
       <div className="mt-4">
-        <label className="block text-sm font-medium text-gray-700">{`Açıklama (${isTurkish ? 'TR' : 'EN'})`}</label>
+        <label className="block text-sm font-medium text-gray-700">{t('collection.description_with_locale', { locale: localeCode })}</label>
         <textarea
           rows={2}
           value={field[descriptionKey] || ''}
@@ -319,12 +325,12 @@ export function CollectionDefinitionForm({
       {field.type === 'ref' && (
         <div className="mt-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Hedef Koleksiyon (key)
+            {t('collection.ref_target_label')}
           </label>
           <CollectionKeyAutocomplete
             value={field.refTarget}
             onChange={(newValue) => handleFieldChange(field.clientId, { refTarget: slugifyKey(newValue) })}
-            placeholder="Hedef koleksiyon seçin veya key girin"
+            placeholder={t('collection.ref_target_placeholder')}
             excludeKey={key}
           />
         </div>
@@ -333,17 +339,17 @@ export function CollectionDefinitionForm({
       {field.type === 'enum' && (
         <div className="mt-4">
           <label className="block text-sm font-medium text-gray-700">
-            Enum Seçenekleri
+            {t('collection.enum_options_label')}
           </label>
           <p className="mt-1 text-xs text-gray-500">
-            Her satıra bir değer yazın. İsteğe bağlı olarak "| tr:Başlık, en:Title" formatında etiket ekleyebilirsiniz.
+            {t('collection.enum_options_hint')}
           </p>
           <textarea
             rows={4}
             value={field.enumOptions}
             onChange={(event) => handleFieldChange(field.clientId, { enumOptions: event.target.value })}
             className="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            placeholder={`ornegin-baskan | tr:Başkan\nornek-uye | tr:Üye, en:Member`}
+            placeholder={t('collection.enum_options_placeholder')}
           />
         </div>
       )}
@@ -358,7 +364,7 @@ export function CollectionDefinitionForm({
             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
           <label htmlFor={`multiple-${field.clientId}`} className="text-sm font-medium text-gray-700">
-            Birden fazla değer desteklensin
+            {t('collection.field_multiple')}
           </label>
         </div>
       )}
@@ -371,7 +377,7 @@ export function CollectionDefinitionForm({
             onChange={(event) => handleFieldChange(field.clientId, { required: event.target.checked })}
             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          Zorunlu Alan
+          {t('collection.field_required')}
         </label>
         {field.type !== 'richText' && (
           <label className="inline-flex items-center gap-2 text-sm text-gray-700">
@@ -381,7 +387,7 @@ export function CollectionDefinitionForm({
               onChange={(event) => handleFieldChange(field.clientId, { unique: event.target.checked })}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            Tekil (unique)
+            {t('collection.field_unique')}
           </label>
         )}
         {field.type !== 'richText' && (
@@ -392,7 +398,7 @@ export function CollectionDefinitionForm({
               onChange={(event) => handleFieldChange(field.clientId, { indexed: event.target.checked })}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            Sorgulanabilir (index)
+            {t('collection.field_indexed')}
           </label>
         )}
       </div>
@@ -404,19 +410,19 @@ export function CollectionDefinitionForm({
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-gray-700">Koleksiyon Anahtarı</label>
+          <label className="block text-sm font-medium text-gray-700">{t('collection.key_label')}</label>
           <input
             type="text"
             value={key}
             onChange={(event) => setKey(event.target.value)}
             onBlur={handleKeyBlur}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100"
-            placeholder="ornek-koleksiyon"
+            placeholder={t('collection.key_placeholder')}
             disabled={mode === 'edit'}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">Durum</label>
+          <label className="block text-sm font-medium text-gray-700">{t('common.status')}</label>
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value)}
@@ -424,7 +430,7 @@ export function CollectionDefinitionForm({
           >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {t(option.labelKey)}
               </option>
             ))}
           </select>
@@ -453,7 +459,7 @@ export function CollectionDefinitionForm({
       <div className="grid gap-4 md:grid-cols-1">
         <div>
           <label className="block text-sm font-medium text-gray-700">
-            {selectedLanguage === 'tr' ? 'İsim (TR)' : 'İsim (EN)'}
+            {t('collection.name_with_locale', { locale: selectedLanguage === 'tr' ? 'TR' : 'EN' })}
           </label>
           <input
             type="text"
@@ -467,7 +473,7 @@ export function CollectionDefinitionForm({
               }
             }}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            placeholder={selectedLanguage === 'tr' ? 'Yönetim Kurulu Üyesi' : 'Board Member'}
+            placeholder={t(selectedLanguage === 'tr' ? 'collection.name_placeholder_tr' : 'collection.name_placeholder_en')}
             required={selectedLanguage === 'tr'}
           />
         </div>
@@ -476,7 +482,7 @@ export function CollectionDefinitionForm({
       <div className="grid gap-4 md:grid-cols-1">
         <div>
           <label className="block text-sm font-medium text-gray-700">
-            {selectedLanguage === 'tr' ? 'Açıklama (TR)' : 'Açıklama (EN)'}
+            {t('collection.description_with_locale', { locale: selectedLanguage === 'tr' ? 'TR' : 'EN' })}
           </label>
           <textarea
             rows={2}

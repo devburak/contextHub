@@ -22,6 +22,7 @@ const { resolveCorsOptions } = require('./services/tenantOriginPolicy');
 const { bootstrapExtensions } = require('./lib/pluginHost');
 const { extractTrustedClientIp } = require('./services/clientIp');
 const RedisRateLimitStore = require('./services/redisRateLimitStore');
+const { createErrorLocalizationHook } = require('./middleware/localizeErrors');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -126,6 +127,10 @@ async function buildServer(options = {}) {
     }
     return payload;
   });
+
+  // Hata gövdelerindeki `message` alanını istekte çözülen dile göre katalogdan doldurur.
+  // Route'lar değişmez; `error` kodu sözleşmenin kalıcı parçası olarak kalır.
+  app.addHook('onSend', createErrorLocalizationHook());
 
   await app.register(rateLimit, {
     global: true,

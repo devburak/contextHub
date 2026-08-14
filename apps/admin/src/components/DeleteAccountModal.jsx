@@ -1,14 +1,16 @@
 import { Fragment } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
+import { useTranslation } from 'react-i18next'
 import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
-export default function DeleteAccountModal({ 
-  isOpen, 
-  onClose, 
-  onConfirm, 
+export default function DeleteAccountModal({
+  isOpen,
+  onClose,
+  onConfirm,
   isDeleting,
-  ownedTenants = [] 
+  ownedTenants = []
 }) {
+  const { t } = useTranslation()
   const hasOwnedTenants = ownedTenants.length > 0
 
   return (
@@ -44,7 +46,7 @@ export default function DeleteAccountModal({
                     className="rounded-md bg-white dark:bg-gray-800 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
                     onClick={onClose}
                   >
-                    <span className="sr-only">Kapat</span>
+                    <span className="sr-only">{t('common.close')}</span>
                     <XMarkIcon className="h-6 w-6" aria-hidden="true" />
                   </button>
                 </div>
@@ -55,7 +57,7 @@ export default function DeleteAccountModal({
                   </div>
                   <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left flex-1">
                     <Dialog.Title as="h3" className="text-lg font-semibold leading-6 text-gray-900 dark:text-white">
-                      Hesabı Kalıcı Olarak Sil
+                      {t('profile.delete_account_title')}
                     </Dialog.Title>
                     
                     <div className="mt-4 space-y-4">
@@ -68,14 +70,14 @@ export default function DeleteAccountModal({
                               </div>
                               <div className="ml-3">
                                 <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                                  Sahip Olduğunuz Varlıklar Var
+                                  {t('profile.delete_owned_tenants_title')}
                                 </h3>
                                 <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-                                  <p className="mb-2">Hesabınızı silmeden önce aşağıdaki varlıkları devretmeniz veya silmeniz gerekmektedir:</p>
+                                  <p className="mb-2">{t('profile.delete_owned_tenants_body')}</p>
                                   <ul className="list-disc list-inside space-y-1">
                                     {ownedTenants.map((tenant, index) => (
                                       <li key={index} className="font-medium">
-                                        {tenant.tenant?.name || 'İsimsiz Varlık'}
+                                        {tenant.tenant?.name || t('profile.unnamed_tenant')}
                                       </li>
                                     ))}
                                   </ul>
@@ -93,15 +95,15 @@ export default function DeleteAccountModal({
                               </div>
                               <div className="ml-3">
                                 <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                                  Dikkat! Bu İşlem Geri Alınamaz
+                                  {t('profile.delete_warning_title')}
                                 </h3>
                                 <div className="mt-2 text-sm text-red-700 dark:text-red-300 space-y-2">
-                                  <p>Hesabınızı kalıcı olarak silmek üzeresiniz. Bu işlem:</p>
+                                  <p>{t('profile.delete_warning_intro')}</p>
                                   <ul className="list-disc list-inside space-y-1">
-                                    <li>Tüm kişisel bilgilerinizi silecek</li>
-                                    <li>Tüm varlık üyeliklerinizi sonlandıracak</li>
-                                    <li>Tüm oluşturduğunuz içerikleri silecek</li>
-                                    <li><strong>Geri alınamaz ve veriler kurtarılamaz</strong></li>
+                                    <li>{t('profile.delete_warning_personal_data')}</li>
+                                    <li>{t('profile.delete_warning_memberships')}</li>
+                                    <li>{t('profile.delete_warning_content')}</li>
+                                    <li><strong>{t('profile.delete_warning_irreversible')}</strong></li>
                                   </ul>
                                 </div>
                               </div>
@@ -110,7 +112,7 @@ export default function DeleteAccountModal({
 
                           <div className="bg-gray-50 dark:bg-gray-700/50 rounded-md p-4">
                             <p className="text-sm text-gray-600 dark:text-gray-300">
-                              Devam etmeden önce tüm önemli verilerinizin yedeğini aldığınızdan emin olun.
+                              {t('profile.delete_backup_hint')}
                             </p>
                           </div>
                         </>
@@ -126,7 +128,7 @@ export default function DeleteAccountModal({
                       className="inline-flex w-full justify-center rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 sm:w-auto"
                       onClick={onClose}
                     >
-                      Anladım
+                      {t('profile.understood')}
                     </button>
                   ) : (
                     <>
@@ -142,10 +144,10 @@ export default function DeleteAccountModal({
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            Siliniyor...
+                            {t('common.deleting')}
                           </>
                         ) : (
-                          'Evet, Hesabımı Sil'
+                          t('profile.delete_account_confirm')
                         )}
                       </button>
                       <button
@@ -154,7 +156,7 @@ export default function DeleteAccountModal({
                         onClick={onClose}
                         disabled={isDeleting}
                       >
-                        İptal
+                        {t('common.cancel')}
                       </button>
                     </>
                   )}

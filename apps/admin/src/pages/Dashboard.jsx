@@ -5,7 +5,6 @@ import { fetchTenantLimits, updateTenantSubscription } from '../lib/api/subscrip
 import { tenantAPI } from '../lib/tenantAPI.js'
 import RecentActivities from '../components/RecentActivities.jsx'
 import SubscriptionPlanSelector from '../components/SubscriptionPlanSelector.jsx'
-import i18n from '../i18n.js'
 
 const ACTIVITY_PAGE_SIZE = 10
 
@@ -181,14 +180,6 @@ export default function Dashboard() {
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [planUpdateLoading, setPlanUpdateLoading] = useState(false)
   const [planUpdateError, setPlanUpdateError] = useState(null)
-
-  // Set default language to Turkish if not set
-  useEffect(() => {
-    if (!localStorage.getItem('language')) {
-      localStorage.setItem('language', 'tr')
-      i18n.changeLanguage('tr')
-    }
-  }, [])
 
   useEffect(() => {
     setActivityFilters((prev) => {

@@ -4,11 +4,13 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { usersAPI } from '../../lib/api.js'
+import { useApiError } from '../../lib/useApiError.js'
 
 export default function Users() {
   const [search, setSearch] = useState('')
   const queryClient = useQueryClient()
   const { t } = useTranslation()
+  const describeError = useApiError()
 
   const { data: users, isLoading, error } = useQuery({
     queryKey: ['users', search],
@@ -23,7 +25,7 @@ export default function Users() {
   })
 
   const handleDelete = (id, name) => {
-    if (window.confirm(`Are you sure you want to delete user "${name}"?`)) {
+    if (window.confirm(t('users.delete_confirm', { name }))) {
       deleteMutation.mutate(id)
     }
   }
@@ -39,7 +41,7 @@ export default function Users() {
   if (error) {
     return (
       <div className="text-red-600 text-center">
-        Error loading users: {error.message}
+        {describeError(error, 'users.load_error')}
       </div>
     )
   }

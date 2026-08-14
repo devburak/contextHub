@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { 
+import { useTranslation } from 'react-i18next'
+import {
   PlusIcon, 
   PencilIcon, 
   TrashIcon, 
@@ -12,22 +13,23 @@ import {
   ArrowPathIcon
 } from '@heroicons/react/24/outline'
 import { userAPI } from '../../lib/userAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { PERMISSIONS } from '../../constants/permissions.js'
 
 const ROLE_PRESENTATION = {
-  owner: { className: 'bg-red-100 text-red-800', label: 'Sahip' },
-  admin: { className: 'bg-purple-100 text-purple-800', label: 'Yönetici' },
-  editor: { className: 'bg-blue-100 text-blue-800', label: 'Editör' },
-  author: { className: 'bg-green-100 text-green-800', label: 'Yazar' },
-  viewer: { className: 'bg-gray-100 text-gray-800', label: 'Görüntüleyici' }
+  owner: { className: 'bg-red-100 text-red-800', labelKey: 'role.owner' },
+  admin: { className: 'bg-purple-100 text-purple-800', labelKey: 'role.admin' },
+  editor: { className: 'bg-blue-100 text-blue-800', labelKey: 'role.editor' },
+  author: { className: 'bg-green-100 text-green-800', labelKey: 'role.author' },
+  viewer: { className: 'bg-gray-100 text-gray-800', labelKey: 'role.viewer' }
 }
 
 const STATUS_PRESENTATION = {
-  active: { label: 'Aktif', className: 'bg-green-50 text-green-700 ring-green-200' },
-  inactive: { label: 'Pasif', className: 'bg-gray-50 text-gray-600 ring-gray-200' },
-  pending: { label: 'Beklemede', className: 'bg-amber-50 text-amber-700 ring-amber-200' }
+  active: { labelKey: 'status.active', className: 'bg-green-50 text-green-700 ring-green-200' },
+  inactive: { labelKey: 'status.inactive', className: 'bg-gray-50 text-gray-600 ring-gray-200' },
+  pending: { labelKey: 'status.pending', className: 'bg-amber-50 text-amber-700 ring-amber-200' }
 }
 
 export default function UserList() {
@@ -36,6 +38,8 @@ export default function UserList() {
   const [roleFilter, setRoleFilter] = useState('all')
   const queryClient = useQueryClient()
   const toast = useToast()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const { hasPermission, role: currentUserRole } = useAuth()
   const canManageUsers = currentUserRole === 'owner' || hasPermission(PERMISSIONS.USERS_MANAGE)
   const canInviteUsers = currentUserRole === 'owner' || hasPermission(PERMISSIONS.USERS_INVITE)
@@ -55,12 +59,12 @@ export default function UserList() {
     mutationFn: ({ id }) => userAPI.deleteUser(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries(['users'])
-      const label = variables?.name ? `"${variables.name}"` : 'Kullanıcı'
-      toast.success(`${label} tenant bağlantısından çıkarıldı.`)
+      toast.success(variables?.name
+        ? t('users.detach_success_named', { name: variables.name })
+        : t('users.detach_success'))
     },
     onError: (error) => {
-      const message = error.response?.data?.message || 'Kullanıcı tenant bağlantısı kaldırılamadı.'
-      toast.error(message)
+      toast.error(describeError(error, 'users.detach_error'))
     }
   })
 
@@ -71,16 +75,15 @@ export default function UserList() {
       queryClient.invalidateQueries(['users'])
       const status = data?.membership?.status
       if (status === 'active') {
-        toast.success('Kullanıcı yeniden aktifleştirildi.')
+        toast.success(t('users.status_activated'))
       } else if (status === 'inactive') {
-        toast.info('Kullanıcı pasif hale getirildi.')
+        toast.info(t('users.status_deactivated'))
       } else {
-        toast.success('Kullanıcı durumu güncellendi.')
+        toast.success(t('users.status_updated'))
       }
     },
     onError: (error) => {
-      const message = error.response?.data?.message || 'Kullanıcı durumu güncellenemedi.'
-      toast.error(message)
+      toast.error(describeError(error, 'users.status_update_error'))
     }
   })
 
@@ -88,18 +91,19 @@ export default function UserList() {
     mutationFn: ({ id }) => userAPI.reinviteUser(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries(['users'])
-      const label = variables?.email || variables?.name || 'Kullanıcı'
-      toast.success(`${label} için davet e-postası yeniden gönderildi.`)
+      const target = variables?.email || variables?.name
+      toast.success(target
+        ? t('users.invite_resent_to', { target })
+        : t('users.invite_resent'))
     },
     onError: (error) => {
-      const message = error.response?.data?.message || 'Davet gönderilirken bir hata oluştu.'
-      toast.error(message)
+      toast.error(describeError(error, 'user.invite_error'))
     }
   })
 
   const handleDeleteUser = async (user) => {
     const nameLabel = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email
-    if (window.confirm(`"${nameLabel}" kullanıcısının tenant erişimini kaldırmak istediğinizden emin misiniz?`)) {
+    if (window.confirm(t('users.detach_confirm', { name: nameLabel }))) {
       deleteUserMutation.mutate({ id: user.id, name: nameLabel })
     }
   }
@@ -123,12 +127,12 @@ export default function UserList() {
   if (error) {
     return (
       <div className="text-center py-12">
-        <div className="text-red-600 mb-4">Kullanıcılar yüklenirken hata oluştu</div>
-        <button 
+        <div className="text-red-600 mb-4">{describeError(error, 'users.load_error')}</div>
+        <button
           onClick={() => queryClient.invalidateQueries(['users'])}
           className="text-blue-600 hover:text-blue-500"
         >
-          Tekrar dene
+          {t('common.retry')}
         </button>
       </div>
     )
@@ -149,9 +153,9 @@ export default function UserList() {
       {/* Header */}
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
-          <h1 className="text-2xl font-semibold text-gray-900">Kullanıcılar</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">{t('users.title')}</h1>
           <p className="mt-2 text-sm text-gray-700">
-            Sistemdeki tüm kullanıcıları görüntüleyin ve yönetin.
+            {t('users.description')}
           </p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
@@ -160,7 +164,7 @@ export default function UserList() {
             className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             <PlusIcon className="h-4 w-4 mr-2" />
-            Yeni Kullanıcı
+            {t('users.add_user')}
           </Link>
         </div>
       </div>
@@ -174,7 +178,7 @@ export default function UserList() {
           </div>
           <input
             type="text"
-            placeholder="Kullanıcı ara..."
+            placeholder={t('users.search')}
             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -187,10 +191,10 @@ export default function UserList() {
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >
-          <option value="all">Tüm Durumlar</option>
-          <option value="active">Aktif</option>
-          <option value="inactive">Pasif</option>
-          <option value="pending">Beklemede</option>
+          <option value="all">{t('users.filter_all_statuses')}</option>
+          <option value="active">{t('status.active')}</option>
+          <option value="inactive">{t('status.inactive')}</option>
+          <option value="pending">{t('status.pending')}</option>
         </select>
 
         {/* Role Filter */}
@@ -199,11 +203,11 @@ export default function UserList() {
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
         >
-          <option value="all">Tüm Roller</option>
-          <option value="owner">Sahip</option>
-          <option value="admin">Yönetici</option>
-          <option value="editor">Editör</option>
-          <option value="viewer">Görüntüleyici</option>
+          <option value="all">{t('users.filter_all_roles')}</option>
+          <option value="owner">{t('role.owner')}</option>
+          <option value="admin">{t('role.admin')}</option>
+          <option value="editor">{t('role.editor')}</option>
+          <option value="viewer">{t('role.viewer')}</option>
         </select>
       </div>
 
@@ -216,22 +220,22 @@ export default function UserList() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Kullanıcı
+                      {t('users.user')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      E-posta
+                      {t('users.email')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Rol
+                      {t('users.role')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Durum
+                      {t('users.status')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Kayıt Tarihi
+                      {t('users.created')}
                     </th>
                     <th className="relative px-6 py-3">
-                      <span className="sr-only">İşlemler</span>
+                      <span className="sr-only">{t('common.actions')}</span>
                     </th>
                   </tr>
                 </thead>
@@ -239,7 +243,7 @@ export default function UserList() {
                   {filteredUsers.length === 0 ? (
                     <tr>
                       <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
-                        Hiç kullanıcı bulunamadı
+                        {t('users.no_users')}
                       </td>
                     </tr>
                   ) : (
@@ -281,7 +285,7 @@ export default function UserList() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${roleInfo.className}`}>
-                              {roleInfo.label}
+                              {t(roleInfo.labelKey)}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -298,7 +302,7 @@ export default function UserList() {
                                       ) : (
                                         <XCircleIcon className="h-3.5 w-3.5" />
                                       )}
-                                      {statusInfo.label}
+                                      {t(statusInfo.labelKey)}
                                     </span>
                                   )
                                 })()}
@@ -309,7 +313,7 @@ export default function UserList() {
                                     disabled={toggleStatusMutation.isPending}
                                     className="text-xs font-medium text-gray-500 hover:text-gray-700"
                                   >
-                                    Pasifleştir
+                                    {t('users.deactivate')}
                                   </button>
                                 )}
 
@@ -319,17 +323,19 @@ export default function UserList() {
                                     disabled={toggleStatusMutation.isPending}
                                     className="text-xs font-medium text-blue-600 hover:text-blue-700"
                                   >
-                                    Aktifleştir
+                                    {t('users.activate')}
                                   </button>
                                 )}
                               </div>
                               {/* Davet bilgileri - pending veya inactive için */}
                               {(user.status === 'pending' || user.status === 'inactive') && user.lastInvitedAt && (
                                 <div className="text-xs text-gray-500">
-                                  <span>Davet: {new Date(user.lastInvitedAt).toLocaleDateString('tr-TR')}</span>
+                                  <span>{t('users.invited_at', { date: new Date(user.lastInvitedAt).toLocaleDateString('tr-TR') })}</span>
                                   {user.inviteExpiresAt && (
                                     <span className={`ml-2 ${new Date(user.inviteExpiresAt) < new Date() ? 'text-red-500' : 'text-gray-400'}`}>
-                                      {new Date(user.inviteExpiresAt) < new Date() ? '(Süresi doldu)' : `(${new Date(user.inviteExpiresAt).toLocaleDateString('tr-TR')} tarihine kadar)`}
+                                      {new Date(user.inviteExpiresAt) < new Date()
+                                        ? t('users.invite_expired')
+                                        : t('users.invite_valid_until', { date: new Date(user.inviteExpiresAt).toLocaleDateString('tr-TR') })}
                                     </span>
                                   )}
                                 </div>
@@ -356,7 +362,7 @@ export default function UserList() {
                                   className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200"
                                 >
                                   <ArrowPathIcon className="h-3.5 w-3.5" />
-                                  Daveti Yenile
+                                  {t('users.resend_invite')}
                                 </button>
                               )}
                               {canManageUsers && !isOwnerUser && (
@@ -389,30 +395,21 @@ export default function UserList() {
               disabled={!hasPrevPage}
               className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
             >
-              Önceki
+              {t('common.previous')}
             </button>
             <button
               disabled={!hasNextPage}
               className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
             >
-              Sonraki
+              {t('common.next')}
             </button>
           </div>
           <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-gray-700">
-                {totalUsers === 0 ? (
-                  <>
-                    Toplam <span className="font-medium">0</span> kullanıcı bulunmuyor.
-                  </>
-                ) : (
-                  <>
-                    Toplam <span className="font-medium">{totalUsers}</span> kullanıcıdan{' '}
-                    <span className="font-medium">{startIndex}</span> -{' '}
-                    <span className="font-medium">{endIndex}</span>{' '}
-                    arası gösteriliyor
-                  </>
-                )}
+                {totalUsers === 0
+                  ? t('users.pagination_empty')
+                  : t('users.pagination_range', { start: startIndex, end: endIndex, total: totalUsers })}
               </p>
             </div>
             <div>
@@ -421,13 +418,13 @@ export default function UserList() {
                   disabled={!hasPrevPage}
                   className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Önceki
+                  {t('common.previous')}
                 </button>
                 <button
                   disabled={!hasNextPage}
                   className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Sonraki
+                  {t('common.next')}
                 </button>
               </nav>
             </div>

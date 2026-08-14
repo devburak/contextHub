@@ -1,0 +1,17 @@
+{
+  "validation.email": "Enter a valid email address.",
+  "validation.file_too_large": "The file is too large. Maximum size is {{size}}.",
+  "validation.invalid_json": "Enter valid JSON.",
+  "validation.max": "Must be at most {{max}}.",
+  "validation.max_length": "Must be at most {{count}} characters.",
+  "validation.min": "Must be at least {{min}}.",
+  "validation.min_length": "Must be at least {{count}} characters.",
+  "validation.number": "Enter a valid number.",
+  "validation.passwords_match": "Passwords do not match.",
+  "validation.required": "This field is required.",
+  "validation.required_named": "{{field}} is required.",
+  "validation.slug_format": "The slug may contain only lowercase letters, numbers and hyphens.",
+  "validation.slug_taken": "This slug is already in use.",
+  "validation.unsupported_file_type": "This file type is not supported.",
+  "validation.url": "Enter a valid URL."
+}
