@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection'
 import { mergeRegister } from '@lexical/utils'
@@ -14,6 +15,7 @@ import { $isTableNode } from '../nodes/TableNode.jsx'
 import TableContextMenu from './TableContextMenu.jsx'
 
 function TableComponent({ nodeKey, children }) {
+  const { t } = useTranslation()
   const [editor] = useLexicalComposerContext()
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
   const [showContextMenu, setShowContextMenu] = useState(false)
@@ -106,7 +108,7 @@ function TableComponent({ nodeKey, children }) {
 
       {isSelected && (
         <div className="table-selection-toolbar">
-          <span className="table-selected-label">Tablo seçildi</span>
+          <span className="table-selected-label">{t('content.table_selected')}</span>
           <button
             className="table-delete-btn"
             onClick={() => {
@@ -117,7 +119,7 @@ function TableComponent({ nodeKey, children }) {
                 }
               })
             }}
-            title="Tabloyu sil"
+            title={t('content.table_delete')}
           >
             🗑️
           </button>

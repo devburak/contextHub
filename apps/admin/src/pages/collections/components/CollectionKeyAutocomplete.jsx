@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { collectionsApi } from '../../../lib/api/collections.js'
 import { MagnifyingGlassIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline'
@@ -9,15 +10,16 @@ import { MagnifyingGlassIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/o
  * @param {Object} props
  * @param {string} props.value - Seçili koleksiyon key'i
  * @param {Function} props.onChange - Değer değişikliği callback'i
- * @param {string} props.placeholder - Input placeholder
+ * @param {string} [props.placeholder] - Input placeholder (varsayılan: çeviriden gelir)
  * @param {string} props.excludeKey - Hariç tutulacak key (mevcut koleksiyon)
  */
 export default function CollectionKeyAutocomplete({ 
   value, 
   onChange, 
-  placeholder = 'Koleksiyon key girin veya seçin',
+  placeholder,
   excludeKey = null
 }) {
+  const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [inputValue, setInputValue] = useState(value || '')
   const wrapperRef = useRef(null)
@@ -103,7 +105,7 @@ export default function CollectionKeyAutocomplete({
           value={inputValue}
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('collection.key_autocomplete_placeholder')}
           className="w-full rounded-md border border-gray-300 pl-9 pr-10 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
         />
         {inputValue && (
@@ -121,24 +123,28 @@ export default function CollectionKeyAutocomplete({
       {isOpen && (
         <div className="absolute z-10 mt-1 w-full rounded-md bg-white shadow-lg border border-gray-200 max-h-60 overflow-auto">
           {isLoading ? (
-            <div className="px-4 py-3 text-sm text-gray-500">Yükleniyor...</div>
+            <div className="px-4 py-3 text-sm text-gray-500">{t('common.loading')}</div>
           ) : filteredCollections.length === 0 ? (
             <div className="px-4 py-3 text-sm text-gray-500">
               {inputValue ? (
                 <>
-                  <div className="font-medium text-gray-700 mb-1">Koleksiyon bulunamadı</div>
+                  <div className="font-medium text-gray-700 mb-1">{t('collection.key_autocomplete_not_found')}</div>
                   <div className="text-xs">
-                    Girdiğiniz key kullanılacak: <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">{inputValue}</span>
+                    <Trans
+                      i18nKey="collection.key_autocomplete_use_typed"
+                      values={{ key: inputValue }}
+                      components={{ code: <span className="font-mono bg-gray-100 px-1 py-0.5 rounded" /> }}
+                    />
                   </div>
                 </>
               ) : (
-                'Aktif koleksiyon bulunamadı'
+                t('collection.key_autocomplete_no_active')
               )}
             </div>
           ) : (
             <>
               <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                Mevcut Koleksiyonlar
+                {t('collection.key_autocomplete_existing')}
               </div>
               <ul className="py-1">
                 {filteredCollections.map((collection) => {
@@ -172,7 +178,7 @@ export default function CollectionKeyAutocomplete({
                           </div>
                           {collection.fields?.length > 0 && (
                             <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                              {collection.fields.length} alan
+                              {t('collection.field_count', { count: collection.fields.length })}
                             </span>
                           )}
                         </div>
@@ -188,7 +194,7 @@ export default function CollectionKeyAutocomplete({
 
       {/* Yardım metni */}
       <p className="mt-1 text-xs text-gray-500">
-        Mevcut koleksiyonlardan seçin veya yeni bir key yazın
+        {t('collection.key_autocomplete_hint')}
       </p>
     </div>
   )

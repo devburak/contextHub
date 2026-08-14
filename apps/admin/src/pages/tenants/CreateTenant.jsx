@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { tenantAPI } from '../../lib/tenantAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
 
@@ -18,6 +20,8 @@ export default function CreateTenant() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { refreshSession } = useAuth()
+  const { t } = useTranslation()
+  const describeError = useApiError()
 
   const createMutation = useMutation({
     mutationFn: tenantAPI.createTenant,
@@ -27,7 +31,7 @@ export default function CreateTenant() {
     },
     onSuccess: async ({ tenant }) => {
       await refreshSession()
-      setSuccessMessage(`${tenant.name} varlığı başarıyla oluşturuldu.`)
+      setSuccessMessage(t('tenant.created_success', { name: tenant.name }))
       setFormData(initialFormState)
       queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
 
@@ -36,7 +40,7 @@ export default function CreateTenant() {
       }, 1200)
     },
     onError: (err) => {
-      setError(err.response?.data?.message || err.response?.data?.error || 'Varlık oluşturulamadı')
+      setError(describeError(err, 'tenant.create_failed'))
     }
   })
 
@@ -59,7 +63,7 @@ export default function CreateTenant() {
   const handleSubmit = (event) => {
     event.preventDefault()
     if (!formData.name.trim()) {
-      setError('Varlık adı gereklidir')
+      setError(t('validation.required_named', { field: t('tenant.name_label') }))
       return
     }
 
@@ -73,9 +77,9 @@ export default function CreateTenant() {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Yeni Varlık Oluştur</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('tenant.create_new')}</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Yeni veriler saklamak için bir varlık oluştur. Oluşturduğun varlık için otomatik olarak owner rolüne sahip olursun.
+          {t('tenant.create_subtitle')}
         </p>
       </div>
 
@@ -83,7 +87,7 @@ export default function CreateTenant() {
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-              Varlık Adı
+              {t('tenant.name_label')}
             </label>
             <input
               id="name"
@@ -93,13 +97,13 @@ export default function CreateTenant() {
               value={formData.name}
               onChange={handleChange}
               className="input"
-              placeholder="Örn. Şirket Adı"
+              placeholder={t('tenant.name_placeholder')}
             />
           </div>
 
           <div>
             <label htmlFor="slug" className="block text-sm font-medium text-gray-700 mb-1">
-              Slug
+              {t('common.slug')}
             </label>
             <input
               id="slug"
@@ -108,14 +112,14 @@ export default function CreateTenant() {
               value={formData.slug}
               onChange={handleChange}
               className="input"
-              placeholder="ör. firma-adi"
+              placeholder={t('tenant.slug_placeholder')}
             />
-            <p className="mt-1 text-xs text-gray-500">Slug alanını boş bırakırsan isimden otomatik üretilecektir.</p>
+            <p className="mt-1 text-xs text-gray-500">{t('tenant.slug_hint')}</p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Abonelik Planı Seç
+              {t('tenant.plan_select_label')}
             </label>
             <SubscriptionPlanSelector
               selectedPlan={formData.plan}
@@ -160,7 +164,7 @@ export default function CreateTenant() {
               to="/varliklar"
               className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              İptal
+              {t('common.cancel')}
             </Link>
             <button
               type="submit"
@@ -173,10 +177,10 @@ export default function CreateTenant() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Oluşturuluyor...
+                  {t('tenant.creating')}
                 </>
               ) : (
-                'Varlık Oluştur'
+                t('tenant.create_submit')
               )}
             </button>
           </div>

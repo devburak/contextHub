@@ -1,6 +1,10 @@
 {
   "collection.add_field": "Add Field",
   "collection.allow_drafts": "Allow draft status",
+  "collection.content_relations_empty": "No content relation added yet.",
+  "collection.content_relations_hint": "Pick content records to add them to the JSON field.",
+  "collection.content_relations_title": "Content relations",
+  "collection.content_select": "Select content",
   "collection.create_failed": "The collection could not be created.",
   "collection.create_panel_hint": "Pick field types, define slug rules and build a flexible structure for your entries.",
   "collection.create_panel_title": "Create a New Collection",

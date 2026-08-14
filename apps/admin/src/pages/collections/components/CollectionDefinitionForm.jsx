@@ -496,38 +496,38 @@ export function CollectionDefinitionForm({
               }
             }}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            placeholder={selectedLanguage === 'tr' ? 'Koleksiyon kısa açıklaması' : 'Collection summary'}
+            placeholder={t(selectedLanguage === 'tr' ? 'collection.description_placeholder_tr' : 'collection.description_placeholder_en')}
           />
         </div>
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Koleksiyon Ayarları</h3>
+        <h3 className="text-sm font-semibold text-gray-900">{t('collection.settings_title')}</h3>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Slug Alanı</label>
+            <label className="block text-sm font-medium text-gray-700">{t('collection.slug_field_label')}</label>
             <select
               value={slugField}
               onChange={(event) => setSlugField(event.target.value)}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             >
-              <option value="">Belirtilmemiş</option>
+              <option value="">{t('collection.slug_field_none')}</option>
               {selectableSlugFields.map((fieldKey) => (
                 <option key={fieldKey} value={fieldKey}>{fieldKey}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">Varsayılan Sıralama</label>
+            <label className="block text-sm font-medium text-gray-700">{t('collection.default_sort_label')}</label>
             <div className="mt-1 flex gap-2">
               <select
                 value={defaultSortKey}
                 onChange={(event) => setDefaultSortKey(event.target.value)}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               >
-                <option value="">Zaman (sondan → başa)</option>
-                <option value="title">Başlık</option>
-                <option value="date">Tarih</option>
+                <option value="">{t('collection.sort_recent_first')}</option>
+                <option value="title">{t('common.title')}</option>
+                <option value="date">{t('common.date')}</option>
                 {selectableSlugFields.map((fieldKey) => (
                   <option key={fieldKey} value={fieldKey}>{fieldKey}</option>
                 ))}
@@ -537,8 +537,8 @@ export function CollectionDefinitionForm({
                 onChange={(event) => setDefaultSortDir(event.target.value)}
                 className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               >
-                <option value="asc">Artan</option>
-                <option value="desc">Azalan</option>
+                <option value="asc">{t('collection.sort_asc')}</option>
+                <option value="desc">{t('collection.sort_desc')}</option>
               </select>
             </div>
           </div>
@@ -551,7 +551,7 @@ export function CollectionDefinitionForm({
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <label htmlFor="enable-versioning" className="text-sm font-medium text-gray-700">
-              Versiyonlama açılsın
+              {t('collection.enable_versioning')}
             </label>
           </div>
           <div className="flex items-center gap-2">
@@ -563,11 +563,11 @@ export function CollectionDefinitionForm({
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <label htmlFor="allow-drafts" className="text-sm font-medium text-gray-700">
-              Taslak durumuna izin ver
+              {t('collection.allow_drafts')}
             </label>
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700">Önizleme URL Şablonu</label>
+            <label className="block text-sm font-medium text-gray-700">{t('collection.preview_url_label')}</label>
             <input
               type="text"
               value={previewUrlTemplate}
@@ -582,8 +582,8 @@ export function CollectionDefinitionForm({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Alanlar</h3>
-            <p className="text-xs text-gray-500">Alan tiplerine göre giriş formları ve doğrulamalar otomatik oluşacak.</p>
+            <h3 className="text-sm font-semibold text-gray-900">{t('collection.fields_title')}</h3>
+            <p className="text-xs text-gray-500">{t('collection.fields_hint')}</p>
           </div>
           <button
             type="button"
@@ -591,7 +591,7 @@ export function CollectionDefinitionForm({
             className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
           >
             <PlusIcon className="h-4 w-4" />
-            Alan Ekle
+            {t('collection.add_field')}
           </button>
         </div>
 
@@ -607,7 +607,7 @@ export function CollectionDefinitionForm({
             onClick={onCancel}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
           >
-            Vazgeç
+            {t('common.cancel')}
           </button>
         )}
         <button
@@ -618,7 +618,7 @@ export function CollectionDefinitionForm({
           {isSubmitting && (
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent" />
           )}
-          {submitLabel || (mode === 'create' ? 'Koleksiyon Oluştur' : 'Koleksiyonu Güncelle')}
+          {submitLabel || t(mode === 'create' ? 'collection.create_submit' : 'collection.update_submit')}
         </button>
       </div>
     </form>

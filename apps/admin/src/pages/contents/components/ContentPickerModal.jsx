@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowPathIcon,
@@ -8,10 +9,11 @@ import {
 } from '@heroicons/react/24/outline';
 import { listContents } from '../../../lib/api/contents.js';
 
-const STATUS_LABELS = {
-  draft: 'Taslak',
-  published: 'Yayında',
-  archived: 'Arşiv'
+// Değerler API'nin döndürdüğü durum kodlarıdır; yalnızca etiketleri çevrilir.
+const STATUS_LABEL_KEYS = {
+  draft: 'status.draft',
+  published: 'status.published',
+  archived: 'status.archived'
 };
 
 function useDebouncedValue(value, delay = 400) {
@@ -31,6 +33,7 @@ export default function ContentPickerModal({
   onSelect,
   selectedIds = []
 }) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebouncedValue(search, 400);
@@ -132,10 +135,10 @@ export default function ContentPickerModal({
                 <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                   <div>
                     <Dialog.Title className="text-lg font-semibold text-gray-900">
-                      İçerik seç
+                      {t('content.picker_title')}
                     </Dialog.Title>
                     <p className="mt-1 text-sm text-gray-500">
-                      İçerik kayıtlarını arayarak ilişkiler alanına ekleyebilirsin.
+                      {t('content.picker_subtitle')}
                     </p>
                   </div>
                   <button
@@ -143,7 +146,7 @@ export default function ContentPickerModal({
                     onClick={onClose}
                     className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                   >
-                    <span className="sr-only">Kapat</span>
+                    <span className="sr-only">{t('common.close')}</span>
                     <XMarkIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -160,14 +163,14 @@ export default function ContentPickerModal({
                           setSearch(event.target.value);
                           setPage(1);
                         }}
-                        placeholder="Başlık veya slug ara"
+                        placeholder={t('content.picker_search_placeholder')}
                         className="w-full rounded-md border border-gray-300 pl-10 pr-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                       />
                     </div>
                     {contentsQuery.isFetching && (
                       <div className="flex items-center gap-2 text-xs text-gray-500">
                         <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                        Yenileniyor
+                        {t('content.refreshing')}
                       </div>
                     )}
                   </div>
@@ -175,11 +178,11 @@ export default function ContentPickerModal({
                   <div className="mt-5">
                     {contentsQuery.isLoading ? (
                       <div className="flex h-40 items-center justify-center text-sm text-gray-500">
-                        İçerikler yükleniyor...
+                        {t('content.loading_list')}
                       </div>
                     ) : contentsQuery.isError ? (
                       <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                        İçerikler alınırken hata oluştu.
+                        {t('content.list_load_failed')}
                       </div>
                     ) : items.length ? (
                       <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
@@ -189,17 +192,20 @@ export default function ContentPickerModal({
                             <li key={id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                               <div>
                                 <p className="text-sm font-semibold text-gray-900">
-                                  {item.title || 'Başlıksız içerik'}
+                                  {item.title || t('content.untitled')}
                                 </p>
                                 <p className="mt-1 text-xs text-gray-500">
-                                  {item.slug || 'Slug yok'} · {STATUS_LABELS[item.status] || item.status || 'Durum yok'}
+                                  {item.slug || t('content.no_slug')} ·{' '}
+                                  {STATUS_LABEL_KEYS[item.status]
+                                    ? t(STATUS_LABEL_KEYS[item.status])
+                                    : item.status || t('content.no_status')}
                                 </p>
                                 <p className="mt-1 text-[11px] font-mono text-gray-400">{id}</p>
                               </div>
                               <div className="flex items-center gap-2">
                                 {isSelected(id) && (
                                   <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
-                                    Seçili
+                                    {t('content.selected')}
                                   </span>
                                 )}
                                 <button
@@ -207,7 +213,7 @@ export default function ContentPickerModal({
                                   onClick={(event) => handleSelect(item, event)}
                                   className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                                 >
-                                  Ekle
+                                  {t('common.add')}
                                 </button>
                               </div>
                             </li>
@@ -216,15 +222,15 @@ export default function ContentPickerModal({
                       </ul>
                     ) : (
                       <div className="flex h-40 flex-col items-center justify-center rounded-md border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
-                        Sonuç bulunamadı.
-                        <span className="mt-1 text-xs">Arama kriterlerini değiştirerek tekrar dene.</span>
+                        {t('common.no_results')}
+                        <span className="mt-1 text-xs">{t('content.picker_empty_hint')}</span>
                       </div>
                     )}
                   </div>
 
                   <div className="mt-5 flex flex-col items-center gap-3 border-t border-gray-200 pt-4 text-xs text-gray-500 sm:flex-row sm:justify-between">
                     <div>
-                      Toplam {pagination.total ?? items.length} kayıt
+                      {t('content.record_count', { count: pagination.total ?? items.length })}
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -233,10 +239,10 @@ export default function ContentPickerModal({
                         disabled={!canGoPrev}
                         className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Önceki
+                        {t('common.previous')}
                       </button>
                       <span>
-                        Sayfa {pagination.page} / {pagination.pages || 1}
+                        {t('content.page_indicator', { current: pagination.page, total: pagination.pages || 1 })}
                       </span>
                       <button
                         type="button"
@@ -244,7 +250,7 @@ export default function ContentPickerModal({
                         disabled={!canGoNext}
                         className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Sonraki
+                        {t('common.next')}
                       </button>
                     </div>
                   </div>

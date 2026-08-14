@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { collectionsApi } from '../../../lib/api/collections.js'
+import { useApiError } from '../../../lib/useApiError.js'
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 function useDebouncedValue(value, delay = 300) {
@@ -22,15 +24,17 @@ function useDebouncedValue(value, delay = 300) {
  * @param {string|string[]} props.value - Seçili değer(ler) (entry ID'leri)
  * @param {Function} props.onChange - Değer değişikliği callback'i
  * @param {boolean} props.multiple - Çoklu seçim desteği
- * @param {string} props.placeholder - Input placeholder
+ * @param {string} [props.placeholder] - Input placeholder (varsayılan: çeviriden gelir)
  */
 export default function RefFieldAutocomplete({ 
   refTarget, 
   value, 
   onChange, 
   multiple = false,
-  placeholder = 'Aramaya başlayın...'
+  placeholder
 }) {
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const [searchQuery, setSearchQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedEntries, setSelectedEntries] = useState([])
@@ -138,7 +142,7 @@ export default function RefFieldAutocomplete({
   if (!refTarget) {
     return (
       <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-        ⚠️ Hedef koleksiyon tanımlanmamış
+        ⚠️ {t('collection.ref_target_missing')}
       </div>
     )
   }
@@ -176,7 +180,7 @@ export default function RefFieldAutocomplete({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onFocus={() => setIsOpen(true)}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('collection.ref_search_placeholder')}
           className="w-full rounded-md border border-gray-300 pl-9 pr-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
         />
         {searchQuery && (
@@ -197,16 +201,16 @@ export default function RefFieldAutocomplete({
       {isOpen && (
         <div className="absolute z-10 mt-1 w-full rounded-md bg-white shadow-lg border border-gray-200 max-h-60 overflow-auto">
           {isLoading ? (
-            <div className="px-4 py-3 text-sm text-gray-500">Yükleniyor...</div>
+            <div className="px-4 py-3 text-sm text-gray-500">{t('common.loading')}</div>
           ) : error ? (
             <div className="px-4 py-3 text-sm text-red-600">
-              <div className="font-medium">Hata: {error.message}</div>
-              <div className="text-xs mt-1">Koleksiyon: {refTarget}</div>
+              <div className="font-medium">{describeError(error, 'collection.ref_load_failed')}</div>
+              <div className="text-xs mt-1">{t('collection.ref_collection_line', { key: refTarget })}</div>
             </div>
           ) : entries.length === 0 ? (
             <div className="px-4 py-3 text-sm text-gray-500">
-              <div>{searchQuery ? 'Sonuç bulunamadı' : 'Kayıt bulunamadı'}</div>
-              <div className="text-xs mt-1 text-gray-400">Koleksiyon: {refTarget}</div>
+              <div>{searchQuery ? t('common.no_results') : t('collection.entries_none_found')}</div>
+              <div className="text-xs mt-1 text-gray-400">{t('collection.ref_collection_line', { key: refTarget })}</div>
             </div>
           ) : (
             <ul className="py-1">
@@ -243,7 +247,11 @@ export default function RefFieldAutocomplete({
 
       {/* Yardım metni */}
       <p className="mt-1 text-xs text-gray-500">
-        <span className="font-medium">{refTarget}</span> koleksiyonundan seçim yapın
+        <Trans
+          i18nKey="collection.ref_pick_hint"
+          values={{ collection: refTarget }}
+          components={{ strong: <span className="font-medium" /> }}
+        />
       </p>
     </div>
   )

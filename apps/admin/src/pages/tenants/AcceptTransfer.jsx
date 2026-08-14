@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
+import { Trans, useTranslation } from 'react-i18next'
 import { tenantAPI } from '../../lib/tenantAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { 
   CheckCircleIcon, 

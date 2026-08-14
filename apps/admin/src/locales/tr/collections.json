@@ -1,6 +1,10 @@
 {
   "collection.add_field": "Alan Ekle",
   "collection.allow_drafts": "Taslak durumuna izin ver",
+  "collection.content_relations_empty": "Henüz içerik ilişkisi eklenmedi.",
+  "collection.content_relations_hint": "İçerik kayıtlarını seçerek JSON alanına ekleyebilirsiniz.",
+  "collection.content_relations_title": "İçerik ilişkileri",
+  "collection.content_select": "İçerik seç",
   "collection.create_failed": "Koleksiyon oluşturulamadı.",
   "collection.create_panel_hint": "Alan tiplerini belirleyin, slug kurallarını tanımlayın ve kayıtlar için esnek bir yapı oluşturun.",
   "collection.create_panel_title": "Yeni Koleksiyon Oluştur",

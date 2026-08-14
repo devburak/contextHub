@@ -383,8 +383,8 @@ export default function Layout() {
                   type="button"
                   onClick={toggleSidebarCollapsed}
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
-                  title={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
+                  aria-label={sidebarCollapsed ? t('nav.expand_menu') : t('nav.collapse_menu')}
+                  title={sidebarCollapsed ? t('nav.expand_menu') : t('nav.collapse_menu')}
                 >
                   {sidebarCollapsed ? (
                     <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
@@ -450,7 +450,7 @@ export default function Layout() {
                     >
                       {memberships.map((membership) => (
                         <option key={membership.tenantId} value={membership.tenantId}>
-                          {membership.tenant?.name || 'Varlık'}
+                          {membership.tenant?.name || t('tenant.unnamed')}
                         </option>
                       ))}
                     </select>
@@ -473,7 +473,7 @@ export default function Layout() {
                       </span>
                     </div>
                     <span className="hidden lg:flex lg:flex-col lg:items-start">
-                      <span>{user?.firstName || 'Kullanıcı'}</span>
+                      <span>{user?.firstName || t('nav.user_fallback')}</span>
                       <span className="text-xs font-normal text-gray-500">{t('nav.view_profile')}</span>
                     </span>
                   </Link>
@@ -482,7 +482,7 @@ export default function Layout() {
                     onClick={logout}
                     className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
-                    Çıkış
+                    {t('nav.sign_out_short')}
                   </button>
                 </div>
               </div>
