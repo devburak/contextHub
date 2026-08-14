@@ -18,6 +18,8 @@ export default function AcceptTransfer() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { updateMemberships } = useAuth()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   
   const token = searchParams.get('token')
   const tenantId = searchParams.get('tenant')
@@ -30,7 +32,7 @@ export default function AcceptTransfer() {
     onSuccess: async (response) => {
       const { membership, tenant } = response.data || response
       
-      setTenantName(tenant?.name || 'Varlık')
+      setTenantName(tenant?.name || t('tenant.unnamed'))
       
       // Tüm tenant listesini yeniden çek (ownerCount güncellenmiş olacak)
       try {
@@ -53,8 +55,7 @@ export default function AcceptTransfer() {
       }
     },
     onError: (err) => {
-      const message = err.response?.data?.message || 'Sahiplik devri kabul edilirken bir hata oluştu'
-      setError(message)
+      setError(describeError(err, 'tenant.transfer_accept_failed'))
     }
   })
 
@@ -75,10 +76,10 @@ export default function AcceptTransfer() {
               <div className="text-center">
                 <XCircleIcon className="mx-auto h-16 w-16 text-red-500" />
                 <h2 className="mt-4 text-2xl font-bold text-gray-900">
-                  Geçersiz Bağlantı
+                  {t('tenant.transfer_invalid_link_title')}
                 </h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  Sahiplik devri bağlantısı geçersiz veya eksik bilgi içeriyor.
+                  {t('tenant.transfer_invalid_link_desc')}
                 </p>
                 <div className="mt-6">
                   <Link
@@ -86,7 +87,7 @@ export default function AcceptTransfer() {
                     className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
                   >
                     <BuildingOfficeIcon className="h-5 w-5" />
-                    Varlıklara Git
+                    {t('tenant.go_to_tenants')}
                   </Link>
                 </div>
               </div>
@@ -108,10 +109,10 @@ export default function AcceptTransfer() {
               <div className="text-center">
                 <ArrowPathIcon className="mx-auto h-16 w-16 text-blue-500 animate-spin" />
                 <h2 className="mt-4 text-2xl font-bold text-gray-900">
-                  Sahiplik Devri İşleniyor
+                  {t('tenant.transfer_processing_title')}
                 </h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  Lütfen bekleyin...
+                  {t('tenant.transfer_processing_desc')}
                 </p>
               </div>
             </div>
@@ -132,7 +133,7 @@ export default function AcceptTransfer() {
               <div className="text-center">
                 <XCircleIcon className="mx-auto h-16 w-16 text-red-500" />
                 <h2 className="mt-4 text-2xl font-bold text-gray-900">
-                  İşlem Başarısız
+                  {t('tenant.transfer_failed_title')}
                 </h2>
                 <p className="mt-2 text-sm text-gray-600">
                   {error}
@@ -146,14 +147,14 @@ export default function AcceptTransfer() {
                     className="w-full inline-flex justify-center items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
                   >
                     <ArrowPathIcon className="h-5 w-5" />
-                    Tekrar Dene
+                    {t('common.retry')}
                   </button>
                   <Link
                     to="/varliklar"
                     className="w-full inline-flex justify-center items-center gap-2 rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200"
                   >
                     <BuildingOfficeIcon className="h-5 w-5" />
-                    Varlıklara Git
+                    {t('tenant.go_to_tenants')}
                   </Link>
                 </div>
               </div>
@@ -177,13 +178,13 @@ export default function AcceptTransfer() {
                   <CheckCircleIcon className="h-12 w-12 text-green-600" />
                 </div>
                 <h2 className="mt-4 text-2xl font-bold text-gray-900">
-                  Sahiplik Devri Tamamlandı!
+                  {t('tenant.transfer_success_title')}
                 </h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  <strong>{tenantName}</strong> varlığının sahipliği başarıyla size devredildi.
+                  <Trans i18nKey="tenant.transfer_success_desc" values={{ name: tenantName }} components={{ strong: <strong /> }} />
                 </p>
                 <p className="mt-4 text-xs text-gray-500">
-                  Varlıklar sayfasına yönlendiriliyorsunuz...
+                  {t('tenant.transfer_redirecting')}
                 </p>
                 <div className="mt-6">
                   <Link
@@ -191,7 +192,7 @@ export default function AcceptTransfer() {
                     className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
                   >
                     <BuildingOfficeIcon className="h-5 w-5" />
-                    Varlıklara Git
+                    {t('tenant.go_to_tenants')}
                   </Link>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -38,6 +39,35 @@ import { LinkNode, AutoLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { CodeNode } from '@lexical/code';
 // ContentEditor ile aynı görsel temayı (editor-* sınıfları) yeniden kullan.
 import '../../contents/ContentEditor.css';
+// ContentEditor.css içindeki ikon kuralları `[title='<Türkçe metin>']` seçicisine bağlı.
+// Başlıklar çevrildiği anda bu eşleşme kopacağı için ikonlar artık başlıktan değil,
+// doğrudan varlık dosyasından geliyor. (Ana editörün toolbar'ı çeviri kapsamı dışında,
+// bu yüzden ortak CSS'teki kurallar olduğu gibi kalıyor.)
+import undoIcon from '../../contents/assets/icons/undo.svg';
+import redoIcon from '../../contents/assets/icons/redo.svg';
+import paragraphIcon from '../../contents/assets/icons/text-paragraph.svg';
+import heading1Icon from '../../contents/assets/icons/type-h1.svg';
+import heading2Icon from '../../contents/assets/icons/type-h2.svg';
+import heading3Icon from '../../contents/assets/icons/type-h3.svg';
+import quoteIcon from '../../contents/assets/icons/quote.svg';
+import boldIcon from '../../contents/assets/icons/type-bold.svg';
+import italicIcon from '../../contents/assets/icons/type-italic.svg';
+import underlineIcon from '../../contents/assets/icons/type-underline.svg';
+import strikethroughIcon from '../../contents/assets/icons/type-strikethrough.svg';
+import bulletListIcon from '../../contents/assets/icons/list-ul.svg';
+import numberedListIcon from '../../contents/assets/icons/list-ol.svg';
+import fontColorIcon from '../../contents/assets/icons/font-color.svg';
+import eraserIcon from '../../contents/assets/icons/eraser.svg';
+import linkIcon from '../../contents/assets/icons/link.svg';
+
+// `.editor-toolbar__button::before` 18x18'lik boş bir kutu bırakır; ikonu butonun
+// kendi arka planına aynı ölçüyle basıyoruz, böylece hizalama CSS ile birebir aynı.
+const iconStyle = (icon) => ({
+  backgroundImage: `url(${icon})`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'center',
+  backgroundSize: '18px 18px'
+});
 
 // İçerik editörüyle aynı tema haritası; CSS sınıfları ContentEditor.css içinde tanımlı.
 const theme = {
@@ -111,10 +141,9 @@ function normaliseValue(value) {
   return { json: null, html: '' };
 }
 
-// Ana içerik editörüyle (ContentEditor) aynı CSS ikon sistemini kullanır:
-// ikon, ContentEditor.css içindeki `.editor-toolbar__button[title='...']::before`
-// kuralından gelir. Bu yüzden buton metin/çocuk içermez, yalnızca eşleşen title taşır.
-function ToolbarButton({ onClick, title, active = false }) {
+// Ana içerik editörüyle (ContentEditor) aynı görsel dili kullanır; buton metin/çocuk
+// içermez, ikon `icon` prop'uyla gelen varlık dosyasından basılır.
+function ToolbarButton({ onClick, title, icon, active = false }) {
   return (
     <button
       type="button"
@@ -123,6 +152,7 @@ function ToolbarButton({ onClick, title, active = false }) {
       title={title}
       aria-label={title}
       aria-pressed={active}
+      style={iconStyle(icon)}
       className={`editor-toolbar__button${active ? ' is-active' : ''}`}
     />
   );
@@ -132,6 +162,7 @@ function ToolbarButton({ onClick, title, active = false }) {
 // Buton, gizli bir native renk seçiciyi kaplar; seçim Lexical tarafından korunduğu için
 // renk değişimi mevcut seçili metne uygulanır.
 function ColorButton({ editor }) {
+  const { t } = useTranslation();
   const [color, setColor] = useState('#111827');
 
   const applyColor = useCallback(
@@ -150,9 +181,9 @@ function ColorButton({ editor }) {
   return (
     <label
       className="editor-toolbar__button"
-      title="Metin rengi"
-      aria-label="Metin rengi"
-      style={{ cursor: 'pointer' }}
+      title={t('collection.editor_text_color')}
+      aria-label={t('collection.editor_text_color')}
+      style={{ ...iconStyle(fontColorIcon), cursor: 'pointer' }}
       onMouseDown={(event) => event.preventDefault()}
     >
       <input
@@ -166,6 +197,7 @@ function ColorButton({ editor }) {
 }
 
 function Toolbar() {
+  const { t } = useTranslation();
   const [editor] = useLexicalComposerContext();
   const [formats, setFormats] = useState({
     bold: false,
@@ -223,30 +255,31 @@ function Toolbar() {
 
   return (
     <div className="editor-toolbar">
-      <ToolbarButton title="Geri al" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} />
-      <ToolbarButton title="İleri al" onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} />
+      <ToolbarButton title={t('collection.editor_undo')} icon={undoIcon} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} />
+      <ToolbarButton title={t('collection.editor_redo')} icon={redoIcon} onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} />
       <span className="editor-toolbar__divider" aria-hidden="true" />
-      <ToolbarButton title="Paragraf" onClick={() => formatBlock(() => $createParagraphNode())} />
-      <ToolbarButton title="Başlık 1" onClick={() => formatBlock(() => $createHeadingNode('h1'))} />
-      <ToolbarButton title="Başlık 2" onClick={() => formatBlock(() => $createHeadingNode('h2'))} />
-      <ToolbarButton title="Başlık 3" onClick={() => formatBlock(() => $createHeadingNode('h3'))} />
-      <ToolbarButton title="Alıntı" onClick={() => formatBlock(() => $createQuoteNode())} />
+      <ToolbarButton title={t('collection.editor_paragraph')} icon={paragraphIcon} onClick={() => formatBlock(() => $createParagraphNode())} />
+      <ToolbarButton title={t('collection.editor_heading1')} icon={heading1Icon} onClick={() => formatBlock(() => $createHeadingNode('h1'))} />
+      <ToolbarButton title={t('collection.editor_heading2')} icon={heading2Icon} onClick={() => formatBlock(() => $createHeadingNode('h2'))} />
+      <ToolbarButton title={t('collection.editor_heading3')} icon={heading3Icon} onClick={() => formatBlock(() => $createHeadingNode('h3'))} />
+      <ToolbarButton title={t('collection.editor_quote')} icon={quoteIcon} onClick={() => formatBlock(() => $createQuoteNode())} />
       <span className="editor-toolbar__divider" aria-hidden="true" />
-      <ToolbarButton title="Kalın" active={formats.bold} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
-      <ToolbarButton title="İtalik" active={formats.italic} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
-      <ToolbarButton title="Altı çizili" active={formats.underline} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} />
-      <ToolbarButton title="Üzeri çizili" active={formats.strikethrough} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} />
+      <ToolbarButton title={t('collection.editor_bold')} icon={boldIcon} active={formats.bold} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
+      <ToolbarButton title={t('collection.editor_italic')} icon={italicIcon} active={formats.italic} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
+      <ToolbarButton title={t('collection.editor_underline')} icon={underlineIcon} active={formats.underline} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} />
+      <ToolbarButton title={t('collection.editor_strikethrough')} icon={strikethroughIcon} active={formats.strikethrough} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} />
       <span className="editor-toolbar__divider" aria-hidden="true" />
-      <ToolbarButton title="Madde işaretli liste" onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)} />
-      <ToolbarButton title="Numaralı liste" onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)} />
+      <ToolbarButton title={t('collection.editor_bullet_list')} icon={bulletListIcon} onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)} />
+      <ToolbarButton title={t('collection.editor_numbered_list')} icon={numberedListIcon} onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)} />
       <span className="editor-toolbar__divider" aria-hidden="true" />
       <ColorButton editor={editor} />
-      <ToolbarButton title="Stili temizle" onClick={clearFormatting} />
+      <ToolbarButton title={t('collection.editor_clear_format')} icon={eraserIcon} onClick={clearFormatting} />
       <span className="editor-toolbar__divider" aria-hidden="true" />
       <ToolbarButton
-        title="Bağlantı"
+        title={t('collection.editor_link')}
+        icon={linkIcon}
         onClick={() => {
-          const url = window.prompt('Bağlantı adresi (boş bırakırsanız kaldırılır):', 'https://');
+          const url = window.prompt(t('collection.editor_link_prompt'), 'https://');
           if (url === null) return;
           editor.dispatchCommand(TOGGLE_LINK_COMMAND, url ? url : null);
         }}
@@ -259,8 +292,10 @@ function Toolbar() {
  * Koleksiyon richText alanları için bağımsız, yeniden kullanılabilir Lexical editörü.
  * value: { json, html } | undefined
  * onChange: ({ json, html }) => void   — her değişiklikte Lexical state JSON'u ve HTML üretir.
+ * placeholder: opsiyonel; verilmezse çeviriden gelir.
  */
-export default function RichTextField({ value, onChange, placeholder = 'İçerik yazın…' }) {
+export default function RichTextField({ value, onChange, placeholder }) {
+  const { t } = useTranslation();
   const initial = useMemo(() => normaliseValue(value), []); // yalnızca mount anında oku
   const [isEmpty, setIsEmpty] = useState(!initial.json);
 
@@ -304,7 +339,7 @@ export default function RichTextField({ value, onChange, placeholder = 'İçerik
             placeholder={
               isEmpty ? (
                 <div className="pointer-events-none absolute left-3 top-2 text-sm text-gray-400">
-                  {placeholder}
+                  {placeholder || t('collection.richtext_placeholder')}
                 </div>
               ) : null
             }

@@ -121,6 +121,7 @@
   "collection.relations_invalid_json": "Enter valid JSON in the relations field.",
   "collection.relations_json_hint": "Your selections in the interface are reflected here; you can also add other relations as JSON by hand.",
   "collection.relations_json_label": "Relations (JSON)",
+  "collection.relations_json_placeholder": "{\n  \"media\": [\"mediaId\"],\n  \"contents\": [\"contentId\"],\n  \"refs\": [{ \"collectionKey\": \"other-collection\", \"entryId\": \"entryId\" }]\n}",
   "collection.relations_not_object": "The relations field must be a JSON object.",
   "collection.richtext_field_placeholder": "Write the {{field}} content…",
   "collection.richtext_placeholder": "Write your content…",

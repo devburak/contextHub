@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { tenantAPI } from '../../lib/tenantAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { fetchTenantLimits, updateTenantSubscription } from '../../lib/api/subscriptions.js'
 import {
   listCustomFieldDefinitions,
@@ -59,18 +61,31 @@ const EMPTY_STATE = {
 
 const FIELD_INPUT_CLASS = 'block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500'
 const FIELD_INPUT_WITH_MARGIN_CLASS = `mt-1 ${FIELD_INPUT_CLASS}`
+// `value` alan tipinin sistemdeki tanımlayıcısıdır ve çevrilmez; yalnızca
+// görünen etiket render sırasında `t()` ile çözülür.
 const CUSTOM_FIELD_TYPES = [
-  { value: 'text', label: 'Text' },
-  { value: 'number', label: 'Number' },
-  { value: 'boolean', label: 'Boolean' },
-  { value: 'date', label: 'Date' },
-  { value: 'select', label: 'Select' },
-  { value: 'multi-select', label: 'Multi-select' },
-  { value: 'url', label: 'URL' },
-  { value: 'json', label: 'JSON' },
-  { value: 'reference', label: 'Reference (Tekli)' },
-  { value: 'multi-reference', label: 'Reference (Çoklu)' },
+  { value: 'text', labelKey: 'tenantSettings.field_type_text' },
+  { value: 'number', labelKey: 'tenantSettings.field_type_number' },
+  { value: 'boolean', labelKey: 'tenantSettings.field_type_boolean' },
+  { value: 'date', labelKey: 'tenantSettings.field_type_date' },
+  { value: 'select', labelKey: 'tenantSettings.field_type_select' },
+  { value: 'multi-select', labelKey: 'tenantSettings.field_type_multi_select' },
+  { value: 'url', labelKey: 'tenantSettings.field_type_url' },
+  { value: 'json', labelKey: 'tenantSettings.field_type_json' },
+  { value: 'reference', labelKey: 'tenantSettings.field_type_reference' },
+  { value: 'multi-reference', labelKey: 'tenantSettings.field_type_multi_reference' },
 ]
+
+// Alan bayrağı kutucuklarının sırası ekrana göre değişiyor; etiketler anahtar olarak tutulur.
+const CUSTOM_FIELD_FLAG_KEYS = {
+  public: 'tenantSettings.flag_public',
+  filterable: 'tenantSettings.flag_filterable',
+  searchable: 'tenantSettings.flag_searchable',
+  required: 'common.required'
+}
+
+// buildPayload React ağacının dışında çalıştığı için hatayı çeviri anahtarıyla fırlatır.
+const METADATA_INVALID_JSON_ERROR = 'tenantSettings.metadata_invalid_json'
 
 const REFERENCE_FIELD_TYPES = new Set(['reference', 'multi-reference'])
 
@@ -193,7 +208,7 @@ const buildPayload = (state, secretFlags, secretEditState, metadataText) => {
     try {
       metadata = JSON.parse(metadataText)
     } catch (error) {
-      throw new Error('Metadata JSON formatı geçersiz')
+      throw new Error(METADATA_INVALID_JSON_ERROR)
     }
   }
 
@@ -256,6 +271,8 @@ const buildPayload = (state, secretFlags, secretEditState, metadataText) => {
 
 function CustomFieldDefinitionsSettings({ tenantId }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const [draft, setDraft] = useState({
     key: '',
     label: '',
@@ -316,11 +333,10 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
     onSuccess: () => {
       invalidateDefinitions()
       resetDraft()
-      setFeedback({ type: 'success', message: 'Custom field tanımı oluşturuldu.' })
+      setFeedback({ type: 'success', message: t('tenantSettings.custom_field_created') })
     },
     onError: (error) => {
-      const message = error?.response?.data?.message || error.message || 'Custom field tanımı oluşturulamadı.'
-      setFeedback({ type: 'error', message })
+      setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.custom_field_create_failed') })
     }
   })
 
@@ -329,11 +345,10 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
     onMutate: () => setFeedback({ type: '', message: '' }),
     onSuccess: () => {
       invalidateDefinitions()
-      setFeedback({ type: 'success', message: 'Custom field tanımı güncellendi.' })
+      setFeedback({ type: 'success', message: t('tenantSettings.custom_field_updated') })
     },
     onError: (error) => {
-      const message = error?.response?.data?.message || error.message || 'Custom field tanımı güncellenemedi.'
-      setFeedback({ type: 'error', message })
+      setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.custom_field_update_failed') })
     }
   })
 
@@ -342,11 +357,10 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
     onMutate: () => setFeedback({ type: '', message: '' }),
     onSuccess: () => {
       invalidateDefinitions()
-      setFeedback({ type: 'success', message: 'Custom field tanımı silindi.' })
+      setFeedback({ type: 'success', message: t('tenantSettings.custom_field_deleted') })
     },
     onError: (error) => {
-      const message = error?.response?.data?.message || error.message || 'Custom field tanımı silinemedi.'
-      setFeedback({ type: 'error', message })
+      setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.custom_field_delete_failed') })
     }
   })
 
@@ -380,8 +394,8 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
   return (
     <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
       <div className="border-b border-gray-200 px-6 py-4">
-        <h2 className="text-lg font-semibold text-gray-900">İçerik Custom Field Tanımları</h2>
-        <p className="text-sm text-gray-500">İçerik editöründe doldurulacak tenant bazlı alanları, public API ve filtre davranışlarını buradan yönet.</p>
+        <h2 className="text-lg font-semibold text-gray-900">{t('tenantSettings.custom_fields_title')}</h2>
+        <p className="text-sm text-gray-500">{t('tenantSettings.custom_fields_desc')}</p>
       </div>
       <div className="space-y-5 px-6 py-5">
         {feedback.message && (
@@ -391,14 +405,14 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
         )}
 
         {definitionsQuery.isLoading ? (
-          <div className="text-sm text-gray-500">Custom field tanımları yükleniyor...</div>
+          <div className="text-sm text-gray-500">{t('tenantSettings.custom_fields_loading')}</div>
         ) : definitionsQuery.isError ? (
           <div className="flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <span>Custom field tanımları alınamadı.</span>
-            <button type="button" onClick={() => definitionsQuery.refetch()} className="font-semibold text-red-700 hover:text-red-600">Tekrar dene</button>
+            <span>{t('tenantSettings.custom_fields_error')}</span>
+            <button type="button" onClick={() => definitionsQuery.refetch()} className="font-semibold text-red-700 hover:text-red-600">{t('common.retry')}</button>
           </div>
         ) : definitions.length === 0 ? (
-          <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500">Henüz custom field tanımı yok.</div>
+          <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500">{t('tenantSettings.custom_fields_empty')}</div>
         ) : (
           <div className="space-y-3">
             {definitions.map((definition) => (
@@ -407,7 +421,7 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-sm font-semibold text-gray-900">{definition.label}</h3>
-                      {definition.required && <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700">zorunlu</span>}
+                      {definition.required && <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700">{t('tenantSettings.badge_required')}</span>}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-gray-500">
                       <span className="rounded bg-white px-1.5 py-0.5">{definition.key}</span>
@@ -415,22 +429,22 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
                       {definition.referenceCollectionKey && (
                         <span className="rounded bg-purple-50 px-1.5 py-0.5 text-purple-700">→ {definition.referenceCollectionKey}</span>
                       )}
-                      {definition.public && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">public</span>}
-                      {definition.filterable && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">filterable</span>}
-                      {definition.searchable && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">searchable</span>}
+                      {definition.public && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">{t('tenantSettings.flag_public')}</span>}
+                      {definition.filterable && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">{t('tenantSettings.flag_filterable')}</span>}
+                      {definition.searchable && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">{t('tenantSettings.flag_searchable')}</span>}
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => window.confirm('Bu custom field tanımı silinsin mi?') && deleteMutation.mutate(definition._id)}
+                    onClick={() => window.confirm(t('tenantSettings.custom_field_delete_confirm')) && deleteMutation.mutate(definition._id)}
                     disabled={isMutating}
                     className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                   >
-                    Sil
+                    {t('common.delete')}
                   </button>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-gray-700 sm:grid-cols-4">
-                  {[['public', 'Public API'], ['filterable', 'Filtrelenebilir'], ['searchable', 'Aranabilir'], ['required', 'Zorunlu']].map(([key, label]) => (
+                  {['public', 'filterable', 'searchable', 'required'].map((key) => (
                     <label key={key} className="inline-flex items-center gap-2 rounded-md bg-white px-2 py-1.5">
                       <input
                         type="checkbox"
@@ -439,7 +453,7 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
                         disabled={isMutating}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                       />
-                      {label}
+                      {t(CUSTOM_FIELD_FLAG_KEYS[key])}
                     </label>
                   ))}
                 </div>
@@ -449,15 +463,15 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
         )}
 
         <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-gray-900">Alan Tanımı Ekle</h3>
+          <h3 className="text-sm font-semibold text-gray-900">{t('tenantSettings.add_field_title')}</h3>
           <div className="grid gap-3 sm:grid-cols-2">
-            <input type="text" value={draft.key} onChange={(event) => setDraft((prev) => ({ ...prev, key: event.target.value }))} className={FIELD_INPUT_CLASS} placeholder="key: author, source, readingTime" />
-            <input type="text" value={draft.label} onChange={(event) => setDraft((prev) => ({ ...prev, label: event.target.value }))} className={FIELD_INPUT_CLASS} placeholder="Etiket" />
+            <input type="text" value={draft.key} onChange={(event) => setDraft((prev) => ({ ...prev, key: event.target.value }))} className={FIELD_INPUT_CLASS} placeholder={t('tenantSettings.field_key_placeholder')} />
+            <input type="text" value={draft.label} onChange={(event) => setDraft((prev) => ({ ...prev, label: event.target.value }))} className={FIELD_INPUT_CLASS} placeholder={t('tenantSettings.field_label_placeholder')} />
             <select value={draft.type} onChange={(event) => setDraft((prev) => ({ ...prev, type: event.target.value }))} className={FIELD_INPUT_CLASS}>
-              {CUSTOM_FIELD_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+              {CUSTOM_FIELD_TYPES.map((type) => <option key={type.value} value={type.value}>{t(type.labelKey)}</option>)}
             </select>
             {optionTypes.has(draft.type) && (
-              <textarea value={draft.optionsText} onChange={(event) => setDraft((prev) => ({ ...prev, optionsText: event.target.value }))} rows={3} className={`${FIELD_INPUT_CLASS} sm:col-span-2`} placeholder={'Seçenekler\nEtiket|value'} />
+              <textarea value={draft.optionsText} onChange={(event) => setDraft((prev) => ({ ...prev, optionsText: event.target.value }))} rows={3} className={`${FIELD_INPUT_CLASS} sm:col-span-2`} placeholder={t('tenantSettings.field_options_placeholder')} />
             )}
             {REFERENCE_FIELD_TYPES.has(draft.type) && (
               <select
@@ -465,7 +479,7 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
                 onChange={(event) => setDraft((prev) => ({ ...prev, referenceCollectionKey: event.target.value }))}
                 className={`${FIELD_INPUT_CLASS} sm:col-span-2`}
               >
-                <option value="">Hedef koleksiyon seçin</option>
+                <option value="">{t('tenantSettings.reference_collection_placeholder')}</option>
                 {collectionTypes.map((collection) => (
                   <option key={collection.key} value={collection.key}>
                     {collection.name?.tr || collection.name?.en || collection.key}
@@ -475,10 +489,10 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
             )}
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs text-gray-700 sm:grid-cols-4">
-            {[['required', 'Zorunlu'], ['public', 'Public API'], ['filterable', 'Filtrelenebilir'], ['searchable', 'Aranabilir']].map(([key, label]) => (
+            {['required', 'public', 'filterable', 'searchable'].map((key) => (
               <label key={key} className="inline-flex items-center gap-2">
                 <input type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((prev) => ({ ...prev, [key]: event.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                {label}
+                {t(CUSTOM_FIELD_FLAG_KEYS[key])}
               </label>
             ))}
           </div>
@@ -489,7 +503,7 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
               disabled={isMutating || !draft.key.trim() || (REFERENCE_FIELD_TYPES.has(draft.type) && !draft.referenceCollectionKey)}
               className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
             >
-              {createMutation.isLoading || createMutation.isPending ? 'Ekleniyor...' : 'Alan Ekle'}
+              {createMutation.isLoading || createMutation.isPending ? t('tenantSettings.adding_field') : t('tenantSettings.add_field')}
             </button>
           </div>
         </div>
@@ -501,6 +515,8 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
 export default function TenantSettings() {
   const queryClient = useQueryClient()
   const { activeMembership, updateMemberships } = useAuth()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const activeTenantId = activeMembership?.tenantId || null
   const tenantSettingsQueryKey = ['tenants', 'settings', { tenant: activeTenantId }]
   const tenantLimitsQueryKey = ['tenant-limits', { tenant: activeTenantId }]
@@ -561,11 +577,10 @@ export default function TenantSettings() {
       setMetadataText(JSON.stringify(settings.metadata || {}, null, 2) || '{}')
       setSecretFlags({ smtpPassword: false, webhookSecret: false })
       setSecretEditState({ smtpPassword: false, webhookSecret: false })
-      setFeedback({ type: 'success', message: 'Ayarlar başarıyla kaydedildi.' })
+      setFeedback({ type: 'success', message: t('tenantSettings.settings_saved') })
     },
     onError: (error) => {
-      const apiMessage = error?.response?.data?.message || error?.response?.data?.error
-      setFeedback({ type: 'error', message: apiMessage || 'Ayarlar kaydedilirken bir hata oluştu.' })
+      setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.save_failed') })
     }
   })
 
@@ -583,11 +598,10 @@ export default function TenantSettings() {
       }
       setShowPlanModal(false)
       setSelectedPlan(null)
-      setFeedback({ type: 'success', message: 'Abonelik planı başarıyla güncellendi!' })
+      setFeedback({ type: 'success', message: t('tenantSettings.plan_updated') })
     },
     onError: (error) => {
-      const apiMessage = error?.response?.data?.message || error?.response?.data?.error
-      setFeedback({ type: 'error', message: apiMessage || 'Plan güncellenemedi.' })
+      setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.plan_update_failed') })
     }
   })
 
@@ -715,14 +729,15 @@ export default function TenantSettings() {
   const handleSubmit = (event) => {
     event.preventDefault()
     if (!activeTenantId) {
-      setFeedback({ type: 'error', message: 'Aktif tenant bulunamadı.' })
+      setFeedback({ type: 'error', message: t('tenantSettings.no_active_tenant') })
       return
     }
     try {
       const payload = buildPayload(formState, secretFlags, secretEditState, metadataText)
       updateMutation.mutate(payload)
     } catch (error) {
-      setFeedback({ type: 'error', message: error.message })
+      // buildPayload çeviri anahtarı fırlatır; beklenmeyen hatalarda ham mesaj gösterilir.
+      setFeedback({ type: 'error', message: t(error.message, { defaultValue: error.message }) })
     }
   }
 
@@ -745,28 +760,28 @@ export default function TenantSettings() {
       try {
         const parsed = JSON.parse(metadataTrimmed)
         if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          metadataError = 'Metadata bir JSON nesnesi olmalı (ör. { "anahtar": "değer" }).'
+          metadataError = t('tenantSettings.metadata_must_be_object')
         }
       } catch {
-        metadataError = 'Geçersiz JSON formatı.'
+        metadataError = t('tenantSettings.metadata_invalid_json')
       }
     }
   }
 
   if (!activeTenantId || settingsQuery.isLoading) {
-    return <div className="text-sm text-gray-500">Ayarlar yükleniyor...</div>
+    return <div className="text-sm text-gray-500">{t('tenantSettings.loading')}</div>
   }
 
   if (settingsQuery.isError) {
     return (
       <div className="space-y-3">
-        <div className="text-sm text-red-600">Ayarlar alınırken bir hata oluştu. Lütfen tekrar deneyin.</div>
+        <div className="text-sm text-red-600">{t('tenantSettings.load_error')}</div>
         <button
           type="button"
           onClick={() => settingsQuery.refetch()}
           className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
         >
-          Yeniden dene
+          {t('common.retry')}
         </button>
       </div>
     )
@@ -777,9 +792,9 @@ export default function TenantSettings() {
       <TenantTabs active="settings" />
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Tenant Ayarları</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('tenantSettings.title')}</h1>
         <p className="mt-2 text-sm text-gray-600">
-          SMTP, limitler ve özellikler gibi tenant düzeyindeki yapılandırmaları buradan yönetebilirsin.
+          {t('tenantSettings.subtitle')}
         </p>
       </div>
 
@@ -801,22 +816,24 @@ export default function TenantSettings() {
         {/* Subscription Plan Section */}
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">Abonelik Planı</h2>
-            <p className="text-sm text-gray-500">Varlığınızın abonelik planını görüntüleyin ve değiştirin. Plan değişiklikleri limitlerinizi anında günceller.</p>
+            <h2 className="text-lg font-semibold text-gray-900">{t('tenantSettings.subscription_title')}</h2>
+            <p className="text-sm text-gray-500">{t('tenantSettings.subscription_desc')}</p>
           </div>
           <div className="px-6 py-5 space-y-4">
             {limitsQuery.isLoading ? (
-              <div className="text-center text-gray-500 py-4">Plan bilgileri yükleniyor...</div>
+              <div className="text-center text-gray-500 py-4">{t('tenantSettings.plan_loading')}</div>
             ) : limitsQuery.isError ? (
-              <div className="text-center text-red-600 py-4">Plan bilgileri alınamadı.</div>
+              <div className="text-center text-red-600 py-4">{t('tenantSettings.plan_load_error')}</div>
             ) : (
               <>
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div>
-                    <p className="text-sm font-medium text-gray-700">Mevcut Plan</p>
+                    <p className="text-sm font-medium text-gray-700">{t('tenantSettings.current_plan')}</p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">{limitsQuery.data?.plan?.name || 'Free'}</p>
                     {limitsQuery.data?.plan?.price > 0 && (
-                      <p className="text-sm text-gray-600 mt-1">${limitsQuery.data.plan.price}/ay</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {t('tenantSettings.plan_price_monthly', { price: limitsQuery.data.plan.price })}
+                      </p>
                     )}
                   </div>
                   <button
@@ -824,35 +841,35 @@ export default function TenantSettings() {
                     onClick={() => setShowPlanModal(true)}
                     className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
                   >
-                    Planı Değiştir
+                    {t('tenantSettings.change_plan')}
                   </button>
                 </div>
 
                 {/* Current Usage Stats */}
                 <div className="grid grid-cols-2 gap-4 mt-4">
                   <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                    <p className="text-xs font-medium text-blue-600 uppercase">Kullanıcılar</p>
+                    <p className="text-xs font-medium text-blue-600 uppercase">{t('tenantSettings.usage_users')}</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
                       {formatCountUsage(limitsQuery.data?.usage?.users)}
                     </p>
                   </div>
 
                   <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                    <p className="text-xs font-medium text-purple-600 uppercase">Depolama</p>
+                    <p className="text-xs font-medium text-purple-600 uppercase">{t('tenantSettings.usage_storage')}</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
                       {formatStorageUsage(limitsQuery.data?.usage?.storage)}
                     </p>
                   </div>
 
                   <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
-                    <p className="text-xs font-medium text-emerald-600 uppercase">API İstekleri</p>
+                    <p className="text-xs font-medium text-emerald-600 uppercase">{t('tenantSettings.usage_requests')}</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
                       {formatRequestUsage(limitsQuery.data?.usage?.requests)}
                     </p>
                   </div>
 
                   <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
-                    <p className="text-xs font-medium text-amber-600 uppercase">Owners</p>
+                    <p className="text-xs font-medium text-amber-600 uppercase">{t('tenantSettings.usage_owners')}</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
                       {formatCountUsage(limitsQuery.data?.usage?.owners)}
                     </p>
@@ -870,8 +887,8 @@ export default function TenantSettings() {
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">Edge API ve CORS</h2>
-            <p className="text-sm text-gray-500">Tenantın kendi web siteleri için public/API-token erişimini yönet. Bu liste yönetim oturumu veya admin cookie yetkisi vermez.</p>
+            <h2 className="text-lg font-semibold text-gray-900">{t('tenantSettings.edge_title')}</h2>
+            <p className="text-sm text-gray-500">{t('tenantSettings.edge_desc')}</p>
           </div>
           <div className="space-y-5 px-6 py-5">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -883,8 +900,8 @@ export default function TenantSettings() {
                   className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span>
-                  <span className="block text-sm font-medium text-gray-900">Public read aktif</span>
-                  <span className="mt-1 block text-xs text-gray-500">Kapalıyken Worker tenant için public okuma isteklerini origin'e geçirmeden reddeder.</span>
+                  <span className="block text-sm font-medium text-gray-900">{t('tenantSettings.public_read_label')}</span>
+                  <span className="mt-1 block text-xs text-gray-500">{t('tenantSettings.public_read_hint')}</span>
                 </span>
               </label>
               <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -895,13 +912,13 @@ export default function TenantSettings() {
                   className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span>
-                  <span className="block text-sm font-medium text-gray-900">Localhost geliştirme izni</span>
-                  <span className="mt-1 block text-xs text-gray-500">localhost ve 127.0.0.1 origin'leri sadece geliştirme/test için kabul edilir.</span>
+                  <span className="block text-sm font-medium text-gray-900">{t('tenantSettings.allow_localhost_label')}</span>
+                  <span className="mt-1 block text-xs text-gray-500">{t('tenantSettings.allow_localhost_hint')}</span>
                 </span>
               </label>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Allowed Origins</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.allowed_origins_label')}</label>
               <textarea
                 rows="5"
                 value={formState.edgeGateway.allowedOriginsText}
@@ -910,7 +927,7 @@ export default function TenantSettings() {
                 className={`${FIELD_INPUT_WITH_MARGIN_CLASS} font-mono`}
               />
               <p className="mt-2 text-xs text-gray-500">
-                Her satıra protokolüyle birlikte bir origin yaz. Wildcard yalnızca alt domainleri kapsar; ana domain için ayrıca kayıt gir. Doğrulanmış tenant domainleri otomatik eklenir. Bu originlerden gelen isteklerde kullanıcı oturum cookie’leri kabul edilmez.
+                {t('tenantSettings.allowed_origins_hint')}
               </p>
             </div>
           </div>
@@ -919,11 +936,11 @@ export default function TenantSettings() {
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">SMTP Ayarları</h2>
-              <p className="text-sm text-gray-500">Sistem e-postalarını kendi SMTP servisinden göndermek için bu alanı yapılandır.</p>
+              <h2 className="text-lg font-semibold text-gray-900">{t('tenantSettings.smtp_title')}</h2>
+              <p className="text-sm text-gray-500">{t('tenantSettings.smtp_desc')}</p>
             </div>
             <label className="flex items-center gap-2 text-sm text-gray-700">
-              <span>Aktif</span>
+              <span>{t('status.active')}</span>
               <input
                 type="checkbox"
                 checked={formState.smtp.enabled}
@@ -934,7 +951,7 @@ export default function TenantSettings() {
           </div>
           <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Sunucu Adresi</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.smtp_host_label')}</label>
               <input
                 type="text"
                 name="smtp-host"
@@ -946,7 +963,7 @@ export default function TenantSettings() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Port</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.smtp_port_label')}</label>
               <input
                 type="number"
                 name="smtp-port"
@@ -967,11 +984,11 @@ export default function TenantSettings() {
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="smtp-secure" className="text-sm text-gray-700">
-                TLS/SSL bağlantısı kullan
+                {t('tenantSettings.smtp_secure_label')}
               </label>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Kullanıcı Adı</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.smtp_username_label')}</label>
               <input
                 type="text"
                 name="smtp-username"
@@ -983,7 +1000,7 @@ export default function TenantSettings() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Gönderen Adı</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.smtp_from_name_label')}</label>
               <input
                 type="text"
                 name="smtp-from-name"
@@ -995,7 +1012,7 @@ export default function TenantSettings() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Gönderen E-posta</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.smtp_from_email_label')}</label>
               <input
                 type="email"
                 name="smtp-from-email"
@@ -1007,7 +1024,7 @@ export default function TenantSettings() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Parola</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.smtp_password_label')}</label>
               <input
                 id="smtp-credential-secret"
                 name="smtp-credential-secret"
@@ -1017,18 +1034,18 @@ export default function TenantSettings() {
                 disabled={!secretEditState.smtpPassword}
                 value={formState.smtp.password}
                 onChange={handlePasswordChange}
-                placeholder={formState.smtp.hasPassword ? '••••••' : 'Parola girin'}
+                placeholder={formState.smtp.hasPassword ? '••••••' : t('tenantSettings.smtp_password_placeholder')}
                 className={`${FIELD_INPUT_WITH_MARGIN_CLASS} disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400`}
               />
               <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
                 <span>
                   {secretFlags.smtpPassword
-                    ? 'Kaydedildiğinde parola temizlenecek.'
+                    ? t('tenantSettings.smtp_password_will_clear')
                     : secretEditState.smtpPassword
-                      ? 'Yeni parola kaydedilecek.'
+                      ? t('tenantSettings.smtp_password_will_save')
                       : formState.smtp.hasPassword
-                        ? 'Kaydetmediğin sürece mevcut parola korunur.'
-                      : 'Parola girilmedi.'}
+                        ? t('tenantSettings.smtp_password_kept')
+                      : t('tenantSettings.smtp_password_empty')}
                 </span>
                 <div className="flex items-center gap-3">
                   {secretEditState.smtpPassword ? (
@@ -1037,7 +1054,7 @@ export default function TenantSettings() {
                       onClick={cancelSmtpPasswordEdit}
                       className="font-medium text-gray-600 hover:text-gray-500"
                     >
-                      İptal
+                      {t('common.cancel')}
                     </button>
                   ) : (
                     <button
@@ -1045,7 +1062,7 @@ export default function TenantSettings() {
                       onClick={startSmtpPasswordEdit}
                       className="font-medium text-blue-600 hover:text-blue-500"
                     >
-                      {formState.smtp.hasPassword ? 'Parolayı değiştir' : 'Parola ekle'}
+                      {formState.smtp.hasPassword ? t('tenantSettings.smtp_password_change') : t('tenantSettings.smtp_password_add')}
                     </button>
                   )}
                   {(formState.smtp.hasPassword || secretEditState.smtpPassword || secretFlags.smtpPassword) && (
@@ -1054,7 +1071,7 @@ export default function TenantSettings() {
                       onClick={resetSmtpPassword}
                       className="font-medium text-blue-600 hover:text-blue-500"
                     >
-                      Parolayı temizle
+                      {t('tenantSettings.smtp_password_clear')}
                     </button>
                   )}
                 </div>
@@ -1065,22 +1082,22 @@ export default function TenantSettings() {
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">Marka Bilgileri</h2>
-            <p className="text-sm text-gray-500">Panelde ve yayınlanan içeriklerde kullanılacak marka bilgilerini düzenle.</p>
+            <h2 className="text-lg font-semibold text-gray-900">{t('tenantSettings.branding_title')}</h2>
+            <p className="text-sm text-gray-500">{t('tenantSettings.branding_desc')}</p>
           </div>
           <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Site Adı</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.site_name_label')}</label>
               <input
                 type="text"
                 value={formState.branding.siteName}
                 onChange={handleInputChange('branding', 'siteName')}
-                placeholder="Ör. Firma Portalı"
+                placeholder={t('tenantSettings.site_name_placeholder')}
                 className={FIELD_INPUT_WITH_MARGIN_CLASS}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Logo URL</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.logo_url_label')}</label>
               <input
                 type="url"
                 value={formState.branding.logoUrl}
@@ -1090,7 +1107,7 @@ export default function TenantSettings() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Birincil Renk</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.primary_color_label')}</label>
               <input
                 type="text"
                 value={formState.branding.primaryColor}
@@ -1100,7 +1117,7 @@ export default function TenantSettings() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">İkincil Renk</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.secondary_color_label')}</label>
               <input
                 type="text"
                 value={formState.branding.secondaryColor}
@@ -1110,12 +1127,12 @@ export default function TenantSettings() {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Kısa Açıklama</label>
+              <label className="block text-sm font-medium text-gray-700">{t('tenantSettings.short_description_label')}</label>
               <textarea
                 rows="3"
                 value={formState.branding.description}
                 onChange={handleInputChange('branding', 'description')}
-                placeholder="Tenant hakkında kısa bir açıklama"
+                placeholder={t('tenantSettings.short_description_placeholder')}
                 className={FIELD_INPUT_WITH_MARGIN_CLASS}
               />
             </div>
@@ -1124,23 +1141,23 @@ export default function TenantSettings() {
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">Özellik Bayrakları</h2>
-            <p className="text-sm text-gray-500">Tenant bazlı özellikleri etkinleştir veya devre dışı bırak. Yeni anahtarlar ekleyerek sistemi genişletebilirsin.</p>
+            <h2 className="text-lg font-semibold text-gray-900">{t('tenantSettings.features_title')}</h2>
+            <p className="text-sm text-gray-500">{t('tenantSettings.features_desc')}</p>
           </div>
           <div className="px-6 py-5 space-y-4">
             {Object.keys(formState.features).length === 0 ? (
-              <div className="text-sm text-gray-500">Henüz tanımlı bir özellik bulunmuyor.</div>
+              <div className="text-sm text-gray-500">{t('tenantSettings.features_empty')}</div>
             ) : (
               <div className="space-y-3">
                 {Object.entries(formState.features).map(([key, value]) => (
                   <div key={key} className="flex items-center justify-between rounded-md border border-gray-200 px-4 py-3">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{key}</p>
-                      <p className="text-xs text-gray-500">Özelliği aktif ettiğinde ilgili modüller tanımlanan kontrolleri kullanabilir.</p>
+                      <p className="text-xs text-gray-500">{t('tenantSettings.feature_hint')}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <span>{value ? 'Aktif' : 'Pasif'}</span>
+                        <span>{value ? t('status.active') : t('status.inactive')}</span>
                         <input
                           type="checkbox"
                           checked={Boolean(value)}
@@ -1153,7 +1170,7 @@ export default function TenantSettings() {
                         onClick={() => removeFeature(key)}
                         className="text-xs font-medium text-red-600 hover:text-red-500"
                       >
-                        Sil
+                        {t('common.delete')}
                       </button>
                     </div>
                   </div>
@@ -1163,7 +1180,7 @@ export default function TenantSettings() {
             <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
               <input
                 type="text"
-                placeholder="Özellik anahtarı (örn. contentScheduling)"
+                placeholder={t('tenantSettings.feature_key_placeholder')}
                 value={featureKeyInput}
                 onChange={(event) => setFeatureKeyInput(event.target.value)}
                 className={FIELD_INPUT_CLASS}
@@ -1173,7 +1190,7 @@ export default function TenantSettings() {
                 onClick={handleAddFeature}
                 className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
               >
-                Özellik Ekle
+                {t('tenantSettings.add_feature')}
               </button>
             </div>
           </div>
@@ -1181,8 +1198,8 @@ export default function TenantSettings() {
 
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">Gelişmiş Metadata</h2>
-            <p className="text-sm text-gray-500">JSON formatında saklanan ekstra yapılandırmaları düzenleyebilirsin. Boş bırakmak için tüm içeriği sil.</p>
+            <h2 className="text-lg font-semibold text-gray-900">{t('tenantSettings.metadata_title')}</h2>
+            <p className="text-sm text-gray-500">{t('tenantSettings.metadata_desc')}</p>
           </div>
           <div className="px-6 py-5">
             <textarea
@@ -1210,12 +1227,14 @@ export default function TenantSettings() {
                 <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                Geçerli JSON.
+                {t('tenantSettings.metadata_valid')}
               </p>
             ) : (
-              <p className="mt-1 text-xs text-gray-500">Boş — kaydedildiğinde metadata temizlenecek.</p>
+              <p className="mt-1 text-xs text-gray-500">{t('tenantSettings.metadata_empty_hint')}</p>
             )}
-            <p className="mt-2 text-xs text-gray-500">Örnek: {`{ "defaultLocale": "tr-TR", "theme": "dark" }`}</p>
+            <p className="mt-2 text-xs text-gray-500">
+              {t('tenantSettings.metadata_example', { example: '{ "defaultLocale": "tr-TR", "theme": "dark" }' })}
+            </p>
           </div>
         </section>
 
@@ -1235,14 +1254,14 @@ export default function TenantSettings() {
             }}
             className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60"
           >
-            Sıfırla
+            {t('tenantSettings.reset')}
           </button>
           <button
             type="submit"
             disabled={updateMutation.isPending || Boolean(metadataError)}
             className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
           >
-            {updateMutation.isPending ? 'Kaydediliyor...' : 'Ayarları Kaydet'}
+            {updateMutation.isPending ? t('common.saving') : t('tenantSettings.save')}
           </button>
         </div>
       </form>
@@ -1255,9 +1274,9 @@ export default function TenantSettings() {
 
             <div className="relative w-full max-w-6xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
               <div className="bg-white px-6 py-5 border-b border-gray-200">
-                <h3 className="text-xl font-semibold text-gray-900">Abonelik Planını Değiştir</h3>
+                <h3 className="text-xl font-semibold text-gray-900">{t('tenantSettings.change_plan_modal_title')}</h3>
                 <p className="mt-1 text-sm text-gray-600">
-                  İhtiyaçlarınıza uygun planı seçin. Plan değişiklikleri anında etkinleşir.
+                  {t('tenantSettings.change_plan_modal_desc')}
                 </p>
               </div>
 
@@ -1281,7 +1300,7 @@ export default function TenantSettings() {
                   disabled={updatePlanMutation.isPending}
                   className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
                 >
-                  İptal
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -1289,7 +1308,7 @@ export default function TenantSettings() {
                   disabled={updatePlanMutation.isPending || !selectedPlan || selectedPlan === currentPlan}
                   className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {updatePlanMutation.isPending ? 'Güncelleniyor...' : 'Planı Değiştir'}
+                  {updatePlanMutation.isPending ? t('tenantSettings.updating') : t('tenantSettings.change_plan')}
                 </button>
               </div>
             </div>

@@ -121,6 +121,7 @@
   "collection.relations_invalid_json": "İlişkiler alanına geçerli bir JSON girin.",
   "collection.relations_json_hint": "Arayüzden yaptığınız seçimler bu alana yansır; dilerseniz farklı ilişkileri JSON olarak elle ekleyebilirsiniz.",
   "collection.relations_json_label": "İlişkiler (JSON)",
+  "collection.relations_json_placeholder": "{\n  \"media\": [\"medyaId\"],\n  \"contents\": [\"icerikId\"],\n  \"refs\": [{ \"collectionKey\": \"diger-koleksiyon\", \"entryId\": \"kayitId\" }]\n}",
   "collection.relations_not_object": "İlişkiler alanı bir JSON nesnesi olmalıdır.",
   "collection.richtext_field_placeholder": "{{field}} içeriğini yazın…",
   "collection.richtext_placeholder": "İçerik yazın…",
