@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { Trans, useTranslation } from 'react-i18next'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
 import Footer from '../../components/Footer.jsx'
 
 export default function ForgotPassword() {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [isSubmitted, setIsSubmitted] = useState(false)
 
@@ -31,18 +33,18 @@ export default function ForgotPassword() {
           <div className="max-w-md w-full space-y-8">
             <div className="text-center">
               <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-                E-postanızı kontrol edin
+                {t('forgot.check_email')}
               </h2>
               <p className="mt-2 text-sm text-gray-600">
-                Şifre sıfırlama bağlantısı <strong>{email}</strong> adresine gönderildi
+                <Trans i18nKey="forgot.email_sent_to" values={{ email }} components={{ strong: <strong /> }} />
               </p>
               <p className="mt-4 text-sm text-gray-600">
-                E-posta almadınız mı?{' '}
+                {t('forgot.no_email')}{' '}
                 <button
                   onClick={() => setIsSubmitted(false)}
                   className="font-medium text-blue-600 hover:text-blue-500"
                 >
-                  Tekrar deneyin
+                  {t('forgot.try_again')}
                 </button>
               </p>
               <div className="mt-6">
@@ -51,7 +53,7 @@ export default function ForgotPassword() {
                   className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
                 >
                   <ArrowLeftIcon className="h-4 w-4" />
-                  Giriş sayfasına dön
+                  {t('forgot.back_to_login')}
                 </Link>
               </div>
             </div>
@@ -68,17 +70,17 @@ export default function ForgotPassword() {
         <div className="max-w-md w-full space-y-8">
           <div>
             <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              Şifrenizi mi unuttunuz?
+              {t('forgot.title')}
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
-              E-posta adresinizi girin, size şifre sıfırlama bağlantısı gönderelim
+              {t('forgot.description')}
             </p>
           </div>
           
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="sr-only">
-                E-posta
+                {t('auth.email')}
               </label>
               <input
                 id="email"
@@ -87,7 +89,7 @@ export default function ForgotPassword() {
                 autoComplete="email"
                 required
                 className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="E-posta"
+                placeholder={t('auth.email')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -99,13 +101,13 @@ export default function ForgotPassword() {
                 disabled={forgotPasswordMutation.isPending}
                 className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {forgotPasswordMutation.isPending ? 'Gönderiliyor...' : 'Şifre sıfırlama bağlantısı gönder'}
+                {forgotPasswordMutation.isPending ? t('forgot.sending') : t('forgot.send_button')}
               </button>
             </div>
 
             {forgotPasswordMutation.isError && (
               <div className="text-red-600 text-sm text-center">
-                Şifre sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin.
+                {t('forgot.send_failed')}
               </div>
             )}
 
@@ -115,7 +117,7 @@ export default function ForgotPassword() {
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeftIcon className="h-4 w-4" />
-                Giriş sayfasına dön
+                {t('forgot.back_to_login')}
               </Link>
             </div>
           </form>

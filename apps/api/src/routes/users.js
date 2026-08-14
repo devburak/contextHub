@@ -530,7 +530,8 @@ async function userRoutes(fastify) {
           firstName: request.user.firstName,
           lastName: request.user.lastName,
           lastLoginAt: request.user.lastLoginAt,
-          mustChangePassword: Boolean(request.user.mustChangePassword)
+          mustChangePassword: Boolean(request.user.mustChangePassword),
+          language: request.user.language ?? null
         },
         currentMembership: activeMembership,
         allMemberships: memberships
@@ -548,7 +549,8 @@ async function userRoutes(fastify) {
         properties: {
           firstName: { type: 'string', minLength: 1 },
           lastName: { type: 'string', minLength: 1 },
-          email: { type: 'string', format: 'email' }
+          email: { type: 'string', format: 'email' },
+          language: { type: ['string', 'null'], enum: ['tr', 'en', null] }
         }
       },
       response: {
@@ -561,7 +563,8 @@ async function userRoutes(fastify) {
                 id: { type: 'string' },
                 email: { type: 'string' },
                 firstName: { type: 'string' },
-                lastName: { type: 'string' }
+                lastName: { type: 'string' },
+                language: { type: ['string', 'null'] }
               }
             }
           }
@@ -581,7 +584,8 @@ async function userRoutes(fastify) {
           id: updated._id?.toString?.() || request.user._id.toString(),
           email: updated.email,
           firstName: updated.firstName,
-          lastName: updated.lastName
+          lastName: updated.lastName,
+          language: updated.language ?? null
         }
       });
     } catch (error) {

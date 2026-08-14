@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { shouldInvalidateSession } from './sessionInvalidationPolicy.js'
+import { getActiveLocale } from './localePreference.js'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 let csrfToken = null
@@ -31,6 +32,11 @@ export const apiClient = axios.create({
 // neither read nor persist it.
 apiClient.interceptors.request.use((config) => {
   config.__sessionRevision = sessionRevision
+
+  // Sunucu hata mesajlarını bu dile göre yerelleştirir. Accept-Language tarayıcı
+  // tarafından yönetildiği için kullanıcının panel seçimini ayrı bir başlıkla
+  // taşıyoruz; ikisi çeliştiğinde sunucu X-Locale'i tercih eder.
+  config.headers['X-Locale'] = getActiveLocale()
   const method = String(config.method || 'get').toLowerCase()
   if (!['get', 'head', 'options'].includes(method) && csrfToken) {
     config.headers['X-CSRF-Token'] = csrfToken
@@ -155,6 +161,12 @@ export const usersAPI = {
 
   reinviteUser: (id) =>
     apiClient.post(`/users/${id}/reinvite`),
+
+  getOwnProfile: () =>
+    apiClient.get('/users/me'),
+
+  updateOwnProfile: (payload) =>
+    apiClient.put('/users/me', payload),
 }
 
 // Activities API

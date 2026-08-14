@@ -3,6 +3,10 @@ const bcrypt = require('bcryptjs');
 const roleService = require('./roleService');
 const { mailService } = require('./mailService');
 
+// Arayüz dili tercihi için desteklenen değerler. packages/common User şemasındaki
+// enum ile aynı kümedir; ikisi birlikte güncellenmelidir.
+const SUPPORTED_UI_LANGUAGES = ['tr', 'en'];
+
 const { ROLE_KEYS } = rbac;
 
 class UserService {
@@ -284,6 +288,20 @@ class UserService {
 
     const allowedFields = ['firstName', 'lastName', 'email'];
     let hasChanges = false;
+
+    // Dil tercihi ayrı ele alınıyor: serbest metin değil, kapalı bir kümedir.
+    if (Object.prototype.hasOwnProperty.call(updates, 'language')) {
+      const nextLanguage = updates.language;
+      if (nextLanguage === null || nextLanguage === '') {
+        user.language = null;
+        hasChanges = true;
+      } else if (SUPPORTED_UI_LANGUAGES.includes(nextLanguage)) {
+        user.language = nextLanguage;
+        hasChanges = true;
+      } else {
+        throw new Error(`Unsupported language: ${nextLanguage}`);
+      }
+    }
 
     for (const field of allowedFields) {
       if (Object.prototype.hasOwnProperty.call(updates, field)) {

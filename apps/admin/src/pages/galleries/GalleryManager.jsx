@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { galleriesAPI } from '../../lib/galleriesAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import MediaPickerModal from '../contents/components/MediaPickerModal.jsx'
 import { PhotoIcon, TrashIcon, ArrowsUpDownIcon, PlusCircleIcon, VideoCameraIcon, PlayIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
@@ -15,6 +17,7 @@ const emptyGallery = {
 }
 
 function GalleryMediaPreview({ media, alt, compact = false }) {
+  const { t } = useTranslation()
   const preview = getMediaPreview(media)
   const heightClass = compact ? 'h-full' : 'h-32'
 
@@ -22,7 +25,7 @@ function GalleryMediaPreview({ media, alt, compact = false }) {
     return (
       <div className={clsx('relative w-full bg-black', heightClass)}>
         {preview.url ? (
-          <img src={preview.url} alt={alt || 'Video'} className="h-full w-full object-cover" />
+          <img src={preview.url} alt={alt || t('gallery.video_alt')} className="h-full w-full object-cover" />
         ) : !preview.isExternal && preview.mediaUrl ? (
           <video src={preview.mediaUrl} className="h-full w-full object-cover" muted playsInline preload="metadata" />
         ) : (
@@ -43,7 +46,7 @@ function GalleryMediaPreview({ media, alt, compact = false }) {
   }
 
   if (preview.url) {
-    return <img src={preview.url} alt={alt || 'Medya'} className={clsx('w-full object-cover', heightClass)} />
+    return <img src={preview.url} alt={alt || t('gallery.media_alt')} className={clsx('w-full object-cover', heightClass)} />
   }
 
   return (
@@ -54,6 +57,8 @@ function GalleryMediaPreview({ media, alt, compact = false }) {
 }
 
 function GalleryItemsEditor({ items, onChange, openMediaPicker }) {
+  const { t } = useTranslation()
+
   const updateItem = useCallback((index, patch) => {
     onChange(items.map((item, idx) => (idx === index ? { ...item, ...patch } : item)))
   }, [items, onChange])
@@ -74,18 +79,18 @@ function GalleryItemsEditor({ items, onChange, openMediaPicker }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">Medya Öğeleri</h3>
+        <h3 className="text-sm font-semibold text-gray-900">{t('gallery.items_title')}</h3>
         <button
           type="button"
           onClick={openMediaPicker}
           className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
         >
           <PlusCircleIcon className="h-5 w-5" />
-          Görsel/Video ekle
+          {t('gallery.add_media')}
         </button>
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-gray-500">Galeride henüz medya yok. "Görsel/Video ekle" diyerek kütüphaneden öğe seçebilirsin.</p>
+        <p className="text-sm text-gray-500">{t('gallery.items_empty')}</p>
       ) : (
         <ul className="space-y-4">
           {items.map((item, index) => (
@@ -94,12 +99,12 @@ function GalleryItemsEditor({ items, onChange, openMediaPicker }) {
                 <div className="w-full max-w-[160px] flex-none overflow-hidden rounded-md bg-gray-100 relative">
                   <GalleryMediaPreview
                     media={item.media}
-                    alt={item.media?.altText || item.media?.originalName || 'Medya'}
+                    alt={item.media?.altText || item.media?.originalName || t('gallery.media_alt')}
                   />
                 </div>
                 <div className="flex-1 space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Başlık</label>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">{t('common.title')}</label>
                     <input
                       type="text"
                       value={item.title || ''}
@@ -108,7 +113,7 @@ function GalleryItemsEditor({ items, onChange, openMediaPicker }) {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Açıklama</label>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">{t('common.description')}</label>
                     <textarea
                       rows={2}
                       value={item.caption || ''}
@@ -155,6 +160,8 @@ function GalleryItemsEditor({ items, onChange, openMediaPicker }) {
 }
 
 export default function GalleryManager() {
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -208,8 +215,7 @@ export default function GalleryManager() {
       resetForm()
     },
     onError: (error) => {
-      const message = error?.response?.data?.message || error.message || 'Galeri oluşturulamadı.'
-      setErrorMessage(message)
+      setErrorMessage(describeError(error, 'gallery.create_failed'))
     }
   })
 
@@ -223,8 +229,7 @@ export default function GalleryManager() {
       }
     },
     onError: (error) => {
-      const message = error?.response?.data?.message || error.message || 'Galeri güncelleme başarısız.'
-      setErrorMessage(message)
+      setErrorMessage(describeError(error, 'gallery.update_failed'))
     }
   })
 
@@ -236,8 +241,7 @@ export default function GalleryManager() {
       resetForm()
     },
     onError: (error) => {
-      const message = error?.response?.data?.message || error.message || 'Galeri silinemedi.'
-      setErrorMessage(message)
+      setErrorMessage(describeError(error, 'gallery.delete_failed'))
     }
   })
 
@@ -284,7 +288,7 @@ export default function GalleryManager() {
   const handleSubmit = (event) => {
     event.preventDefault()
     if (!formState.title.trim()) {
-      setErrorMessage('Galeri başlığı gereklidir.')
+      setErrorMessage(t('gallery.title_required'))
       return
     }
 
@@ -310,9 +314,7 @@ export default function GalleryManager() {
 
   const handleDelete = () => {
     if (!selectedGalleryId) return
-    const confirmDelete = window.confirm(
-      'Bu taslak galeri silinecek ve içeriklerle ilişkisi kaldırılacak. Medya kütüphanesindeki görseller ve videolar silinmeyecek. Devam edilsin mi?'
-    )
+    const confirmDelete = window.confirm(t('gallery.delete_confirm'))
     if (!confirmDelete) return
     deleteMutation.mutate(selectedGalleryId)
   }
@@ -326,25 +328,25 @@ export default function GalleryManager() {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Galeri Yönetimi</h1>
-          <p className="mt-1 text-sm text-gray-600">Görsel ve video öğelerini gruplandırarak galeriler oluştur ve içeriklerle ilişkilendir.</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('gallery.page_title')}</h1>
+          <p className="mt-1 text-sm text-gray-600">{t('gallery.page_subtitle')}</p>
         </div>
         <button
           type="button"
           onClick={resetForm}
           className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
         >
-          Yeni Galeri
+          {t('gallery.new')}
         </button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <section className="min-w-0 space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Galeriler</h2>
+            <h2 className="text-lg font-semibold text-gray-900">{t('gallery.list_title')}</h2>
             <input
               type="search"
-              placeholder="Ara..."
+              placeholder={t('common.search')}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value)
@@ -356,9 +358,9 @@ export default function GalleryManager() {
 
           <div className="divide-y divide-gray-200 rounded-md border border-gray-200">
             {listQuery.isLoading ? (
-              <div className="p-4 text-sm text-gray-500">Galeriler yükleniyor...</div>
+              <div className="p-4 text-sm text-gray-500">{t('gallery.loading')}</div>
             ) : galleries.length === 0 ? (
-              <div className="p-4 text-sm text-gray-500">Henüz galeri oluşturulmamış.</div>
+              <div className="p-4 text-sm text-gray-500">{t('gallery.empty')}</div>
             ) : (
               galleries.map((gallery) => {
                 const galleryId = getGalleryId(gallery)
@@ -376,7 +378,12 @@ export default function GalleryManager() {
                     </div>
                     <div className="min-w-0 flex-1 overflow-hidden">
                       <p className="truncate text-sm font-semibold text-gray-900" title={gallery.title}>{gallery.title}</p>
-                      <p className="truncate text-xs text-gray-500">{gallery.items?.length || 0} medya · {gallery.status === 'published' ? 'Yayında' : 'Taslak'}</p>
+                      <p className="truncate text-xs text-gray-500">
+                        {t('gallery.item_summary', {
+                          count: gallery.items?.length || 0,
+                          status: gallery.status === 'published' ? t('status.published') : t('status.draft'),
+                        })}
+                      </p>
                     </div>
                   </button>
                 )
@@ -386,7 +393,7 @@ export default function GalleryManager() {
 
           {pagination.pages > 1 && (
             <div className="flex items-center justify-between text-sm text-gray-600">
-              <span>Sayfa {pagination.page} / {pagination.pages}</span>
+              <span>{t('gallery.page_indicator', { current: pagination.page, total: pagination.pages })}</span>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -394,7 +401,7 @@ export default function GalleryManager() {
                   disabled={pagination.page <= 1}
                   className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Önceki
+                  {t('common.previous')}
                 </button>
                 <button
                   type="button"
@@ -402,7 +409,7 @@ export default function GalleryManager() {
                   disabled={pagination.page >= pagination.pages}
                   className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Sonraki
+                  {t('common.next')}
                 </button>
               </div>
             </div>
@@ -412,8 +419,8 @@ export default function GalleryManager() {
         <section className="min-w-0 space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">{selectedGalleryId ? 'Galeriyi Düzenle' : 'Yeni Galeri'}</h2>
-              <p className="text-sm text-gray-600">Başlık, açıklama ve medya öğelerini düzenleyebilirsin.</p>
+              <h2 className="text-lg font-semibold text-gray-900">{selectedGalleryId ? t('gallery.edit') : t('gallery.new')}</h2>
+              <p className="text-sm text-gray-600">{t('gallery.form_hint')}</p>
             </div>
             {selectedGalleryId && selectedGalleryQuery.data?.status === 'draft' && (
               <button
@@ -422,14 +429,14 @@ export default function GalleryManager() {
                 disabled={deleteMutation.isLoading}
                 className="inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
               >
-                {deleteMutation.isLoading ? 'Siliniyor...' : 'Taslak Galeriyi Sil'}
+                {deleteMutation.isLoading ? t('common.deleting') : t('gallery.delete_draft')}
               </button>
             )}
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label className="block text-sm font-medium text-gray-700" htmlFor="gallery-title">Başlık</label>
+              <label className="block text-sm font-medium text-gray-700" htmlFor="gallery-title">{t('common.title')}</label>
               <input
                 id="gallery-title"
                 name="title"
@@ -437,12 +444,12 @@ export default function GalleryManager() {
                 value={formState.title}
                 onChange={handleFormChange}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-                placeholder="Örn. Yaz Koleksiyonu"
+                placeholder={t('gallery.title_placeholder')}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700" htmlFor="gallery-description">Açıklama</label>
+              <label className="block text-sm font-medium text-gray-700" htmlFor="gallery-description">{t('common.description')}</label>
               <textarea
                 id="gallery-description"
                 name="description"
@@ -450,11 +457,11 @@ export default function GalleryManager() {
                 value={formState.description}
                 onChange={handleFormChange}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-                placeholder="Galeriyi tanımlayan kısa açıklama"
+                placeholder={t('gallery.description_placeholder')}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700" htmlFor="gallery-status">Durum</label>
+              <label className="block text-sm font-medium text-gray-700" htmlFor="gallery-status">{t('common.status')}</label>
               <select
                 id="gallery-status"
                 name="status"
@@ -462,8 +469,8 @@ export default function GalleryManager() {
                 onChange={handleFormChange}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
               >
-                <option value="draft">Taslak</option>
-                <option value="published">Yayında</option>
+                <option value="draft">{t('status.draft')}</option>
+                <option value="published">{t('status.published')}</option>
               </select>
             </div>
 
@@ -475,7 +482,7 @@ export default function GalleryManager() {
 
             {selectedGalleryId && selectedGalleryQuery.data?.status === 'published' && (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Yayındaki galeriler doğrudan silinmez. Silmek için durumu “Taslak” yapıp kaydedin; galeri silindiğinde medya kütüphanesindeki dosyalar korunur.
+                {t('gallery.published_delete_notice')}
               </p>
             )}
 
@@ -488,7 +495,7 @@ export default function GalleryManager() {
                   onClick={resetForm}
                   className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
                 >
-                  Yeni Galeri
+                  {t('gallery.new')}
                 </button>
               )}
               <button
@@ -496,7 +503,7 @@ export default function GalleryManager() {
                 disabled={isSaving}
                 className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
               >
-                {isSaving ? 'Kaydediliyor...' : 'Kaydet'}
+                {isSaving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </form>

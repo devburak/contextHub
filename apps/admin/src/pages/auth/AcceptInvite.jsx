@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
@@ -10,12 +11,15 @@ import {
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import Footer from '../../components/Footer.jsx'
 
 export default function AcceptInvite() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const { login } = useAuth()
   const token = searchParams.get('token') || ''
 
@@ -70,12 +74,11 @@ export default function AcceptInvite() {
 
       navigate('/', {
         replace: true,
-        state: { message: 'Davet kabul edildi.' },
+        state: { message: t('invite.accepted') },
       })
     },
     onError: (error) => {
-      const message = error.response?.data?.message || 'Davet kabul edilemedi.'
-      setFormError(message)
+      setFormError(describeError(error, 'invite.failed'))
     },
   })
 
@@ -84,18 +87,18 @@ export default function AcceptInvite() {
     setFormError('')
 
     if (!token) {
-      setFormError('Davet bağlantısı eksik.')
+      setFormError(t('invite.link_missing'))
       return
     }
 
     if (previewQuery.data?.requiresPasswordSetup) {
       if (password.length < 6) {
-        setFormError('Şifre en az 6 karakter olmalıdır.')
+        setFormError(t('validation.min_length', { count: 6 }))
         return
       }
 
       if (password !== confirmPassword) {
-        setFormError('Şifreler eşleşmiyor.')
+        setFormError(t('validation.passwords_match'))
         return
       }
     }
@@ -116,8 +119,8 @@ export default function AcceptInvite() {
         <main className="flex flex-1 items-center justify-center px-4 py-12">
           <StatusPanel
             tone="danger"
-            title="Geçersiz Davet Bağlantısı"
-            message="Davet bağlantısı token bilgisi içermiyor."
+            title={t('invite.invalid_link_title')}
+            message={t('invite.invalid_link_message')}
             action={<LoginLink />}
           />
         </main>
@@ -148,13 +151,13 @@ export default function AcceptInvite() {
   }
 
   if (previewQuery.isError) {
-    const message = previewQuery.error?.response?.data?.message || 'Davet bağlantısı geçersiz veya süresi dolmuş.'
+    const message = describeError(previewQuery.error, 'invite.invalid_or_expired')
     return (
       <div className={shellClass}>
         <main className="flex flex-1 items-center justify-center px-4 py-12">
           <StatusPanel
             tone="danger"
-            title="Davet Açılamadı"
+            title={t('invite.preview_failed_title')}
             message={message}
             action={
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
@@ -164,7 +167,7 @@ export default function AcceptInvite() {
                   className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2"
                 >
                   <ArrowPathIcon className="h-4 w-4" />
-                  Tekrar Dene
+                  {t('common.retry')}
                 </button>
                 <LoginLink />
               </div>
@@ -182,8 +185,8 @@ export default function AcceptInvite() {
         <main className="flex flex-1 items-center justify-center px-4 py-12">
           <StatusPanel
             tone="success"
-            title="Davet Kabul Edildi"
-            message="Varlık oturumunuz hazırlanıyor."
+            title={t('invite.accepted_title')}
+            message={t('invite.preparing_session')}
           />
         </main>
         <Footer />
@@ -204,18 +207,18 @@ export default function AcceptInvite() {
                   <BuildingOffice2Icon className="h-6 w-6" />
                 </div>
                 <h1 className="mt-8 text-3xl font-bold tracking-normal">
-                  {preview?.tenant?.name || 'ContextHub'} daveti
+                  {t('invite.tenant_invitation', { tenant: preview?.tenant?.name || 'ContextHub' })}
                 </h1>
                 <p className="mt-4 text-sm leading-6 text-slate-300">
-                  Bu davet kabul edildiğinde oturumunuz ilgili varlık ve rol ile açılır.
+                  {t('invite.intro')}
                 </p>
               </div>
 
               <dl className="space-y-4 text-sm">
-                <InfoRow label="Varlık" value={preview?.tenant?.name || '-'} />
-                <InfoRow label="E-posta" value={preview?.email || '-'} />
-                <InfoRow label="Rol" value={preview?.role || '-'} />
-                {expiresAt && <InfoRow label="Son kullanım" value={expiresAt} />}
+                <InfoRow label={t('invite.tenant_label')} value={preview?.tenant?.name || '-'} />
+                <InfoRow label={t('invite.email_label')} value={preview?.email || '-'} />
+                <InfoRow label={t('invite.role_label')} value={preview?.role || '-'} />
+                {expiresAt && <InfoRow label={t('invite.expires_label')} value={expiresAt} />}
               </dl>
             </div>
           </section>
@@ -223,19 +226,19 @@ export default function AcceptInvite() {
           <section className="p-6 sm:p-8">
             <div className="mb-6 inline-flex items-center gap-2 rounded-md bg-[var(--accent-soft)] px-3 py-2 text-sm font-medium text-[var(--accent)]">
               <ShieldCheckIcon className="h-4 w-4" />
-              Tenant kapsamlı erişim
+              {t('invite.scoped_access')}
             </div>
 
-            <h2 className="text-2xl font-bold text-[var(--ink)]">Daveti kabul et</h2>
+            <h2 className="text-2xl font-bold text-[var(--ink)]">{t('invite.title')}</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-              Bilgilerinizi onaylayın. Kabul sonrası aktif tenant otomatik olarak bu varlık olacak.
+              {t('invite.confirm_details')}
             </p>
 
             <form onSubmit={handleSubmit} className="mt-8 space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                    Ad
+                    {t('signup.first_name')}
                   </label>
                   <input
                     id="firstName"
@@ -249,7 +252,7 @@ export default function AcceptInvite() {
                 </div>
                 <div>
                   <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                    Soyad
+                    {t('signup.last_name')}
                   </label>
                   <input
                     id="lastName"
@@ -268,11 +271,11 @@ export default function AcceptInvite() {
                   <div className="flex gap-3">
                     <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-none text-amber-600" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-amber-900">Hesap şifresi gerekli</p>
+                      <p className="text-sm font-medium text-amber-900">{t('invite.password_required_title')}</p>
                       <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <div>
                           <label htmlFor="password" className="block text-sm font-medium text-amber-950">
-                            Şifre
+                            {t('auth.password')}
                           </label>
                           <input
                             id="password"
@@ -288,7 +291,7 @@ export default function AcceptInvite() {
                         </div>
                         <div>
                           <label htmlFor="confirmPassword" className="block text-sm font-medium text-amber-950">
-                            Şifre tekrar
+                            {t('signup.password_confirm')}
                           </label>
                           <input
                             id="confirmPassword"
@@ -320,7 +323,7 @@ export default function AcceptInvite() {
                   className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2"
                 >
                   <ArrowLeftIcon className="h-4 w-4" />
-                  Girişe dön
+                  {t('forgot.back_to_login')}
                 </Link>
                 <button
                   type="submit"
@@ -330,10 +333,10 @@ export default function AcceptInvite() {
                   {acceptMutation.isPending ? (
                     <>
                       <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                      Kabul ediliyor
+                      {t('invite.accepting')}
                     </>
                   ) : (
-                    'Daveti Kabul Et'
+                    t('invite.accept')
                   )}
                 </button>
               </div>
@@ -373,13 +376,15 @@ function StatusPanel({ tone, title, message, action }) {
 }
 
 function LoginLink() {
+  const { t } = useTranslation()
+
   return (
     <Link
       to="/login"
       className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
     >
       <ArrowLeftIcon className="h-4 w-4" />
-      Girişe Dön
+      {t('forgot.back_to_login')}
     </Link>
   )
 }

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { PlusIcon, PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { roleAPI } from '../../lib/roleAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import {
@@ -26,6 +28,7 @@ const slugifyKey = (value = '') => value
 const preparePermissions = (permissions = []) => stripManagePermissions(expandPermissions(permissions))
 
 const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmitting }) => {
+  const { t } = useTranslation()
   const isEdit = mode === 'edit'
   const initialPermissions = useMemo(
     () => preparePermissions(initialRole?.permissions || []),
@@ -88,9 +91,9 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
     <form onSubmit={handleSubmit(onSubmit)} className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 mb-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-gray-100 pb-4 mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{isEdit ? 'Rolü düzenle' : 'Yeni rol oluştur'}</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{isEdit ? t('users.roles.edit_title') : t('users.roles.create_title')}</h2>
           <p className="text-sm text-gray-500">
-            Rollerin yetkilerini tanımlayın ve kullanıcılarınıza atayın.
+            {t('users.roles.form_description')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -99,14 +102,14 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
             onClick={onCancel}
             className="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
-            Vazgeç
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
             disabled={isSubmitting}
             className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
           >
-            {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+            {isSubmitting ? t('common.saving') : t('common.save')}
           </button>
         </div>
       </div>
@@ -114,11 +117,11 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Rol adı</label>
+            <label className="block text-sm font-medium text-gray-700">{t('users.roles.name_label')}</label>
             <input
               type="text"
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-              placeholder="Örn. İçerik Editörü"
+              placeholder={t('users.roles.name_placeholder')}
               {...register('name', { required: true })}
               onBlur={handleNameBlur}
               disabled={isEdit && initialRole?.isSystem}
@@ -126,19 +129,19 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Anahtar</label>
+            <label className="block text-sm font-medium text-gray-700">{t('users.roles.key_label')}</label>
             <input
               type="text"
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-              placeholder="ornek-rol"
+              placeholder={t('users.roles.key_placeholder')}
               {...register('key', { required: true })}
               disabled={isEdit}
             />
-            <p className="mt-1 text-xs text-gray-500">Bu değer API entegrasyonlarında kullanılacaktır.</p>
+            <p className="mt-1 text-xs text-gray-500">{t('users.roles.key_hint')}</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Rol seviyesi</label>
+            <label className="block text-sm font-medium text-gray-700">{t('users.roles.level_label')}</label>
             <select
               className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
               {...register('level', { valueAsNumber: true })}
@@ -150,41 +153,41 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-500">Daha yüksek seviyedeki roller varsayılan olarak daha geniş erişime sahiptir.</p>
+            <p className="mt-1 text-xs text-gray-500">{t('users.roles.level_hint')}</p>
           </div>
 
           {!isEdit && (
             <div>
-              <label className="block text-sm font-medium text-gray-700">Temel rol</label>
+              <label className="block text-sm font-medium text-gray-700">{t('users.roles.base_role_label')}</label>
               <select
                 className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                 value={baseRoleKey || ''}
                 onChange={handleBaseRoleChange}
               >
-                <option value="">Seçiniz (isteğe bağlı)</option>
+                <option value="">{t('users.roles.base_role_placeholder')}</option>
                 {systemRoles.map((role) => (
                   <option key={role.id} value={role.key}>
                     {role.name}
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-gray-500">Bir temel rol seçerseniz izinler otomatik olarak kopyalanır.</p>
+              <p className="mt-1 text-xs text-gray-500">{t('users.roles.base_role_hint')}</p>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Açıklama</label>
+            <label className="block text-sm font-medium text-gray-700">{t('common.description')}</label>
             <textarea
               rows={3}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-              placeholder="Bu rolün kullanım amacı..."
+              placeholder={t('users.roles.description_placeholder')}
               {...register('description')}
             />
           </div>
         </div>
 
         <div className="space-y-4">
-          <h3 className="text-sm font-medium text-gray-700">Yetkiler</h3>
+          <h3 className="text-sm font-medium text-gray-700">{t('users.roles.permissions')}</h3>
           <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
             {Object.entries(PERMISSION_GROUPS).map(([groupKey, permissions]) => (
               <fieldset key={groupKey} className="border border-gray-200 rounded-md p-3">
@@ -196,8 +199,8 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
                     className="text-xs font-medium text-blue-600 hover:text-blue-800"
                   >
                     {permissions.every((permission) => selectedPermissions.includes(permission))
-                      ? 'Temizle'
-                      : 'Tümünü seç'}
+                      ? t('common.clear')
+                      : t('common.select_all')}
                   </button>
                 </legend>
                 <div className="mt-2 space-y-2">
@@ -222,18 +225,20 @@ const RoleForm = ({ mode, initialRole, systemRoles, onCancel, onSubmit, isSubmit
   )
 }
 
-const summarizePermissions = (permissions = []) => {
+const summarizePermissions = (permissions = [], t) => {
   const expanded = preparePermissions(permissions)
-  if (!expanded.length) return '0 yetki'
+  if (!expanded.length) return t('users.roles.permission_count', { count: 0 })
   if (expanded.length <= 3) {
     return expanded.map((permission) => PERMISSION_LABELS[permission] || permission).join(', ')
   }
-  return `${expanded.length} yetki`
+  return t('users.roles.permission_count', { count: expanded.length })
 }
 
 export default function Roles() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const { hasPermission } = useAuth()
   const canManageRoles = hasPermission(PERMISSIONS.ROLES_MANAGE)
 
@@ -273,7 +278,7 @@ export default function Roles() {
           level: values.level,
           permissions
         })
-        toast.success('Rol güncellendi')
+        toast.success(t('users.roles.update_success'))
       } else {
         const permissions = normalizePermissionsForSave(values.permissions)
         await roleAPI.createRole({
@@ -284,14 +289,13 @@ export default function Roles() {
           permissions,
           baseRoleKey: values.baseRoleKey || undefined
         })
-        toast.success('Rol oluşturuldu')
+        toast.success(t('users.roles.create_success'))
       }
 
       await queryClient.invalidateQueries({ queryKey: ['roles'] })
       setFormState({ mode: null, role: null })
     } catch (error) {
-      const message = error?.response?.data?.message || 'Rol kaydedilirken hata oluştu'
-      toast.error(message)
+      toast.error(describeError(error, 'users.roles.save_error'))
     } finally {
       setIsSubmitting(false)
     }
@@ -299,16 +303,15 @@ export default function Roles() {
 
   const handleDelete = async (role) => {
     if (!canManageRoles) return
-    const confirmed = window.confirm(`${role.name} rolünü silmek istediğinize emin misiniz?`)
+    const confirmed = window.confirm(t('users.roles.delete_confirm', { name: role.name }))
     if (!confirmed) return
 
     try {
       await roleAPI.deleteRole(role.id)
-      toast.success('Rol silindi')
+      toast.success(t('users.roles.delete_success'))
       await queryClient.invalidateQueries({ queryKey: ['roles'] })
     } catch (error) {
-      const message = error?.response?.data?.message || 'Rol silinemedi'
-      toast.error(message)
+      toast.error(describeError(error, 'users.roles.delete_error'))
     }
   }
 
@@ -341,9 +344,9 @@ export default function Roles() {
     <div className="px-4 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between border-b border-gray-200 pb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Roller</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">{t('users.roles.title')}</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Sistem ve tenant düzeyindeki rollerin yetkilerini yönetin.
+            {t('users.roles.description')}
           </p>
         </div>
         {canManageRoles && (
@@ -353,7 +356,7 @@ export default function Roles() {
             className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
           >
             <PlusIcon className="h-4 w-4" />
-            Yeni Rol
+            {t('users.roles.new_role')}
           </button>
         )}
       </div>
@@ -370,12 +373,12 @@ export default function Roles() {
       )}
 
       {isLoading && (
-        <div className="py-10 text-center text-sm text-gray-500">Roller yükleniyor...</div>
+        <div className="py-10 text-center text-sm text-gray-500">{t('common.loading')}</div>
       )}
 
       {isError && (
         <div className="py-10 text-center text-sm text-red-600">
-          Roller yüklenirken bir hata oluştu. {error?.message && <span className="block mt-1 text-xs text-red-500">{error.message}</span>}
+          {describeError(error, 'user.roles_load_error')}
         </div>
       )}
 
@@ -384,13 +387,13 @@ export default function Roles() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Rol</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Anahtar</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Seviye</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Kapsam</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Yetkiler</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{t('users.role')}</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{t('users.roles.key_label')}</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{t('users.roles.level')}</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{t('users.roles.scope')}</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{t('users.roles.permissions')}</th>
                 {canManageRoles && (
-                  <th scope="col" className="relative px-4 py-3"><span className="sr-only">İşlemler</span></th>
+                  <th scope="col" className="relative px-4 py-3"><span className="sr-only">{t('common.actions')}</span></th>
                 )}
               </tr>
             </thead>
@@ -398,7 +401,7 @@ export default function Roles() {
               {roles.map((role) => {
                 const isExpanded = expandedRoleIds.has(role.id)
                 const groupedPermissions = groupPermissions(role.permissions)
-                const permissionsSummary = summarizePermissions(role.permissions)
+                const permissionsSummary = summarizePermissions(role.permissions, t)
                 return (
                   <>
                     <tr key={role.id}>
@@ -406,12 +409,12 @@ export default function Roles() {
                         {role.name}
                         {role.isSystem && (
                           <span className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-                            Sistem
+                            {t('users.roles.system_badge')}
                           </span>
                         )}
                         {role.isDefault && (
                           <span className="ml-2 inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-                            Temel
+                            {t('users.roles.default_badge')}
                           </span>
                         )}
                       </td>
@@ -420,7 +423,7 @@ export default function Roles() {
                         {ROLE_LABELS[role.key] || role.level}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
-                        {role.tenantId ? 'Tenant' : 'Global'}
+                        {role.tenantId ? t('users.roles.scope_tenant') : t('users.roles.scope_global')}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         <div className="flex items-center gap-2">
@@ -430,7 +433,7 @@ export default function Roles() {
                             onClick={() => toggleExpanded(role.id)}
                             className="text-xs font-medium text-blue-600 hover:text-blue-800"
                           >
-                            {isExpanded ? 'Gizle' : 'Detay'}
+                            {isExpanded ? t('users.roles.hide') : t('common.details')}
                           </button>
                         </div>
                       </td>
@@ -444,7 +447,7 @@ export default function Roles() {
                               disabled={role.isSystem}
                             >
                               <PencilSquareIcon className="h-4 w-4" />
-                              Düzenle
+                              {t('common.edit')}
                             </button>
                             <button
                               type="button"
@@ -453,7 +456,7 @@ export default function Roles() {
                               disabled={role.isSystem}
                             >
                               <TrashIcon className="h-4 w-4" />
-                              Sil
+                              {t('common.delete')}
                             </button>
                           </div>
                         </td>
@@ -481,7 +484,7 @@ export default function Roles() {
                               ))}
                             </div>
                           ) : (
-                            <p className="text-xs text-gray-500">Bu rolde atanmış izin yok.</p>
+                            <p className="text-xs text-gray-500">{t('users.roles.no_permissions')}</p>
                           )}
                         </td>
                       </tr>

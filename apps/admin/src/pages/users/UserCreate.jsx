@@ -41,7 +41,7 @@ export default function UserCreate() {
             ? t('user.invite_existing', { email: variables.email })
             : t('user.invite_existing_generic'))
         const composedMessage = inviteExpiresAt
-          ? `${inviteMessage} (Son kullanım: ${inviteExpiresAt})`
+          ? t('user.invite_with_expiry', { message: inviteMessage, date: inviteExpiresAt })
           : inviteMessage
         toast.info(composedMessage)
       } else {

@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 
 const MAX_ROWS = 10
 const MAX_COLS = 10
 
 function TableDimensionSelector({ onCreateTable, onClose, includeHeaders = false, onIncludeHeadersChange }) {
+  const { t } = useTranslation()
   const [hoveredCell, setHoveredCell] = useState({ row: 0, col: 0 })
 
   const handleCellHover = useCallback((row, col) => {
@@ -40,7 +42,7 @@ function TableDimensionSelector({ onCreateTable, onClose, includeHeaders = false
     <div className="table-dimension-selector">
       <div className="table-dimension-header">
         <span className="table-dimension-label">
-          {hoveredCell.row + 1} × {hoveredCell.col + 1} Tablo
+          {t('content.table_dimensions', { rows: hoveredCell.row + 1, cols: hoveredCell.col + 1 })}
         </span>
       </div>
       <div
@@ -57,7 +59,7 @@ function TableDimensionSelector({ onCreateTable, onClose, includeHeaders = false
             onChange={(e) => onIncludeHeadersChange(e.target.checked)}
             className="w-4 h-4 rounded border-gray-300"
           />
-          <span>İlk satırı başlık yap</span>
+          <span>{t('content.table_header_row')}</span>
         </label>
         <button
           className="table-custom-size-btn"
@@ -67,7 +69,7 @@ function TableDimensionSelector({ onCreateTable, onClose, includeHeaders = false
             onClose()
           }}
         >
-          Özel boyut...
+          {t('content.table_custom_size')}
         </button>
       </div>
     </div>

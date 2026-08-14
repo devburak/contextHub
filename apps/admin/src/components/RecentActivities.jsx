@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { activitiesAPI } from '../lib/api.js'
+import { useApiError } from '../lib/useApiError.js'
 import {
   UserIcon,
   KeyIcon,
@@ -7,6 +9,34 @@ import {
   ArrowRightOnRectangleIcon,
   ShieldCheckIcon
 } from '@heroicons/react/24/outline'
+
+// Aktivite türü API'den kod olarak gelir; her kod tek bir cümle anahtarına eşlenir.
+// Kod sözlükte yoksa sunucunun yazdığı açıklamaya düşülür.
+const activityDescriptionKeys = {
+  'user.login': 'activities.action_user_login',
+  'user.login.failed': 'activities.action_user_login_failed',
+  'user.login.blocked': 'activities.action_user_login_blocked',
+  'user.logout': 'activities.action_user_logout',
+  'user.register': 'activities.action_user_register',
+  'user.password.forgot': 'activities.action_user_password_forgot',
+  'user.password.reset': 'activities.action_user_password_reset',
+  'user.password.change': 'activities.action_user_password_change',
+  'user.profile.update': 'activities.action_user_profile_update',
+  'user.delete': 'activities.action_user_delete',
+  'user.email.verified': 'activities.action_user_email_verified',
+  'user.email.verification.failed': 'activities.action_user_email_verification_failed',
+  'user.email.verification.resend': 'activities.action_user_email_verification_resend',
+  'session.created': 'activities.action_session_created',
+  'session.refreshed': 'activities.action_session_refreshed',
+  'session.revoked': 'activities.action_session_revoked',
+  'session.revoked.all': 'activities.action_session_revoked_all',
+  'session.tenant.switched': 'activities.action_session_tenant_switched',
+  'tenant.ownership.transfer': 'activities.action_tenant_ownership_transfer',
+  'api_token.created': 'activities.action_api_token_created',
+  'api_token.updated': 'activities.action_api_token_updated',
+  'api_token.deleted': 'activities.action_api_token_deleted',
+  'api_token.used': 'activities.action_api_token_used'
+}
 
 const activityIcons = {
   'user.login': { icon: ArrowRightOnRectangleIcon, color: 'text-green-600', bg: 'bg-green-100' },
@@ -20,7 +50,7 @@ const activityIcons = {
   'tenant.ownership.transfer': { icon: ShieldCheckIcon, color: 'text-amber-600', bg: 'bg-amber-100' },
 }
 
-const formatRelativeTime = (date) => {
+const formatRelativeTime = (date, t) => {
   const now = new Date()
   const diff = now - new Date(date)
   const seconds = Math.floor(diff / 1000)
@@ -29,17 +59,19 @@ const formatRelativeTime = (date) => {
   const days = Math.floor(hours / 24)
 
   if (days > 0) {
-    return `${days} gün önce`
+    return t('activities.days_ago', { count: days })
   } else if (hours > 0) {
-    return `${hours} saat önce`
+    return t('activities.hours_ago', { count: hours })
   } else if (minutes > 0) {
-    return `${minutes} dakika önce`
+    return t('activities.minutes_ago', { count: minutes })
   } else {
-    return 'Az önce'
+    return t('activities.just_now')
   }
 }
 
 export default function RecentActivities({ limit = 10, activeTenantId }) {
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const { data, isLoading, error } = useQuery({
     queryKey: ['recentActivities', limit, activeTenantId],
     queryFn: () => activitiesAPI.getRecentActivities(limit, activeTenantId),
@@ -50,7 +82,7 @@ export default function RecentActivities({ limit = 10, activeTenantId }) {
   if (isLoading) {
     return (
       <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Kullanıcı Aktiviteleri</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-4">{t('activities.title')}</h3>
         <div className="animate-pulse space-y-4">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="flex items-center space-x-3">
@@ -69,9 +101,9 @@ export default function RecentActivities({ limit = 10, activeTenantId }) {
   if (error) {
     return (
       <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Kullanıcı Aktiviteleri</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-4">{t('activities.title')}</h3>
         <div className="text-sm text-red-600">
-          Aktiviteler yüklenirken bir hata oluştu
+          {describeError(error, 'activities.load_failed')}
         </div>
       </div>
     )
@@ -82,10 +114,10 @@ export default function RecentActivities({ limit = 10, activeTenantId }) {
   return (
     <div className="bg-white shadow rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-medium text-gray-900">Kullanıcı Aktiviteleri</h3>
+        <h3 className="text-lg font-medium text-gray-900">{t('activities.title')}</h3>
         {activities.length > 0 && (
           <span className="text-sm text-gray-500">
-            Son {activities.length} aktivite
+            {t('activities.recent_count', { count: activities.length })}
           </span>
         )}
       </div>
@@ -93,7 +125,7 @@ export default function RecentActivities({ limit = 10, activeTenantId }) {
       {activities.length === 0 ? (
         <div className="text-center py-8">
           <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <p className="mt-2 text-sm text-gray-500">Henüz aktivite bulunmuyor</p>
+          <p className="mt-2 text-sm text-gray-500">{t('activities.empty')}</p>
         </div>
       ) : (
         <div className="flow-root">
@@ -105,6 +137,7 @@ export default function RecentActivities({ limit = 10, activeTenantId }) {
                 bg: 'bg-gray-100'
               }
               const Icon = config.icon
+              const descriptionKey = activityDescriptionKeys[activity.action]
 
               return (
                 <li key={activity.id}>
@@ -129,11 +162,11 @@ export default function RecentActivities({ limit = 10, activeTenantId }) {
                             <span className="font-medium text-gray-900">
                               {activity.user
                                 ? `${activity.user.firstName} ${activity.user.lastName}`
-                                : 'Bilinmeyen Kullanıcı'}
+                                : t('activities.unknown_user')}
                             </span>
                           </div>
                           <p className="mt-0.5 text-sm text-gray-500">
-                            {activity.description}
+                            {descriptionKey ? t(descriptionKey) : activity.description}
                           </p>
                           {activity.metadata?.email && (
                             <p className="mt-0.5 text-xs text-gray-400">
@@ -143,7 +176,7 @@ export default function RecentActivities({ limit = 10, activeTenantId }) {
                         </div>
                         <div className="mt-2 flex items-center space-x-2 text-xs text-gray-500">
                           <time dateTime={activity.createdAt}>
-                            {formatRelativeTime(activity.createdAt)}
+                            {formatRelativeTime(activity.createdAt, t)}
                           </time>
                           {activity.ipAddress && (
                             <>

@@ -40,6 +40,7 @@ import { PERMISSIONS, expandPermissions } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
 import ApiDocs from './pages/ApiDocs.jsx'
 import i18n from './i18n.js'
+import { persistLocale, resolveUserLocale } from './lib/localePreference.js'
 import {
   authAPI,
   setActiveTenantId as setApiActiveTenantId,
@@ -55,13 +56,16 @@ function App() {
   const isPublicDocsPath =
     window.location.pathname === '/docs' || window.location.pathname.startsWith('/docs/')
 
-  // Set default language to Turkish on app mount
+  // Panel dili: kullanıcı profilinde bir tercih varsa o kazanır, yoksa i18n'in
+  // açılışta tarayıcıdan tespit ettiği dil korunur. Dil hiçbir koşulda Türkçeye
+  // sabitlenmez — yabancı bir kullanıcı ilk açılışta kendi dilini görmeli.
   useEffect(() => {
-    if (!localStorage.getItem('language')) {
-      localStorage.setItem('language', 'tr')
-      i18n.changeLanguage('tr')
+    const preferred = resolveUserLocale(user, i18n.language)
+    if (preferred !== i18n.language) {
+      i18n.changeLanguage(preferred)
     }
-  }, [])
+    persistLocale(preferred)
+  }, [user])
   const [pendingTenantSelection, setPendingTenantSelection] = useState(false)
 
   const updateMemberships = useCallback((list) => {

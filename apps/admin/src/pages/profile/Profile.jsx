@@ -2,16 +2,21 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { userAPI } from '../../lib/userAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { PERMISSION_LABELS } from '../../constants/permissionLabels.js'
 import DeleteAccountModal from '../../components/DeleteAccountModal.jsx'
+import LanguageSwitcher from '../../components/LanguageSwitcher.jsx'
 
 export default function Profile() {
   const toast = useToast()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const { user, updateUserProfile, roleMeta, permissions, logout, logoutAll, memberships } = useAuth()
   const location = useLocation()
   const [isDeleting, setIsDeleting] = useState(false)
@@ -85,10 +90,9 @@ export default function Profile() {
       }
       updateUserProfile(updatedUser)
       await queryClient.invalidateQueries({ queryKey: ['currentUser'] })
-      toast.success('Profiliniz güncellendi')
+      toast.success(t('profile.save_success'))
     } catch (error) {
-      const message = error?.response?.data?.message || 'Profil güncellenemedi'
-      toast.error(message)
+      toast.error(describeError(error, 'profile.save_error'))
     }
   }
 
@@ -100,14 +104,13 @@ export default function Profile() {
     setIsDeleting(true)
     try {
       await userAPI.deleteAccount()
-      toast.success('Hesabınız başarıyla silindi. Güle güle...')
+      toast.success(t('profile.delete_account_success'))
       setTimeout(() => {
         logout()
         navigate('/auth/login')
       }, 1500)
     } catch (error) {
-      const message = error?.response?.data?.message || 'Hesap silinemedi'
-      toast.error(message)
+      toast.error(describeError(error, 'profile.delete_account_error'))
       setIsDeleting(false)
       setShowDeleteModal(false)
     }
@@ -140,7 +143,7 @@ export default function Profile() {
 
   const handlePasswordSubmit = async () => {
     if (!password.trim()) {
-      toast.error('Lütfen şifrenizi girin')
+      toast.error(t('profile.password_required'))
       return
     }
 
@@ -149,7 +152,9 @@ export default function Profile() {
       // Şifre doğrulama ve üyelikten ayrılma
       await userAPI.leaveMembership(leavingMembership.id, { password })
       
-      toast.success(`${leavingMembership.tenant?.name || 'Varlık'} üyeliğinden ayrıldınız`)
+      toast.success(t('profile.leave_tenant_success', {
+        name: leavingMembership.tenant?.name || t('profile.tenant_fallback')
+      }))
       
       // Veriyi yenile
       await queryClient.invalidateQueries({ queryKey: ['currentUser'] })
@@ -159,8 +164,7 @@ export default function Profile() {
       setPassword('')
       setLeavingMembership(null)
     } catch (error) {
-      const message = error?.response?.data?.message || 'İşlem başarısız oldu'
-      toast.error(message)
+      toast.error(describeError(error, 'profile.action_failed'))
     } finally {
       setIsProcessing(false)
     }
@@ -168,12 +172,12 @@ export default function Profile() {
 
   const handleTransferSubmit = async () => {
     if (!transferEmail.trim()) {
-      toast.error('Lütfen devredilecek kişinin e-posta adresini girin')
+      toast.error(t('profile.transfer_email_required'))
       return
     }
 
     if (!password.trim()) {
-      toast.error('Lütfen şifrenizi girin')
+      toast.error(t('profile.password_required'))
       return
     }
 
@@ -185,7 +189,7 @@ export default function Profile() {
         password
       })
       
-      toast.success(`${transferEmail} adresine sahiplik devri talebi gönderildi`)
+      toast.success(t('profile.transfer_request_sent', { email: transferEmail }))
       
       // Modal'ı kapat ve state'i temizle
       setShowTransferModal(false)
@@ -193,8 +197,7 @@ export default function Profile() {
       setPassword('')
       setLeavingMembership(null)
     } catch (error) {
-      const message = error?.response?.data?.message || 'İşlem başarısız oldu'
-      toast.error(message)
+      toast.error(describeError(error, 'profile.action_failed'))
     } finally {
       setIsProcessing(false)
     }
@@ -214,19 +217,19 @@ export default function Profile() {
 
   const handleChangePassword = async () => {
     if (!currentPassword.trim()) {
-      toast.error('Lütfen mevcut şifrenizi girin')
+      toast.error(t('profile.current_password_required'))
       return
     }
     if (!newPassword.trim()) {
-      toast.error('Lütfen yeni şifrenizi girin')
+      toast.error(t('profile.new_password_required'))
       return
     }
     if (newPassword.length < 6) {
-      toast.error('Yeni şifre en az 6 karakter olmalıdır')
+      toast.error(t('validation.min_length', { count: 6 }))
       return
     }
     if (newPassword !== confirmPassword) {
-      toast.error('Yeni şifreler eşleşmiyor')
+      toast.error(t('validation.passwords_match'))
       return
     }
 
@@ -236,21 +239,20 @@ export default function Profile() {
         currentPassword,
         newPassword
       })
-      toast.success('Şifreniz başarıyla değiştirildi')
+      toast.success(t('profile.password_success'))
       if (profile) {
         updateUserProfile({ ...profile, mustChangePassword: false })
       }
       closeModals()
     } catch (error) {
-      const message = error?.response?.data?.error || error?.response?.data?.message || 'Şifre değiştirilemedi'
-      toast.error(message)
+      toast.error(describeError(error, 'profile.password_error'))
     } finally {
       setIsChangingPassword(false)
     }
   }
 
   const handleLogoutAll = async () => {
-    if (!window.confirm('Tüm cihazlardaki oturumlar kapatılsın mı? Bu cihazda da yeniden giriş yapmanız gerekir.')) {
+    if (!window.confirm(t('profile.logout_all_confirm'))) {
       return
     }
 
@@ -259,14 +261,14 @@ export default function Profile() {
       await logoutAll()
       navigate('/login', { replace: true })
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Oturumlar kapatılamadı')
+      toast.error(describeError(error, 'profile.logout_all_error'))
       setIsLoggingOutAll(false)
     }
   }
 
   const renderPermissions = (list = []) => {
     if (!list.length) {
-      return <p className="text-sm text-gray-500">Bu rol için atanmış yetki yok.</p>
+      return <p className="text-sm text-gray-500">{t('profile.no_permissions')}</p>
     }
 
     return (
@@ -287,24 +289,24 @@ export default function Profile() {
     <div className="px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl">
         <div className="border-b border-gray-200 pb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">Profil Ayarları</h1>
-          <p className="mt-1 text-sm text-gray-500">Kişisel bilgilerinizi yönetin ve mevcut rolünüzü görüntüleyin.</p>
+          <h1 className="text-2xl font-semibold text-gray-900">{t('profile.title')}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t('profile.description')}</p>
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                <h2 className="text-sm font-medium text-gray-700">Kişisel Bilgiler</h2>
+                <h2 className="text-sm font-medium text-gray-700">{t('profile.personal_info')}</h2>
               </div>
 
               {isLoading ? (
-                <div className="p-6 text-sm text-gray-500">Bilgiler yükleniyor...</div>
+                <div className="p-6 text-sm text-gray-500">{t('common.loading')}</div>
               ) : (
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-6">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Ad</label>
+                      <label className="block text-sm font-medium text-gray-700">{t('profile.first_name')}</label>
                       <input
                         type="text"
                         {...register('firstName', { required: true })}
@@ -312,7 +314,7 @@ export default function Profile() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Soyad</label>
+                      <label className="block text-sm font-medium text-gray-700">{t('profile.last_name')}</label>
                       <input
                         type="text"
                         {...register('lastName', { required: true })}
@@ -322,7 +324,7 @@ export default function Profile() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">E-posta</label>
+                    <label className="block text-sm font-medium text-gray-700">{t('profile.email')}</label>
                     <input
                       type="email"
                       {...register('email', { required: true })}
@@ -336,7 +338,7 @@ export default function Profile() {
                       disabled={formState.isSubmitting || !formState.isDirty}
                       className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {formState.isSubmitting ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                      {formState.isSubmitting ? t('profile.saving') : t('common.save_changes')}
                     </button>
                   </div>
                 </form>
@@ -346,11 +348,11 @@ export default function Profile() {
             {/* Şifre Değiştir Bölümü */}
             <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                <h2 className="text-sm font-medium text-gray-700">Şifre Değiştir</h2>
+                <h2 className="text-sm font-medium text-gray-700">{t('profile.change_password')}</h2>
               </div>
               <div className="p-6">
                 <p className="text-sm text-gray-600">
-                  Hesabınızın güvenliği için şifrenizi düzenli olarak değiştirmenizi öneririz.
+                  {t('profile.change_password_description')}
                 </p>
                 <div className="mt-4">
                   <button
@@ -361,7 +363,7 @@ export default function Profile() {
                     <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                     </svg>
-                    Şifremi Değiştir
+                    {t('profile.change_password')}
                   </button>
                 </div>
               </div>
@@ -369,11 +371,11 @@ export default function Profile() {
 
             <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                <h2 className="text-sm font-medium text-gray-700">Aktif Oturumlar</h2>
+                <h2 className="text-sm font-medium text-gray-700">{t('profile.active_sessions')}</h2>
               </div>
               <div className="p-6">
                 <p className="text-sm text-gray-600">
-                  Hesabınızın açık olduğu tüm tarayıcı ve cihazlardaki oturumları sunucu tarafında iptal edin.
+                  {t('profile.active_sessions_description')}
                 </p>
                 <button
                   type="button"
@@ -381,7 +383,7 @@ export default function Profile() {
                   disabled={isLoggingOutAll}
                   className="mt-4 inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
                 >
-                  {isLoggingOutAll ? 'Oturumlar kapatılıyor...' : 'Tüm cihazlardan çıkış yap'}
+                  {isLoggingOutAll ? t('profile.logging_out_all') : t('profile.logout_all')}
                 </button>
               </div>
             </div>
@@ -389,7 +391,7 @@ export default function Profile() {
             {/* Varlık Üyeliklerim - Şifre Değiştir altına taşındı */}
             <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                <h2 className="text-sm font-medium text-gray-700">Varlık Üyeliklerim</h2>
+                <h2 className="text-sm font-medium text-gray-700">{t('profile.memberships')}</h2>
               </div>
               <div className="divide-y divide-gray-200">
                 {(data?.allMemberships || []).map((membership) => {
@@ -406,35 +408,35 @@ export default function Profile() {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="font-medium text-gray-900">{membership.tenant?.name || 'Varlık'}</p>
+                            <p className="font-medium text-gray-900">{membership.tenant?.name || t('profile.tenant_fallback')}</p>
                             {isOwner && (
                               <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
-                                Sahip
+                                {t('role.owner')}
                               </span>
                             )}
                           </div>
-                          <p className="mt-1 text-xs text-gray-500">Rol: {membership.roleMeta?.name || membership.role}</p>
-                          <p className="text-xs text-gray-400">Yetki sayısı: {membership.permissions?.length || 0}</p>
+                          <p className="mt-1 text-xs text-gray-500">{t('profile.membership_role', { role: membership.roleMeta?.name || membership.role })}</p>
+                          <p className="text-xs text-gray-400">{t('profile.permission_count', { count: membership.permissions?.length || 0 })}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleLeaveMembership(membership, hasOtherOwners)}
                           className="ml-4 inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500"
                         >
-                          Görevi Bırak
+                          {t('profile.leave_tenant')}
                         </button>
                       </div>
                       {isOwner && !hasOtherOwners && (
                         <div className="mt-3 rounded-md bg-amber-50 p-2">
                           <p className="text-xs text-amber-800">
-                            ⚠️ Bu varlığın tek sahibisiniz. Görevi bırakmak için önce başka bir kullanıcıya sahiplik devretmeniz gerekmektedir. (Toplam owner: {ownerCount})
+                            ⚠️ {t('profile.sole_owner_warning', { count: ownerCount })}
                           </p>
                         </div>
                       )}
                       {isOwner && hasOtherOwners && (
                         <div className="mt-3 rounded-md bg-green-50 p-2">
                           <p className="text-xs text-green-800">
-                            ✓ {ownerCount} owner var. Sahipliğinizi bırakabilirsiniz.
+                            ✓ {t('profile.multiple_owners_notice', { count: ownerCount })}
                           </p>
                         </div>
                       )}
@@ -442,7 +444,7 @@ export default function Profile() {
                   )
                 })}
                 {!data?.allMemberships?.length && (
-                  <div className="p-4 text-sm text-gray-500">Hiç varlık üyeliğiniz bulunmuyor.</div>
+                  <div className="p-4 text-sm text-gray-500">{t('profile.no_memberships')}</div>
                 )}
               </div>
             </div>
@@ -451,17 +453,26 @@ export default function Profile() {
           <div className="space-y-6">
             <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                <h2 className="text-sm font-medium text-gray-700">Aktif Rol</h2>
+                <h2 className="text-sm font-medium text-gray-700">{t('profile.active_role')}</h2>
               </div>
               <div className="space-y-4 p-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{roleMeta?.name || currentMembership?.role || 'Bilinmiyor'}</p>
-                  <p className="text-xs text-gray-500">Seviye: {roleMeta?.level ?? currentMembership?.level ?? '—'}</p>
+                  <p className="text-sm font-medium text-gray-900">{roleMeta?.name || currentMembership?.role || t('profile.unknown_role')}</p>
+                  <p className="text-xs text-gray-500">{t('profile.role_level', { level: roleMeta?.level ?? currentMembership?.level ?? '—' })}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Yetkiler</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('profile.permissions')}</p>
                   {renderPermissions(permissions || currentMembership?.permissions)}
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                <h2 className="text-sm font-medium text-gray-700">{t('profile.preferences')}</h2>
+              </div>
+              <div className="p-4">
+                <LanguageSwitcher variant="select" />
               </div>
             </div>
           </div>
@@ -471,7 +482,7 @@ export default function Profile() {
         <div className="mt-8">
           <div className="overflow-hidden rounded-lg border border-red-200 bg-white shadow-sm">
             <div className="border-b border-red-200 bg-red-50 px-4 py-3">
-              <h2 className="text-sm font-medium text-red-800">Tehlikeli Alan</h2>
+              <h2 className="text-sm font-medium text-red-800">{t('profile.danger_zone')}</h2>
             </div>
             <div className="p-6">
               <div className="flex items-start gap-4">
@@ -481,10 +492,9 @@ export default function Profile() {
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-base font-semibold text-gray-900">Hesabı Kalıcı Olarak Sil</h3>
+                  <h3 className="text-base font-semibold text-gray-900">{t('profile.delete_account_title')}</h3>
                   <p className="mt-2 text-sm text-gray-600">
-                    Hesabınızı sildiğinizde, tüm kişisel bilgileriniz ve varlık üyelikleriniz kalıcı olarak silinecektir. 
-                    Bu işlem geri alınamaz.
+                    {t('profile.delete_account_description')}
                   </p>
                   {(memberships || []).some(m => m.role === 'owner') && (
                     <div className="mt-3 rounded-md bg-yellow-50 p-3">
@@ -496,8 +506,7 @@ export default function Profile() {
                         </div>
                         <div className="ml-3">
                           <p className="text-sm text-yellow-800">
-                            <strong>Uyarı:</strong> Sahip olduğunuz varlıklar var. Hesabınızı silmeden önce bu varlıkları 
-                            başka bir kullanıcıya devretmeniz veya silmeniz gerekmektedir.
+                            {t('profile.owned_tenants_warning')}
                           </p>
                         </div>
                       </div>
@@ -513,7 +522,7 @@ export default function Profile() {
                       <svg className="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                       </svg>
-                      {isDeleting ? 'Siliniyor...' : 'Hesabımı Sil'}
+                      {isDeleting ? t('common.deleting') : t('profile.delete_account')}
                     </button>
                   </div>
                 </div>
@@ -538,18 +547,20 @@ export default function Profile() {
                     </svg>
                   </div>
                   <div className="ml-4 flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">Şifrenizi Onaylayın</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">{t('profile.confirm_password_title')}</h3>
                     <p className="mt-2 text-sm text-gray-600">
-                      <strong>{leavingMembership?.tenant?.name || 'Varlık'}</strong> üyeliğinden ayrılmak için şifrenizi girin.
+                      {t('profile.leave_tenant_password_prompt', {
+                        name: leavingMembership?.tenant?.name || t('profile.tenant_fallback')
+                      })}
                     </p>
                     <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700">Şifre</label>
+                      <label className="block text-sm font-medium text-gray-700">{t('profile.current_password')}</label>
                       <input
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-                        placeholder="Mevcut şifreniz"
+                        placeholder={t('profile.current_password_placeholder')}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                         autoFocus
                       />
@@ -564,7 +575,7 @@ export default function Profile() {
                   disabled={isProcessing}
                   className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
                 >
-                  İptal
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -572,7 +583,7 @@ export default function Profile() {
                   disabled={isProcessing || !password.trim()}
                   className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {isProcessing ? 'İşleniyor...' : 'Görevi Bırak'}
+                  {isProcessing ? t('profile.processing') : t('profile.leave_tenant')}
                 </button>
               </div>
             </div>
@@ -595,33 +606,34 @@ export default function Profile() {
                     </svg>
                   </div>
                   <div className="ml-4 flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">Sahiplik Devri Talebi</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">{t('profile.transfer_title')}</h3>
                     <p className="mt-2 text-sm text-gray-600">
-                      <strong>{leavingMembership?.tenant?.name || 'Varlık'}</strong> varlığının tek sahibisiniz. 
-                      Görevi bırakmadan önce sahipliği devretmeniz gerekmektedir.
+                      {t('profile.transfer_description', {
+                        name: leavingMembership?.tenant?.name || t('profile.tenant_fallback')
+                      })}
                     </p>
                     <div className="mt-4 space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Yeni Sahip E-posta</label>
+                        <label className="block text-sm font-medium text-gray-700">{t('profile.transfer_email_label')}</label>
                         <input
                           type="email"
                           value={transferEmail}
                           onChange={(e) => setTransferEmail(e.target.value)}
-                          placeholder="ornek@email.com"
+                          placeholder={t('profile.transfer_email_placeholder')}
                           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-purple-500"
                         />
                         <p className="mt-1 text-xs text-gray-500">
-                          Bu kişiye sahiplik devri talebi gönderilecektir. Kabul ettikten sonra görevi bırakabilirsiniz.
+                          {t('profile.transfer_email_hint')}
                         </p>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Şifreniz</label>
+                        <label className="block text-sm font-medium text-gray-700">{t('profile.your_password')}</label>
                         <input
                           type="password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleTransferSubmit()}
-                          placeholder="Mevcut şifreniz"
+                          placeholder={t('profile.current_password_placeholder')}
                           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-purple-500"
                         />
                       </div>
@@ -636,7 +648,7 @@ export default function Profile() {
                   disabled={isProcessing}
                   className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
                 >
-                  İptal
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -644,7 +656,7 @@ export default function Profile() {
                   disabled={isProcessing || !password.trim() || !transferEmail.trim()}
                   className="inline-flex items-center rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-50"
                 >
-                  {isProcessing ? 'Gönderiliyor...' : 'Devir Talebi Gönder'}
+                  {isProcessing ? t('profile.sending') : t('profile.transfer_submit')}
                 </button>
               </div>
             </div>
@@ -667,40 +679,40 @@ export default function Profile() {
                     </svg>
                   </div>
                   <div className="ml-4 flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">Şifre Değiştir</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">{t('profile.change_password')}</h3>
                     <p className="mt-2 text-sm text-gray-600">
-                      Güvenliğiniz için güçlü bir şifre seçin.
+                      {t('profile.change_password_hint')}
                     </p>
                     <div className="mt-4 space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Mevcut Şifre</label>
+                        <label className="block text-sm font-medium text-gray-700">{t('profile.current_password')}</label>
                         <input
                           type="password"
                           value={currentPassword}
                           onChange={(e) => setCurrentPassword(e.target.value)}
-                          placeholder="Mevcut şifreniz"
+                          placeholder={t('profile.current_password_placeholder')}
                           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                           autoFocus
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Yeni Şifre</label>
+                        <label className="block text-sm font-medium text-gray-700">{t('profile.new_password')}</label>
                         <input
                           type="password"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          placeholder="En az 6 karakter"
+                          placeholder={t('profile.new_password_placeholder')}
                           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Yeni Şifre (Tekrar)</label>
+                        <label className="block text-sm font-medium text-gray-700">{t('profile.confirm_password')}</label>
                         <input
                           type="password"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
-                          placeholder="Yeni şifrenizi tekrar girin"
+                          placeholder={t('profile.confirm_password_placeholder')}
                           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                         />
                       </div>
@@ -715,7 +727,7 @@ export default function Profile() {
                   disabled={isChangingPassword}
                   className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
                 >
-                  İptal
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -723,7 +735,7 @@ export default function Profile() {
                   disabled={isChangingPassword || !currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()}
                   className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {isChangingPassword ? 'Değiştiriliyor...' : 'Şifreyi Değiştir'}
+                  {isChangingPassword ? t('profile.changing_password') : t('profile.update_password')}
                 </button>
               </div>
             </div>

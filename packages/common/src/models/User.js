@@ -18,6 +18,9 @@ const userSchema = new Schema({
   resetPasswordToken: { type: String },
   resetPasswordExpiresAt: { type: Date },
   mustChangePassword: { type: Boolean, default: false },
+  // Arayüz ve bildirim dili tercihi. null = tercih belirtilmemiş; istemci
+  // tarayıcı diline göre karar verir (bkz. apps/admin/src/lib/localePreference.js).
+  language: { type: String, enum: ['tr', 'en', null], default: null },
   tokenVersion: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
