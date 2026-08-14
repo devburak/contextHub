@@ -384,7 +384,8 @@ export default function Roles() {
 
       {!isLoading && !isError && (
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-gray-200">
+          <div className="overflow-x-auto overscroll-x-contain">
+          <table className="min-w-[760px] divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{t('users.role')}</th>
@@ -494,6 +495,7 @@ export default function Roles() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

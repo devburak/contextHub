@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { listContents } from '../../lib/api/contents'
 import { useAuth } from '../../contexts/AuthContext.jsx'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { searchTags } from '../../lib/api/tags'
 import { categoryAPI } from '../../lib/categoryAPI'
 import clsx from 'clsx'
@@ -12,6 +12,7 @@ import { adminPluginContentSearch } from '../../plugins/registry.jsx'
 
 export default function ContentList() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { isAuthenticated, activeTenantId, hasPermission, hasFeature } = useAuth()
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('')
@@ -98,9 +99,9 @@ export default function ContentList() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-4">
-        <div>
+        <div className="w-full sm:w-auto">
           <label className="block text-sm font-medium text-gray-700">{t('common.status')}</label>
-          <div className="relative mt-1 w-44">
+          <div className="relative mt-1 w-full sm:w-44">
             <select
               value={status}
               onChange={(e) => { setStatus(e.target.value); setPage(1); }}
@@ -115,9 +116,9 @@ export default function ContentList() {
             <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
         </div>
-        <div>
+        <div className="w-full sm:w-auto">
           <label className="block text-sm font-medium text-gray-700">{t('content.category')}</label>
-          <div className="relative mt-1 w-48">
+          <div className="relative mt-1 w-full sm:w-48">
             <select
               value={category}
               onChange={(e) => { setCategory(e.target.value); setPage(1); }}
@@ -133,19 +134,19 @@ export default function ContentList() {
             <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
         </div>
-        <div className="relative w-72">
+        <div className="relative w-full sm:w-72">
           <label className="block text-sm font-medium text-gray-700">{t('common.search')}</label>
           <input
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder={t('content.search_placeholder')}
-            className={clsx('mt-1 w-72', filterInputClass)}
+            className={clsx('mt-1', filterInputClass)}
           />
         </div>
-        <div>
+        <div className="w-full sm:w-auto">
           <label className="block text-sm font-medium text-gray-700">{t('content.tag')}</label>
-          <div className="relative w-64" ref={tagContainerRef}>
+          <div className="relative w-full sm:w-64" ref={tagContainerRef}>
             <input
               type="search"
               value={tagInput}
@@ -221,7 +222,7 @@ export default function ContentList() {
             )}
           </div>
         </div>
-        <div className="ml-auto flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
           <Link
             to="/contents/new"
             className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
@@ -258,51 +259,83 @@ export default function ContentList() {
 
       {items.length > 0 && (
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <div className="overflow-x-auto overscroll-x-contain">
+          <table className="w-full divide-y divide-gray-200 text-sm sm:min-w-[680px]">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-2 text-left font-semibold text-gray-700">{t('common.title')}</th>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700 w-40">{t('common.status')}</th>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700 w-48">{t('common.updated')}</th>
-                <th className="px-4 py-2" />
+                <th className="hidden w-40 px-4 py-2 text-left font-semibold text-gray-700 sm:table-cell">{t('common.status')}</th>
+                <th className="hidden w-48 px-4 py-2 text-left font-semibold text-gray-700 sm:table-cell">{t('common.updated')}</th>
+                <th className="hidden px-4 py-2 sm:table-cell" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
-              {items.map(item => (
-                <tr key={item._id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2">
-                    <div className="font-medium text-gray-900 truncate max-w-xs">{item.title}</div>
-                    <div className="text-xs text-gray-500 truncate max-w-xs">/{item.slug}</div>
+              {items.map(item => {
+                const editPath = `/contents/${item._id}`
+                return (
+                <tr
+                  key={item._id}
+                  role="link"
+                  tabIndex={0}
+                  aria-label={`${item.title} – ${t('common.edit')}`}
+                  onClick={() => navigate(editPath)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      navigate(editPath)
+                    }
+                  }}
+                  className="group cursor-pointer transition-colors hover:bg-blue-50/60 focus:outline-none focus-visible:bg-blue-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                >
+                  <td className="px-4 py-3 sm:py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-gray-900 sm:max-w-xs">{item.title}</div>
+                        <div className="truncate text-xs text-gray-500 sm:max-w-xs">/{item.slug}</div>
+                      </div>
+                      <span className="inline-flex min-h-11 flex-none items-center gap-1 rounded-md bg-blue-50 px-3 text-sm font-semibold text-blue-700 group-hover:bg-blue-100 sm:hidden" aria-hidden="true">
+                        {t('common.edit')} <span aria-hidden="true">→</span>
+                      </span>
+                    </div>
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="hidden px-4 py-2 sm:table-cell">
                     <StatusBadge status={item.status} />
                   </td>
-                  <td className="px-4 py-2 text-gray-600 text-xs">
+                  <td className="hidden px-4 py-2 text-xs text-gray-600 sm:table-cell">
                     {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-'}
                   </td>
-                  <td className="px-4 py-2 text-right">
-                    <Link to={`/contents/${item._id}`} className="text-blue-600 hover:underline">{t('common.edit')}</Link>
+                  <td className="hidden px-4 py-2 text-right sm:table-cell">
+                    <Link
+                      to={editPath}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      className="inline-flex min-h-11 items-center rounded-md px-2 text-blue-600 hover:bg-blue-50 hover:underline"
+                    >
+                      {t('common.edit')}
+                    </Link>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {items.length > 0 && (
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <div>{t('content.page_indicator', { current: pagination.page, total: pagination.pages })}</div>
           <div className="flex gap-2">
             <button
               disabled={pagination.page <= 1}
               onClick={() => setPage(p => p - 1)}
-              className="px-3 py-1 rounded border text-gray-700 disabled:opacity-40"
+              className="min-h-11 rounded border px-3 py-2 text-gray-700 disabled:opacity-40"
             >{t('common.previous')}</button>
             <button
               disabled={pagination.page >= pagination.pages}
               onClick={() => setPage(p => p + 1)}
-              className="px-3 py-1 rounded border text-gray-700 disabled:opacity-40"
+              className="min-h-11 rounded border px-3 py-2 text-gray-700 disabled:opacity-40"
             >{t('common.next')}</button>
           </div>
         </div>

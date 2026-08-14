@@ -78,7 +78,7 @@ export default function Users() {
         </div>
 
         <div className="card">
-          <div className="overflow-hidden">
+          <div className="overflow-x-auto overscroll-x-contain">
             <table className="min-w-full divide-y divide-gray-300">
               <thead>
                 <tr>
@@ -132,13 +132,13 @@ export default function Users() {
                       <div className="flex justify-end gap-2">
                         <Link
                           to={`/users/${user._id}/edit`}
-                          className="text-blue-600 hover:text-blue-900"
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50 hover:text-blue-900"
                         >
                           <PencilIcon className="h-4 w-4" />
                         </Link>
                         <button
                           onClick={() => handleDelete(user._id, user.name)}
-                          className="text-red-600 hover:text-red-900"
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-red-600 hover:bg-red-50 hover:text-red-900"
                           disabled={deleteMutation.isPending}
                         >
                           <TrashIcon className="h-4 w-4" />

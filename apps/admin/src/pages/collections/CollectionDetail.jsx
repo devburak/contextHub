@@ -410,7 +410,8 @@ export default function CollectionDetail() {
             </div>
           ) : entries.length ? (
             <div className="overflow-hidden rounded-lg border border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200">
+              <div className="overflow-x-auto overscroll-x-contain">
+              <table className="min-w-[720px] divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">{t('common.title')}</th>
@@ -466,6 +467,7 @@ export default function CollectionDetail() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 py-12 text-center text-sm text-gray-500">
@@ -475,7 +477,7 @@ export default function CollectionDetail() {
         </div>
 
         {pagination.pages > 1 && (
-          <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
             <div>
               {t('collection.page_of', { current: pagination.page, total: pagination.pages })}
             </div>

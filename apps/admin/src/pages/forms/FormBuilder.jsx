@@ -22,6 +22,7 @@ export default function FormBuilder() {
   const queryClient = useQueryClient();
   const { tenant } = useAuth();
   const [activeTab, setActiveTab] = useState('build'); // build, settings, preview
+  const [mobileBuildPanel, setMobileBuildPanel] = useState('canvas'); // palette, canvas, inspector
   const [selectedFieldId, setSelectedFieldId] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('tr'); // tr, en
@@ -227,6 +228,7 @@ export default function FormBuilder() {
   // Handle field selection
   const handleFieldSelect = (fieldId) => {
     setSelectedFieldId(fieldId);
+    setMobileBuildPanel('inspector');
   };
 
   // Handle field add from palette
@@ -250,6 +252,7 @@ export default function FormBuilder() {
       fields: [...prev.fields, newField],
     }));
     setSelectedFieldId(newField.id);
+    setMobileBuildPanel('canvas');
     setHasUnsavedChanges(true);
   };
 
@@ -384,24 +387,24 @@ export default function FormBuilder() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+      <div className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-center space-x-3 sm:space-x-4">
             <button
               onClick={() => navigate('/forms')}
-              className="text-gray-400 hover:text-gray-600"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600"
             >
               <ArrowLeftIcon className="h-5 w-5" />
             </button>
-            <div>
+            <div className="min-w-0 flex-1">
               <input
                 type="text"
                 value={formData.title.tr || ''}
                 onChange={(e) => handleFormInfoUpdate({ title: { ...formData.title, tr: e.target.value } })}
                 placeholder="Form Başlığı"
-                className="text-lg font-medium text-gray-900 border-0 border-b border-transparent hover:border-gray-300 focus:border-indigo-600 focus:ring-0 px-0"
+                className="w-full min-w-0 border-0 border-b border-transparent px-0 text-lg font-medium text-gray-900 hover:border-gray-300 focus:border-indigo-600 focus:ring-0"
               />
               <p className="text-sm text-gray-500 mt-1">
                 {form?.status === 'published' ? 'Yayında' : form?.status === 'archived' ? 'Arşivlendi' : 'Taslak'}
@@ -409,7 +412,7 @@ export default function FormBuilder() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Language Selector */}
             <div className="flex items-center border border-gray-300 rounded-md overflow-hidden">
               <button
@@ -513,8 +516,8 @@ export default function FormBuilder() {
         )}
 
         {/* Tabs */}
-        <div className="mt-4 border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
+        <div className="mt-4 overflow-x-auto border-b border-gray-200">
+          <nav className="-mb-px flex min-w-max space-x-6 sm:space-x-8">
             <button
               onClick={() => setActiveTab('build')}
               className={`${
@@ -550,16 +553,40 @@ export default function FormBuilder() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-visible md:overflow-hidden">
         {activeTab === 'build' && (
-          <div className="h-full flex">
+          <div className="flex min-h-[60dvh] flex-col md:h-full md:min-h-0 md:flex-row">
+            <div className="grid grid-cols-3 border-b border-gray-200 bg-white p-2 md:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileBuildPanel('palette')}
+                className={`${mobileBuildPanel === 'palette' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} min-h-11 rounded-md px-2 text-sm font-medium`}
+              >
+                Alan ekle
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileBuildPanel('canvas')}
+                className={`${mobileBuildPanel === 'canvas' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} min-h-11 rounded-md px-2 text-sm font-medium`}
+              >
+                Form
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileBuildPanel('inspector')}
+                disabled={!selectedField}
+                className={`${mobileBuildPanel === 'inspector' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} min-h-11 rounded-md px-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40`}
+              >
+                Alanı düzenle
+              </button>
+            </div>
             {/* Field Palette */}
-            <div className="w-64 border-r border-gray-200 bg-gray-50 overflow-y-auto">
+            <div className={`${mobileBuildPanel === 'palette' ? 'block' : 'hidden'} min-h-[50dvh] w-full overflow-y-auto border-gray-200 bg-gray-50 md:block md:w-64 md:border-r`}>
               <FieldPalette onFieldAdd={handleFieldAdd} />
             </div>
 
             {/* Form Canvas */}
-            <div className="flex-1 overflow-y-auto bg-white">
+            <div className={`${mobileBuildPanel === 'canvas' ? 'block' : 'hidden'} min-h-[50dvh] flex-1 overflow-y-auto bg-white md:block`}>
               <FormCanvas
                 fields={formData.fields}
                 selectedFieldId={selectedFieldId}
@@ -571,7 +598,7 @@ export default function FormBuilder() {
 
             {/* Field Inspector */}
             {selectedField && (
-              <div className="w-80 border-l border-gray-200 bg-gray-50 overflow-y-auto">
+              <div className={`${mobileBuildPanel === 'inspector' ? 'block' : 'hidden'} min-h-[50dvh] w-full overflow-y-auto border-gray-200 bg-gray-50 md:block md:w-80 md:border-l`}>
                 <FieldInspector
                   field={selectedField}
                   selectedLanguage={selectedLanguage}
@@ -597,8 +624,8 @@ export default function FormBuilder() {
         )}
 
         {activeTab === 'preview' && (
-          <div className="h-full overflow-y-auto bg-gray-50 p-8">
-            <div className="max-w-3xl mx-auto bg-white rounded-lg shadow p-8">
+          <div className="h-full overflow-y-auto bg-gray-50 p-4 sm:p-8">
+            <div className="mx-auto max-w-3xl rounded-lg bg-white p-4 shadow sm:p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
                 {formData.title.tr || 'Form Başlığı'}
               </h2>
