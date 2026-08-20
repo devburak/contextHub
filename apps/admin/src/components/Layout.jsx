@@ -13,7 +13,7 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [switchingTenantId, setSwitchingTenantId] = useState(null)
-  const { user, memberships, activeMembership, selectTenant, logout, hasPermission } = useAuth()
+  const { user, memberships, activeMembership, selectTenant, logout, hasPermission, hasFeature } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -83,7 +83,7 @@ export default function Layout() {
       icon: DocumentTextIcon,
       permission: PERMISSIONS.CONTENT_VIEW
     },
-    ...adminPluginNavigation,
+    ...adminPluginNavigation.filter((item) => !item.parentId),
     {
       id: 'collections',
       name: t('nav.collections'),
@@ -131,7 +131,8 @@ export default function Layout() {
           href: '/varliklar/ayarlar',
           icon: WrenchScrewdriverIcon,
           permission: PERMISSIONS.TENANTS_MANAGE // Sadece ayarlar yetkili olmalı
-        }
+        },
+        ...adminPluginNavigation.filter((item) => item.parentId === 'tenants-group')
       ]
     },
     {
@@ -165,10 +166,14 @@ export default function Layout() {
           return null
         }
 
+        if (item.feature && !hasFeature(item.feature)) {
+          return null
+        }
+
         return item
       })
       .filter(Boolean)
-  }, [hasPermission])
+  }, [hasFeature, hasPermission])
 
   const filteredNavigation = useMemo(() => filterNavigation(navigation), [navigation, filterNavigation])
 

@@ -1299,6 +1299,37 @@ async function bulkTagMedia({ tenantId, mediaIds = [], tags = [], mode = 'add', 
   return { modified: result.modifiedCount || 0 }
 }
 
+async function openTenantBackupFile({ tenantId, key }) {
+  const normalizedTenantId = String(tenantId || '').trim()
+  const normalizedKey = String(key || '').trim()
+  if (!normalizedTenantId || !normalizedKey) {
+    throw new Error('tenantId and key are required')
+  }
+  const media = await Media.findOne({
+    tenantId: normalizedTenantId,
+    sourceType: { $ne: 'external' },
+    $or: [{ key: normalizedKey }, { 'variants.key': normalizedKey }],
+  }).lean()
+  if (!media || String(media.tenantId) !== normalizedTenantId) {
+    throw new Error('Tenant-scoped media file not found')
+  }
+  ensureKeyMatchesTenant(normalizedKey, media.tenantSlug)
+  if (media.bucket !== BUCKET) {
+    throw new Error('Media bucket does not match the configured source bucket')
+  }
+
+  const response = await s3Client.send(new GetObjectCommand({
+    Bucket: BUCKET,
+    Key: normalizedKey,
+  }))
+  return {
+    body: response.Body,
+    contentLength: response.ContentLength,
+    contentType: response.ContentType,
+    etag: response.ETag,
+  }
+}
+
 module.exports = {
   generatePresignedUpload,
   completeUpload,
@@ -1309,4 +1340,5 @@ module.exports = {
   deleteMedia,
   bulkDeleteMedia,
   bulkTagMedia,
+  openTenantBackupFile,
 }

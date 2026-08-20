@@ -49,6 +49,30 @@ describe('admin plugin page registry', () => {
     expect(contributions.contentEditorPanels).toHaveLength(1)
   })
 
+  it('keeps a plugin navigation item inside its declared core menu group', () => {
+    const pages = validateAdminPluginPages([{
+      id: 'tenant-backup.settings',
+      path: '/tenant-backup',
+      element: createElement('div'),
+      permission: 'tenantBackup.configure',
+      feature: 'tenant.backup',
+      menu: {
+        id: 'tenant-backup',
+        name: 'Yedekleme',
+        order: 40,
+        parentId: 'tenants-group'
+      }
+    }])
+
+    expect(navigationFromAdminPages(pages)).toEqual([
+      expect.objectContaining({
+        id: 'tenant-backup',
+        parentId: 'tenants-group',
+        feature: 'tenant.backup'
+      })
+    ])
+  })
+
   it('fails fast on core and plugin collisions', () => {
     expect(() => validateAdminPluginPages([{
       id: 'contents',

@@ -78,6 +78,16 @@ function createExtensionSettingsFacade({ plugin, model = ExtensionTenantSetting 
   if (!pluginName) throw new TypeError('plugin is required');
 
   return Object.freeze({
+    async listTenantIds({ key } = {}) {
+      const normalizedKey = normalizeKey(key);
+      const docs = await model.find({ plugin: pluginName, key: normalizedKey })
+        .select('tenantId')
+        .lean();
+      return Object.freeze(
+        Array.from(new Set((docs || []).map((doc) => String(doc.tenantId)))).sort()
+      );
+    },
+
     async get({ tenantId, key } = {}) {
       const normalizedTenantId = normalizeTenantId(tenantId);
       const normalizedKey = normalizeKey(key);

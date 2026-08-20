@@ -134,4 +134,32 @@ describe('extension source facade', () => {
     await expect(sources.getContentSnapshot({ tenantId: 'tenant-1' }))
       .rejects.toBeInstanceOf(ExtensionSourceFacadeError)
   })
+
+  it('forwards one explicit tenant identity to each privileged backup source', async () => {
+    const streamTenantBackupRecords = vi.fn().mockReturnValue((async function* records() {
+      yield { tenantId: 'tenant-1', collection: 'Contents', id: 'content-1', document: {} }
+    })())
+    const listTenantBackupFiles = vi.fn().mockResolvedValue([{ tenantId: 'tenant-1', key: 'tenant/file' }])
+    const openTenantBackupFile = vi.fn().mockResolvedValue({ body: 'stream' })
+    const sources = createExtensionSourceFacade({
+      loadContent: vi.fn(),
+      loadContentDefinitions: vi.fn(),
+      loadCollectionEntry: vi.fn(),
+      streamTenantBackupRecords,
+      listTenantBackupFiles,
+      openTenantBackupFile
+    })
+
+    const records = []
+    for await (const record of sources.streamTenantBackupRecords({ tenantId: 'tenant-1' })) {
+      records.push(record)
+    }
+    await sources.listTenantBackupFiles({ tenantId: 'tenant-1' })
+    await sources.openTenantBackupFile({ tenantId: 'tenant-1', key: 'tenant/file' })
+
+    expect(records).toHaveLength(1)
+    expect(streamTenantBackupRecords).toHaveBeenCalledWith({ tenantId: 'tenant-1' })
+    expect(listTenantBackupFiles).toHaveBeenCalledWith({ tenantId: 'tenant-1' })
+    expect(openTenantBackupFile).toHaveBeenCalledWith({ tenantId: 'tenant-1', key: 'tenant/file' })
+  })
 })

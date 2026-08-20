@@ -52,7 +52,7 @@ describe('plugin host', () => {
       ok: true,
       plugin: 'dummy',
       apiVersion: 1,
-      apiRevision: 4
+      apiRevision: 5
     })
     expect(result.registry.inventory()).toEqual([
       expect.objectContaining({ name: 'dummy', routePrefix: '/api/dummy' })
@@ -100,7 +100,7 @@ describe('plugin host', () => {
       code: 'PLUGIN_CORE_VERSION_INCOMPATIBLE'
     }))
     expect(() =>
-      validatePluginManifest(validManifest({ apiRevision: 5 }), {
+      validatePluginManifest(validManifest({ apiRevision: 6 }), {
         coreVersion: '0.1.0'
       })
     ).toThrowError(expect.objectContaining({
@@ -225,12 +225,55 @@ describe('plugin host', () => {
       }
     })
 
-    expect(context.revision).toBe(4)
+    expect(context.revision).toBe(5)
     expect(Object.isFrozen(context.sources)).toBe(true)
     expect(context.sources).toEqual({
       getContentSnapshot: expect.any(Function),
       getCollectionEntrySnapshot: expect.any(Function)
     })
     expect(context.sources).not.toHaveProperty('unsafeRawDatabase')
+  })
+
+  it('exposes privileged backup sources and secrets only to declared capabilities', async () => {
+    const manifest = validatePluginManifest(validManifest({
+      capabilities: [
+        'tenant.backup.export',
+        'tenant.settings.enumerate',
+        'tenant.secrets.manage'
+      ]
+    }), { coreVersion: '0.1.0' })
+    const { createExtensionApi } = await import('./extensionApi.js')
+    const sources = {
+      getContentSnapshot: vi.fn(),
+      getCollectionEntrySnapshot: vi.fn(),
+      streamTenantBackupRecords: vi.fn(),
+      listTenantBackupFiles: vi.fn(),
+      openTenantBackupFile: vi.fn()
+    }
+    const settings = {
+      get: vi.fn(),
+      set: vi.fn(),
+      listTenantIds: vi.fn()
+    }
+    const secrets = { metadata: vi.fn(), get: vi.fn(), set: vi.fn() }
+    const context = createExtensionApi({ manifest, logger: {}, sources, settings, secrets })
+
+    expect(context.sources).toEqual(expect.objectContaining({
+      streamTenantBackupRecords: expect.any(Function),
+      listTenantBackupFiles: expect.any(Function),
+      openTenantBackupFile: expect.any(Function)
+    }))
+    expect(context.settings.listTenantIds).toEqual(expect.any(Function))
+    expect(context.secrets).toEqual({
+      metadata: expect.any(Function),
+      get: expect.any(Function),
+      set: expect.any(Function)
+    })
+  })
+
+  it('rejects unknown privileged capabilities', () => {
+    expect(() => validatePluginManifest(validManifest({
+      capabilities: ['tenant.raw-database']
+    }), { coreVersion: '0.1.0' })).toThrow('unsupported plugin capability')
   })
 })

@@ -96,4 +96,24 @@ describe('extension settings facade', () => {
       key: 'index-policy'
     })).rejects.toBeInstanceOf(ExtensionSettingsFacadeError);
   });
+
+  it('enumerates only tenant ids in the plugin-owned setting namespace', async () => {
+    const lean = vi.fn().mockResolvedValue([
+      { tenantId: '6a1702eddffc9f11747a4206' },
+      { tenantId: TENANT_ID },
+      { tenantId: TENANT_ID }
+    ]);
+    const select = vi.fn().mockReturnValue({ lean });
+    const model = { find: vi.fn().mockReturnValue({ select }) };
+    const facade = createExtensionSettingsFacade({ plugin: 'tenant-backup', model });
+
+    await expect(facade.listTenantIds({ key: 'backup-plan' })).resolves.toEqual([
+      TENANT_ID,
+      '6a1702eddffc9f11747a4206'
+    ]);
+    expect(model.find).toHaveBeenCalledWith({
+      plugin: 'tenant-backup',
+      key: 'backup-plan'
+    });
+  });
 });

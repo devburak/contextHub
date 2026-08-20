@@ -20,6 +20,7 @@ const CORE_MENU_IDS = new Set([
   'categories', 'contents', 'collections', 'forms', 'placements', 'menus',
   'tenants-group', 'tenants', 'tenant-settings', 'docs', 'apidocs'
 ])
+const CORE_MENU_GROUP_IDS = new Set(['users-group', 'tenants-group'])
 
 function requiredString(value, label) {
   const normalized = String(value ?? '').trim()
@@ -48,11 +49,18 @@ export function validateAdminPluginPages(value) {
       const menuId = requiredString(page.menu.id || id, `admin page ${id} menu id`)
       if (menuIds.has(menuId)) throw new Error(`admin menu id collision: ${menuId}`)
       menuIds.add(menuId)
+      const parentId = page.menu.parentId
+        ? requiredString(page.menu.parentId, `admin page ${id} menu parent id`)
+        : null
+      if (parentId && !CORE_MENU_GROUP_IDS.has(parentId)) {
+        throw new Error(`admin page ${id} menu parent is not a core menu group: ${parentId}`)
+      }
       menu = Object.freeze({
         id: menuId,
         name: requiredString(page.menu.name, `admin page ${id} menu name`),
         icon: page.menu.icon || null,
-        order: Number.isFinite(page.menu.order) ? page.menu.order : 100
+        order: Number.isFinite(page.menu.order) ? page.menu.order : 100,
+        parentId
       })
     }
 
@@ -117,7 +125,8 @@ export function navigationFromAdminPages(pages) {
       href: page.path,
       icon: page.menu.icon,
       permission: page.permission,
-      feature: page.feature
+      feature: page.feature,
+      parentId: page.menu.parentId
     })))
 }
 

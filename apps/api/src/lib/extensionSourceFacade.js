@@ -1,6 +1,5 @@
-const {
-  Content
-} = require('@contexthub/common')
+const common = require('@contexthub/common')
+const { Content, Media, Tenant, mongoose } = common
 const customFieldDefinitionService = require('../services/customFieldDefinitionService')
 const collectionEntryService = require('../services/collectionEntryService')
 const collectionTypeService = require('../services/collectionTypeService')
@@ -12,6 +11,49 @@ class ExtensionSourceFacadeError extends Error {
     this.code = code
   }
 }
+
+const TENANT_BACKUP_MODEL_NAMES = Object.freeze([
+  'Domain',
+  'User',
+  'Membership',
+  'ContentType',
+  'Entry',
+  'EntryRevision',
+  'Taxonomy',
+  'Term',
+  'Tag',
+  'Navigation',
+  'Media',
+  'Category',
+  'FormDefinition',
+  'FormResponse',
+  'FormVersion',
+  'Event',
+  'DailyAgg',
+  'ApiToken',
+  'Product',
+  'CollectionType',
+  'CollectionEntry',
+  'Template',
+  'Content',
+  'ContentVersion',
+  'CustomFieldDefinition',
+  'ContentCustomFieldIndex',
+  'TenantSettings',
+  'Gallery',
+  'PlacementDefinition',
+  'PlacementEvent',
+  'Menu',
+  'Role',
+  'Webhook',
+  'WebhookOutbox',
+  'ActivityLog',
+  'DomainEvent',
+  'DomainEventCounter',
+  'DomainEventCursor',
+  'DomainEventDeadLetter',
+  'ExtensionTenantSetting'
+])
 
 function requiredString(value, label) {
   const normalized = String(value ?? '').trim()
@@ -73,6 +115,111 @@ function serializeDefinition(value) {
   })
 }
 
+function serializeBackupDocument(value) {
+  return mongoose.mongo.BSON.EJSON.serialize(value, { relaxed: false })
+}
+
+function backupRecord(model, document) {
+  const tenantId = document.tenantId ?? document._id
+  return Object.freeze({
+    collection: model.collection.collectionName,
+    id: String(document._id),
+    tenantId: String(tenantId),
+    document: serializeBackupDocument(document)
+  })
+}
+
+async function* defaultStreamTenantBackupRecords({ tenantId }) {
+  const tenant = await Tenant.findOne({ _id: tenantId }).lean()
+  if (!tenant) {
+    throw new ExtensionSourceFacadeError('tenant was not found', 'EXTENSION_BACKUP_TENANT_NOT_FOUND')
+  }
+  yield backupRecord(Tenant, tenant)
+
+  for (const modelName of TENANT_BACKUP_MODEL_NAMES) {
+    const model = common[modelName]
+    if (!model?.schema?.path('tenantId')) continue
+    const cursor = model.find({ tenantId }).lean().cursor()
+    for await (const document of cursor) {
+      if (String(document.tenantId) !== tenantId) {
+        throw new ExtensionSourceFacadeError(
+          `tenant boundary violation while exporting ${modelName}`,
+          'EXTENSION_BACKUP_TENANT_BOUNDARY_VIOLATION'
+        )
+      }
+      yield backupRecord(model, document)
+    }
+  }
+}
+
+function normalizeBackupFile(media, value, variant = null) {
+  const key = requiredString(value?.key, 'file key')
+  const tenantSlug = requiredString(media.tenantSlug, 'media tenantSlug')
+  if (!key.startsWith(`${tenantSlug}/`)) {
+    throw new ExtensionSourceFacadeError(
+      'media storage key does not match its tenant namespace',
+      'EXTENSION_BACKUP_FILE_BOUNDARY_VIOLATION'
+    )
+  }
+  return Object.freeze({
+    tenantId: String(media.tenantId),
+    key,
+    bucket: requiredString(media.bucket, 'file bucket'),
+    size: Number(value.size || 0),
+    etag: String(value.etag || media.etag || ''),
+    checksum: String(value.checksum || ''),
+    mimeType: String(value.mimeType || media.mimeType || 'application/octet-stream'),
+    mediaId: String(media._id),
+    variant
+  })
+}
+
+async function defaultListTenantBackupFiles({ tenantId }) {
+  const mediaItems = await Media.find({ tenantId, sourceType: { $ne: 'external' } }).lean()
+  const files = []
+  const keys = new Set()
+  for (const media of mediaItems) {
+    if (String(media.tenantId) !== tenantId) {
+      throw new ExtensionSourceFacadeError(
+        'tenant boundary violation while listing media',
+        'EXTENSION_BACKUP_TENANT_BOUNDARY_VIOLATION'
+      )
+    }
+    for (const file of [
+      media.key ? normalizeBackupFile(media, media) : null,
+      ...(media.variants || []).map((variant) => normalizeBackupFile(media, variant, variant.name))
+    ].filter(Boolean)) {
+      if (keys.has(file.key)) continue
+      keys.add(file.key)
+      files.push(file)
+    }
+  }
+  return Object.freeze(files.sort((left, right) => left.key.localeCompare(right.key)))
+}
+
+async function defaultOpenTenantBackupFile({ tenantId, key }) {
+  const media = await Media.findOne({
+    tenantId,
+    sourceType: { $ne: 'external' },
+    $or: [{ key }, { 'variants.key': key }]
+  }).lean()
+  if (!media || String(media.tenantId) !== tenantId) {
+    throw new ExtensionSourceFacadeError(
+      'tenant-scoped media file was not found',
+      'EXTENSION_BACKUP_FILE_NOT_FOUND'
+    )
+  }
+  const tenantSlug = requiredString(media.tenantSlug, 'media tenantSlug')
+  if (!key.startsWith(`${tenantSlug}/`)) {
+    throw new ExtensionSourceFacadeError(
+      'media storage key does not match its tenant namespace',
+      'EXTENSION_BACKUP_FILE_BOUNDARY_VIOLATION'
+    )
+  }
+  const mediaService = require('../services/mediaService')
+  return mediaService.openTenantBackupFile({ tenantId, key })
+}
+
 async function defaultLoadContent({ tenantId, contentId }) {
   return Content.findOne({ _id: contentId, tenantId })
     .populate({ path: 'categories', match: { tenantId }, select: { name: 1 } })
@@ -105,6 +252,12 @@ function createExtensionSourceFacade(options = {}) {
     options.loadContentDefinitions || defaultLoadContentDefinitions
   const loadCollectionEntry =
     options.loadCollectionEntry || defaultLoadCollectionEntry
+  const streamTenantBackupRecords =
+    options.streamTenantBackupRecords || defaultStreamTenantBackupRecords
+  const listTenantBackupFiles =
+    options.listTenantBackupFiles || defaultListTenantBackupFiles
+  const openTenantBackupFile =
+    options.openTenantBackupFile || defaultOpenTenantBackupFile
 
   return Object.freeze({
     async getContentSnapshot({ tenantId, contentId } = {}) {
@@ -157,6 +310,22 @@ function createExtensionSourceFacade(options = {}) {
         dataLabels: entry.dataLabels,
         updatedAt: entry.updatedAt
       })
+    },
+
+    streamTenantBackupRecords({ tenantId } = {}) {
+      const normalizedTenantId = requiredString(tenantId, 'tenantId')
+      return streamTenantBackupRecords({ tenantId: normalizedTenantId })
+    },
+
+    async listTenantBackupFiles({ tenantId } = {}) {
+      const normalizedTenantId = requiredString(tenantId, 'tenantId')
+      return listTenantBackupFiles({ tenantId: normalizedTenantId })
+    },
+
+    async openTenantBackupFile({ tenantId, key } = {}) {
+      const normalizedTenantId = requiredString(tenantId, 'tenantId')
+      const normalizedKey = requiredString(key, 'key')
+      return openTenantBackupFile({ tenantId: normalizedTenantId, key: normalizedKey })
     }
   })
 }
@@ -165,7 +334,11 @@ module.exports = {
   ExtensionSourceFacadeError,
   createExtensionSourceFacade,
   __testables: {
+    TENANT_BACKUP_MODEL_NAMES,
+    backupRecord,
+    normalizeBackupFile,
     normalizeLocalizedLabel,
+    serializeBackupDocument,
     serializeCategory,
     serializeDefinition,
     serializeId,

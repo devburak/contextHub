@@ -17,6 +17,11 @@ const roleService = require('../services/roleService');
 const CORE_PACKAGE_PATH = path.resolve(__dirname, '../../../../package.json');
 const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ROUTE_PREFIX_PATTERN = /^\/api\/[a-z][a-z0-9-]*(?:\/[a-z0-9-]+)*$/;
+const SUPPORTED_CAPABILITIES = Object.freeze([
+  'tenant.backup.export',
+  'tenant.settings.enumerate',
+  'tenant.secrets.manage'
+]);
 
 class PluginHostError extends Error {
   constructor(message, code = 'PLUGIN_HOST_ERROR') {
@@ -136,6 +141,11 @@ function validatePluginManifest(raw, options = {}) {
   }
   const permissions = uniqueStrings(raw.permissions || [], 'permissions');
   const featureKeys = uniqueStrings(raw.featureKeys || [], 'featureKeys');
+  const capabilities = uniqueStrings(raw.capabilities || [], 'capabilities');
+  const unknownCapability = capabilities.find(
+    (capability) => !SUPPORTED_CAPABILITIES.includes(capability)
+  );
+  if (unknownCapability) fail(`unsupported plugin capability: ${unknownCapability}`);
   const consumesDomainEvents = uniqueStrings(
     raw.consumesDomainEvents || [],
     'consumesDomainEvents'
@@ -161,6 +171,7 @@ function validatePluginManifest(raw, options = {}) {
     routePrefix,
     permissions,
     featureKeys,
+    capabilities,
     consumesDomainEvents,
     consumers,
     entrypoints: Object.freeze({ api: apiEntrypoint, admin: raw.entrypoints?.admin || null })
@@ -308,6 +319,7 @@ async function bootstrapExtensions(options = {}) {
 }
 
 module.exports = {
+  SUPPORTED_CAPABILITIES,
   PluginHostError,
   bootstrapExtensions,
   loadPlugin,
