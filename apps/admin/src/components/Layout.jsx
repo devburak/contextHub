@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom'
+import { Link, matchPath, useLocation, useNavigate, Outlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
@@ -15,9 +15,26 @@ export default function Layout() {
   const [switchingTenantId, setSwitchingTenantId] = useState(null)
   const { user, memberships, activeMembership, selectTenant, logout, hasPermission, hasFeature } = useAuth()
   const location = useLocation()
+  const isContentEditorRoute = Boolean(matchPath('/contents/:id', location.pathname))
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { t } = useTranslation()
+
+  useEffect(() => {
+    if (!isContentEditorRoute) return undefined
+
+    const root = document.documentElement
+    const body = document.body
+
+    root.classList.add('lg:overflow-hidden')
+    body.classList.add('lg:overflow-hidden')
+    window.scrollTo(0, 0)
+
+    return () => {
+      root.classList.remove('lg:overflow-hidden')
+      body.classList.remove('lg:overflow-hidden')
+    }
+  }, [isContentEditorRoute])
 
   const navigation = useMemo(() => [
     {
@@ -291,8 +308,8 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <div className="flex-1">
+    <div className="min-h-screen bg-gray-50">
+      <div>
         <Transition.Root show={sidebarOpen} as={Fragment}>
           <Dialog as="div" className="relative z-50 lg:hidden" onClose={setSidebarOpen}>
             <Transition.Child
@@ -413,7 +430,11 @@ export default function Layout() {
           </div>
         </div>
 
-        <div className={classNames('transition-[padding] duration-200', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
+        <div className={classNames(
+          'flex min-h-screen flex-col transition-[padding] duration-200',
+          sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72',
+          isContentEditorRoute && 'lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden'
+        )}>
           <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
             <button type="button" className="-m-2.5 p-2.5 text-gray-700 lg:hidden" onClick={() => setSidebarOpen(true)}>
               <span className="sr-only">{t('nav.open_menu')}</span>
@@ -494,14 +515,20 @@ export default function Layout() {
             </div>
           </div>
 
-          <main className="py-10 bg-gray-50 min-h-screen">
-            <div className="px-4 sm:px-6 lg:px-8">
+          <main className={classNames(
+            'flex-1 bg-gray-50 py-10',
+            isContentEditorRoute && 'lg:min-h-0 lg:overflow-hidden'
+          )}>
+            <div className={classNames(
+              'px-4 sm:px-6 lg:px-8',
+              isContentEditorRoute && 'lg:h-full lg:min-h-0'
+            )}>
               <Outlet />
             </div>
           </main>
+          <Footer authenticated />
         </div>
       </div>
-      <Footer authenticated />
     </div>
   )
 }
