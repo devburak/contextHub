@@ -8,6 +8,7 @@ const {
   Membership,
   PlanPrice,
   QuotaAlert,
+  SubscriptionPlan,
   Tenant,
 } = require('@contexthub/common');
 const crypto = require('crypto');
@@ -216,6 +217,42 @@ function serializePrice(price) {
   };
 }
 
+function serializeCatalogPlan(plan, prices = [], { selectedProvider = null, providerEnabled = false } = {}) {
+  const serializedPrices = ['month', 'year'].map((interval) => {
+    const intervalPrices = prices.filter((price) => (
+      price.planId && String(price.planId._id || price.planId) === String(plan._id) && price.interval === interval
+    ));
+    const checkoutPrice = selectedProvider
+      ? intervalPrices.find((price) => price.provider === selectedProvider)
+      : null;
+    const displayPrice = checkoutPrice
+      || intervalPrices.find((price) => price.provider === 'paddle')
+      || intervalPrices[0];
+    if (!displayPrice) return null;
+    return {
+      id: checkoutPrice ? String(checkoutPrice._id) : null,
+      interval,
+      currency: displayPrice.currency,
+      amountMinor: displayPrice.amountMinor,
+      checkoutReady: Boolean(providerEnabled && checkoutPrice?.externalPriceId),
+      catalogOnly: !checkoutPrice || !providerEnabled,
+    };
+  }).filter(Boolean);
+
+  return {
+    id: String(plan._id),
+    slug: plan.slug,
+    name: plan.name,
+    description: plan.description,
+    marketing: plan.marketing || {},
+    capabilities: plan.capabilities || [],
+    pricingMode: plan.slug === 'enterprise' ? 'contract' : 'fixed',
+    catalogMonthlyAmountMinor: toMinorUnits(plan.price),
+    catalogCurrency: CATALOG_CURRENCY,
+    prices: serializedPrices,
+  };
+}
+
 async function getOverview(tenantId) {
   const { tenant, account } = await getAccountForTenant(tenantId);
   const effectivePlan = await tenantSubscriptionService.getEffectivePlan(tenant);
@@ -223,12 +260,11 @@ async function getOverview(tenantId) {
   const profileValidation = validateBillingProfile(billingAccount || {});
   const selectedProvider = billingAccount?.country ? resolveBillingProvider(billingAccount.country) : null;
   const providerEnabled = selectedProvider ? isBillingProviderEnabled(selectedProvider) : false;
-  const [subscription, invoices, prices, alerts, limits, userCount, ownerCount, storageRows, requestCount] = await Promise.all([
+  const [subscription, invoices, catalogPlans, catalogPrices, alerts, limits, userCount, ownerCount, storageRows, requestCount] = await Promise.all([
     BillingSubscription.findOne({ tenantId: tenant._id }).populate('planId planPriceId').lean(),
     BillingInvoice.find({ tenantId: tenant._id }).sort({ billedAt: -1, createdAt: -1 }).limit(24).lean(),
-    selectedProvider
-      ? PlanPrice.find({ active: true, provider: selectedProvider }).populate('planId').sort({ amountMinor: 1 }).lean()
-      : Promise.resolve([]),
+    SubscriptionPlan.find({ isActive: true, slug: { $ne: 'free' } }).sort({ sortOrder: 1, price: 1 }).lean(),
+    PlanPrice.find({ active: true }).populate('planId').sort({ amountMinor: 1 }).lean(),
     QuotaAlert.find({ tenantId: tenant._id }).sort({ createdAt: -1 }).limit(12).lean(),
     tenantSubscriptionService.getEffectiveLimits(tenant),
     Membership.countDocuments({ tenantId: tenant._id, status: { $in: ['active', 'pending'] } }),
@@ -288,7 +324,10 @@ async function getOverview(tenantId) {
       jurisdictionLocked: Boolean(subscription && ['trialing', 'active', 'past_due', 'paused'].includes(subscription.status)),
     },
     subscription: serializeSubscription(subscription),
-    prices: prices.map(serializePrice),
+    plans: catalogPlans.map((plan) => serializeCatalogPlan(plan, catalogPrices, { selectedProvider, providerEnabled })),
+    prices: catalogPrices
+      .filter((price) => selectedProvider && price.provider === selectedProvider)
+      .map(serializePrice),
     invoices: serializedInvoices,
     quotaAlerts: alerts.map((alert) => ({
       id: String(alert._id),
@@ -600,6 +639,7 @@ module.exports = {
   getAccountForTenant,
   getOverview,
   serializeBillingAccount,
+  serializeCatalogPlan,
   serializeInvoice,
   serializePrice,
   serializeSubscription,

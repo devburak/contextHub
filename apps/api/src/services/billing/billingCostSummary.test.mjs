@@ -6,6 +6,7 @@ const {
   buildChargeSummary,
   calculateUsageEstimate,
   serializeBillingAccount,
+  serializeCatalogPlan,
   serializeInvoice,
   serializePrice,
   serializeSubscription,
@@ -114,6 +115,41 @@ describe('owner-visible billing cost summary', () => {
     expect(result).not.toHaveProperty('provider');
     expect(result).not.toHaveProperty('key');
     expect(result.checkoutReady).toBe(true);
+  });
+
+  it('keeps paid plans visible when checkout providers are disabled', () => {
+    const plan = {
+      _id: 'plan-id',
+      slug: 'pro',
+      name: 'Pro',
+      description: 'Pro plan',
+      price: 12,
+    };
+    const result = serializeCatalogPlan(plan, [{
+      _id: 'paddle-price-id',
+      provider: 'paddle',
+      interval: 'month',
+      currency: 'USD',
+      amountMinor: 1200,
+      externalPriceId: 'pri_123',
+      planId: plan,
+    }], { selectedProvider: null, providerEnabled: false });
+
+    expect(result).toMatchObject({ slug: 'pro', pricingMode: 'fixed' });
+    expect(result.prices).toEqual([
+      expect.objectContaining({ id: null, amountMinor: 1200, checkoutReady: false, catalogOnly: true }),
+    ]);
+    expect(result).not.toHaveProperty('provider');
+  });
+
+  it('marks only the server-selected provider price as checkout ready', () => {
+    const plan = { _id: 'plan-id', slug: 'promax', name: 'Pro Max', price: 45 };
+    const result = serializeCatalogPlan(plan, [
+      { _id: 'paddle-id', provider: 'paddle', interval: 'month', currency: 'USD', amountMinor: 4500, externalPriceId: 'pri_1', planId: plan },
+      { _id: 'iyzico-id', provider: 'iyzico', interval: 'month', currency: 'TRY', amountMinor: 160000, externalPriceId: 'plan_1', planId: plan },
+    ], { selectedProvider: 'iyzico', providerEnabled: true });
+
+    expect(result.prices[0]).toMatchObject({ id: 'iyzico-id', currency: 'TRY', checkoutReady: true, catalogOnly: false });
   });
 
   it('omits provider and internal identifiers from owner-visible account and subscription data', () => {

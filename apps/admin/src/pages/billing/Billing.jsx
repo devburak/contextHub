@@ -12,6 +12,8 @@ import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { PERMISSIONS } from '../../constants/permissions.js'
 import { createBillingCheckout, createBillingPortal, fetchBillingOverview, updateBillingProfile } from '../../lib/api/billing.js'
+import CountryCombobox from '../../components/CountryCombobox.jsx'
+import { activePlanStatus, checkoutButtonLabel, statusLabel } from './billingPresentation.js'
 
 const TOKENS = {
   '--billing-canvas': '#f4f1ea',
@@ -40,10 +42,6 @@ function money(amountMinor, currency = 'USD') {
 function date(value) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value))
-}
-
-function statusLabel(status) {
-  return ({ free: 'Ücretsiz', active: 'Aktif', trialing: 'Deneme', past_due: 'Ödeme bekliyor', canceled: 'İptal', paid: 'Ödendi', open: 'Açık' })[status] || status || '—'
 }
 
 function intervalLabel(interval) {
@@ -175,7 +173,10 @@ export default function Billing() {
   const updateProfileField = (field, value) => setProfile((current) => ({ ...current, [field]: value }))
   const updateAddressField = (field, value) => setProfile((current) => ({ ...current, address: { ...current.address, [field]: value } }))
 
-  const prices = useMemo(() => (overview.data?.prices || []).filter((item) => item.interval === interval), [overview.data, interval])
+  const plans = useMemo(() => (overview.data?.plans || []).map((plan) => ({
+    ...plan,
+    selectedPrice: (plan.prices || []).find((price) => price.interval === interval) || null,
+  })), [overview.data, interval])
   const usageEstimateByMetric = useMemo(() => Object.fromEntries(
     (overview.data?.charges?.usageEstimate?.lines || []).map((line) => [line.metric, line])
   ), [overview.data])
@@ -216,13 +217,13 @@ export default function Billing() {
             <section className="grid overflow-hidden rounded-2xl border border-[var(--billing-line)] bg-[var(--billing-surface)] lg:grid-cols-[1.4fr_1fr]">
               <div className="p-6 sm:p-8">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--billing-muted)]">Bu tenant’ın aktif paketi</p>
-                <div className="mt-3 flex flex-wrap items-baseline gap-3"><h2 className="text-4xl font-semibold">{overview.data.tenant.plan.name}</h2><span className="rounded-full bg-[var(--billing-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--billing-accent)]">{statusLabel(overview.data.subscription?.status || 'free')}</span></div>
+                <div className="mt-3 flex flex-wrap items-baseline gap-3"><h2 className="text-4xl font-semibold">{overview.data.tenant.plan.name}</h2><span className="rounded-full bg-[var(--billing-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--billing-accent)]">{activePlanStatus(overview.data.tenant.plan, overview.data.subscription)}</span></div>
                 <p className="mt-5 text-sm text-[var(--billing-muted)]">Tenant: {overview.data.tenant.name} · Fatura hesabı: {overview.data.account.name}</p>
               </div>
               <div className="border-t border-[var(--billing-line)] bg-[var(--billing-accent)] p-6 text-white lg:border-l lg:border-t-0 sm:p-8">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/70">Sonraki dönem</p>
-                <p className="mt-3 text-2xl font-semibold">{date(overview.data.subscription?.currentPeriodEnd)}</p>
-                <p className="mt-2 text-sm text-white/75">{overview.data.subscription?.cancelAtPeriodEnd ? 'Dönem sonunda iptal edilecek.' : 'Otomatik yenileme güvenli ödeme ekranında yönetilir.'}</p>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/70">{overview.data.tenant.plan.slug === 'enterprise' && !overview.data.subscription ? 'Sözleşme dönemi' : 'Sonraki dönem'}</p>
+                <p className="mt-3 text-2xl font-semibold">{overview.data.tenant.plan.slug === 'enterprise' && !overview.data.subscription ? 'Sözleşmeye göre' : date(overview.data.subscription?.currentPeriodEnd)}</p>
+                <p className="mt-2 text-sm text-white/75">{overview.data.tenant.plan.slug === 'enterprise' && !overview.data.subscription ? 'Yenileme ve fatura dönemi kurumsal sözleşmenizde tanımlanır.' : overview.data.subscription?.cancelAtPeriodEnd ? 'Dönem sonunda iptal edilecek.' : 'Otomatik yenileme güvenli ödeme ekranında yönetilir.'}</p>
               </div>
             </section>
 
@@ -308,7 +309,7 @@ export default function Billing() {
             </section>
 
             <section className="grid overflow-hidden rounded-2xl border border-[var(--billing-line)] bg-[var(--billing-surface)] lg:grid-cols-[1.6fr_0.8fr]" aria-labelledby="billing-profile-title">
-              <form className="p-6 sm:p-8" onSubmit={(event) => { event.preventDefault(); saveProfile.mutate(profile) }}>
+              <form id="billing-profile" className="p-6 sm:p-8" onSubmit={(event) => { event.preventDefault(); saveProfile.mutate(profile) }}>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--billing-muted)]">Fatura beyanı</p><h2 id="billing-profile-title" className="mt-1 text-2xl font-semibold">Fatura bilgileri</h2></div>
                   <div className="flex flex-wrap gap-2">
@@ -321,7 +322,7 @@ export default function Billing() {
 
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <label className="text-sm font-medium">Fatura türü<select className={INPUT_CLASS} value={profile.profileType} onChange={(event) => updateProfileField('profileType', event.target.value)} disabled={!canManage}><option value="business">Kurumsal</option><option value="individual">Bireysel</option></select></label>
-                  <label className="text-sm font-medium">Fatura ülkesi (ISO)<input className={INPUT_CLASS} value={profile.country} onChange={(event) => updateProfileField('country', event.target.value.toUpperCase())} maxLength={2} placeholder="TR" disabled={!canManage || overview.data.paymentRouting?.jurisdictionLocked} required /></label>
+                  <CountryCombobox value={profile.country} onChange={(country) => updateProfileField('country', country)} disabled={!canManage || overview.data.paymentRouting?.jurisdictionLocked} required />
                   <label className="text-sm font-medium sm:col-span-2">Fatura unvanı / ad soyad<input className={INPUT_CLASS} value={profile.legalName} onChange={(event) => updateProfileField('legalName', event.target.value)} maxLength={200} disabled={!canManage} required /></label>
                   <label className="text-sm font-medium">Yetkili adı<input className={INPUT_CLASS} value={profile.contactFirstName} onChange={(event) => updateProfileField('contactFirstName', event.target.value)} maxLength={100} disabled={!canManage} required={profile.country === 'TR'} /></label>
                   <label className="text-sm font-medium">Yetkili soyadı<input className={INPUT_CLASS} value={profile.contactLastName} onChange={(event) => updateProfileField('contactLastName', event.target.value)} maxLength={100} disabled={!canManage} required={profile.country === 'TR'} /></label>
@@ -361,16 +362,26 @@ export default function Billing() {
                   {[['month', 'Aylık'], ['year', 'Yıllık']].map(([key, label]) => <button key={key} type="button" onClick={() => setInterval(key)} className={`rounded-lg px-4 py-2 text-sm font-semibold ${interval === key ? 'bg-[var(--billing-ink)] text-white' : 'text-[var(--billing-muted)]'}`}>{label}</button>)}
                 </div>
               </div>
-              {prices.length === 0 ? <div className="mt-4 rounded-2xl border border-dashed border-[var(--billing-line)] p-8 text-center text-sm text-[var(--billing-muted)]">{overview.data.paymentRouting?.profileComplete ? 'Bu fatura ülkesi ve dönem için checkout’a açık paket bulunmuyor.' : 'Paket bedellerini görmek için fatura ülkesini ve beyanı kaydedin.'}</div> : (
+              {plans.length === 0 ? <div className="mt-4 rounded-2xl border border-dashed border-[var(--billing-line)] p-8 text-center text-sm text-[var(--billing-muted)]">Paket kataloğu şu anda alınamıyor. Yeniden deneyin.</div> : (
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                  {prices.map((price) => <article key={price.id} className="flex flex-col rounded-2xl border border-[var(--billing-line)] bg-[var(--billing-surface)] p-6 shadow-sm">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--billing-accent)]">{price.plan?.marketing?.badge || price.plan?.name}</p>
-                    <h3 className="mt-2 text-2xl font-semibold">{price.plan?.name}</h3>
-                    <p className="mt-1 min-h-10 text-sm text-[var(--billing-muted)]">{price.plan?.marketing?.tagline || price.plan?.description}</p>
-                    <p className="mt-5 text-3xl font-semibold">{money(price.amountMinor, price.currency)} <span className="text-sm font-normal text-[var(--billing-muted)]">/tenant/{interval === 'year' ? 'yıl' : 'ay'}</span></p>
-                    <ul className="mt-5 flex-1 space-y-2 text-sm">{(price.plan?.capabilities || []).slice(0, 4).map((capability) => <li key={capability.key} className="flex gap-2"><CheckIcon className="h-5 w-5 shrink-0 text-[var(--billing-accent)]" /> {capability.label}</li>)}</ul>
-                    <button type="button" disabled={!canManage || !online || !overview.data.paymentRouting?.checkoutAvailable || !price.checkoutReady || checkout.isPending || Boolean(overview.data.subscription && ['active', 'trialing', 'past_due', 'paused'].includes(overview.data.subscription.status))} onClick={() => checkout.mutate(price.id)} className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Güvenli ödemeye geç <ArrowTopRightOnSquareIcon className="h-4 w-4" /></button>
-                  </article>)}
+                  {plans.map((plan) => {
+                    const price = plan.selectedPrice
+                    const enterprise = plan.pricingMode === 'contract'
+                    const current = overview.data.tenant.plan.slug === plan.slug
+                    const hasSubscription = Boolean(overview.data.subscription && ['active', 'trialing', 'past_due', 'paused'].includes(overview.data.subscription.status))
+                    const checkoutAvailable = Boolean(overview.data.paymentRouting?.checkoutAvailable)
+                    const canCheckout = !enterprise && !current && !hasSubscription && canManage && online && checkoutAvailable && price?.checkoutReady && price?.id
+                    const canOpenProfile = !enterprise && !current && !hasSubscription && canManage && online && !overview.data.paymentRouting?.profileComplete
+                    const buttonLabel = checkoutButtonLabel({ current, enterprise, checkoutAvailable, checkoutReady: price?.checkoutReady, hasProfile: overview.data.paymentRouting?.profileComplete, hasSubscription })
+                    return <article key={plan.id} className={`flex flex-col rounded-2xl border bg-[var(--billing-surface)] p-6 shadow-sm ${current ? 'border-[var(--billing-accent)] ring-2 ring-[var(--billing-accent-soft)]' : 'border-[var(--billing-line)]'}`}>
+                      <div className="flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--billing-accent)]">{plan.marketing?.badge || plan.name}</p>{current && <span className="rounded-full bg-[var(--billing-accent-soft)] px-2.5 py-1 text-[11px] font-bold text-[var(--billing-accent)]">Aktif</span>}</div>
+                      <h3 className="mt-2 text-2xl font-semibold">{plan.name}</h3>
+                      <p className="mt-1 min-h-10 text-sm text-[var(--billing-muted)]">{plan.marketing?.tagline || plan.description}</p>
+                      {enterprise ? <div className="mt-5"><p className="text-3xl font-semibold">Sözleşmeli fiyat</p><p className="mt-1 text-xs text-[var(--billing-muted)]">Kapsam ve hizmet seviyesine göre teklif edilir.</p></div> : price ? <div className="mt-5"><p className="text-3xl font-semibold">{money(price.amountMinor, price.currency)} <span className="text-sm font-normal text-[var(--billing-muted)]">/tenant/{interval === 'year' ? 'yıl' : 'ay'}</span></p>{price.catalogOnly && <p className="mt-1 text-xs text-[var(--billing-muted)]">Liste bedeli; ülkenize ait ödeme tutarı checkout açıldığında kesinleşir.</p>}</div> : <div className="mt-5"><p className="text-2xl font-semibold">Fiyat hazırlanıyor</p><p className="mt-1 text-xs text-[var(--billing-muted)]">Bu dönem için yerel fiyat henüz yayınlanmadı.</p></div>}
+                      <ul className="mt-5 flex-1 space-y-2 text-sm">{(plan.capabilities || []).slice(0, 4).map((capability) => <li key={capability.key} className="flex gap-2"><CheckIcon className="h-5 w-5 shrink-0 text-[var(--billing-accent)]" /> {capability.label}</li>)}</ul>
+                      {current ? <button type="button" disabled className="mt-6 inline-flex items-center justify-center rounded-xl bg-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-white opacity-50">{buttonLabel}</button> : enterprise ? <a href="mailto:support@contexthub.com?subject=ContextHub%20Enterprise%20teklifi" className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-[var(--billing-accent)]">{buttonLabel} <ArrowTopRightOnSquareIcon className="h-4 w-4" /></a> : <button type="button" disabled={(!canCheckout && !canOpenProfile) || checkout.isPending} onClick={() => canCheckout ? checkout.mutate(price.id) : document.getElementById('billing-profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{buttonLabel} {canCheckout && <ArrowTopRightOnSquareIcon className="h-4 w-4" />}</button>}
+                    </article>
+                  })}
                 </div>
               )}
             </section>
