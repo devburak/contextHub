@@ -20,4 +20,16 @@ describe('billing locale catalog', () => {
     expect(en['billing.legal.termsInfrastructure']).toContain('EU/EEA')
     expect(en['billing.legal.privacyInternationalTransfer']).toContain('Article 9')
   })
+
+  it('identifies the legal provider and separates corporate and product domains', () => {
+    for (const catalog of [tr, en]) {
+      expect(catalog['billing.legal.termsProvider']).toContain('İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.')
+      expect(catalog['billing.legal.termsCompanyDetails']).toContain('4701114216')
+      expect(catalog['billing.legal.termsCompanyDetails']).toContain('0470111421600001')
+      expect(catalog['billing.legal.termsProvider']).toContain('ikon-x.com.tr')
+      expect(catalog['billing.legal.termsProvider']).toContain('ctxhub.net')
+      expect(catalog['billing.legal.privacyController']).toContain('İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.')
+      expect(catalog['billing.legal.privacyRights']).toContain('support@ctxhub.net')
+    }
+  })
 })

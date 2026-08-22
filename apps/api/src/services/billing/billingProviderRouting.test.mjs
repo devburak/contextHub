@@ -126,6 +126,11 @@ describe('billing country routing', () => {
       ...base,
       serviceAgreementVersion: 'ctxhub-cloud-terms-v3',
       paymentMethodStatus: 'provider_verified',
+    }).commercialReadiness.agreementAccepted).toBe(false);
+    expect(serializeBillingAccount({
+      ...base,
+      serviceAgreementVersion: 'ctxhub-cloud-terms-v4',
+      paymentMethodStatus: 'provider_verified',
     }).commercialReadiness.agreementAccepted).toBe(true);
     expect(serializeBillingAccount({
       ...base,
@@ -137,6 +142,12 @@ describe('billing country routing', () => {
   it('enables only explicitly configured providers', () => {
     process.env.BILLING_ENABLED_PROVIDERS = 'paddle, iyzico,invalid,paddle';
     expect(getEnabledBillingProviders()).toEqual(['paddle', 'iyzico']);
+  });
+
+  it('fails closed when the provider allow-list is absent', () => {
+    delete process.env.BILLING_ENABLED_PROVIDERS;
+    process.env.BILLING_PROVIDER = 'paddle';
+    expect(getEnabledBillingProviders()).toEqual([]);
   });
 
   it('stores only a hash of the hosted checkout token', () => {

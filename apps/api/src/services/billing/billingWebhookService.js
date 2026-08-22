@@ -42,6 +42,82 @@ function extractPriceId(data) {
   return data?.items?.[0]?.price?.id || data?.items?.[0]?.price_id || null;
 }
 
+function billingEventPayloadRetentionDays() {
+  const configured = Number.parseInt(process.env.BILLING_EVENT_PAYLOAD_RETENTION_DAYS || '30', 10);
+  return Number.isFinite(configured) ? Math.max(1, Math.min(365, configured)) : 30;
+}
+
+function payloadExpiresAt(now = new Date()) {
+  return new Date(now.getTime() + billingEventPayloadRetentionDays() * 86400000);
+}
+
+function compactObject(value) {
+  if (Array.isArray(value)) return value.map(compactObject);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([, item]) => item !== undefined && item !== null)
+    .map(([key, item]) => [key, compactObject(item)]));
+}
+
+function minimizePaddlePayload(payload) {
+  const data = payload?.data || {};
+  return compactObject({
+    event_id: payload?.event_id,
+    event_type: payload?.event_type,
+    occurred_at: payload?.occurred_at,
+    data: {
+      id: data.id,
+      customer_id: data.customer_id,
+      subscription_id: data.subscription_id,
+      status: data.status,
+      currency_code: data.currency_code,
+      invoice_number: data.invoice_number,
+      billed_at: data.billed_at,
+      next_billed_at: data.next_billed_at,
+      canceled_at: data.canceled_at,
+      custom_data: {
+        account_id: data.custom_data?.account_id || data.custom_data?.accountId,
+        tenant_id: data.custom_data?.tenant_id || data.custom_data?.tenantId,
+        plan_price_id: data.custom_data?.plan_price_id || data.custom_data?.planPriceId,
+      },
+      items: Array.isArray(data.items) ? data.items.slice(0, 20).map((item) => ({
+        price_id: item?.price_id,
+        price: { id: item?.price?.id },
+      })) : undefined,
+      current_billing_period: {
+        starts_at: data.current_billing_period?.starts_at,
+        ends_at: data.current_billing_period?.ends_at,
+      },
+      billing_period: {
+        starts_at: data.billing_period?.starts_at,
+        ends_at: data.billing_period?.ends_at,
+      },
+      scheduled_change: { action: data.scheduled_change?.action },
+      details: {
+        totals: {
+          subtotal: data.details?.totals?.subtotal,
+          tax: data.details?.totals?.tax,
+          total: data.details?.totals?.total,
+        },
+      },
+      payments: Array.isArray(data.payments) ? data.payments.slice(0, 20).map((payment) => ({
+        captured_at: payment?.captured_at,
+      })) : undefined,
+    },
+  });
+}
+
+function minimizeIyzicoPayload(payload) {
+  return compactObject({
+    iyziReferenceCode: payload?.iyziReferenceCode,
+    iyziEventType: payload?.iyziEventType,
+    iyziEventTime: payload?.iyziEventTime,
+    customerReferenceCode: payload?.customerReferenceCode,
+    subscriptionReferenceCode: payload?.subscriptionReferenceCode,
+    orderReferenceCode: payload?.orderReferenceCode,
+  });
+}
+
 async function acceptPaddleEvent(rawBody, signatureHeader) {
   const payload = paddleProvider.verifyWebhook(rawBody, signatureHeader);
   if (!payload?.event_id || !payload?.event_type || !asDate(payload?.occurred_at)) {
@@ -61,7 +137,8 @@ async function acceptPaddleEvent(rawBody, signatureHeader) {
       externalCustomerId: payload.data?.customer_id || null,
       externalSubscriptionId: payload.data?.subscription_id || payload.data?.id || null,
       payloadHash: crypto.createHash('sha256').update(raw).digest('hex'),
-      payload,
+      payload: minimizePaddlePayload(payload),
+      payloadExpiresAt: payloadExpiresAt(),
     });
     return { event, duplicate: false };
   } catch (error) {
@@ -90,7 +167,8 @@ async function acceptIyzicoEvent(payload, signatureHeader) {
       externalCustomerId: payload.customerReferenceCode || null,
       externalSubscriptionId: payload.subscriptionReferenceCode || null,
       payloadHash: crypto.createHash('sha256').update(raw).digest('hex'),
-      payload,
+      payload: minimizeIyzicoPayload(payload),
+      payloadExpiresAt: payloadExpiresAt(),
     });
     return { event, duplicate: false };
   } catch (error) {
@@ -377,4 +455,36 @@ async function reprocessPending({ limit = 100 } = {}) {
   return results;
 }
 
-module.exports = { acceptIyzicoEvent, acceptPaddleEvent, processEvent, processIyzicoEvent, reprocessPending };
+async function redactExpiredPayloads({ limit = 500, now = new Date() } = {}) {
+  const legacyCutoff = new Date(now.getTime() - billingEventPayloadRetentionDays() * 86400000);
+  const events = await BillingEvent.find({
+    status: { $in: ['processed', 'ignored'] },
+    payload: { $ne: null },
+    $or: [
+      { payloadExpiresAt: { $ne: null, $lte: now } },
+      { payloadExpiresAt: null, createdAt: { $lte: legacyCutoff } },
+    ],
+  })
+    .sort({ payloadExpiresAt: 1 })
+    .limit(Math.max(1, Math.min(2000, limit)))
+    .select('_id');
+  if (events.length === 0) return { redacted: 0 };
+  const result = await BillingEvent.updateMany(
+    { _id: { $in: events.map((event) => event._id) }, payload: { $ne: null } },
+    { $set: { payload: null, payloadRedactedAt: now } }
+  );
+  return { redacted: result.modifiedCount || 0 };
+}
+
+module.exports = {
+  acceptIyzicoEvent,
+  acceptPaddleEvent,
+  billingEventPayloadRetentionDays,
+  minimizeIyzicoPayload,
+  minimizePaddlePayload,
+  payloadExpiresAt,
+  processEvent,
+  processIyzicoEvent,
+  redactExpiredPayloads,
+  reprocessPending,
+};

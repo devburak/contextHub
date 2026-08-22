@@ -19,3 +19,8 @@ export async function updateBillingProfile(profile) {
   const response = await apiClient.put('/billing/profile', profile)
   return response.data
 }
+
+export function billingInvoiceDocumentUrl(invoiceId) {
+  const baseUrl = String(apiClient.defaults.baseURL || window.location.origin).replace(/\/$/, '')
+  return `${baseUrl}/billing/invoices/${encodeURIComponent(invoiceId)}/document`
+}

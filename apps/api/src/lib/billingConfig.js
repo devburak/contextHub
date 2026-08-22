@@ -9,11 +9,13 @@ function isAccountBillingEnabled() {
 }
 
 function getBillingProvider() {
-  return String(process.env.BILLING_PROVIDER || 'paddle').trim().toLowerCase();
+  return String(process.env.BILLING_PROVIDER || '').trim().toLowerCase();
 }
 
 function getEnabledBillingProviders() {
-  const configured = String(process.env.BILLING_ENABLED_PROVIDERS || getBillingProvider())
+  // Provider activation is deliberately fail-closed. Legacy BILLING_PROVIDER and
+  // an absent allow-list must never turn payment collection on implicitly.
+  const configured = String(process.env.BILLING_ENABLED_PROVIDERS || '')
     .split(',')
     .map((provider) => provider.trim().toLowerCase())
     .filter((provider) => ['paddle', 'iyzico'].includes(provider));

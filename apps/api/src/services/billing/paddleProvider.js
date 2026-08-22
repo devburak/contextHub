@@ -102,9 +102,19 @@ async function createPortalSession({ externalCustomerId, externalSubscriptionId 
   };
 }
 
+async function getTransactionInvoice({ externalTransactionId }) {
+  if (!externalTransactionId) throw new Error('Paddle transaction is not available');
+  const invoice = await paddleRequest(
+    `/transactions/${encodeURIComponent(externalTransactionId)}/invoice?disposition=inline`
+  );
+  if (!invoice?.url) throw new Error('Paddle invoice document is not available');
+  return { documentUrl: invoice.url, expiresInSeconds: 3600 };
+}
+
 module.exports = {
   createCheckout,
   createPortalSession,
+  getTransactionInvoice,
   getBaseUrl,
   parseSignatureHeader,
   verifyWebhook,

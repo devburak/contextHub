@@ -9,6 +9,15 @@ const quotaAlertSchema = new Schema({
   threshold: { type: Number, enum: [80, 90, 100], required: true },
   usage: { type: Number, required: true, min: 0 },
   limit: { type: Number, required: true, min: 0 },
+  notificationStatus: {
+    type: String,
+    enum: ['pending', 'sending', 'sent', 'partial', 'failed', 'no_recipients'],
+    default: 'pending',
+  },
+  notificationAttempts: { type: Number, default: 0, min: 0 },
+  notificationRecipientCount: { type: Number, default: 0, min: 0 },
+  notificationSuccessCount: { type: Number, default: 0, min: 0 },
+  lastNotificationError: { type: String, default: '' },
   notifiedAt: { type: Date, default: null },
   readAt: { type: Date, default: null },
 }, { timestamps: true });

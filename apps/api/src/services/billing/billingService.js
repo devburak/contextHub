@@ -82,6 +82,8 @@ function calculateUsageEstimate(plan, { storageBytes = 0, requestCount = 0 } = {
 }
 
 function serializeInvoice(invoice) {
+  const providerDocumentAvailable = invoice.provider === 'paddle'
+    && !['draft', 'void'].includes(invoice.status);
   return {
     id: String(invoice._id),
     number: invoice.invoiceNumber,
@@ -95,6 +97,7 @@ function serializeInvoice(invoice) {
     periodStart: invoice.periodStart,
     periodEnd: invoice.periodEnd,
     documentUrl: invoice.documentUrl,
+    documentAvailable: Boolean(invoice.documentUrl || providerDocumentAvailable),
   };
 }
 
@@ -464,6 +467,41 @@ async function createPortalSession(tenantId) {
   };
 }
 
+async function getInvoiceDocument(tenantId, invoiceId) {
+  const { tenant, account } = await getAccountForTenant(tenantId);
+  const invoice = await BillingInvoice.findOne({
+    _id: invoiceId,
+    tenantId: tenant._id,
+    accountId: account._id,
+  });
+  if (!invoice) {
+    const error = new Error('Invoice was not found for this tenant');
+    error.code = 'InvoiceNotFound';
+    error.statusCode = 404;
+    throw error;
+  }
+  if (invoice.documentUrl) {
+    const documentUrl = new URL(invoice.documentUrl);
+    if (documentUrl.protocol !== 'https:') {
+      const error = new Error('Invoice document URL is not secure');
+      error.code = 'InvoiceDocumentUnavailable';
+      error.statusCode = 409;
+      throw error;
+    }
+    return { documentUrl: documentUrl.toString(), expiresInSeconds: null };
+  }
+  if (invoice.provider !== 'paddle' || ['draft', 'void'].includes(invoice.status)) {
+    const error = new Error('Invoice document is not available yet');
+    error.code = 'InvoiceDocumentUnavailable';
+    error.statusCode = 409;
+    throw error;
+  }
+  ensureProviderEnabled('paddle');
+  return paddleProvider.getTransactionInvoice({
+    externalTransactionId: invoice.externalTransactionId,
+  });
+}
+
 function normalizedBillingProfile(payload, existing = {}, declarationAcceptedBy) {
   const country = normalizeCountry(payload.country);
   const taxId = payload.taxId ? normalizeDigits(payload.taxId) : String(existing.taxId || '');
@@ -646,6 +684,7 @@ module.exports = {
   completeIyzicoCheckout,
   createCheckout,
   createPortalSession,
+  getInvoiceDocument,
   getAccountForTenant,
   getOverview,
   serializeBillingAccount,

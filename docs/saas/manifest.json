@@ -8,8 +8,8 @@
     "en": "Build secure, cache-aware applications with the managed ContextHub service at ctxhub.net.",
     "tr": "ctxhub.net üzerindeki yönetilen ContextHub servisiyle güvenli ve cache uyumlu uygulamalar geliştirin."
   },
-  "version": "2026.08",
-  "updatedAt": "2026-08-13",
+  "version": "2026.08.22",
+  "updatedAt": "2026-08-22",
   "defaultSlug": "overview",
   "defaultLocale": "en",
   "aiLocale": "en",
@@ -48,6 +48,16 @@
       "audience": { "en": ["product", "platform", "procurement"], "tr": ["ürün", "platform", "satın alma"] },
       "order": 15,
       "tags": ["open core", "cloud", "self hosted", "trust"]
+    },
+    {
+      "slug": "legal-merchant-identity",
+      "files": { "en": "en/legal-merchant-identity.md", "tr": "tr/legal-merchant-identity.md" },
+      "title": { "en": "Legal, service, and merchant identity", "tr": "Hukuki hizmet ve merchant kimliği" },
+      "description": { "en": "Identify the legal service provider, product and corporate domains, billing roles, and public policy terms.", "tr": "Hukuki hizmet sağlayıcıyı, ürün ve kurumsal domainleri, tahsilat rollerini ve açık politika koşullarını tanıyın." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 18,
+      "tags": ["legal", "merchant", "billing", "privacy", "refund", "ikonx", "ctxhub.net"]
     },
     {
       "slug": "api-reference",

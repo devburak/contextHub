@@ -474,7 +474,8 @@ Türkçe ve İngilizce desteklenir.
 
 Fatura profili e-posta, ülkeye duyarlı telefon ve posta kodu kurallarını aynı ortak
 sözleşmeyle istemci ve API tarafında doğrular. Hizmet/abonelik koşulları ile fatura
-verileri aydınlatması formda ayrı okunur; `ctxhub-cloud-terms-v3` kabul zamanı,
+verileri aydınlatması formda ayrı okunur; hizmet sağlayıcı ve ürün-domain ilişkisini
+açıkça tanımlayan `ctxhub-cloud-terms-v4` kabul zamanı,
 kullanıcı ve sürümle kaydedilir. Aydınlatma metni bir açık rıza talebi değildir.
 Hizmet koşulları ve aydınlatma; verilerin Türkiye dışında, AB/AEA ülkeleri dahil
 dağıtık bulut, yedekleme, CDN ve edge altyapılarında saklanabileceğini, önbelleğe

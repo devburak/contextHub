@@ -113,6 +113,29 @@ async function billingRoutes(fastify) {
       return reply.code(errorStatus(error)).send({ error: error.code || 'BillingError', message: error.message });
     }
   });
+
+  fastify.get('/billing/invoices/:invoiceId/document', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.BILLING_VIEW)],
+    schema: {
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['invoiceId'],
+        properties: {
+          invoiceId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await billingService.getInvoiceDocument(request.tenantId, request.params.invoiceId);
+      reply.header('Cache-Control', 'private, no-store');
+      return reply.redirect(result.documentUrl);
+    } catch (error) {
+      request.log.error({ err: error }, 'Billing invoice document failed');
+      return reply.code(errorStatus(error)).send({ error: error.code || 'BillingError', message: error.message });
+    }
+  });
 }
 
 module.exports = billingRoutes;

@@ -45,7 +45,7 @@ describe('tenantSubscriptionService', () => {
       select: vi.fn().mockResolvedValue({
         status: 'active',
         serviceAgreementAcceptedAt: new Date(),
-        serviceAgreementVersion: 'ctxhub-cloud-terms-v3',
+        serviceAgreementVersion: 'ctxhub-cloud-terms-v4',
         billingProfileStatus: 'declared',
         paymentMethodStatus: 'provider_verified',
         billingEmail: 'finance@example.test',

@@ -1,6 +1,6 @@
 const TURKEY_COUNTRY_CODE = 'TR';
 const DECLARATION_VERSION = 'billing-profile-v1';
-const SERVICE_AGREEMENT_VERSION = 'ctxhub-cloud-terms-v3';
+const SERVICE_AGREEMENT_VERSION = 'ctxhub-cloud-terms-v4';
 const {
   SUPPORTED_BILLING_COUNTRY_CODES,
   isSupportedBillingCountry,

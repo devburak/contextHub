@@ -160,7 +160,7 @@ async function buildServer(options = {}) {
         version: '0.1.0',
         contact: {
           name: 'ContextHub Support',
-          email: 'support@contexthub.com'
+          email: 'support@ctxhub.net'
         },
         license: {
           name: 'MIT',
@@ -422,9 +422,11 @@ async function start() {
     const billingWebhookService = require('./services/billing/billingWebhookService');
     billingLifecycleService.reconcile().catch((error) => console.error('[Server] Billing lifecycle reconcile failed:', error.message));
     billingWebhookService.reprocessPending().catch((error) => console.error('[Server] Billing webhook recovery failed:', error.message));
+    billingWebhookService.redactExpiredPayloads().catch((error) => console.error('[Server] Billing payload retention failed:', error.message));
     const billingTimer = setInterval(() => {
       billingLifecycleService.reconcile().catch((error) => console.error('[Server] Billing lifecycle reconcile failed:', error.message));
       billingWebhookService.reprocessPending().catch((error) => console.error('[Server] Billing webhook recovery failed:', error.message));
+      billingWebhookService.redactExpiredPayloads().catch((error) => console.error('[Server] Billing payload retention failed:', error.message));
     }, 60 * 60 * 1000);
     billingTimer.unref();
   }

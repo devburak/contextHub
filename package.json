@@ -1,6 +1,6 @@
 {
   "name": "contexthub",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "description": "Multi‑tenant headless CMS and content services platform.",
@@ -16,6 +16,7 @@
     "build:admin": "turbo build --filter=@contexthub/admin",
     "deploy": "pnpm build:admin && node scripts/deploy-admin.mjs",
     "deploy:admin": "node scripts/deploy-admin.mjs",
+    "rollback:admin": "node scripts/rollback-admin.mjs",
     "test": "turbo test",
     "test:watch": "turbo test:watch",
     "lint": "turbo lint",
