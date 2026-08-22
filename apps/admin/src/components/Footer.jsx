@@ -16,13 +16,16 @@ export default function Footer({ showDeveloperDocs = false, authenticated = fals
   return (
     <footer className="bg-white border-t border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 items-center gap-3 py-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 items-center gap-3 py-4 lg:grid-cols-[auto_1fr_auto]">
           {/* Dil seçici - sol */}
           <div className="flex items-center">
             <LanguageSwitcher persistToProfile={authenticated} />
           </div>
 
-          <div className="flex justify-center">
+          <nav
+            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs sm:text-sm"
+            aria-label={t('footer.public_information')}
+          >
             {showDeveloperDocs && (
               <a
                 href="/docs/overview"
@@ -32,10 +35,22 @@ export default function Footer({ showDeveloperDocs = false, authenticated = fals
                 <span>{t('footer.developer_docs')}</span>
               </a>
             )}
-          </div>
+            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/pricing-and-plans">
+              {t('footer.pricing')}
+            </a>
+            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/terms-of-service">
+              {t('footer.terms')}
+            </a>
+            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/privacy-notice">
+              {t('footer.privacy')}
+            </a>
+            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/cancellation-and-refunds">
+              {t('footer.refunds')}
+            </a>
+          </nav>
 
           {/* Marka - sağ */}
-          <div className="flex items-center gap-2 sm:justify-self-end">
+          <div className="flex items-center gap-2 lg:justify-self-end">
             <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
               <span className="text-white text-xs font-bold">C</span>
             </div>

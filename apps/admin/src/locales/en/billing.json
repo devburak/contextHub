@@ -107,7 +107,7 @@
   "billing.legal.termsTitle": "Service and Subscription Terms",
   "billing.legal.termsSummary": "General terms for ContextHub Cloud use, tenant subscriptions, and recurring payments",
   "billing.legal.termsProvider": "ContextHub Cloud is the managed SaaS product provided at ctxhub.net by İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti. ikon-x.com.tr is the company’s corporate website.",
-  "billing.legal.termsCompanyDetails": "Registered address: Akdeniz Mh. Şehit Fethibey Cd. No:55-91 Konak/İzmir 35210, Türkiye · Konak Tax Office · Tax No: 4701114216 · MERSIS No: 0470111421600001.",
+  "billing.legal.termsCompanyDetails": "Registered address: Akdeniz Mh. Şehit Fethibey Cd. No:55-91 Konak/İzmir 35210, Türkiye · Konak Tax Office · Tax No: 4701114216 · MERSIS No: 0470111421600001 · Trade Registry/File No: 210240.",
   "billing.legal.termsScope": "A subscription belongs to the selected tenant and does not grant plan or quota rights to other tenants.",
   "billing.legal.termsBilling": "Monthly/yearly charges, taxes, and renewal details are finalized at checkout and on the invoice. Enterprise terms follow the signed quote or contract.",
   "billing.legal.termsQuota": "Plan limits and acceptable-use rules apply. Fixed plans do not create automatic overage charges unless explicitly enabled.",

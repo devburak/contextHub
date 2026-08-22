@@ -60,6 +60,46 @@
       "tags": ["legal", "merchant", "billing", "privacy", "refund", "ikonx", "ctxhub.net"]
     },
     {
+      "slug": "pricing-and-plans",
+      "files": { "en": "en/pricing-and-plans.md", "tr": "tr/pricing-and-plans.md" },
+      "title": { "en": "Pricing and plans", "tr": "Fiyatlandırma ve paketler" },
+      "description": { "en": "Compare tenant-based ContextHub Cloud plans, list prices, quotas, and managed capabilities.", "tr": "Tenant bazlı ContextHub Cloud paketlerini, liste fiyatlarını, kotaları ve yönetilen yetenekleri karşılaştırın." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "owner"], "tr": ["müşteri", "satın alma", "owner"] },
+      "order": 19,
+      "tags": ["pricing", "plans", "quota", "subscription", "semantic search"]
+    },
+    {
+      "slug": "terms-of-service",
+      "files": { "en": "en/terms-of-service.md", "tr": "tr/terms-of-service.md" },
+      "title": { "en": "Terms and conditions", "tr": "Hizmet ve abonelik koşulları" },
+      "description": { "en": "Read the public terms for ContextHub Cloud accounts, tenant subscriptions, renewals, and acceptable use.", "tr": "ContextHub Cloud hesapları, tenant abonelikleri, yenileme ve kabul edilebilir kullanım için açık koşulları okuyun." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 21,
+      "tags": ["terms", "subscription", "renewal", "acceptable use"]
+    },
+    {
+      "slug": "privacy-notice",
+      "files": { "en": "en/privacy-notice.md", "tr": "tr/privacy-notice.md" },
+      "title": { "en": "Privacy notice", "tr": "Gizlilik ve fatura verileri aydınlatması" },
+      "description": { "en": "Understand how account, billing, support, and infrastructure data is processed for ContextHub Cloud.", "tr": "ContextHub Cloud hesap, fatura, destek ve altyapı verilerinin nasıl işlendiğini anlayın." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 22,
+      "tags": ["privacy", "billing data", "international transfer", "kvkk"]
+    },
+    {
+      "slug": "cancellation-and-refunds",
+      "files": { "en": "en/cancellation-and-refunds.md", "tr": "tr/cancellation-and-refunds.md" },
+      "title": { "en": "Cancellation and refund policy", "tr": "İptal ve iade politikası" },
+      "description": { "en": "Review renewal cancellation, refund review, payment dispute, and support rules.", "tr": "Yenileme iptali, iade incelemesi, ödeme itirazı ve destek kurallarını inceleyin." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 23,
+      "tags": ["cancellation", "refund", "renewal", "payment dispute"]
+    },
+    {
       "slug": "api-reference",
       "files": { "en": "en/api-reference.md", "tr": "tr/api-reference.md" },
       "title": { "en": "API reference", "tr": "API referansı" },

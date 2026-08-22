@@ -26,6 +26,7 @@ describe('billing locale catalog', () => {
       expect(catalog['billing.legal.termsProvider']).toContain('İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.')
       expect(catalog['billing.legal.termsCompanyDetails']).toContain('4701114216')
       expect(catalog['billing.legal.termsCompanyDetails']).toContain('0470111421600001')
+      expect(catalog['billing.legal.termsCompanyDetails']).toContain('210240')
       expect(catalog['billing.legal.termsProvider']).toContain('ikon-x.com.tr')
       expect(catalog['billing.legal.termsProvider']).toContain('ctxhub.net')
       expect(catalog['billing.legal.privacyController']).toContain('İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.')

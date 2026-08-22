@@ -96,5 +96,22 @@
   "tenantTabs.aria_label": "Varlık sekmeleri",
   "tenantTabs.settings": "Genel Ayarlar",
   "tenantTabs.upgrade_required": "Plan yükseltme gerekli",
-  "tenantTabs.webhooks": "Webhook'lar"
+  "tenantTabs.webhooks": "Webhook'lar",
+  "footer.public_information": "Fiyatlandırma ve hukuki bilgiler",
+  "footer.pricing": "Fiyatlar",
+  "footer.terms": "Koşullar",
+  "footer.privacy": "Gizlilik",
+  "footer.refunds": "İptal ve iade",
+  "pay.eyebrow": "GÜVENLİ ÖDEME",
+  "pay.title": "ContextHub aboneliğinizi tamamlayın",
+  "pay.description": "Güvenli checkout bu onaylı ContextHub ürün sayfasında açılır. Paket, dönem, para birimi, vergi, yenileme koşulları ve tahsilatı yapan taraf ödeme öncesinde gösterilir.",
+  "pay.preparing": "Güvenli checkout hazırlanıyor…",
+  "pay.ready": "Güvenli checkout hazır. Otomatik açılmazsa Faturalandırma bölümüne dönüp checkout'u yeniden başlatın.",
+  "pay.unavailable_title": "Tahsilat henüz aktif değil",
+  "pay.unavailable_body": "Onaylı ödeme yapılandırması yayımlanana kadar bu sayfadan tahsilat yapılamaz.",
+  "pay.failed_title": "Güvenli checkout yüklenemedi",
+  "pay.failed_body": "Faturalandırma bölümünden yeniden deneyin. Sorun sürerse support@ctxhub.net ile iletişime geçin.",
+  "pay.back": "Giriş ekranına dön",
+  "pay.support": "Faturalandırma desteği",
+  "pay.merchant": "ContextHub Cloud, İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti. tarafından işletilir."
 }

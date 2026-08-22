@@ -37,6 +37,7 @@ describe('public documentation build', () => {
     expect(fullCorpus).toContain('# Legal, service, and merchant identity')
     expect(fullCorpus).toContain('İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.')
     expect(fullCorpus).toContain('0470111421600001')
+    expect(fullCorpus).toContain('210240')
     expect(fullCorpus).toContain('support@ctxhub.net')
     expect(fullCorpus).toContain('ikon-x.com.tr')
     expect(fullCorpus).toContain('ctxhub.net')
@@ -90,9 +91,15 @@ describe('public documentation build', () => {
       expect(contentPage).toContain('data-docs-prerendered="true"')
       expect(contentPage).toContain('/assets/app.js')
       expect(robots).toContain('Allow: /docs')
+      expect(robots).toContain('Allow: /pay')
       expect(robots).toContain('Sitemap: https://ctxhub.test/sitemap.xml')
       expect(sitemap).toContain('<loc>https://ctxhub.test/docs/content</loc>')
       expect(sitemap).toContain('<loc>https://ctxhub.test/docs</loc>')
+
+      const paymentPage = await readFile(join(distDirectory, 'pay', 'index.html'), 'utf8')
+      expect(paymentPage).toContain('<title>Secure payment | ContextHub</title>')
+      expect(paymentPage).toContain('rel="canonical" href="https://ctxhub.test/pay"')
+      expect(paymentPage).toContain('name="robots" content="noindex, nofollow"')
     } finally {
       await rm(distDirectory, { recursive: true, force: true })
     }

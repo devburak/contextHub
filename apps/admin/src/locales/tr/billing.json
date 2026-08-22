@@ -107,7 +107,7 @@
   "billing.legal.termsTitle": "Hizmet ve Abonelik Koşulları",
   "billing.legal.termsSummary": "ContextHub Cloud kullanımı, tenant aboneliği ve yenilenen ödemeler için genel koşullar",
   "billing.legal.termsProvider": "ContextHub Cloud, İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti. tarafından ctxhub.net alan adında sunulan yönetilen SaaS ürünüdür. ikon-x.com.tr şirketin kurumsal internet sitesidir.",
-  "billing.legal.termsCompanyDetails": "Kayıtlı adres: Akdeniz Mh. Şehit Fethibey Cd. No:55-91 Konak/İzmir 35210 · Konak Vergi Dairesi · VKN: 4701114216 · MERSİS No: 0470111421600001.",
+  "billing.legal.termsCompanyDetails": "Kayıtlı adres: Akdeniz Mh. Şehit Fethibey Cd. No:55-91 Konak/İzmir 35210 · Konak Vergi Dairesi · VKN: 4701114216 · MERSİS No: 0470111421600001 · Ticaret Sicil/Dosya No: 210240.",
   "billing.legal.termsScope": "Abonelik seçili tenant’a aittir; başka tenant’lara plan veya kota hakkı taşımaz.",
   "billing.legal.termsBilling": "Aylık/yıllık bedel, vergi ve yenileme bilgileri checkout ve faturada kesinleşir. Enterprise koşulları imzalı teklif veya sözleşmeye göre uygulanır.",
   "billing.legal.termsQuota": "Plan limitleri ve kabul edilebilir kullanım kuralları geçerlidir. Sabit paketlerde açıkça etkinleştirilmedikçe otomatik aşım faturası oluşturulmaz.",

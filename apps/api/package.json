@@ -1,6 +1,6 @@
 {
   "name": "@contexthub/api",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "description": "Fastify back‑end service for contextHub",
   "main": "src/server.js",

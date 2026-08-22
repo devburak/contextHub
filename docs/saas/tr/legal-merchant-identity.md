@@ -21,6 +21,7 @@ bakımından veri sorumlusu:**
 | Vergi dairesi | Konak |
 | Vergi kimlik numarası (VKN) | `4701114216` |
 | MERSİS numarası | `0470111421600001` |
+| Ticaret sicil/dosya numarası | `210240` |
 | Kurumsal iletişim | [ikon-x.com.tr/tr/iletisim](https://ikon-x.com.tr/tr/iletisim) |
 | ContextHub desteği | `support@ctxhub.net` |
 
@@ -35,6 +36,10 @@ bakımından veri sorumlusu:**
 farklı olması hizmet sağlayıcının veya sözleşme tarafının değiştiği anlamına gelmez.
 
 ## Hizmet ve abonelik koşulları
+
+Tam açık koşullar ve güncel paket tablosu
+[Hizmet ve abonelik koşulları](./terms-of-service.md) ile
+[Fiyatlandırma ve paketler](./pricing-and-plans.md) sayfalarındadır.
 
 - Abonelik seçilen tenant'a aittir; başka tenant'lara plan, kullanıcı veya kota hakkı
   taşımaz.
@@ -69,6 +74,9 @@ yetkili ödeme tarafının güvenli ekranında işlenir.
 
 ## İptal ve iade politikası
 
+Ayrı politika [İptal ve iade politikası](./cancellation-and-refunds.md) sayfasında
+yayımlanır.
+
 - Abonelik iptali, checkout veya müşteri portalında aksi açıkça belirtilmedikçe mevcut
   ücretli dönemin sonunda yürürlüğe girer.
 - İptal, daha önce oluşmuş fatura ve ödeme yükümlülüklerini ortadan kaldırmaz; tenant
@@ -82,6 +90,9 @@ yetkili ödeme tarafının güvenli ekranında işlenir.
   ayrıca başvuru kanalı gösteriyorsa o kanala başvurulabilir.
 
 ## Fatura verileri ve gizlilik
+
+Ayrı aydınlatma [Gizlilik ve fatura verileri aydınlatması](./privacy-notice.md)
+sayfasında yayımlanır.
 
 Faturalandırma için beyan edilen kimlik, iletişim, vergi ve adres verileri; sözleşmenin
 kurulması ve ifası, ödeme, fatura/muhasebe, destek, dolandırıcılığın önlenmesi, güvenlik

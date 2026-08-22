@@ -96,5 +96,22 @@
   "tenantTabs.aria_label": "Entity tabs",
   "tenantTabs.settings": "General Settings",
   "tenantTabs.upgrade_required": "Plan upgrade required",
-  "tenantTabs.webhooks": "Webhooks"
+  "tenantTabs.webhooks": "Webhooks",
+  "footer.public_information": "Pricing and legal information",
+  "footer.pricing": "Pricing",
+  "footer.terms": "Terms",
+  "footer.privacy": "Privacy",
+  "footer.refunds": "Cancellation & refunds",
+  "pay.eyebrow": "SECURE PAYMENT",
+  "pay.title": "Complete your ContextHub subscription",
+  "pay.description": "The secure checkout opens on this approved ContextHub product page. Your plan, billing period, currency, taxes, renewal terms, and collecting party are shown before payment.",
+  "pay.preparing": "Preparing secure checkout…",
+  "pay.ready": "Secure checkout is ready. If it does not open automatically, return to Billing and start checkout again.",
+  "pay.unavailable_title": "Payment collection is not active yet",
+  "pay.unavailable_body": "No charge can be taken from this page until the approved payment configuration is published.",
+  "pay.failed_title": "Secure checkout could not be loaded",
+  "pay.failed_body": "Please try again from Billing. If the problem continues, contact support@ctxhub.net.",
+  "pay.back": "Back to sign in",
+  "pay.support": "Billing support",
+  "pay.merchant": "ContextHub Cloud is operated by İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti."
 }

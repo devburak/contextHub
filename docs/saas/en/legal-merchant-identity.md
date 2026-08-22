@@ -21,6 +21,7 @@ account data:**
 | Tax office | Konak |
 | Tax identification number | `4701114216` |
 | MERSIS number | `0470111421600001` |
+| Trade registry/file number | `210240` |
 | Corporate contact | [ikon-x.com.tr/en/contact](https://ikon-x.com.tr/en/contact) |
 | ContextHub support | `support@ctxhub.net` |
 
@@ -35,6 +36,10 @@ brand are operated by the company identified above. Using separate corporate and
 product domains does not change the service provider or contractual party.
 
 ## Service and subscription terms
+
+The complete public terms and current plan table are available at
+[Terms and conditions](./terms-of-service.md) and
+[Pricing and plans](./pricing-and-plans.md).
 
 - A subscription belongs to the selected tenant and does not transfer plan, user, or
   quota rights to another tenant.
@@ -69,6 +74,9 @@ processed on the authorized payment party's secure interface.
 
 ## Cancellation and refund policy
 
+The standalone policy is published at
+[Cancellation and refund policy](./cancellation-and-refunds.md).
+
 - Unless checkout or the customer portal clearly states otherwise, cancellation takes
   effect at the end of the current paid period.
 - Cancellation does not remove invoices or payment obligations already incurred, and
@@ -81,6 +89,8 @@ processed on the authorized payment party's secure interface.
   collecting party provides an additional support channel, to that channel as well.
 
 ## Billing data and privacy
+
+The standalone notice is published at [Privacy notice](./privacy-notice.md).
 
 Identity, contact, tax, and address data submitted for billing is processed to establish
 and perform the contract, collect payment, invoice and keep accounts, provide support,
