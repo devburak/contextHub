@@ -5,12 +5,17 @@ export async function fetchBillingOverview() {
   return response.data
 }
 
-export async function createBillingCheckout(priceKey) {
-  const response = await apiClient.post('/billing/checkout', { priceKey })
+export async function createBillingCheckout(priceId) {
+  const response = await apiClient.post('/billing/checkout', { priceId })
   return response.data
 }
 
 export async function createBillingPortal() {
   const response = await apiClient.post('/billing/portal', {})
+  return response.data
+}
+
+export async function updateBillingProfile(profile) {
+  const response = await apiClient.put('/billing/profile', profile)
   return response.data
 }

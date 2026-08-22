@@ -83,10 +83,11 @@ const DEFAULT_SUBSCRIPTION_PLANS = [
     capabilities: [
       { key: 'capacity', label: 'Özel tenant kapasitesi', description: 'Sözleşmeye göre trafik, depolama ve ekip limiti' },
       { key: 'sla', label: 'SLA ve öncelikli destek', description: 'İhtiyaca göre hizmet seviyesi' },
+      { key: 'usage-visibility', label: 'Kullanım maliyeti görünümü', description: 'Depolama ve API kullanımının bilgilendirme amaçlı maliyet karşılığı' },
       { key: 'security', label: 'Kurumsal güvenlik', description: 'DPA ve özel güvenlik gereksinimleri' },
     ],
-    pricePerGBStorage: 0,
-    pricePerThousandRequests: 0,
+    pricePerGBStorage: 1,
+    pricePerThousandRequests: 0.1,
     isActive: true,
     sortOrder: 4,
   },
@@ -98,6 +99,10 @@ const DEFAULT_PLAN_PRICES = [
   { key: 'pro.paddle.year.usd', planSlug: 'pro', provider: 'paddle', interval: 'year', currency: 'USD', amountMinor: 13200, envKey: 'PADDLE_PRICE_PRO_YEAR' },
   { key: 'promax.paddle.month.usd', planSlug: 'promax', provider: 'paddle', interval: 'month', currency: 'USD', amountMinor: 4500, envKey: 'PADDLE_PRICE_PROMAX_MONTH' },
   { key: 'promax.paddle.year.usd', planSlug: 'promax', provider: 'paddle', interval: 'year', currency: 'USD', amountMinor: 45000, envKey: 'PADDLE_PRICE_PROMAX_YEAR' },
+  { key: 'pro.iyzico.month.try', planSlug: 'pro', provider: 'iyzico', interval: 'month', currency: 'TRY', amountEnvKey: 'IYZICO_AMOUNT_PRO_MONTH_MINOR', envKey: 'IYZICO_PLAN_PRO_MONTH', optional: true },
+  { key: 'pro.iyzico.year.try', planSlug: 'pro', provider: 'iyzico', interval: 'year', currency: 'TRY', amountEnvKey: 'IYZICO_AMOUNT_PRO_YEAR_MINOR', envKey: 'IYZICO_PLAN_PRO_YEAR', optional: true },
+  { key: 'promax.iyzico.month.try', planSlug: 'promax', provider: 'iyzico', interval: 'month', currency: 'TRY', amountEnvKey: 'IYZICO_AMOUNT_PROMAX_MONTH_MINOR', envKey: 'IYZICO_PLAN_PROMAX_MONTH', optional: true },
+  { key: 'promax.iyzico.year.try', planSlug: 'promax', provider: 'iyzico', interval: 'year', currency: 'TRY', amountEnvKey: 'IYZICO_AMOUNT_PROMAX_YEAR_MINOR', envKey: 'IYZICO_PLAN_PROMAX_YEAR', optional: true },
 ];
 
 module.exports = {

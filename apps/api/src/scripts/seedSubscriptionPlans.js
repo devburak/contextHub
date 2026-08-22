@@ -12,12 +12,20 @@ function buildPlanPriceUpdate(priceData, planId, env = process.env) {
   const configuredExternalPriceId = priceData.envKey
     ? env[priceData.envKey]?.trim()
     : null;
+  const configuredAmount = priceData.amountEnvKey ? env[priceData.amountEnvKey]?.trim() : null;
+  if (priceData.optional && (!configuredAmount || !configuredExternalPriceId)) return null;
+  const amountMinor = configuredAmount === null || configuredAmount === undefined
+    ? priceData.amountMinor
+    : Number(configuredAmount);
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
+    throw new Error(`Invalid minor-unit amount for ${priceData.key}`);
+  }
   const update = {
     planId,
     provider: priceData.provider,
     interval: priceData.interval,
     currency: priceData.currency,
-    amountMinor: priceData.amountMinor,
+    amountMinor,
     active: true,
   };
 
@@ -72,6 +80,10 @@ async function seedSubscriptionPlans(options = {}) {
       const plan = await SubscriptionPlan.findOne({ slug: priceData.planSlug });
       if (!plan) throw new Error(`Plan not found while seeding price: ${priceData.planSlug}`);
       const priceUpdate = buildPlanPriceUpdate(priceData, plan._id);
+      if (!priceUpdate) {
+        console.log(`· Price '${priceData.key}' skipped; local amount or provider plan reference is not configured`);
+        continue;
+      }
 
       console.log(`${dryRun ? '·' : '✓'} Price '${priceData.key}' ${dryRun ? 'would be upserted' : 'upserting...'}`);
       if (!dryRun) {
@@ -93,7 +105,7 @@ async function seedSubscriptionPlans(options = {}) {
     return {
       processed: DEFAULT_SUBSCRIPTION_PLANS.length,
       plans: DEFAULT_SUBSCRIPTION_PLANS.map((plan) => plan.slug),
-      prices: DEFAULT_PLAN_PRICES.map((price) => price.key),
+      prices: DEFAULT_PLAN_PRICES.filter((price) => buildPlanPriceUpdate(price, 'preview')).map((price) => price.key),
       dryRun,
     };
   } catch (error) {

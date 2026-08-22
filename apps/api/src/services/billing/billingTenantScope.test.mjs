@@ -44,4 +44,13 @@ describe('tenant-scoped billing contract', () => {
     expect(free?.userLimit).toBe(1);
     expect(free?.ownerLimit).toBe(1);
   });
+
+  it('keeps Enterprise collection internal while exposing shadow usage rates', () => {
+    const enterprise = DEFAULT_SUBSCRIPTION_PLANS.find((plan) => plan.slug === 'enterprise');
+
+    expect(enterprise?.billingType).toBe('fixed');
+    expect(enterprise?.pricePerGBStorage).toBe(1);
+    expect(enterprise?.pricePerThousandRequests).toBe(0.1);
+    expect(BillingInvoice.schema.path('commercialModel')?.options.select).toBe(false);
+  });
 });

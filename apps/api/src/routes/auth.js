@@ -197,21 +197,21 @@ async function authRoutes(fastify) {
     }
   });
 
-  // POST /auth/register - Kayıt ol (tenant opsiyonel)
+  // POST /auth/register - Kullanıcı kaydı. Tenant yalnız doğrulanmış oturumdan
+  // POST /tenants ile oluşturulur; kayıt isteği tenant provision edemez.
   fastify.post('/auth/register', {
     schema: {
-      description: 'Register a new user with optional tenant creation',
+      description: 'Register a new user without tenant provisioning',
       summary: 'User registration',
       tags: ['auth'],
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           email: { type: 'string', format: 'email', description: 'User email address' },
           password: { type: 'string', minLength: 6, description: 'Password (minimum 6 characters)' },
           firstName: { type: 'string', minLength: 1, description: 'User first name' },
-          lastName: { type: 'string', minLength: 1, description: 'User last name' },
-          tenantName: { type: 'string', minLength: 1, description: 'Optional tenant name to create' },
-          tenantSlug: { type: 'string', minLength: 1, description: 'Optional tenant slug (URL identifier)' }
+          lastName: { type: 'string', minLength: 1, description: 'User last name' }
         },
         required: ['email', 'password', 'firstName', 'lastName']
       },

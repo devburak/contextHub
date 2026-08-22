@@ -3,6 +3,7 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
+const { BillingAccount, BillingSubscription } = require('@contexthub/common');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
 
 describe('tenantSubscriptionService', () => {
@@ -32,19 +33,53 @@ describe('tenantSubscriptionService', () => {
     vi.spyOn(SubscriptionPlan, 'getPlanBySlug').mockResolvedValue(planDoc);
 
     const tenant = {
+      _id: 'tenant-1',
+      accountId: 'account-1',
       plan: 'free',
       currentPlan: null,
       subscriptionStartDate: null,
       billingCycleStart: null,
     };
 
-    const result = await tenantSubscriptionService.applyPlanToTenant(tenant, 'pro');
+    vi.spyOn(BillingAccount, 'findOne').mockReturnValue({
+      select: vi.fn().mockResolvedValue({
+        status: 'active',
+        serviceAgreementAcceptedAt: new Date(),
+        billingProfileStatus: 'declared',
+        paymentMethodStatus: 'provider_verified',
+        billingEmail: 'finance@example.test',
+        legalName: 'Example Ltd',
+        country: 'US',
+        address: { line1: '1 Main St', city: 'Boston', postalCode: '02108' },
+        declarationAcceptedAt: new Date(),
+      }),
+    });
+    vi.spyOn(BillingSubscription, 'findOne').mockResolvedValue({
+      tenantId: 'tenant-1',
+      status: 'active',
+      planId: 'plan-pro',
+    });
+
+    const result = await tenantSubscriptionService.applyPlanToTenant(tenant, 'pro', {
+      source: 'provider_webhook',
+    });
 
     expect(result.changed).toBe(true);
     expect(tenant.plan).toBe('pro');
     expect(tenant.currentPlan).toBe('plan-pro');
     expect(tenant.subscriptionStartDate).toBeInstanceOf(Date);
     expect(tenant.billingCycleStart).toBeInstanceOf(Date);
+  });
+
+  it('rejects paid entitlement without a verified commercial source', async () => {
+    vi.spyOn(SubscriptionPlan, 'getPlanBySlug').mockResolvedValue({ _id: 'plan-promax', slug: 'promax' });
+
+    await expect(tenantSubscriptionService.applyPlanToTenant({
+      _id: 'tenant-1',
+      accountId: 'account-1',
+      plan: 'free',
+      currentPlan: null,
+    }, 'promax')).rejects.toMatchObject({ code: 'PaidPlanActivationDenied' });
   });
 
   it('prefers populated currentPlan over stale tenant plan strings', async () => {

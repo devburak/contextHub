@@ -200,6 +200,14 @@ export default function Layout() {
   }, [hasFeature, hasPermission])
 
   const filteredNavigation = useMemo(() => filterNavigation(navigation), [navigation, filterNavigation])
+  const mainNavigation = useMemo(
+    () => filteredNavigation.filter((item) => item.id !== 'billing'),
+    [filteredNavigation]
+  )
+  const billingNavigationItem = useMemo(
+    () => filteredNavigation.find((item) => item.id === 'billing') || null,
+    [filteredNavigation]
+  )
 
   const isActive = useCallback((href) => {
     if (!href) return false
@@ -224,9 +232,9 @@ export default function Layout() {
       })
     }
 
-    walk(filteredNavigation)
+    walk(mainNavigation)
     setExpandedGroups((prev) => ({ ...prev, ...nextState }))
-  }, [filteredNavigation, isActive])
+  }, [mainNavigation, isActive])
 
   const toggleGroup = (id) => {
     setExpandedGroups((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -381,11 +389,18 @@ export default function Layout() {
                       <ul role="list" className="flex flex-1 flex-col gap-y-7">
                         <li>
                           <ul role="list" className="-mx-2 space-y-1">
-                            {filteredNavigation.map((item) => (
+                            {mainNavigation.map((item) => (
                               <li key={item.id || item.href}>{renderNavItem(item, false)}</li>
                             ))}
                           </ul>
                         </li>
+                        {billingNavigationItem && (
+                          <li className="mt-auto border-t border-gray-200 pt-3">
+                            <ul role="list" className="-mx-2">
+                              <li>{renderNavItem(billingNavigationItem, false)}</li>
+                            </ul>
+                          </li>
+                        )}
                       </ul>
                     </nav>
                   </div>
@@ -427,11 +442,18 @@ export default function Layout() {
               <ul role="list" className="flex flex-1 flex-col gap-y-7">
                 <li>
                   <ul role="list" className="-mx-2 space-y-1">
-                    {filteredNavigation.map((item) => (
+                    {mainNavigation.map((item) => (
                       <li key={item.id || item.href}>{renderNavItem(item, sidebarCollapsed)}</li>
                     ))}
                   </ul>
                 </li>
+                {billingNavigationItem && (
+                  <li className="mt-auto border-t border-gray-200 pt-3">
+                    <ul role="list" className="-mx-2">
+                      <li>{renderNavItem(billingNavigationItem, sidebarCollapsed)}</li>
+                    </ul>
+                  </li>
+                )}
               </ul>
             </nav>
           </div>

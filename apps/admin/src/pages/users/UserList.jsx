@@ -173,7 +173,7 @@ export default function UserList() {
 
       {invitationsDisabled && (
         <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {t('users.free_single_user_notice')} <Link to="/billing" className="font-semibold underline underline-offset-2">{t('user.view_plans')}</Link>
+          {t('users.free_single_user_notice')} <Link to="/faturalandirma" className="font-semibold underline underline-offset-2">{t('user.view_plans')}</Link>
         </div>
       )}
 

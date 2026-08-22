@@ -2,7 +2,7 @@
 
 > Durum: uygulamaya alınan ilk sürüm + PAYG önerisi  
 > Karar tarihi: 22 Ağustos 2026  
-> Para birimi: USD; vergi, kur ve yerel fatura gereksinimleri checkout ülkesine göre ayrıca değerlendirilir.
+> Para birimi: uluslararası fiyatlar USD, Türkiye fiyatları açıkça yapılandırılmış TRY; otomatik kur dönüşümü yapılmaz.
 
 ## 1. Ürün ilkeleri
 
@@ -10,9 +10,9 @@
 2. **Account yalnızca ödeme kimliğidir.** Provider customer, fatura adresi ve ticari owner Account'a aittir; plan, kota ve kullanım Tenant'a aittir. İlk migration bu nedenle 1 Account : 1 Tenant'tır.
 3. **Paketler site veya tenant paketi değildir.** Free/Pro/Pro Max içinde “1 site, 5 site, 15 site” hakkı bulunmaz. Yeni tenant kendi planı ve aboneliğiyle bağımsız değerlendirilir; Account altında tenant toplamak toplu plan hakkı üretmez.
 4. **Plan katalogları yalnızca platform admin tarafından değiştirilir.** Tenant owner, Mongo kayıtlarını veya plan slug'ını doğrudan değiştiremez.
-5. **Self-service değişiklik provider üzerinde yapılır.** İlk satın alma Paddle hosted checkout, mevcut aboneliğin ödeme yöntemi/iptal/değişiklikleri Paddle customer portal üzerinden yürür.
+5. **Self-service ödeme fatura ülkesine göre sunucu tarafında yönlendirilir.** Türkiye (`TR`) fatura profilleri iyzico, diğer ülkeler Paddle kullanır. Kullanıcı provider seçemez ve Türkiye için iyzico hazır değilse Paddle'a fallback yapılmaz.
 6. **Webhook ticari durumun kaynağıdır.** Tarayıcı dönüş URL'si yetki açmaz. İmzalı, idempotent webhook hangi tenant için geldiyse yalnızca o tenant'ın entitlement'ını günceller.
-7. **PAYG bu fazda kapalıdır.** Sabit paket limitinde istek/yazma durdurulur; sürpriz fatura üretilmez.
+7. **PAYG tahmini ile gerçek tahsilat ayrıdır.** Sabit paket limitinde istek/yazma durdurulur; sürpriz fatura üretilmez. Enterprise owner ekranı depolama ve API kullanımının liste oranlarıyla hesaplanan bilgilendirme amaçlı karşılığını gösterir; bu değer gerçek fatura veya sözleşme türünü açıklamaz.
 
 ## 2. Önerilen lansman paketleri
 
@@ -64,7 +64,9 @@ Yüksek trafikli veya geniş ekipli tek bir tenant için hacim paketi.
 - Sözleşmeye göre tenant trafiği, depolama ve ekip kapasitesi
 - SLA, güvenlik incelemesi ve DPA
 - Gerekirse manuel faturalandırma ve satın alma siparişi
-- PAYG pilotu yalnızca açık harcama tavanıyla
+- Depolama için `$1 / GB-ay`, API için `$0,10 / 1.000 istek` üzerinden bilgilendirme amaçlı canlı kullanım karşılığı
+- Gerçek tahsilat PAYG ya da teklifli sabit bedel olabilir; owner API/UI bu iç fatura sınıfını göstermez
+- Gerçek PAYG pilotu yalnızca açık harcama tavanıyla
 
 ## 4. Kota davranışı
 
@@ -87,20 +89,37 @@ Free tenant tek kullanıcılıdır. Free planda davet üretme, yeniden gönderme
 
 Uyarılar tenant + metrik + dönem + eşik anahtarıyla tekilleştirilir. Redis/sayaç arızasında istek kotası kontrollü fail-open kalır ve operasyon uyarısı üretir; tenant entitlement'ı ve ödeme kısıtı Mongo kaynağından uygulanır.
 
+### Owner maliyet görünümü
+
+- Tüm paketlerde aktif abonelik bedeli, yoksa katalog/liste bedeli görünür.
+- Son faturada dönem, ara toplam, vergi ve toplam gösterilir; provider veya iç fatura türü gösterilmez.
+- Enterprise için depolama ve aylık API kullanımının varsayımsal liste karşılığı ayrı satırlarda hesaplanır.
+- Enterprise kullanım karşılığı `gerçek fatura`, `ödenecek tutar` veya `PAYG aboneliği` olarak sunulmaz; sözleşme, indirim, vergi ve manuel mutabakat nedeniyle gerçek tutar farklı olabilir.
+- İç mutabakat için `BillingInvoice.commercialModel` sabit abonelik, ölçümlü kullanım ve teklifli sözleşmeyi ayırır; alan varsayılan sorgularda seçilmez ve owner serializer'ına dahil edilmez.
+
+### Fatura profili ve ödeme ülkesi
+
+- Owner checkout öncesinde fatura türü, unvan/ad-soyad, fatura e-postası, ülke, adres ve doğruluk beyanını kaydeder.
+- Türkiye profillerinde ayrıca yetkili adı/soyadı, telefon, VKN/TCKN ve kurumsal profilde vergi dairesi zorunludur.
+- Vergi numarası AES-256-GCM ile uygulama seviyesinde şifrelenir; legacy düz metin alanı ilk profil güncellemesinde temizlenir. Owner API'sinde açık değer geri dönmez, yalnız maskeli son dört hane ve kayıtlı olup olmadığı gösterilir.
+- Server `country=TR` için yalnız iyzico/TRY, diğer ülkeler için Paddle fiyatlarını listeler. Owner API'si provider içeren fiyat anahtarını döndürmez; public fiyat ID'si istemciden değiştirilse bile checkout aynı server-side ülke kontrolünü tekrar yapar.
+- Aktif, trial, past-due veya paused abonelik ya da açık/past-due fatura varken ülke/provider değişimi otomatik yapılmaz; kontrollü migration gerekir.
+- Kart bilgileri ContextHub tarafından alınmaz veya saklanmaz. iyzico aboneliği kredi kartıyla, diğer ülkelerdeki uygun yöntemler hosted checkout tarafından belirlenir.
+
 ## 5. Abonelik yaşam döngüsü
 
 ### Satın alma
 
-1. Owner faturalandırma ekranında aylık/yıllık sabit fiyat seçer.
-2. API aktif abonelik bulunmadığını ve Paddle price ID'sinin tanımlı olduğunu doğrular.
-3. Hosted checkout transaction oluşturulur; `account_id`, `tenant_id` ve `plan_price_id` provider custom data'sına yazılır.
+1. Owner fatura profilini ve doğruluk beyanını tamamlar, ardından aylık/yıllık sabit fiyat seçer.
+2. API aktif abonelik bulunmadığını, fatura profilinin tam olduğunu ve seçilen fiyatın server tarafından belirlenen ülke/provider ile eşleştiğini doğrular.
+3. Uluslararası profilde Paddle transaction custom data'sına `account_id`, `tenant_id` ve `plan_price_id` yazılır. Türkiye profilinde iyzico abonelik checkout formu fatura adresiyle initialize edilir; checkout token'ının yalnız SHA-256 özeti kısa ömürlü oturumda saklanır.
 4. Başarılı tarayıcı dönüşü tek başına yetki vermez.
-5. İmzalı Paddle webhook'u doğrulanır, `event_id` ile tekilleştirilir ve yalnızca ilgili Tenant planı güncellenir.
+5. Paddle imzası veya iyzico `X-IYZ-SIGNATURE-V3` imzası doğrulanır, event tekilleştirilir ve yalnızca ilgili Tenant planı güncellenir.
 
 ### Fatura ve portal
 
 - Fatura geçmişi webhook'tan oluşturulan salt-okunur kayıtlardır.
-- Ödeme yöntemi, provider faturası, iptal ve aktif abonelik değişikliği geçici customer portal URL'siyle açılır.
+- Paddle ödeme yöntemi/iptal işlemleri geçici customer portal URL'siyle; iyzico kart değişikliği ayrı güvenli kart güncelleme formuyla açılır.
 - Portal URL'si saklanmaz ve uygulamaya gömülmez.
 
 ### İptal ve downgrade
@@ -119,9 +138,14 @@ Uyarılar tenant + metrik + dönem + eşik anahtarıyla tekilleştirilir. Redis/
 
 ## 6. Güvenlik ve operasyon sözleşmesi
 
-- Global plan katalog mutation ve doğrudan tenant plan mutation endpoint'leri platform `admin` rolü ister.
+- `POST /tenants` plan kabul etmez; oluşturulan ilk self-service tenant daima Free başlar. İstek gövdesine eklenen `plan` alanı şema tarafından reddedilir.
+- Public kayıt (`POST /auth/register`) tenant oluşturamaz. Tenant provisioning yalnız e-postası doğrulanmış oturumdan yapılır.
+- Lansman sınırı olarak bir kullanıcı yalnız bir public self-service tenant bootstrap edebilir. Bu bir paket/site kotası değildir; tekrar çağrılar servis kontrolüne ek olarak veritabanındaki unique partial index ile de reddedilir. Yeni tenantlar ileride checkout/Enterprise sözleşme provisioning akışından açılır.
+- Platform custom-limit endpoint'i plan değiştiremez. Ücretli plan entitlement'ı yalnız imzalı provider sonucu veya doğrulanmış Enterprise sözleşmesiyle uygulanır.
+- Pro/Pro Max aktivasyonu için sürümlü hizmet sözleşmesi, tamamlanmış fatura beyanı, provider tarafından doğrulanmış ödeme bilgisi ve aynı plana ait `active`/`trialing` abonelik birlikte aranır.
+- Enterprise aktivasyonu için hizmet sözleşmesi, fatura profili güvencesi ve `enterprise_contract` ödeme statüsü aranır. Mevcut Enterprise tenantlar adres/vergi verisi uydurulmadan `legacy_enterprise` güvencesiyle backfill edilir.
 - Tenant owner billing verisini görüntüler; checkout/portal başlatabilir fakat provider sonucunu taklit ederek plan açamaz.
-- Paddle imzası ham request body üzerinde HMAC-SHA256 ile ve zaman toleransıyla doğrulanır.
+- Paddle imzası ham request body üzerinde HMAC-SHA256 ve zaman toleransıyla; iyzico abonelik bildirimi güncel `X-IYZ-SIGNATURE-V3` alan sırasıyla HMAC-SHA256 üzerinden doğrulanır.
 - Webhook alımı hızlı `202` döner; işleme asenkrondur. Event kaydı tekrar teslimatı ve yeniden işlemeyi güvenli yapar.
 - Eski event yeni abonelik durumunu ezemez; `occurred_at` sıralaması tutulur.
 - Cloudflare Edge Gateway `/api/billing/webhooks/*` rotasını origin-managed geçirir; origin secret Worker tarafından eklenir.
@@ -130,13 +154,16 @@ Uyarılar tenant + metrik + dönem + eşik anahtarıyla tekilleştirilir. Redis/
 ### Rollout
 
 ```text
-1. Paketleri ve Paddle price ID'lerini seed et
+1. Paddle USD price ID'lerini; iyzico TRY plan referanslarını ve kuruş cinsinden tutarları environment üzerinden seed et
 2. node apps/api/src/scripts/backfillTenantAccounts.js
 3. Dry-run çıktısında owner/slug eşleşmelerini doğrula
 4. node apps/api/src/scripts/backfillTenantAccounts.js --apply
-5. ACCOUNT_BILLING_ENABLED=true ile staging shadow doğrulaması
-6. Sandbox checkout + portal + duplicate/out-of-order webhook testi
-7. Canlı Paddle ürünleri, webhook secret ve düşük hacimli production açılışı
+5. node apps/api/src/scripts/backfillEnterpriseCommercialAssurance.js
+6. Dry-run Enterprise listesini sözleşmeli müşteri listesiyle karşılaştır
+7. node apps/api/src/scripts/backfillEnterpriseCommercialAssurance.js --apply
+8. ACCOUNT_BILLING_ENABLED=true ile staging shadow doğrulaması
+9. Paddle ve iyzico sandbox checkout + ödeme yöntemi + duplicate/out-of-order webhook testi
+10. Önce Paddle, ardından ayrı feature/config kapısıyla iyzico düşük hacimli production açılışı
 ```
 
 ## 7. PAYG ve aşım faturalandırması — sonraki faz önerisi
@@ -179,7 +206,7 @@ PAYG hazır değilken %100 kota davranışı sabit paket için bloklamadır. Bu 
 - Tenant owner hiçbir doğrudan API çağrısıyla plan katalogu veya Tenant planını değiştiremez.
 - Account üzerinde plan, kota veya “kaç tenant/site hakkı” tutulmaz; bunların tek kaynağı Tenant ve tenant'a bağlı BillingSubscription'dır.
 - Backfill tekrar çalıştırılabilir ve tenant başına tek Account/BillingAccount üretir.
-- Aylık/yıllık Pro ve Pro Max checkout price ID'leri environment üzerinden doğrulanır.
+- Aylık/yıllık Pro ve Pro Max checkout referansları environment üzerinden doğrulanır; TRY fiyatı eksikse iyzico kaydı seed edilmez ve TR checkout Paddle'a düşmez.
 - Aynı webhook iki kez işlendiğinde tek BillingEvent, tek abonelik ve tek fatura oluşur.
 - Eski webhook yeni abonelik durumunu geri alamaz.
 - Kullanıcı/owner/depolama/istek limitleri gerçek mutation ve hot path'lerde uygulanır.

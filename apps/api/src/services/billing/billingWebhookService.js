@@ -10,6 +10,7 @@ const {
 } = require('@contexthub/common');
 const tenantSubscriptionService = require('../tenantSubscriptionService');
 const paddleProvider = require('./paddleProvider');
+const iyzicoProvider = require('./iyzicoProvider');
 
 const SUBSCRIPTION_EVENTS = new Set([
   'subscription.created',
@@ -68,6 +69,86 @@ async function acceptPaddleEvent(rawBody, signatureHeader) {
     const event = await BillingEvent.findOne({ provider: 'paddle', eventId: payload.event_id });
     return { event, duplicate: true };
   }
+}
+
+async function acceptIyzicoEvent(payload, signatureHeader) {
+  iyzicoProvider.verifySubscriptionWebhook(payload, signatureHeader);
+  if (!payload?.iyziReferenceCode || !payload?.iyziEventType || !payload?.iyziEventTime) {
+    const error = new Error('iyzico event envelope is incomplete');
+    error.code = 'InvalidWebhookEnvelope';
+    throw error;
+  }
+  const occurredAt = asDate(Number(payload.iyziEventTime));
+  if (!occurredAt) throw new Error('iyzico event timestamp is invalid');
+  const raw = Buffer.from(JSON.stringify(payload));
+  try {
+    const event = await BillingEvent.create({
+      provider: 'iyzico',
+      eventId: payload.iyziReferenceCode,
+      eventType: payload.iyziEventType,
+      occurredAt,
+      externalCustomerId: payload.customerReferenceCode || null,
+      externalSubscriptionId: payload.subscriptionReferenceCode || null,
+      payloadHash: crypto.createHash('sha256').update(raw).digest('hex'),
+      payload,
+    });
+    return { event, duplicate: false };
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    const event = await BillingEvent.findOne({ provider: 'iyzico', eventId: payload.iyziReferenceCode });
+    return { event, duplicate: true };
+  }
+}
+
+async function processIyzicoEvent(event) {
+  const subscription = await BillingSubscription.findOne({
+    provider: 'iyzico',
+    externalSubscriptionId: event.externalSubscriptionId,
+  });
+  if (!subscription) {
+    event.status = 'ignored';
+    event.lastError = 'No matching iyzico subscription';
+    event.processedAt = new Date();
+    await event.save();
+    return event;
+  }
+  const tenant = await Tenant.findById(subscription.tenantId);
+  if (!tenant) throw new Error('iyzico subscription tenant was not found');
+  if (subscription.lastProviderEventAt && event.occurredAt < subscription.lastProviderEventAt) {
+    event.status = 'ignored';
+    event.lastError = 'Out-of-order iyzico event';
+    event.processedAt = new Date();
+    await event.save();
+    return event;
+  }
+
+  const success = event.eventType === 'subscription.order.success';
+  const failure = event.eventType === 'subscription.order.failure';
+  if (!success && !failure) {
+    event.status = 'ignored';
+    event.lastError = 'Unsupported iyzico event type';
+    event.processedAt = new Date();
+    await event.save();
+    return event;
+  }
+  subscription.lastProviderEventAt = event.occurredAt;
+  if (success) {
+    subscription.status = 'active';
+    subscription.gracePeriodEndsAt = null;
+  } else {
+    const graceDays = Math.max(1, Number(process.env.BILLING_GRACE_PERIOD_DAYS || 7));
+    subscription.status = 'past_due';
+    subscription.gracePeriodEndsAt ||= new Date(Date.now() + graceDays * 86400000);
+  }
+  await subscription.save();
+  event.accountId = subscription.accountId;
+  event.tenantId = subscription.tenantId;
+  event.status = 'processed';
+  event.processedAt = new Date();
+  event.lastError = '';
+  await event.save();
+  await tenantSubscriptionService.syncEntitlementState(tenant._id, { reason: `iyzico:${event.eventType}` });
+  return event;
 }
 
 async function resolveTarget(event) {
@@ -160,7 +241,11 @@ async function syncSubscriptionEvent(event, tenant, account, billingAccount) {
   );
 
   if (status === 'active' || status === 'trialing') {
-    if (planPrice?.planId?.slug) await tenantSubscriptionService.applyPlanToTenant(tenant, planPrice.planId.slug);
+    if (planPrice?.planId?.slug) {
+      await tenantSubscriptionService.applyPlanToTenant(tenant, planPrice.planId.slug, {
+        source: 'provider_webhook',
+      });
+    }
   } else if (status === 'canceled') {
     await tenantSubscriptionService.applyPlanToTenant(tenant, 'free');
   }
@@ -222,6 +307,7 @@ async function processEvent(eventId) {
   if (!event) return BillingEvent.findById(eventId);
 
   try {
+    if (event.provider === 'iyzico') return await processIyzicoEvent(event);
     const target = await resolveTarget(event);
     if (!target) {
       event.status = 'ignored';
@@ -236,7 +322,11 @@ async function processEvent(eventId) {
       { accountId: account._id },
       { $set: {
         provider: 'paddle',
-        ...(data.customer_id ? { externalCustomerId: data.customer_id, status: 'active' } : {}),
+        ...(data.customer_id ? {
+          externalCustomerId: data.customer_id,
+          status: 'active',
+          paymentMethodStatus: 'provider_verified',
+        } : {}),
       }, $setOnInsert: { accountId: account._id } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
@@ -287,4 +377,4 @@ async function reprocessPending({ limit = 100 } = {}) {
   return results;
 }
 
-module.exports = { acceptPaddleEvent, processEvent, reprocessPending };
+module.exports = { acceptIyzicoEvent, acceptPaddleEvent, processEvent, processIyzicoEvent, reprocessPending };

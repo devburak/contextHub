@@ -1,6 +1,7 @@
 const {
   Account,
   BillingAccount,
+  BillingCheckoutSession,
   BillingInvoice,
   BillingSubscription,
   Media,
@@ -9,15 +10,168 @@ const {
   QuotaAlert,
   Tenant,
 } = require('@contexthub/common');
-const { getBillingProvider, isAccountBillingEnabled } = require('../../lib/billingConfig');
+const crypto = require('crypto');
+const { isAccountBillingEnabled, isBillingProviderEnabled } = require('../../lib/billingConfig');
 const paddleProvider = require('./paddleProvider');
+const iyzicoProvider = require('./iyzicoProvider');
+const { decryptBillingPii, encryptBillingPii } = require('./billingPiiCrypto');
+const {
+  DECLARATION_VERSION,
+  SERVICE_AGREEMENT_VERSION,
+  maskTaxId,
+  normalizeCountry,
+  normalizeDigits,
+  paymentMethodsForCountry,
+  resolveBillingProvider,
+  validateBillingProfile,
+} = require('./billingRouting');
 const tenantSubscriptionService = require('../tenantSubscriptionService');
 const apiUsageService = require('../apiUsageService');
 
-function getProvider() {
-  const provider = getBillingProvider();
+const BYTES_PER_GB = 1024 ** 3;
+const CATALOG_CURRENCY = 'USD';
+
+function toMinorUnits(amountMajor) {
+  const amount = Number(amountMajor || 0);
+  return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) : 0;
+}
+
+function calculateUsageEstimate(plan, { storageBytes = 0, requestCount = 0 } = {}) {
+  const available = plan?.slug === 'enterprise';
+  const storageRateMinor = toMinorUnits(plan?.pricePerGBStorage);
+  const requestRateMinor = toMinorUnits(plan?.pricePerThousandRequests);
+  const safeStorageBytes = Math.max(0, Number(storageBytes || 0));
+  const safeRequestCount = Math.max(0, Number(requestCount || 0));
+  const storageAmountMinor = available
+    ? Math.round((safeStorageBytes / BYTES_PER_GB) * storageRateMinor)
+    : 0;
+  const requestAmountMinor = available
+    ? Math.round((safeRequestCount / 1000) * requestRateMinor)
+    : 0;
+
+  return {
+    available,
+    informational: true,
+    currency: CATALOG_CURRENCY,
+    amountMinor: storageAmountMinor + requestAmountMinor,
+    lines: available ? [
+      {
+        metric: 'storage',
+        usage: safeStorageBytes,
+        unit: 'gb-month',
+        unitPriceMinor: storageRateMinor,
+        amountMinor: storageAmountMinor,
+      },
+      {
+        metric: 'requests',
+        usage: safeRequestCount,
+        unit: 'thousand-requests',
+        unitPriceMinor: requestRateMinor,
+        amountMinor: requestAmountMinor,
+      },
+    ] : [],
+  };
+}
+
+function serializeInvoice(invoice) {
+  return {
+    id: String(invoice._id),
+    number: invoice.invoiceNumber,
+    status: invoice.status,
+    currency: invoice.currency,
+    subtotalMinor: invoice.subtotalMinor,
+    taxMinor: invoice.taxMinor,
+    totalMinor: invoice.totalMinor,
+    billedAt: invoice.billedAt,
+    paidAt: invoice.paidAt,
+    periodStart: invoice.periodStart,
+    periodEnd: invoice.periodEnd,
+    documentUrl: invoice.documentUrl,
+  };
+}
+
+function serializeBillingAccount(billingAccount) {
+  if (!billingAccount) return null;
+  const profileValidation = validateBillingProfile(billingAccount);
+  return {
+    status: billingAccount.status,
+    billingEmail: billingAccount.billingEmail,
+    legalName: billingAccount.legalName,
+    profileType: billingAccount.profileType,
+    contactFirstName: billingAccount.contactFirstName,
+    contactLastName: billingAccount.contactLastName,
+    phone: billingAccount.phone,
+    country: billingAccount.country,
+    taxIdMasked: billingAccount.taxIdLast4
+      ? `${'*'.repeat(6)}${billingAccount.taxIdLast4}`
+      : maskTaxId(billingAccount.taxId),
+    hasTaxId: Boolean(billingAccount.taxIdLast4 || billingAccount.taxId),
+    taxOffice: billingAccount.taxOffice,
+    currency: billingAccount.currency,
+    address: billingAccount.address || {},
+    declarationAcceptedAt: billingAccount.declarationAcceptedAt,
+    declarationVersion: billingAccount.declarationVersion,
+    serviceAgreementAcceptedAt: billingAccount.serviceAgreementAcceptedAt,
+    serviceAgreementVersion: billingAccount.serviceAgreementVersion,
+    profileComplete: profileValidation.complete,
+    missingFields: profileValidation.missingFields,
+    hasProviderCustomer: Boolean(billingAccount.externalCustomerId),
+    commercialReadiness: {
+      agreementAccepted: Boolean(billingAccount.serviceAgreementAcceptedAt),
+      billingProfileAccepted: profileValidation.complete || billingAccount.billingProfileStatus === 'legacy_enterprise',
+      paymentVerified: ['provider_verified', 'enterprise_contract'].includes(billingAccount.paymentMethodStatus),
+    },
+  };
+}
+
+function serializeSubscription(subscription) {
+  if (!subscription) return null;
+  return {
+    id: String(subscription._id),
+    status: subscription.status,
+    interval: subscription.interval,
+    currency: subscription.currency,
+    amountMinor: subscription.amountMinor,
+    currentPeriodStart: subscription.currentPeriodStart,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    gracePeriodEndsAt: subscription.gracePeriodEndsAt,
+    plan: subscription.planId ? { slug: subscription.planId.slug, name: subscription.planId.name } : null,
+  };
+}
+
+function buildChargeSummary({ plan, subscription, invoices = [], storageBytes = 0, requestCount = 0 }) {
+  const latestInvoice = invoices[0] ? serializeInvoice(invoices[0]) : null;
+
+  return {
+    subscription: {
+      amountMinor: subscription ? subscription.amountMinor : toMinorUnits(plan?.price),
+      currency: subscription?.currency || CATALOG_CURRENCY,
+      interval: subscription?.interval || 'month',
+      isEstimated: !subscription,
+      currentPeriodStart: subscription?.currentPeriodStart || null,
+      currentPeriodEnd: subscription?.currentPeriodEnd || null,
+    },
+    usageEstimate: calculateUsageEstimate(plan, { storageBytes, requestCount }),
+    latestInvoice,
+  };
+}
+
+function getProvider(provider) {
   if (provider === 'paddle') return paddleProvider;
+  if (provider === 'iyzico') return iyzicoProvider;
   throw new Error(`Self-service billing provider is not available: ${provider}`);
+}
+
+function checkoutTokenHash(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function ensureProviderEnabled(provider) {
+  if (isBillingProviderEnabled(provider)) return;
+  const error = new Error('Fatura ülkeniz için güvenli ödeme altyapısı henüz etkin değil');
+  error.code = 'BillingProviderUnavailable';
+  throw error;
 }
 
 async function getAccountForTenant(tenantId) {
@@ -41,7 +195,6 @@ async function getAccountForTenant(tenantId) {
 function serializePrice(price) {
   return {
     id: String(price._id),
-    key: price.key,
     plan: price.planId ? {
       id: String(price.planId._id),
       slug: price.planId.slug,
@@ -56,7 +209,6 @@ function serializePrice(price) {
         requests: price.planId.monthlyRequestLimit,
       },
     } : null,
-    provider: price.provider,
     interval: price.interval,
     currency: price.currency,
     amountMinor: price.amountMinor,
@@ -66,11 +218,17 @@ function serializePrice(price) {
 
 async function getOverview(tenantId) {
   const { tenant, account } = await getAccountForTenant(tenantId);
-  const [billingAccount, subscription, invoices, prices, alerts, limits, userCount, ownerCount, storageRows, requestCount] = await Promise.all([
-    BillingAccount.findOne({ accountId: account._id }).lean(),
+  const effectivePlan = await tenantSubscriptionService.getEffectivePlan(tenant);
+  const billingAccount = await BillingAccount.findOne({ accountId: account._id }).select('+taxId').lean();
+  const profileValidation = validateBillingProfile(billingAccount || {});
+  const selectedProvider = billingAccount?.country ? resolveBillingProvider(billingAccount.country) : null;
+  const providerEnabled = selectedProvider ? isBillingProviderEnabled(selectedProvider) : false;
+  const [subscription, invoices, prices, alerts, limits, userCount, ownerCount, storageRows, requestCount] = await Promise.all([
     BillingSubscription.findOne({ tenantId: tenant._id }).populate('planId planPriceId').lean(),
     BillingInvoice.find({ tenantId: tenant._id }).sort({ billedAt: -1, createdAt: -1 }).limit(24).lean(),
-    PlanPrice.find({ active: true, provider: 'paddle' }).populate('planId').sort({ amountMinor: 1 }).lean(),
+    selectedProvider
+      ? PlanPrice.find({ active: true, provider: selectedProvider }).populate('planId').sort({ amountMinor: 1 }).lean()
+      : Promise.resolve([]),
     QuotaAlert.find({ tenantId: tenant._id }).sort({ createdAt: -1 }).limit(12).lean(),
     tenantSubscriptionService.getEffectiveLimits(tenant),
     Membership.countDocuments({ tenantId: tenant._id, status: { $in: ['active', 'pending'] } }),
@@ -92,55 +250,46 @@ async function getOverview(tenantId) {
     unlimited: limit === null || limit === -1,
     percentage: limit === null || limit === -1 || limit <= 0 ? 0 : Math.min(100, Math.round((usage / limit) * 100)),
   });
+  const storageBytes = storageRows[0]?.total || 0;
+  const monthlyRequests = requestCount || 0;
+  const serializedInvoices = invoices.map(serializeInvoice);
+  const usage = {
+    users: metric(userCount, limits.userLimit),
+    owners: metric(ownerCount, limits.ownerLimit),
+    storage: metric(storageBytes, limits.storageLimit),
+    requests: metric(monthlyRequests, limits.monthlyRequestLimit),
+  };
 
   return {
     tenant: {
       id: String(tenant._id),
       name: tenant.name,
       slug: tenant.slug,
-      plan: tenant.currentPlan ? {
-        slug: tenant.currentPlan.slug,
-        name: tenant.currentPlan.name,
-      } : { slug: tenant.plan || 'free', name: tenant.plan === 'free' ? 'Free' : tenant.plan },
+      plan: {
+        slug: effectivePlan?.slug || tenant.plan || 'free',
+        name: effectivePlan?.name || (tenant.plan === 'free' ? 'Free' : tenant.plan),
+      },
     },
     account: {
       id: String(account._id),
       name: account.name,
       status: account.status,
     },
-    billingAccount: billingAccount ? {
-      provider: billingAccount.provider,
-      status: billingAccount.status,
-      billingEmail: billingAccount.billingEmail,
-      legalName: billingAccount.legalName,
-      country: billingAccount.country,
-      currency: billingAccount.currency,
-      hasProviderCustomer: Boolean(billingAccount.externalCustomerId),
-    } : null,
-    subscription: subscription ? {
-      id: String(subscription._id),
-      provider: subscription.provider,
-      status: subscription.status,
-      interval: subscription.interval,
-      currency: subscription.currency,
-      amountMinor: subscription.amountMinor,
-      currentPeriodStart: subscription.currentPeriodStart,
-      currentPeriodEnd: subscription.currentPeriodEnd,
-      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-      gracePeriodEndsAt: subscription.gracePeriodEndsAt,
-      plan: subscription.planId ? { slug: subscription.planId.slug, name: subscription.planId.name } : null,
-    } : null,
+    billingAccount: serializeBillingAccount(billingAccount),
+    paymentRouting: {
+      profileComplete: profileValidation.complete,
+      agreementAccepted: Boolean(billingAccount?.serviceAgreementAcceptedAt),
+      checkoutAvailable: profileValidation.complete && Boolean(billingAccount?.serviceAgreementAcceptedAt) && providerEnabled,
+      missingFields: [
+        ...profileValidation.missingFields,
+        ...(!billingAccount?.serviceAgreementAcceptedAt ? ['serviceAgreementAccepted'] : []),
+      ],
+      paymentMethods: paymentMethodsForCountry(billingAccount?.country),
+      jurisdictionLocked: Boolean(subscription && ['trialing', 'active', 'past_due', 'paused'].includes(subscription.status)),
+    },
+    subscription: serializeSubscription(subscription),
     prices: prices.map(serializePrice),
-    invoices: invoices.map((invoice) => ({
-      id: String(invoice._id),
-      number: invoice.invoiceNumber,
-      status: invoice.status,
-      currency: invoice.currency,
-      totalMinor: invoice.totalMinor,
-      billedAt: invoice.billedAt,
-      paidAt: invoice.paidAt,
-      documentUrl: invoice.documentUrl,
-    })),
+    invoices: serializedInvoices,
     quotaAlerts: alerts.map((alert) => ({
       id: String(alert._id),
       metric: alert.metric,
@@ -151,41 +300,93 @@ async function getOverview(tenantId) {
       createdAt: alert.createdAt,
       readAt: alert.readAt,
     })),
-    usage: {
-      users: metric(userCount, limits.userLimit),
-      owners: metric(ownerCount, limits.ownerLimit),
-      storage: metric(storageRows[0]?.total || 0, limits.storageLimit),
-      requests: metric(requestCount || 0, limits.monthlyRequestLimit),
-    },
+    usage,
+    charges: buildChargeSummary({
+      plan: effectivePlan,
+      subscription,
+      invoices,
+      storageBytes,
+      requestCount: monthlyRequests,
+    }),
   };
 }
 
-async function createCheckout(tenantId, priceKey) {
+async function createCheckout(tenantId, priceReference) {
   const { tenant, account } = await getAccountForTenant(tenantId);
-  const activeSubscription = await BillingSubscription.findOne({
-    tenantId: tenant._id,
-    status: { $in: ['trialing', 'active', 'past_due', 'paused'] },
-  });
+  const [activeSubscription, billingAccount] = await Promise.all([
+    BillingSubscription.findOne({
+      tenantId: tenant._id,
+      status: { $in: ['trialing', 'active', 'past_due', 'paused'] },
+    }),
+    BillingAccount.findOne({ accountId: account._id }).select('+taxId +taxIdEncrypted'),
+  ]);
   if (activeSubscription) {
     const error = new Error('Use the customer portal to change an active subscription');
     error.code = 'PortalRequired';
     throw error;
   }
+  const profileValidation = validateBillingProfile(billingAccount || {});
+  if (!profileValidation.complete) {
+    const error = new Error('Checkout öncesinde fatura bilgileri ve beyan tamamlanmalıdır');
+    error.code = 'BillingProfileIncomplete';
+    error.missingFields = profileValidation.missingFields;
+    throw error;
+  }
+  if (!billingAccount.serviceAgreementAcceptedAt) {
+    const error = new Error('Checkout öncesinde ContextHub hizmet sözleşmesi kabul edilmelidir');
+    error.code = 'CommercialAgreementRequired';
+    throw error;
+  }
+  const selectedProvider = resolveBillingProvider(billingAccount.country);
+  ensureProviderEnabled(selectedProvider);
+  const checkoutTaxId = billingAccount.taxIdEncrypted
+    ? decryptBillingPii(billingAccount.taxIdEncrypted)
+    : billingAccount.taxId;
 
-  const planPrice = await PlanPrice.findOne({ key: priceKey, active: true }).populate('planId');
-  if (!planPrice || planPrice.provider !== getBillingProvider()) throw new Error('Plan price is not available');
+  const planPrice = /^[a-f0-9]{24}$/i.test(String(priceReference || ''))
+    ? await PlanPrice.findOne({ _id: priceReference, active: true }).populate('planId')
+    : await PlanPrice.findOne({ key: priceReference, active: true }).populate('planId');
+  if (!planPrice || planPrice.provider !== selectedProvider) {
+    const error = new Error('Bu fiyat fatura ülkeniz için kullanılamaz');
+    error.code = 'PlanPriceUnavailable';
+    throw error;
+  }
   if (!planPrice.externalPriceId) {
     const error = new Error('This plan price is not configured for checkout');
     error.code = 'CheckoutNotConfigured';
     throw error;
   }
 
-  await BillingAccount.findOneAndUpdate(
-    { accountId: account._id },
-    { $set: { provider: planPrice.provider }, $setOnInsert: { accountId: account._id } },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-  return getProvider().createCheckout({ tenant, account, planPrice });
+  billingAccount.provider = selectedProvider;
+  await billingAccount.save();
+  const result = await getProvider(selectedProvider).createCheckout({
+    billingAccount: { ...billingAccount.toObject(), taxId: checkoutTaxId },
+    tenant,
+    account,
+    planPrice,
+  });
+
+  if (selectedProvider === 'iyzico') {
+    const ttlSeconds = Math.max(60, Math.min(3600, Number(result.expiresInSeconds || 1800)));
+    await BillingCheckoutSession.findOneAndUpdate(
+      { provider: 'iyzico', tokenHash: checkoutTokenHash(result.checkoutToken) },
+      { $set: {
+        conversationId: result.conversationId,
+        accountId: account._id,
+        tenantId: tenant._id,
+        planPriceId: planPrice._id,
+        status: 'initialized',
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000),
+      } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  }
+
+  return {
+    checkoutUrl: result.checkoutUrl || null,
+    checkoutContent: result.checkoutContent || null,
+    expiresInSeconds: result.expiresInSeconds || null,
+  };
 }
 
 async function createPortalSession(tenantId) {
@@ -194,20 +395,214 @@ async function createPortalSession(tenantId) {
     BillingAccount.findOne({ accountId: account._id }),
     BillingSubscription.findOne({ tenantId: tenant._id }),
   ]);
-  if (!billingAccount?.externalCustomerId) {
+  if (!subscription?.externalSubscriptionId || !billingAccount) {
     const error = new Error('Customer portal is not available before the first completed checkout');
     error.code = 'PortalUnavailable';
     throw error;
   }
-  return getProvider().createPortalSession({
+  const selectedProvider = subscription.provider;
+  ensureProviderEnabled(selectedProvider);
+  const result = await getProvider(selectedProvider).createPortalSession({
     externalCustomerId: billingAccount.externalCustomerId,
-    externalSubscriptionId: subscription?.externalSubscriptionId || null,
+    externalSubscriptionId: subscription.externalSubscriptionId,
   });
+  return {
+    portalUrl: result.portalUrl || null,
+    paymentMethodUrl: result.paymentMethodUrl || null,
+    paymentMethodContent: result.paymentMethodContent || null,
+    cancelUrl: result.cancelUrl || null,
+    expiresInSeconds: result.expiresInSeconds || null,
+  };
+}
+
+function normalizedBillingProfile(payload, existing = {}, declarationAcceptedBy) {
+  const country = normalizeCountry(payload.country);
+  const taxId = payload.taxId ? normalizeDigits(payload.taxId) : String(existing.taxId || '');
+  return {
+    billingEmail: String(payload.billingEmail || '').trim().toLowerCase(),
+    legalName: String(payload.legalName || '').trim(),
+    profileType: payload.profileType || 'business',
+    contactFirstName: String(payload.contactFirstName || '').trim(),
+    contactLastName: String(payload.contactLastName || '').trim(),
+    phone: String(payload.phone || '').trim(),
+    country,
+    taxId,
+    taxOffice: String(payload.taxOffice || '').trim(),
+    currency: country === 'TR' ? 'TRY' : 'USD',
+    address: {
+      line1: String(payload.address?.line1 || '').trim(),
+      line2: String(payload.address?.line2 || '').trim(),
+      city: String(payload.address?.city || '').trim(),
+      district: String(payload.address?.district || '').trim(),
+      region: String(payload.address?.region || '').trim(),
+      postalCode: String(payload.address?.postalCode || '').trim(),
+    },
+    declarationVersion: DECLARATION_VERSION,
+    declarationAcceptedAt: payload.declarationAccepted === true ? new Date() : null,
+    declarationAcceptedBy,
+    serviceAgreementVersion: SERVICE_AGREEMENT_VERSION,
+    serviceAgreementAcceptedAt: payload.serviceAgreementAccepted === true ? new Date() : null,
+    serviceAgreementAcceptedBy: declarationAcceptedBy,
+    billingProfileStatus: 'declared',
+  };
+}
+
+async function updateBillingProfile(tenantId, payload, userId) {
+  const { tenant, account } = await getAccountForTenant(tenantId);
+  const existing = await BillingAccount.findOne({ accountId: account._id }).select('+taxId +taxIdEncrypted');
+  const existingTaxId = existing?.taxIdEncrypted
+    ? decryptBillingPii(existing.taxIdEncrypted)
+    : existing?.taxId;
+  const profile = normalizedBillingProfile(payload, { ...(existing?.toObject() || {}), taxId: existingTaxId }, userId);
+  const validation = validateBillingProfile(profile);
+  if (!validation.complete) {
+    const error = new Error('Fatura bilgilerinde eksik veya geçersiz alanlar var');
+    error.code = 'InvalidBillingProfile';
+    error.details = { missingFields: validation.missingFields, errors: validation.errors };
+    throw error;
+  }
+
+  const nextProvider = resolveBillingProvider(profile.country);
+  const previousProvider = existing?.country ? resolveBillingProvider(existing.country) : existing?.provider;
+  if (previousProvider && previousProvider !== 'manual' && previousProvider !== nextProvider) {
+    const [lockedSubscription, openInvoice] = await Promise.all([
+      BillingSubscription.exists({
+        tenantId: tenant._id,
+        status: { $in: ['trialing', 'active', 'past_due', 'paused'] },
+      }),
+      BillingInvoice.exists({ tenantId: tenant._id, status: { $in: ['draft', 'open', 'past_due'] } }),
+    ]);
+    if (lockedSubscription || openInvoice) {
+      const error = new Error('Aktif abonelik veya açık fatura varken fatura ülkesi değiştirilemez');
+      error.code = 'BillingJurisdictionLocked';
+      throw error;
+    }
+  }
+
+  const providerChanged = Boolean(existing && existing.provider !== nextProvider);
+  const taxIdEncrypted = profile.taxId ? encryptBillingPii(profile.taxId) : '';
+  const taxIdLast4 = profile.taxId ? profile.taxId.slice(-4) : '';
+  const profileForStorage = { ...profile, taxIdEncrypted, taxIdLast4 };
+  delete profileForStorage.taxId;
+  const billingAccount = await BillingAccount.findOneAndUpdate(
+    { accountId: account._id },
+    { $set: {
+      ...profileForStorage,
+      provider: nextProvider,
+      ...(providerChanged ? {
+        externalCustomerId: null,
+        status: 'pending',
+        paymentMethodStatus: 'none',
+      } : {}),
+    }, $unset: { taxId: '' }, $setOnInsert: { accountId: account._id } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  ).select('+taxId');
+  return {
+    billingAccount: serializeBillingAccount(billingAccount.toObject()),
+    paymentRouting: {
+      profileComplete: true,
+      agreementAccepted: true,
+      checkoutAvailable: isBillingProviderEnabled(nextProvider),
+      missingFields: [],
+      paymentMethods: paymentMethodsForCountry(profile.country),
+      jurisdictionLocked: false,
+    },
+  };
+}
+
+function epochDate(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return new Date(number);
+}
+
+async function completeIyzicoCheckout(checkoutToken) {
+  const tokenHash = checkoutTokenHash(checkoutToken);
+  const session = await BillingCheckoutSession.findOne({ provider: 'iyzico', tokenHash })
+    .select('+tokenHash')
+    .populate('planPriceId');
+  if (!session || session.expiresAt <= new Date()) {
+    const error = new Error('Checkout oturumu bulunamadı veya süresi doldu');
+    error.code = 'CheckoutSessionExpired';
+    throw error;
+  }
+  if (session.status === 'completed') return { completed: true, duplicate: true };
+
+  try {
+    ensureProviderEnabled('iyzico');
+    const result = await iyzicoProvider.retrieveCheckout(checkoutToken);
+    const data = result.data || {};
+    const planPrice = session.planPriceId;
+    if (!data.referenceCode || data.pricingPlanReferenceCode !== planPrice.externalPriceId) {
+      throw new Error('iyzico checkout sonucu beklenen planla eşleşmiyor');
+    }
+    const [tenant, billingAccount] = await Promise.all([
+      Tenant.findById(session.tenantId),
+      BillingAccount.findOne({ accountId: session.accountId }),
+    ]);
+    if (!tenant || !billingAccount) throw new Error('Checkout hedefi bulunamadı');
+    const status = data.subscriptionStatus === 'ACTIVE' ? 'active' : 'pending';
+    const subscription = await BillingSubscription.findOneAndUpdate(
+      { tenantId: session.tenantId },
+      { $set: {
+        accountId: session.accountId,
+        billingAccountId: billingAccount._id,
+        provider: 'iyzico',
+        externalSubscriptionId: data.referenceCode,
+        planId: planPrice.planId,
+        planPriceId: planPrice._id,
+        status,
+        interval: planPrice.interval,
+        currency: planPrice.currency,
+        amountMinor: planPrice.amountMinor,
+        currentPeriodStart: epochDate(data.startDate) || new Date(),
+        currentPeriodEnd: epochDate(data.endDate),
+        lastProviderEventAt: null,
+      } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    billingAccount.provider = 'iyzico';
+    billingAccount.externalCustomerId = data.customerReferenceCode || billingAccount.externalCustomerId;
+    billingAccount.status = 'active';
+    billingAccount.paymentMethodStatus = 'provider_verified';
+    await billingAccount.save();
+    if (status === 'active' && planPrice.planId) {
+      const populatedPrice = await PlanPrice.findById(planPrice._id).populate('planId');
+      if (populatedPrice?.planId?.slug) {
+        await tenantSubscriptionService.applyPlanToTenant(tenant, populatedPrice.planId.slug, {
+          source: 'provider_checkout',
+        });
+      }
+      await tenant.save();
+      await tenantSubscriptionService.syncEntitlementState(tenant._id, { reason: 'iyzico:checkout.completed' });
+    }
+    session.status = 'completed';
+    session.completedAt = new Date();
+    session.externalSubscriptionId = subscription.externalSubscriptionId;
+    session.externalCustomerId = billingAccount.externalCustomerId;
+    session.lastError = '';
+    await session.save();
+    return { completed: true, duplicate: false };
+  } catch (error) {
+    session.status = 'failed';
+    session.lastError = String(error.message || error).slice(0, 1000);
+    await session.save();
+    throw error;
+  }
 }
 
 module.exports = {
+  buildChargeSummary,
+  calculateUsageEstimate,
+  completeIyzicoCheckout,
   createCheckout,
   createPortalSession,
   getAccountForTenant,
   getOverview,
+  serializeBillingAccount,
+  serializeInvoice,
+  serializePrice,
+  serializeSubscription,
+  updateBillingProfile,
+  normalizedBillingProfile,
 };

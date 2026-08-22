@@ -60,7 +60,9 @@ async function backfillTenantSubscriptions(options = {}) {
     // currentPlan is the canonical reference. Prefer it over the legacy mirrored
     // string so a stale `plan=free` value cannot downgrade a paid tenant.
     const targetPlanSlug = resolveTargetPlanSlug(tenant, args.planSlug);
-    const planResult = await tenantSubscriptionService.applyPlanToTenant(tenant, targetPlanSlug);
+    const planResult = await tenantSubscriptionService.applyPlanToTenant(tenant, targetPlanSlug, {
+      source: targetPlanSlug === 'enterprise' ? 'enterprise_contract' : null,
+    });
 
     let limitsChanged = false;
     if (args.applyRecoveryOverrides) {

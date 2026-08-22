@@ -121,7 +121,7 @@ export default function CreateUser() {
               </div>
               <h2 className="mt-5 text-xl font-semibold">{t('user.free_invites_disabled')}</h2>
               <p className="mt-2 text-sm leading-6 text-[var(--invite-muted)]">{t('user.free_invites_upgrade')}</p>
-              <Link to="/billing" className="mt-6 inline-flex items-center justify-center rounded-xl bg-[var(--invite-accent)] px-4 py-2.5 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-[var(--invite-accent)] focus:ring-offset-2">
+              <Link to="/faturalandirma" className="mt-6 inline-flex items-center justify-center rounded-xl bg-[var(--invite-accent)] px-4 py-2.5 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-[var(--invite-accent)] focus:ring-offset-2">
                 {t('user.view_plans')}
               </Link>
             </div>

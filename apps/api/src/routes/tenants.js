@@ -11,10 +11,10 @@ async function tenantRoutes(fastify) {
     schema: {
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           name: { type: 'string', minLength: 1 },
-          slug: { type: 'string', minLength: 1 },
-          plan: { type: 'string' }
+          slug: { type: 'string', minLength: 1 }
         },
         required: ['name']
       },
@@ -67,8 +67,8 @@ async function tenantRoutes(fastify) {
     }
   }, async function(request, reply) {
     try {
-      const { name, slug, plan } = request.body;
-      const { tenant, membership } = await tenantService.createTenant({ name, slug, plan }, request.user._id);
+      const { name, slug } = request.body;
+      const { tenant, membership } = await tenantService.createTenant({ name, slug }, request.user._id);
 
       const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
         membership,
@@ -105,6 +105,15 @@ async function tenantRoutes(fastify) {
         csrfToken: session.csrfToken
       });
     } catch (error) {
+      if (
+        error.code === 'SelfServiceTenantLimit'
+        || (error.code === 11000 && error.keyPattern?.provisioningChannel)
+      ) {
+        return reply.code(409).send({
+          error: 'SelfServiceTenantLimit',
+          message: 'Self-service tenant sınırına ulaşıldı. Yeni tenant ücretli checkout veya Enterprise sözleşme akışından oluşturulmalıdır.',
+        });
+      }
       if (error.message.includes('slug')) {
         return reply.code(409).send({ error: 'Tenant slug already exists' });
       }

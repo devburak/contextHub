@@ -392,6 +392,7 @@ function App() {
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
               <Route path="/apidocs" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><ApiDocs /></PermissionRoute>} />
               <Route path="/faturalandirma" element={<Billing />} />
+              <Route path="/billing" element={<Navigate to="/faturalandirma" replace />} />
               {adminPluginPages.map((page) => (
                 <Route
                   key={page.id}

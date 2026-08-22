@@ -49,6 +49,12 @@ const tenantSchema = new Schema({
   // === END SUBSCRIPTION INFO ===
   
   createdAt: { type: Date, default: Date.now },
+  provisioningChannel: {
+    type: String,
+    enum: ['legacy', 'self_service', 'platform', 'enterprise_contract'],
+    default: 'legacy',
+    index: true,
+  },
   updatedAt: { type: Date },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   updatedBy: { type: Schema.Types.ObjectId, ref: 'User' }
@@ -70,6 +76,19 @@ tenantSchema.pre('findOneAndUpdate', function(next) {
 tenantSchema.index({ slug: 1 }, { unique: true });
 tenantSchema.index({ currentPlan: 1 });
 tenantSchema.index({ status: 1 });
+// Launch boundary: a user can bootstrap at most one tenant through the public
+// self-service endpoint. Additional tenants must be provisioned by a paid or
+// contracted workflow, never by repeating POST /tenants.
+tenantSchema.index(
+  { createdBy: 1, provisioningChannel: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      createdBy: { $type: 'objectId' },
+      provisioningChannel: 'self_service',
+    },
+  }
+);
 
 // === INSTANCE METHODS ===
 

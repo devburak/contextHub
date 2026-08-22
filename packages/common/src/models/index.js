@@ -8,6 +8,7 @@ mongoose.plugin(tenantPlugin);
 const Tenant = require('./Tenant');
 const Account = require('./Account');
 const BillingAccount = require('./BillingAccount');
+const BillingCheckoutSession = require('./BillingCheckoutSession');
 const BillingSubscription = require('./BillingSubscription');
 const BillingEvent = require('./BillingEvent');
 const BillingInvoice = require('./BillingInvoice');
@@ -63,6 +64,7 @@ module.exports = {
   Tenant,
   Account,
   BillingAccount,
+  BillingCheckoutSession,
   BillingSubscription,
   BillingEvent,
   BillingInvoice,

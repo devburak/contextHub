@@ -1,6 +1,6 @@
 {
   "name": "@contexthub/api",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Fastify back‑end service for contextHub",
   "main": "src/server.js",
@@ -22,6 +22,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:backfill-subscriptions": "node src/scripts/backfillTenantSubscriptions.js",
     "db:backfill-accounts": "node src/scripts/backfillTenantAccounts.js",
+    "db:backfill-enterprise-commercial": "node src/scripts/backfillEnterpriseCommercialAssurance.js",
     "db:backfill-domain-event-sequences": "node scripts/backfill-domain-event-sequences.js",
     "cron:consumers": "node scripts/consumer-cron.js",
     "db:seed-plans": "node src/scripts/seedSubscriptionPlans.js",

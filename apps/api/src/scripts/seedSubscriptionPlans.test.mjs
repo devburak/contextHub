@@ -26,4 +26,22 @@ describe('subscription plan seed safety', () => {
 
     expect(update.externalPriceId).toBe('pri_live_123');
   });
+
+  it('skips optional local prices until a TRY amount is explicitly configured', () => {
+    const localPrice = {
+      key: 'pro.iyzico.month.try',
+      envKey: 'IYZICO_PLAN_PRO_MONTH',
+      amountEnvKey: 'IYZICO_AMOUNT_PRO_MONTH_MINOR',
+      provider: 'iyzico',
+      interval: 'month',
+      currency: 'TRY',
+      optional: true,
+    };
+
+    expect(buildPlanPriceUpdate(localPrice, 'plan-id', {})).toBeNull();
+    expect(buildPlanPriceUpdate(localPrice, 'plan-id', {
+      IYZICO_PLAN_PRO_MONTH: 'plan-ref',
+      IYZICO_AMOUNT_PRO_MONTH_MINOR: '49900',
+    })).toMatchObject({ provider: 'iyzico', currency: 'TRY', amountMinor: 49900, externalPriceId: 'plan-ref' });
+  });
 });

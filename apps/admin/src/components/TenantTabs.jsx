@@ -3,14 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { LockClosedIcon } from '@heroicons/react/20/solid'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { adminPluginTenantTabs } from '../plugins/registry.jsx'
-import { PERMISSIONS } from '../constants/permissions.js'
 
 // Eklenti sekmeleri hazır bir `label` taşır; çekirdek sekmeler ise çeviri
 // anahtarıyla tanımlanır ve render sırasında çözülür.
 const TABS = [
   { id: 'settings', labelKey: 'tenantTabs.settings', to: '/varliklar/ayarlar' },
-  { id: 'webhooks', labelKey: 'tenantTabs.webhooks', to: '/varliklar/webhooks' },
-  { id: 'billing', labelKey: 'tenantTabs.billing', to: '/faturalandirma', permission: PERMISSIONS.BILLING_VIEW }
+  { id: 'webhooks', labelKey: 'tenantTabs.webhooks', to: '/varliklar/webhooks' }
 ]
 
 export default function TenantTabs({ active }) {

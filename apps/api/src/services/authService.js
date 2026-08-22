@@ -418,32 +418,12 @@ class AuthService {
   }
 
   async register(userData, request = null) {
-    const { email, password, firstName, lastName, tenantName, tenantSlug } = userData;
+    const { email, password, firstName, lastName } = userData;
 
     // Email'in daha önce kullanılıp kullanılmadığını kontrol et
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       throw new Error('Email already exists');
-    }
-
-    // Tenant slug'ının mevcut olup olmadığını kontrol et (eğer tenant bilgisi verilmişse)
-    if (tenantSlug) {
-      const existingTenant = await Tenant.findOne({ slug: tenantSlug });
-      if (existingTenant) {
-        throw new Error('Tenant slug already exists');
-      }
-    }
-
-    // Yeni tenant oluştur (SADECE tenantName verilmişse)
-    let tenant = null;
-    if (tenantName) {
-      tenant = new Tenant({
-        name: tenantName,
-        slug: tenantSlug || tenantName.toLowerCase().replace(/\s+/g, '-'),
-        plan: 'free',
-        status: 'active'
-      });
-      await tenant.save();
     }
 
     // E-posta doğrulama token'ı oluştur (6 saat geçerli)
@@ -457,34 +437,21 @@ class AuthService {
       password, // Model'de hash'lenecek
       firstName,
       lastName,
-      tenantId: tenant?._id, // Opsiyonel
       isEmailVerified: false,
       emailVerificationToken: verificationTokenHash,
       emailVerificationTokenExpiresAt: verificationTokenExpiresAt
     });
     await user.save();
 
-    // Membership oluştur (SADECE tenant varsa, tenant owner olarak)
-    if (tenant) {
-      const membership = new Membership({
-        tenantId: tenant._id,
-        userId: user._id,
-        role: 'owner',
-        status: 'active'
-      });
-      await membership.save();
-    }
-
     // Log registration activity
     await this.logActivity({
       userId: user._id,
-      tenantId: tenant?._id,
+      tenantId: null,
       action: 'user.register',
       description: `${user.firstName} ${user.lastName} kayıt oldu`,
       metadata: {
         email: user.email,
-        withTenant: !!tenant,
-        tenantName: tenant?.name
+        withTenant: false
       },
       request
     });
@@ -515,11 +482,7 @@ class AuthService {
         firstName: user.firstName,
         lastName: user.lastName
       },
-      tenant: tenant ? {
-        id: tenant._id,
-        name: tenant.name,
-        slug: tenant.slug
-      } : null,
+      tenant: null,
       emailVerificationRequired: true
     };
   }

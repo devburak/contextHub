@@ -60,6 +60,19 @@ class TenantService {
       throw new Error('Tenant name is required');
     }
 
+    const existingOwnership = await Membership.exists({
+      userId: ownerId,
+      role: ROLE_KEYS.OWNER,
+      status: { $in: ['active', 'pending'] },
+    });
+    if (existingOwnership) {
+      const error = new Error(
+        'Self-service tenant sınırına ulaşıldı. Yeni tenant ücretli checkout veya Enterprise sözleşme akışından oluşturulmalıdır.'
+      );
+      error.code = 'SelfServiceTenantLimit';
+      throw error;
+    }
+
     let finalSlug;
     if (slug?.trim()) {
       finalSlug = this.#slugify(slug);
@@ -78,7 +91,8 @@ class TenantService {
       slug: finalSlug,
       plan: 'free',
       status: 'active',
-      createdBy: ownerId
+      createdBy: ownerId,
+      provisioningChannel: 'self_service',
     });
     await tenantSubscriptionService.applyPlanToTenant(tenant, 'free');
     await tenant.save();
