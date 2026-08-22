@@ -94,6 +94,7 @@
   "route.feature_locked_title": "Bu özellik ücretli planlara dahildir",
   "route.view_plans": "Planları görüntüle",
   "tenantTabs.aria_label": "Varlık sekmeleri",
+  "tenantTabs.billing": "Faturalandırma",
   "tenantTabs.settings": "Genel Ayarlar",
   "tenantTabs.upgrade_required": "Plan yükseltme gerekli",
   "tenantTabs.webhooks": "Webhook'lar"

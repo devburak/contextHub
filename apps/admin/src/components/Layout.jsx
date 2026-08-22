@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon, CreditCardIcon } from '@heroicons/react/24/outline'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, matchPath, useLocation, useNavigate, Outlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -151,6 +151,13 @@ export default function Layout() {
         },
         ...adminPluginNavigation.filter((item) => item.parentId === 'tenants-group')
       ]
+    },
+    {
+      id: 'billing',
+      name: t('nav.billing'),
+      href: '/faturalandirma',
+      icon: CreditCardIcon,
+      permission: PERMISSIONS.BILLING_VIEW
     },
     {
       id: 'docs',

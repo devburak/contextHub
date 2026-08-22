@@ -40,9 +40,11 @@ export default function UserList() {
   const toast = useToast()
   const { t } = useTranslation()
   const describeError = useApiError()
-  const { hasPermission, role: currentUserRole } = useAuth()
+  const { activeMembership, hasPermission, role: currentUserRole } = useAuth()
   const canManageUsers = currentUserRole === 'owner' || hasPermission(PERMISSIONS.USERS_MANAGE)
   const canInviteUsers = currentUserRole === 'owner' || hasPermission(PERMISSIONS.USERS_INVITE)
+  const planSlug = String(activeMembership?.tenant?.currentPlan?.slug || activeMembership?.tenant?.plan || 'free').toLowerCase()
+  const invitationsDisabled = planSlug === 'free'
 
   // Kullanıcıları getir
   const { data: users, isLoading, error } = useQuery({
@@ -158,7 +160,7 @@ export default function UserList() {
             {t('users.description')}
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+        {canInviteUsers && !invitationsDisabled && <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <Link
             to="/users/new"
             className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -166,8 +168,14 @@ export default function UserList() {
             <PlusIcon className="h-4 w-4 mr-2" />
             {t('users.add_user')}
           </Link>
-        </div>
+        </div>}
       </div>
+
+      {invitationsDisabled && (
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {t('users.free_single_user_notice')} <Link to="/billing" className="font-semibold underline underline-offset-2">{t('user.view_plans')}</Link>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="mt-8 flex flex-col sm:flex-row gap-4">
@@ -355,7 +363,7 @@ export default function UserList() {
                                   <PencilIcon className="h-4 w-4" />
                                 </Link>
                               )}
-                              {(user.status === 'pending' || user.status === 'inactive') && canInviteUsers && (
+                              {(user.status === 'pending' || user.status === 'inactive') && canInviteUsers && !invitationsDisabled && (
                                 <button
                                   onClick={() => handleReinviteUser(user)}
                                   disabled={reinviteUserMutation.isPending}

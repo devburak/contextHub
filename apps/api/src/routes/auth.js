@@ -8,6 +8,16 @@ const {
 
 async function authRoutes(fastify) {
   const authService = new AuthService(fastify);
+  const authenticateInvitationSession = async (request, reply) => {
+    try {
+      const preview = await authService.getInvitationPreview(request.body?.token);
+      if (!preview.requiresAuthentication) return;
+      await authenticateWithoutTenant(request, reply);
+    } catch (error) {
+      const status = error.statusCode || (/expired/i.test(error.message) ? 410 : 400);
+      return reply.code(status).send({ error: error.code || 'InvitationAcceptFailed', message: error.message });
+    }
+  };
   const configuredLoginRateLimitMax = Number.parseInt(
     process.env.AUTH_LOGIN_RATE_LIMIT_MAX || '',
     10
@@ -304,6 +314,8 @@ async function authRoutes(fastify) {
             status: { type: 'string' },
             expiresAt: { type: 'string' },
             requiresPasswordSetup: { type: 'boolean' },
+            requiresProfileSetup: { type: 'boolean' },
+            requiresAuthentication: { type: 'boolean' },
             tenant: {
               type: 'object',
               nullable: true,
@@ -324,18 +336,20 @@ async function authRoutes(fastify) {
       const result = await authService.getInvitationPreview(request.query.token);
       return reply.send(result);
     } catch (error) {
-      const status = /expired/i.test(error.message) ? 410 : 400;
-      return reply.code(status).send({ error: 'InvitationPreviewFailed', message: error.message });
+      const status = error.statusCode || (/expired/i.test(error.message) ? 410 : 400);
+      return reply.code(status).send({ error: error.code || 'InvitationPreviewFailed', message: error.message });
     }
   });
 
   fastify.post('/auth/invitations/accept', {
+    preHandler: [authenticateInvitationSession],
     schema: {
       description: 'Accept a tenant invitation and create/update user account',
       summary: 'Accept invitation',
       tags: ['auth'],
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           token: { type: 'string', minLength: 10 },
           password: { type: 'string', minLength: 6 },
@@ -503,8 +517,8 @@ async function authRoutes(fastify) {
       setSessionCookie(reply, sessionToken);
       return reply.send(response);
     } catch (error) {
-      const status = /expired/i.test(error.message) ? 410 : 400;
-      return reply.code(status).send({ error: 'InvitationAcceptFailed', message: error.message });
+      const status = error.statusCode || (/expired/i.test(error.message) ? 410 : 400);
+      return reply.code(status).send({ error: error.code || 'InvitationAcceptFailed', message: error.message });
     }
   });
 

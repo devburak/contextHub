@@ -4,6 +4,7 @@ const { Schema } = mongoose;
 const tenantSchema = new Schema({
   name: { type: String, required: true },
   slug: { type: String, required: true, unique: true },
+  accountId: { type: Schema.Types.ObjectId, ref: 'Account', default: null, index: true },
   plan: { type: String, default: 'free' },
   status: { type: String, default: 'active', enum: ['active', 'inactive', 'suspended'] },
   
@@ -99,7 +100,7 @@ tenantSchema.methods.getLimit = async function(limitType) {
   
   // Default free tier limits
   const defaultLimits = {
-    userLimit: 2,
+    userLimit: 1,
     ownerLimit: 1,
     storageLimit: 500 * 1024 * 1024, // 500 MB
     monthlyRequestLimit: 1000,

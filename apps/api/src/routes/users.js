@@ -15,47 +15,6 @@ async function userRoutes(fastify) {
   // NOT: Global tenantContext hook'u kaldırıldı
   // Tenant gerektiren endpoint'ler kendi preHandler'larında tenantContext kullanacak
 
-  // POST /users/check-email - Email ile kullanıcı kontrol et
-  fastify.post('/users/check-email', {
-    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
-    schema: {
-      body: {
-        type: 'object',
-        properties: {
-          email: { type: 'string', format: 'email' }
-        },
-        required: ['email']
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            exists: { type: 'boolean' },
-            user: {
-              type: 'object',
-              nullable: true,
-              properties: {
-                id: { type: 'string' },
-                email: { type: 'string' },
-                firstName: { type: 'string' },
-                lastName: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
-    }
-  }, async function(request, reply) {
-    try {
-      const { email } = request.body;
-      const result = await userService.checkUserByEmail(email);
-      
-      return reply.send(result);
-    } catch (error) {
-      return reply.code(500).send({ error: 'Internal server error', message: error.message });
-    }
-  });
-
   // GET /users - Kullanıcı listesi (Admin+)
   fastify.get('/users', {
     preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_VIEW)],
@@ -158,20 +117,19 @@ async function userRoutes(fastify) {
     }
   });
 
-  // POST /users - Yeni kullanıcı oluştur (Admin+)
+  // POST /users - Eski istemciler için davet uyumluluk endpoint'i.
+  // Parola veya profil bilgisi kabul etmez; doğrudan kullanıcı oluşturmaz.
   fastify.post('/users', {
-    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)],
+    preHandler: [tenantContext, authenticate, requirePermission(PERMISSIONS.USERS_INVITE)],
     schema: {
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 6 },
-          firstName: { type: 'string', minLength: 1 },
-          lastName: { type: 'string', minLength: 1 },
           role: { type: 'string' }
         },
-        required: ['email', 'password', 'firstName', 'lastName']
+        required: ['email', 'role']
       },
       querystring: {
         type: 'object',
@@ -183,90 +141,20 @@ async function userRoutes(fastify) {
     }
   }, async function(request, reply) {
     try {
-      if (request.userRole !== 'owner') {
-        return reply.code(403).send({
-          error: 'OnlyOwner',
-          message: 'Only tenant owners can create users with passwords. Please invite the user instead.'
-        });
+      const { email, role } = request.body;
+      const normalizedRole = roleService.normalizeKey(role) || ROLE_KEYS.VIEWER;
+      if (normalizedRole === ROLE_KEYS.OWNER && request.userRole !== ROLE_KEYS.OWNER) {
+        return reply.code(403).send({ error: 'PermissionDenied', message: 'Only owners can invite another owner' });
       }
 
-      const {
-        email,
-        password,
-        firstName,
-        lastName,
-        role = ROLE_KEYS.ADMIN
-      } = request.body;
-
-      const normalizedRole = roleService.normalizeKey(role) || ROLE_KEYS.ADMIN;
-
-      const existingUser = await userService.findUserByEmail(email);
-
-      if (existingUser) {
-        const authService = new AuthService(fastify);
-
-        try {
-          const inviteResult = await authService.inviteUser(
-            email,
-            request.tenantId,
-            normalizedRole,
-            request.user?._id ?? null
-          );
-
-          const message = (() => {
-            if (inviteResult.type === 'existing_member') {
-              return 'User already belongs to this tenant. Role updated if needed.';
-            }
-            if (inviteResult.type === 'existing_user_reinvited') {
-              return 'Invitation re-sent to existing user';
-            }
-            return 'Invitation sent to existing user';
-          })();
-
-          return reply.code(200).send({
-            invite: inviteResult.invitation || null,
-            type: inviteResult.type,
-            message
-          });
-        } catch (inviteError) {
-          if (inviteError.message === 'User already has access to this tenant') {
-            return reply.code(409).send({
-              error: 'UserAlreadyMember',
-              message: inviteError.message
-            });
-          }
-
-          return reply.code(400).send({
-            error: 'UserInvitationFailed',
-            message: inviteError.message || 'Unable to invite user'
-          });
-        }
-      }
-
-      const user = await userService.createUser({
-        email,
-        password,
-        firstName,
-        lastName,
-        tenantId: request.tenantId,
-        role: normalizedRole
-      });
-
-      return reply.code(201).send({ 
-        user: {
-          id: user._id,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          createdAt: user.createdAt
-        }
-      });
+      const authService = new AuthService(fastify);
+      await authService.inviteUser(email, request.tenantId, normalizedRole, request.user?._id ?? null);
+      return reply.code(202).send({ accepted: true, message: 'Invitation request accepted' });
     } catch (error) {
-      if (error.code === 11000) {
-        return reply.code(409).send({ error: 'Email already exists' });
-      }
-      const status = error.message === 'Role not found' ? 400 : 500;
-      return reply.code(status).send({ error: 'UserCreationFailed', message: error.message });
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'UserInvitationFailed',
+        message: error.message || 'Unable to send invitation',
+      });
     }
   });
 
@@ -625,7 +513,7 @@ async function userRoutes(fastify) {
 
       return reply.send({ message: 'Password changed successfully' });
     } catch (error) {
-      return reply.code(400).send({ error: error.message });
+      return reply.code(error.statusCode || 400).send({ error: error.code || 'UserInvitationFailed', message: error.message });
     }
   });
 
@@ -667,12 +555,10 @@ async function userRoutes(fastify) {
     schema: {
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           email: { type: 'string', format: 'email' },
-          role: { type: 'string' },
-          firstName: { type: 'string' },
-          lastName: { type: 'string' },
-          password: { type: 'string', minLength: 6 }
+          role: { type: 'string' }
         },
         required: ['email', 'role']
       },
@@ -686,53 +572,32 @@ async function userRoutes(fastify) {
     }
   }, async function(request, reply) {
     try {
-      const { email, role, firstName, lastName, password } = request.body;
+      const { email, role } = request.body;
+      const normalizedRole = roleService.normalizeKey(role) || ROLE_KEYS.VIEWER;
 
       // Owner rolü ile davet sadece mevcut owner yapabilir
-      if (role === 'owner' && request.userRole !== 'owner') {
+      if (normalizedRole === ROLE_KEYS.OWNER && request.userRole !== ROLE_KEYS.OWNER) {
         return reply.code(403).send({
           error: 'PermissionDenied',
           message: 'Sadece sahipler (owner) başka bir kullanıcıyı sahip olarak davet edebilir'
         });
       }
 
-      if (password && request.userRole !== 'owner') {
-        return reply.code(403).send({
-          error: 'PermissionDenied',
-          message: 'Sadece sahipler (owner) davet için şifre belirleyebilir'
-        });
-      }
-
       const authService = new AuthService(fastify);
-
-      const result = await authService.inviteUser(
+      await authService.inviteUser(
         email,
         request.tenantId,
-        role,
-        request.user._id,
-        {
-          firstName,
-          lastName,
-          password
-        }
+        normalizedRole,
+        request.user._id
       );
 
-      const message = (() => {
-        if (result.type === 'existing_member') {
-          return 'User already belongs to this tenant. Role updated if needed.';
-        }
-        if (result.type === 'existing_user_reinvited') {
-          return 'Invitation re-sent to existing user';
-        }
-        return 'Invitation sent to user';
-      })();
-
-      return reply.code(201).send({
-        ...result,
-        message
-      });
+      // Hesabın sistemde bulunup bulunmadığını veya üyelik durumunu açıklama.
+      return reply.code(202).send({ accepted: true, message: 'Invitation request accepted' });
     } catch (error) {
-      return reply.code(400).send({ error: error.message });
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'UserInvitationFailed',
+        message: error.message || 'Unable to send invitation',
+      });
     }
   });
 
@@ -757,16 +622,16 @@ async function userRoutes(fastify) {
   }, async function(request, reply) {
     try {
       const authService = new AuthService(fastify);
-      const invitation = await authService.resendInvitation(
+      await authService.resendInvitation(
         request.params.id,
         request.tenantId,
         request.user?._id ?? null
       );
 
-      return reply.send({ invitation });
+      return reply.code(202).send({ accepted: true, message: 'Invitation request accepted' });
     } catch (error) {
-      const status = error.message === 'User membership not found' ? 404 : 400;
-      return reply.code(status).send({ error: 'ReinviteFailed', message: error.message });
+      const status = error.statusCode || (error.message === 'User membership not found' ? 404 : 400);
+      return reply.code(status).send({ error: error.code || 'ReinviteFailed', message: error.message });
     }
   });
 

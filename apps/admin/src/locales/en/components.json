@@ -94,6 +94,7 @@
   "route.feature_locked_title": "This feature is included in the paid plans",
   "route.view_plans": "View plans",
   "tenantTabs.aria_label": "Entity tabs",
+  "tenantTabs.billing": "Billing",
   "tenantTabs.settings": "General Settings",
   "tenantTabs.upgrade_required": "Plan upgrade required",
   "tenantTabs.webhooks": "Webhooks"

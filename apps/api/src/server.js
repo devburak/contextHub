@@ -332,6 +332,8 @@ async function buildServer(options = {}) {
   await app.register(require('./routes/dashboard'), { prefix: '/api' });
   await app.register(require('./routes/apiUsageSync'), { prefix: '/api' });
   await app.register(require('./routes/subscriptionPlans'), { prefix: '/api' });
+  await app.register(require('./routes/billing'), { prefix: '/api' });
+  await app.register(require('./routes/billingWebhooks'), { prefix: '/api' });
   await app.register(require('./routes/documentation'), { prefix: '/api' });
   await app.register(require('./routes/apiTokens'), { prefix: '/api' });
   await app.register(require('./routes/webhooks'), { prefix: '/api' });
@@ -414,6 +416,18 @@ async function start() {
   });
 
   await localRedisClient.initialize();
+
+  if (require('./lib/billingConfig').isAccountBillingEnabled()) {
+    const billingLifecycleService = require('./services/billing/billingLifecycleService');
+    const billingWebhookService = require('./services/billing/billingWebhookService');
+    billingLifecycleService.reconcile().catch((error) => console.error('[Server] Billing lifecycle reconcile failed:', error.message));
+    billingWebhookService.reprocessPending().catch((error) => console.error('[Server] Billing webhook recovery failed:', error.message));
+    const billingTimer = setInterval(() => {
+      billingLifecycleService.reconcile().catch((error) => console.error('[Server] Billing lifecycle reconcile failed:', error.message));
+      billingWebhookService.reprocessPending().catch((error) => console.error('[Server] Billing webhook recovery failed:', error.message));
+    }, 60 * 60 * 1000);
+    billingTimer.unref();
+  }
 
   // Kota bayragini tazeleyen zamanlanmis is.
   //

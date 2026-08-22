@@ -2,11 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { fetchDashboardActivities, fetchDashboardSummary, fetchApiStats } from '../lib/api/dashboard.js'
-import { fetchTenantLimits, updateTenantSubscription } from '../lib/api/subscriptions.js'
+import { fetchTenantLimits } from '../lib/api/subscriptions.js'
 import { tenantAPI } from '../lib/tenantAPI.js'
-import { useApiError } from '../lib/useApiError.js'
 import RecentActivities from '../components/RecentActivities.jsx'
-import SubscriptionPlanSelector from '../components/SubscriptionPlanSelector.jsx'
 
 const ACTIVITY_PAGE_SIZE = 10
 
@@ -69,8 +67,7 @@ function formatFileSize(bytes) {
 
 export default function Dashboard() {
   const { t, i18n } = useTranslation()
-  const describeError = useApiError()
-  const { user, role, memberships, activeTenantId, updateMemberships } = useAuth()
+  const { user, role, memberships, activeTenantId } = useAuth()
   const isOwner = role === 'owner'
   const hasTenants = memberships && memberships.length > 0
 
@@ -97,10 +94,6 @@ export default function Dashboard() {
     scope: isOwner ? 'tenant' : 'self',
   }))
 
-  const [showPlanModal, setShowPlanModal] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState(null)
-  const [planUpdateLoading, setPlanUpdateLoading] = useState(false)
-  const [planUpdateError, setPlanUpdateError] = useState(null)
 
   useEffect(() => {
     setActivityFilters((prev) => {
@@ -289,35 +282,6 @@ export default function Dashboard() {
       cancelled = true
     }
   }, [activityFilters.type, activityFilters.scope, isOwner])
-
-  const handlePlanChange = async () => {
-    if (!selectedPlan || !activeTenantId) return
-
-    setPlanUpdateLoading(true)
-    setPlanUpdateError(null)
-
-    try {
-      await updateTenantSubscription(activeTenantId, { planSlug: selectedPlan })
-
-      // Refresh tenant limits
-      const limitsData = await fetchTenantLimits()
-      setTenantLimits(limitsData)
-      try {
-        const { tenants } = await tenantAPI.getTenants()
-        updateMemberships(tenants)
-      } catch (error) {
-        console.error('Tenant listesi plan değişikliği sonrası yenilenemedi:', error)
-      }
-
-      setShowPlanModal(false)
-      setSelectedPlan(null)
-    } catch (error) {
-      console.error('Plan update failed:', error)
-      setPlanUpdateError(describeError(error, 'dashboard.plan_update_failed'))
-    } finally {
-      setPlanUpdateLoading(false)
-    }
-  }
 
   const handleLoadMoreActivities = async () => {
     if (activitiesLoadingMore || !activityHasMore) {
@@ -654,7 +618,7 @@ export default function Dashboard() {
             {/* Subscription Plan Card - Clickable */}
             {tenantLimits && (
               <button
-                onClick={() => setShowPlanModal(true)}
+                onClick={() => window.location.assign('/faturalandirma')}
                 className="card text-left hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 hover:border-blue-300"
               >
                 <div className="p-5">
@@ -1125,69 +1089,6 @@ export default function Dashboard() {
         <RecentActivities limit={15} activeTenantId={activeTenantId} />
       </div>
 
-      {/* Plan Change Modal */}
-      {showPlanModal && tenantLimits && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex min-h-screen items-center justify-center p-4">
-            <div
-              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-              onClick={() => {
-                setShowPlanModal(false)
-                setSelectedPlan(null)
-                setPlanUpdateError(null)
-              }}
-            ></div>
-
-            <div className="relative w-full max-w-6xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
-              <div className="bg-white px-6 py-3 border-b border-gray-200">
-                <h3 className="text-xl font-semibold text-gray-900">{t('dashboard.change_plan_title')}</h3>
-                <p className="mt-1 text-sm text-gray-600">
-                  {t('dashboard.change_plan_description')}
-                </p>
-              </div>
-
-              <div className="px-6 py-3">
-                {planUpdateError && (
-                  <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-4">
-                    <p className="text-sm text-red-800">{planUpdateError}</p>
-                  </div>
-                )}
-
-                <SubscriptionPlanSelector
-                  selectedPlan={selectedPlan || tenantLimits.plan?.slug}
-                  onSelectPlan={setSelectedPlan}
-                  currentPlan={tenantLimits.plan?.slug}
-                  showPricing={true}
-                  compact={false}
-                />
-              </div>
-
-              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPlanModal(false)
-                    setSelectedPlan(null)
-                    setPlanUpdateError(null)
-                  }}
-                  disabled={planUpdateLoading}
-                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePlanChange}
-                  disabled={planUpdateLoading || !selectedPlan || selectedPlan === tenantLimits.plan?.slug}
-                  className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {planUpdateLoading ? t('dashboard.updating') : t('dashboard.change_plan')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

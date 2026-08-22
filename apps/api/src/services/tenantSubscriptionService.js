@@ -271,6 +271,16 @@ class TenantSubscriptionService {
         exceeded: state?.exceeded ?? false,
         periodKey: state?.periodKey ?? null,
       };
+      if (Number.isFinite(state?.limit) && state.limit > 0) {
+        const quotaAlertService = require('./quotaAlertService');
+        await quotaAlertService.recordThresholds({
+          tenantId: id,
+          metric: 'requests',
+          usage: state?.usage || 0,
+          limit: state.limit,
+          periodKey: state?.periodKey,
+        });
+      }
     } catch (error) {
       console.error(`[TenantSubscription] Failed to refresh request limit flag (${id}):`, error.message);
     }

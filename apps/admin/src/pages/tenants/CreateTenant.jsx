@@ -5,12 +5,10 @@ import { useTranslation } from 'react-i18next'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
-import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
 
 const initialFormState = {
   name: '',
-  slug: '',
-  plan: 'free'
+  slug: ''
 }
 
 export default function CreateTenant() {
@@ -70,7 +68,6 @@ export default function CreateTenant() {
     createMutation.mutate({
       name: formData.name.trim(),
       slug: formData.slug.trim() || undefined,
-      plan: formData.plan
     })
   }
 
@@ -117,16 +114,9 @@ export default function CreateTenant() {
             <p className="mt-1 text-xs text-gray-500">{t('tenant.slug_hint')}</p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              {t('tenant.plan_select_label')}
-            </label>
-            <SubscriptionPlanSelector
-              selectedPlan={formData.plan}
-              onSelectPlan={(planSlug) => setFormData(prev => ({ ...prev, plan: planSlug }))}
-              compact={true}
-              showPricing={true}
-            />
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm font-semibold text-blue-950">Free paket ile güvenli başlangıç</p>
+            <p className="mt-1 text-sm text-blue-800">Varlık oluşturulduktan sonra tenant owner, Faturalandırma ekranındaki hosted checkout üzerinden paket seçebilir.</p>
           </div>
 
           {error && (

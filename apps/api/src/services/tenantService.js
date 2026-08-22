@@ -1,6 +1,7 @@
 const { Tenant, Membership, User, rbac } = require('@contexthub/common');
 const roleService = require('./roleService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
+const accountService = require('./accountService');
 const edgeGatewaySyncService = require('./edgeGatewaySyncService');
 const { invalidateTenantOriginPolicyCache } = require('./tenantOriginPolicy');
 const { mailService } = require('./mailService');
@@ -54,7 +55,7 @@ class TenantService {
     return candidate;
   }
 
-  async createTenant({ name, slug, plan = 'free' }, ownerId) {
+  async createTenant({ name, slug }, ownerId) {
     if (!name) {
       throw new Error('Tenant name is required');
     }
@@ -79,8 +80,10 @@ class TenantService {
       status: 'active',
       createdBy: ownerId
     });
-    await tenantSubscriptionService.applyPlanToTenant(tenant, plan);
+    await tenantSubscriptionService.applyPlanToTenant(tenant, 'free');
     await tenant.save();
+    const owner = await User.findById(ownerId).select('email');
+    await accountService.createForTenant(tenant, ownerId, { billingEmail: owner?.email || '' });
     invalidateTenantOriginPolicyCache();
 
     const ownerRole = await roleService.resolveRole({ tenantId: tenant._id, roleKey: ROLE_KEYS.OWNER })

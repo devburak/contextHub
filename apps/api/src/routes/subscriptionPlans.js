@@ -1,7 +1,11 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
 const apiUsageService = require('../services/apiUsageService');
 const tenantSubscriptionService = require('../services/tenantSubscriptionService');
-const { tenantContext, authenticateWithoutTenant } = require('../middleware/auth');
+const {
+  tenantContext,
+  authenticateWithoutTenant,
+  requirePlatformRole,
+} = require('../middleware/auth');
 
 const LIMIT_USAGE_KEY_MAP = {
   userLimit: 'userCount',
@@ -81,6 +85,8 @@ async function subscriptionPlanRoutes(fastify) {
           description: plan.description,
           price: plan.price,
           billingType: plan.billingType,
+          marketing: plan.marketing || {},
+          capabilities: plan.capabilities || [],
           features: plan.features || [],
           limits: {
             users: plan.userLimit,
@@ -160,7 +166,7 @@ async function subscriptionPlanRoutes(fastify) {
    * Update a subscription plan (owner only)
    */
   fastify.put('/subscription-plans/:slug', {
-    preHandler: [tenantContext, fastify.authenticate],
+    preHandler: [authenticateWithoutTenant, requirePlatformRole(['admin'])],
     schema: {
       body: {
         type: 'object',
@@ -187,16 +193,6 @@ async function subscriptionPlanRoutes(fastify) {
   }, async function updatePlanHandler(request, reply) {
     try {
       const { slug } = request.params;
-      const userRole = request.userRole;
-
-      // Only owners can update plans
-      if (userRole !== 'owner') {
-        return reply.code(403).send({
-          error: 'Forbidden',
-          message: 'Only owners can update subscription plans',
-        });
-      }
-
       const plan = await SubscriptionPlan.findOne({ slug });
       
       if (!plan) {
@@ -255,7 +251,7 @@ async function subscriptionPlanRoutes(fastify) {
    * Update a tenant's subscription plan
    */
   fastify.put('/tenants/:tenantId/subscription', {
-    preHandler: [tenantContext, fastify.authenticate],
+    preHandler: [authenticateWithoutTenant, requirePlatformRole(['admin'])],
     schema: {
       body: {
         type: 'object',
@@ -277,16 +273,6 @@ async function subscriptionPlanRoutes(fastify) {
     try {
       const { tenantId } = request.params;
       const { planSlug, customLimits } = request.body;
-      const userRole = request.userRole;
-
-      // Only owners can update subscriptions
-      if (userRole !== 'owner') {
-        return reply.code(403).send({
-          error: 'Forbidden',
-          message: 'Only owners can update tenant subscriptions',
-        });
-      }
-
       const Tenant = require('@contexthub/common/src/models/Tenant');
       const tenant = await Tenant.findById(tenantId);
       
@@ -373,11 +359,9 @@ async function subscriptionPlanRoutes(fastify) {
         });
       }
 
-      // Check permission - only owner or members of the tenant
-      const userRole = request.userRole;
       const userTenantId = request.tenantId;
       
-      if (userRole !== 'owner' && userTenantId !== tenantId) {
+      if (String(userTenantId) !== String(tenantId)) {
         return reply.code(403).send({
           error: 'Forbidden',
           message: 'You can only view limits for your own tenant',
@@ -470,7 +454,11 @@ async function subscriptionPlanRoutes(fastify) {
       const Media = require('@contexthub/common/src/models/Media');
       const mediaAgg = await Media.aggregate([
         { $match: { tenantId: tenant._id, status: { $ne: 'deleted' } } },
-        { $group: { _id: null, totalSize: { $sum: { $ifNull: ['$size', 0] } } } },
+        { $project: { totalSize: { $add: [
+          { $ifNull: ['$size', 0] },
+          { $sum: { $map: { input: { $ifNull: ['$variants', []] }, as: 'variant', in: { $ifNull: ['$$variant.size', 0] } } } },
+        ] } } },
+        { $group: { _id: null, totalSize: { $sum: '$totalSize' } } },
       ]);
       const storageUsed = mediaAgg.length > 0 ? mediaAgg[0].totalSize : 0;
 

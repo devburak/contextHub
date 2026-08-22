@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { useApiError } from '../../lib/useApiError.js'
-import { fetchTenantLimits, updateTenantSubscription } from '../../lib/api/subscriptions.js'
+import { fetchTenantLimits } from '../../lib/api/subscriptions.js'
 import {
   listCustomFieldDefinitions,
   createCustomFieldDefinition,
@@ -12,7 +12,6 @@ import {
 } from '../../lib/api/customFieldDefinitions'
 import { collectionsApi } from '../../lib/api/collections.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
-import SubscriptionPlanSelector from '../../components/SubscriptionPlanSelector.jsx'
 import ApiTokenManager from '../../components/ApiTokenManager.jsx'
 import TenantTabs from '../../components/TenantTabs.jsx'
 
@@ -514,7 +513,7 @@ function CustomFieldDefinitionsSettings({ tenantId }) {
 
 export default function TenantSettings() {
   const queryClient = useQueryClient()
-  const { activeMembership, updateMemberships } = useAuth()
+  const { activeMembership } = useAuth()
   const { t } = useTranslation()
   const describeError = useApiError()
   const activeTenantId = activeMembership?.tenantId || null
@@ -541,8 +540,6 @@ export default function TenantSettings() {
   const [secretEditState, setSecretEditState] = useState({ smtpPassword: false, webhookSecret: false })
   const [feedback, setFeedback] = useState({ type: '', message: '' })
   const [featureKeyInput, setFeatureKeyInput] = useState('')
-  const [selectedPlan, setSelectedPlan] = useState(null)
-  const [showPlanModal, setShowPlanModal] = useState(false)
 
   useEffect(() => {
     setFormState(JSON.parse(JSON.stringify(EMPTY_STATE)))
@@ -551,8 +548,6 @@ export default function TenantSettings() {
     setSecretEditState({ smtpPassword: false, webhookSecret: false })
     setFeedback({ type: '', message: '' })
     setFeatureKeyInput('')
-    setSelectedPlan(null)
-    setShowPlanModal(false)
   }, [activeTenantId])
 
   useEffect(() => {
@@ -581,27 +576,6 @@ export default function TenantSettings() {
     },
     onError: (error) => {
       setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.save_failed') })
-    }
-  })
-
-  const updatePlanMutation = useMutation({
-    mutationFn: ({ tenantId, planSlug }) => updateTenantSubscription(tenantId, { planSlug }),
-    onSuccess: async () => {
-      queryClient.invalidateQueries({ queryKey: tenantLimitsQueryKey })
-      queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
-      try {
-        const { tenants } = await tenantAPI.getTenants()
-        updateMemberships(tenants)
-        queryClient.setQueryData(['tenants', 'list'], tenants)
-      } catch (error) {
-        console.error('Tenant listesi plan değişikliği sonrası yenilenemedi:', error)
-      }
-      setShowPlanModal(false)
-      setSelectedPlan(null)
-      setFeedback({ type: 'success', message: t('tenantSettings.plan_updated') })
-    },
-    onError: (error) => {
-      setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.plan_update_failed') })
     }
   })
 
@@ -741,16 +715,6 @@ export default function TenantSettings() {
     }
   }
 
-  const handlePlanChange = () => {
-    if (!selectedPlan || !activeTenantId) return
-    updatePlanMutation.mutate({
-      tenantId: activeTenantId,
-      planSlug: selectedPlan
-    })
-  }
-
-  const currentPlan = limitsQuery.data?.plan?.slug || 'free'
-
   // Advanced Metadata için canlı JSON denetimi: metin geçerli bir JSON nesnesi değilse
   // alanı işaretle ve kaydı engelle. Boş metin = temizleme, izinli.
   let metadataError = ''
@@ -838,7 +802,7 @@ export default function TenantSettings() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setShowPlanModal(true)}
+                    onClick={() => window.location.assign('/faturalandirma')}
                     className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
                   >
                     {t('tenantSettings.change_plan')}
@@ -1266,55 +1230,6 @@ export default function TenantSettings() {
         </div>
       </form>
 
-      {/* Plan Change Modal */}
-      {showPlanModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex min-h-screen items-center justify-center p-4">
-            <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={() => setShowPlanModal(false)}></div>
-
-            <div className="relative w-full max-w-6xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
-              <div className="bg-white px-6 py-5 border-b border-gray-200">
-                <h3 className="text-xl font-semibold text-gray-900">{t('tenantSettings.change_plan_modal_title')}</h3>
-                <p className="mt-1 text-sm text-gray-600">
-                  {t('tenantSettings.change_plan_modal_desc')}
-                </p>
-              </div>
-
-              <div className="px-6 py-6">
-                <SubscriptionPlanSelector
-                  selectedPlan={selectedPlan || currentPlan}
-                  onSelectPlan={setSelectedPlan}
-                  currentPlan={currentPlan}
-                  showPricing={true}
-                  compact={false}
-                />
-              </div>
-
-              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPlanModal(false)
-                    setSelectedPlan(null)
-                  }}
-                  disabled={updatePlanMutation.isPending}
-                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePlanChange}
-                  disabled={updatePlanMutation.isPending || !selectedPlan || selectedPlan === currentPlan}
-                  className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {updatePlanMutation.isPending ? t('tenantSettings.updating') : t('tenantSettings.change_plan')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

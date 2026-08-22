@@ -4,12 +4,18 @@ const { Schema } = mongoose;
 
 const userSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
-  email: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true, trim: true, lowercase: true },
   password: { type: String, required: true },
   firstName: { type: String },
   lastName: { type: String },
   name: { type: String },
   status: { type: String, default: 'active', enum: ['active', 'inactive', 'suspended'] },
+  platformRole: {
+    type: String,
+    enum: ['none', 'support', 'admin'],
+    default: 'none',
+    index: true,
+  },
   isEmailVerified: { type: Boolean, default: false },
   emailVerifiedAt: { type: Date },
   emailVerificationToken: { type: String },

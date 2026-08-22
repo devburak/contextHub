@@ -1,12 +1,6 @@
 import { apiClient } from './api.js'
 
 export const userAPI = {
-  // Email ile kullanıcı kontrol et
-  checkEmail: async (email) => {
-    const { data } = await apiClient.post('/users/check-email', { email })
-    return data
-  },
-
   // Tüm kullanıcıları getir
   getUsers: async (params = {}) => {
     const { data } = await apiClient.get('/users', { params })
@@ -131,12 +125,6 @@ export const userAPI = {
     }
   },
 
-  // Yeni kullanıcı oluştur
-  createUser: async (userData) => {
-    const { data } = await apiClient.post('/users', userData)
-    return data
-  },
-
   // Mevcut kullanıcıyı tenant'a davet et
   inviteUser: async (inviteData) => {
     const { data } = await apiClient.post('/users/invite', inviteData)
@@ -164,12 +152,6 @@ export const userAPI = {
   // Kullanıcı durumunu değiştir (aktif/pasif)
   toggleUserStatus: async (id) => {
     const { data } = await apiClient.patch(`/users/${id}/toggle-status`)
-    return data
-  },
-
-  // Kullanıcı şifresini sıfırla
-  resetUserPassword: async (id) => {
-    const { data } = await apiClient.post(`/users/${id}/reset-password`)
     return data
   },
 

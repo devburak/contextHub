@@ -9,6 +9,7 @@ const {
   enforceCookieCsrf,
 } = require('../services/sessionSecurity');
 const { logSecurityEvent } = require('../services/auditService');
+const { isAccountBillingEnabled } = require('../lib/billingConfig');
 
 const {
   getRoleLevel,
@@ -28,6 +29,24 @@ const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 const API_TOKEN_AUTH_PREFIX = 'Bearer ctx_';
 const isApiTokenHeader = (authHeader) =>
   typeof authHeader === 'string' && authHeader.startsWith(API_TOKEN_AUTH_PREFIX);
+
+async function enforceBillingWriteAccess(request, reply) {
+  if (!isAccountBillingEnabled() || SAFE_METHODS.has(request.method)) return true;
+  if (String(request.url || '').startsWith('/api/billing/')) return true;
+  if (!request.tenantId) return true;
+  const { BillingSubscription } = require('@contexthub/common');
+  const subscription = await BillingSubscription.findOne({
+    tenantId: request.tenantId,
+    status: 'past_due',
+    gracePeriodEndsAt: { $ne: null, $lte: new Date() },
+  }).select('_id');
+  if (!subscription) return true;
+  reply.code(402).send({
+    error: 'BillingWriteRestricted',
+    message: 'Payment is overdue. Read access remains available; update payment details in Billing to continue writes.',
+  });
+  return false;
+}
 
 const resolveTokenScopes = (scopes) => {
   const normalized = normalizeScopes(scopes);
@@ -203,6 +222,8 @@ async function authenticateApiToken(request, reply) {
       userId: request.user?._id?.toString?.()
     });
 
+    if (!await enforceBillingWriteAccess(request, reply)) return;
+
     if (shouldAuditUsage) {
       await logSecurityEvent({
         action: 'api_token.used',
@@ -361,6 +382,8 @@ async function authenticate(request, reply) {
       });
     }
 
+    if (!await enforceBillingWriteAccess(request, reply)) return;
+
     if (await checkRequestLimit(request, reply)) {
       return;
     }
@@ -480,6 +503,29 @@ function requirePermission(requiredPermissions, options = {}) {
   };
 }
 
+const PLATFORM_ROLE_LEVELS = Object.freeze({
+  none: 0,
+  support: 10,
+  admin: 20,
+});
+
+function requirePlatformRole(allowedRoles = ['admin']) {
+  const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+  const minimumLevel = Math.min(...roles.map((role) => PLATFORM_ROLE_LEVELS[role] ?? Infinity));
+
+  return async function(request, reply) {
+    const platformRole = request.user?.platformRole || 'none';
+    const level = PLATFORM_ROLE_LEVELS[platformRole] ?? 0;
+
+    if (!Number.isFinite(minimumLevel) || level < minimumLevel) {
+      return reply.code(403).send({
+        error: 'PlatformAccessRequired',
+        message: 'This operation requires a platform administrator role',
+      });
+    }
+  };
+}
+
 // Owner-only middleware
 const requireOwner = requireRole(['owner']);
 
@@ -502,5 +548,6 @@ module.exports = {
   requireAdmin,
   requireEditor,
   requireAuthor,
-  requirePermission
+  requirePermission,
+  requirePlatformRole
 };

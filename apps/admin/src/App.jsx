@@ -39,6 +39,7 @@ import TenantTabs from './components/TenantTabs.jsx'
 import { PERMISSIONS, expandPermissions } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
 import ApiDocs from './pages/ApiDocs.jsx'
+import Billing from './pages/billing/Billing.jsx'
 import i18n from './i18n.js'
 import { persistLocale, resolveUserLocale } from './lib/localePreference.js'
 import {
@@ -390,6 +391,7 @@ function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
               <Route path="/apidocs" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><ApiDocs /></PermissionRoute>} />
+              <Route path="/faturalandirma" element={<Billing />} />
               {adminPluginPages.map((page) => (
                 <Route
                   key={page.id}

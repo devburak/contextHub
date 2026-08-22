@@ -11,6 +11,9 @@ const tokenBlacklist = require('./tokenBlacklist');
 const { issueSessionToken } = require('./sessionSecurity');
 const { hashIdentifier, logSecurityEvent } = require('./auditService');
 const { extractTrustedClientIp } = require('./clientIp');
+const limitCheckerService = require('./limitCheckerService');
+const quotaAlertService = require('./quotaAlertService');
+const invitationPolicyService = require('./invitationPolicyService');
 
 // Session token lifetime and absolute session cap. A JWT lives for TOKEN_TTL and can
 // be refreshed, but refresh cannot keep a session alive past MAX_SESSION_AGE_SECONDS
@@ -97,12 +100,17 @@ class AuthService {
     return url.toString();
   }
 
-  async sendInvitationEmail({ user, tenant, inviter, inviteLink, token, expiresAt, tenantId }) {
+  async sendInvitationEmail({ user, tenant, inviter, inviteLink, expiresAt, tenantId }) {
     const inviterName = inviter
       ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ') || inviter.email
       : 'ContextHub';
 
     const tenantName = tenant?.name || 'ContextHub';
+    const requiresAccountSetup = Boolean(user.mustChangePassword);
+    const actionText = requiresAccountSetup ? 'Hesabını Oluştur' : 'Daveti Kabul Et';
+    const actionDescription = requiresAccountSetup
+      ? `${tenantName} organizasyonuna katılmak için hesabını oluşturman ve kendi şifreni belirlemen gerekiyor.`
+      : `${tenantName} organizasyonuna katılman için bir davet aldın. Daveti kabul etmek için aşağıdaki bağlantıyı kullanabilirsin.`;
 
     const subject = `${tenantName} daveti`; // Turkish default - we can use bilingual message
 
@@ -110,21 +118,19 @@ class AuthService {
       <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
         <h1 style="font-size: 22px; font-weight: 600;">${tenantName} daveti</h1>
         <p>Merhaba ${user.firstName || user.email},</p>
-        <p>${tenantName} organizasyonuna katılman için bir davet aldın. Daveti kabul etmek için aşağıdaki bağlantıyı kullanabilirsin.</p>
+        <p>${actionDescription}</p>
         <p style="margin: 24px 0; text-align: center;">
-          <a href="${inviteLink}" style="background-color:#2563eb; color:#fff; padding:12px 24px; border-radius:8px; text-decoration:none; display:inline-block;">Daveti Kabul Et</a>
+          <a href="${inviteLink}" style="background-color:#2563eb; color:#fff; padding:12px 24px; border-radius:8px; text-decoration:none; display:inline-block;">${actionText}</a>
         </p>
         <p style="margin-bottom: 12px;">Bağlantı <strong>${expiresAt.toLocaleString()}</strong> tarihine kadar geçerlidir (12 saat).</p>
         <p style="margin-bottom: 12px;">Bağlantı çalışmazsa aşağıdaki adresi tarayıcına yapıştırabilirsin:</p>
         <p style="word-break: break-all; background:#f3f4f6; padding:12px; border-radius:8px;">${inviteLink}</p>
-        <p style="margin-bottom: 12px;">Tek kullanımlık davet kodun:</p>
-        <p style="font-family:'Fira Code',monospace; background:#111827; color:#f9fafb; padding:12px; border-radius:8px; display:inline-block;">${token}</p>
         <p style="margin-top:24px;">Bu daveti <strong>${inviterName}</strong> gönderdi.</p>
         <p style="margin-top:32px; font-size: 13px; color:#6b7280;">Eğer bu daveti beklemiyorsan bu e-postayı görmezden gelebilirsin.</p>
       </div>
     `;
 
-    const text = `Merhaba ${user.firstName || user.email},\n\n${tenantName} organizasyonuna katılman için bir davet aldın.\n\nDaveti kabul etmek için bu bağlantıyı kullan: ${inviteLink}\n\nBağlantı ${expiresAt.toLocaleString()} tarihine kadar geçerli olacaktır (12 saat).\n\nTek kullanımlık davet kodun: ${token}\n\nBu daveti ${inviterName} gönderdi. Eğer bu daveti beklemiyorsan bu e-postayı görmezden gelebilirsin.`;
+    const text = `Merhaba ${user.firstName || user.email},\n\n${actionDescription}\n\n${actionText}: ${inviteLink}\n\nBağlantı ${expiresAt.toLocaleString()} tarihine kadar geçerli olacaktır (12 saat).\n\nBu daveti ${inviterName} gönderdi. Eğer bu daveti beklemiyorsan bu e-postayı görmezden gelebilirsin.`;
 
     await mailService.sendMail({
       to: user.email,
@@ -168,7 +174,6 @@ class AuthService {
       tenant,
       inviter,
       inviteLink,
-      token,
       expiresAt,
       tenantId
     });
@@ -797,14 +802,12 @@ class AuthService {
     return { success: true };
   }
 
-  async inviteUser(email, tenantId, role, invitedBy, options = {}) {
-    // Kullanıcının zaten mevcut olup olmadığını kontrol et
-    const existingUser = await User.findOne({ email });
-    const {
-      firstName,
-      lastName,
-      password: providedPassword
-    } = options;
+  async inviteUser(email, tenantId, role, invitedBy) {
+    await invitationPolicyService.assertInvitationsAllowed(tenantId);
+
+    // Global hesap varlığı davet edene açıklanmaz; bu ayrım yalnızca servis içinde kalır.
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const existingUser = await User.findOne({ email: normalizedEmail });
 
     let resolvedRole = await roleService.resolveRole({ tenantId, roleKey: role });
 
@@ -816,12 +819,40 @@ class AuthService {
     if (!resolvedRole) {
       throw new Error('Role not found');
     }
+
+    const existingMembershipForQuota = existingUser
+      ? await Membership.findOne({ userId: existingUser._id, tenantId }).select('status role')
+      : null;
+    if (existingMembershipForQuota?.status === 'active') {
+      return { type: 'existing_member', status: 'active' };
+    }
+    if (existingUser?.status === 'suspended' || (existingUser?.status === 'inactive' && !existingUser.mustChangePassword)) {
+      // Hesap durumu davet edene açıklanmaz. Yanıt katmanı bunu diğer başarılı
+      // davet istekleriyle aynı şekilde 202 olarak döndürür.
+      return { type: 'suppressed' };
+    }
+    const addsSeat = !existingMembershipForQuota || !['active', 'pending'].includes(existingMembershipForQuota.status);
+    const addsOwnerSeat = resolvedRole.key === 'owner'
+      && (!existingMembershipForQuota || existingMembershipForQuota.role !== 'owner');
+    for (const quotaRole of [addsSeat ? 'member' : null, addsOwnerSeat ? 'owner' : null].filter(Boolean)) {
+      const quota = await limitCheckerService.checkUserLimit(tenantId, quotaRole);
+      if (!quota.allowed) {
+        const isOwnerQuota = quotaRole === 'owner';
+        const error = new Error(`${isOwnerQuota ? 'Owner' : 'User'} limit reached`);
+        error.code = isOwnerQuota ? 'OwnerLimitExceeded' : 'UserLimitExceeded';
+        error.statusCode = 409;
+        error.quota = quota;
+        throw error;
+      }
+      quotaAlertService.recordThresholds({
+        tenantId,
+        metric: quota.metric,
+        usage: (quota.currentCount || 0) + 1,
+        limit: quota.limit,
+      }).catch((error) => console.error('[AuthService] Quota alert failed:', error.message));
+    }
     
     if (existingUser) {
-      if (providedPassword) {
-        throw new Error('Password cannot be set for existing users');
-      }
-
       // Kullanıcı varsa sadece membership ekle
       const existingMembership = await Membership.findOne({ 
         userId: existingUser._id, 
@@ -829,26 +860,8 @@ class AuthService {
       });
 
       if (existingMembership) {
-        // Active membership: update role if needed and return success
-        if (existingMembership.status === 'active') {
-          let updated = false;
-          if (existingMembership.role !== resolvedRole.key) {
-            existingMembership.role = resolvedRole.key;
-            existingMembership.roleId = resolvedRole._id;
-            existingMembership.updatedBy = invitedBy || existingMembership.updatedBy;
-            await existingMembership.save();
-            updated = true;
-          }
-
-          return {
-            type: 'existing_member',
-            membershipId: existingMembership._id,
-            status: existingMembership.status,
-            role: existingMembership.role,
-            updated,
-          };
-        }
-
+        // Aktif üyelik davet üzerinden rol değiştirmez. Rol değişikliği ayrı,
+        // yetkili endpoint üzerinden yapılmalıdır.
         // Pending/inactive membership: re-issue invitation with updated role
         existingMembership.role = resolvedRole.key;
         existingMembership.roleId = resolvedRole._id;
@@ -884,15 +897,14 @@ class AuthService {
         invitation
       };
     } else {
-      // Yeni kullanıcı için invitation oluştur
-      // Bu durumda gerçek projede email gönderme logic'i olacak
-      const tempPassword = providedPassword || Math.random().toString(36).slice(-8);
-      
+      // User şeması password gerektiriyor; bu değer yalnızca iç placeholder'dır.
+      // Admin'e veya e-postaya verilmez, kullanıcı davet bağlantısında kendi
+      // şifresini belirlediğinde üzerine yazılır.
+      const setupPlaceholder = crypto.randomBytes(32).toString('base64url');
+
       const user = new User({
-        email,
-        password: tempPassword,
-        firstName: firstName?.trim() || email.split('@')[0], // Geçici
-        lastName: lastName?.trim() || 'User', // Geçici
+        email: normalizedEmail,
+        password: setupPlaceholder,
         tenantId,
         status: 'inactive',
         isEmailVerified: false,
@@ -916,13 +928,13 @@ class AuthService {
         type: 'new_user',
         userId: user._id,
         membershipId: membership._id,
-        tempPassword,
         invitation
       };
     }
   }
 
   async resendInvitation(userId, tenantId, invitedBy) {
+    await invitationPolicyService.assertInvitationsAllowed(tenantId);
     const membership = await Membership.findOne({ userId, tenantId });
 
     if (!membership) {
@@ -954,6 +966,8 @@ class AuthService {
       throw new Error('Invitation token has expired');
     }
 
+    await invitationPolicyService.assertInvitationsAllowed(membership.tenantId?._id || membership.tenantId);
+
     const user = membership.userId;
     const tenant = membership.tenantId;
 
@@ -964,7 +978,9 @@ class AuthService {
       role: membership.role,
       status: membership.status,
       expiresAt: membership.inviteTokenExpiresAt,
-      requiresPasswordSetup: Boolean(user?.mustChangePassword || !user?.isEmailVerified || user?.status !== 'active'),
+      requiresPasswordSetup: Boolean(user?.mustChangePassword),
+      requiresProfileSetup: Boolean(user?.mustChangePassword),
+      requiresAuthentication: Boolean(user && !user.mustChangePassword),
       tenant: tenant
         ? {
             id: tenant._id.toString(),
@@ -994,6 +1010,8 @@ class AuthService {
       throw new Error('Invitation token has expired');
     }
 
+    await invitationPolicyService.assertInvitationsAllowed(membership.tenantId);
+
     const user = await User.findById(membership.userId);
 
     if (!user) {
@@ -1002,18 +1020,39 @@ class AuthService {
     if (user.status === 'suspended') {
       throw new Error('Suspended accounts cannot accept invitations');
     }
-
-    const requiresPasswordSetup = Boolean(
-      user.mustChangePassword ||
-      !user.isEmailVerified ||
-      user.status === 'inactive'
-    );
-
-    if (typeof firstName === 'string' && firstName.trim()) {
-      user.firstName = firstName.trim();
+    if (user.status === 'inactive' && !user.mustChangePassword) {
+      throw new Error('Inactive accounts cannot accept invitations');
     }
 
-    if (typeof lastName === 'string' && lastName.trim()) {
+    const requiresPasswordSetup = Boolean(user.mustChangePassword);
+
+    if (!requiresPasswordSetup) {
+      if (!request?.user?._id) {
+        const error = new Error('Sign in with the invited account before accepting this invitation');
+        error.code = 'InvitationAuthenticationRequired';
+        error.statusCode = 401;
+        throw error;
+      }
+      if (request.user._id.toString() !== user._id.toString()) {
+        const error = new Error('The invitation belongs to a different account');
+        error.code = 'InvitationAccountMismatch';
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
+    if (!requiresPasswordSetup && (password || firstName || lastName)) {
+      throw new Error('Existing account details cannot be changed with an invitation link');
+    }
+
+    if (requiresPasswordSetup) {
+      if (typeof firstName !== 'string' || !firstName.trim()) {
+        throw new Error('First name is required to create the account');
+      }
+      if (typeof lastName !== 'string' || !lastName.trim()) {
+        throw new Error('Last name is required to create the account');
+      }
+      user.firstName = firstName.trim();
       user.lastName = lastName.trim();
     }
 
@@ -1031,7 +1070,7 @@ class AuthService {
       throw new Error('Password is required to accept this invitation');
     }
 
-    user.status = 'active';
+    if (requiresPasswordSetup) user.status = 'active';
     user.isEmailVerified = true;
     user.emailVerifiedAt = new Date();
     if (passwordUpdated) {

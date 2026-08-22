@@ -10,60 +10,6 @@ const SUPPORTED_UI_LANGUAGES = ['tr', 'en'];
 const { ROLE_KEYS } = rbac;
 
 class UserService {
-  async createUser({ email, password, firstName, lastName, tenantId, role = ROLE_KEYS.ADMIN }) {
-    // Şifre hash'leme işlemini User model'inde yaptığımız için burada yapmaya gerek yok
-    const user = new User({
-      email,
-      password, // Model'de pre-save middleware ile hash'lenecek
-      firstName,
-      lastName,
-      tenantId,
-      mustChangePassword: true
-    });
-
-    await user.save();
-
-    // Kullanıcı tenant ilişkisini oluştur
-    if (tenantId) {
-      const normalizedRole = roleService.normalizeKey(role) || ROLE_KEYS.ADMIN;
-      let resolvedRole = null;
-
-      if (normalizedRole) {
-        resolvedRole = await roleService.resolveRole({ tenantId, roleKey: normalizedRole });
-        if (!resolvedRole && normalizedRole !== ROLE_KEYS.VIEWER && normalizedRole !== ROLE_KEYS.ADMIN) {
-          throw new Error('Role not found');
-        }
-      }
-
-      const fallbackRole = resolvedRole
-        || await roleService.resolveRole({ tenantId, roleKey: ROLE_KEYS.ADMIN })
-        || await roleService.resolveRole({ tenantId: null, roleKey: ROLE_KEYS.ADMIN })
-        || await roleService.resolveRole({ tenantId, roleKey: ROLE_KEYS.OWNER })
-        || await roleService.resolveRole({ tenantId: null, roleKey: ROLE_KEYS.OWNER })
-        || await roleService.resolveRole({ tenantId, roleKey: ROLE_KEYS.VIEWER })
-        || await roleService.resolveRole({ tenantId: null, roleKey: ROLE_KEYS.VIEWER });
-
-      const membership = new Membership({
-        tenantId,
-        userId: user._id,
-        role: (resolvedRole || fallbackRole)?.key || ROLE_KEYS.ADMIN,
-        roleId: (resolvedRole || fallbackRole)?._id || null,
-        status: 'active'
-      });
-      await membership.save();
-    }
-
-    return user;
-  }
-
-  async findUserByEmail(email) {
-    if (!email) {
-      return null;
-    }
-
-    return await User.findOne({ email });
-  }
-
   async getUserById(userId, tenantId) {
     return await User.findOne({ _id: userId, tenantId }).select('-password');
   }
@@ -595,26 +541,6 @@ class UserService {
     return { success: true };
   }
 
-  async checkUserByEmail(email) {
-    const user = await User.findOne({ email }).select('-password');
-    
-    if (!user) {
-      return {
-        exists: false,
-        user: null
-      };
-    }
-
-    return {
-      exists: true,
-      user: {
-        id: user._id.toString(),
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName
-      }
-    };
-  }
 }
 
 module.exports = new UserService();
