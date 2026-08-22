@@ -1,48 +1,26 @@
 import { Combobox } from '@headlessui/react'
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { buildBillingCountries } from '../lib/billingCountryCatalog.js'
 
-const ISO_COUNTRY_CODES = `
-AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ
-BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ
-CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ
-DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR
-GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY
-HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP
-KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY
-MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ
-NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY
-QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ
-TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ
-VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW
-`.trim().split(/\s+/)
-
-function countryName(code) {
-  try {
-    return new Intl.DisplayNames(['tr'], { type: 'region' }).of(code) || code
-  } catch {
-    return code
-  }
+function normalized(value, locale) {
+  return String(value || '').toLocaleLowerCase(locale).replace(/\s+/g, ' ').trim()
 }
 
-export const BILLING_COUNTRIES = ISO_COUNTRY_CODES
-  .map((code) => ({ code, name: countryName(code) }))
-  .sort((left, right) => left.name.localeCompare(right.name, 'tr'))
-
-function normalized(value) {
-  return String(value || '').toLocaleLowerCase('tr-TR').replace(/\s+/g, ' ').trim()
-}
-
-export default function CountryCombobox({ value, onChange, disabled = false, required = false }) {
+export default function CountryCombobox({ value, onChange, disabled = false, required = false, error = '' }) {
+  const { t, i18n } = useTranslation()
   const [query, setQuery] = useState('')
-  const selectedCountry = BILLING_COUNTRIES.find((country) => country.code === value) || null
+  const locale = i18n.resolvedLanguage === 'en' ? 'en-US' : 'tr-TR'
+  const countries = useMemo(() => buildBillingCountries(locale), [locale])
+  const selectedCountry = countries.find((country) => country.code === value) || null
   const filteredCountries = useMemo(() => {
-    const needle = normalized(query)
-    if (!needle) return BILLING_COUNTRIES
-    return BILLING_COUNTRIES.filter((country) => (
-      normalized(country.name).includes(needle) || country.code.toLowerCase().includes(needle)
+    const needle = normalized(query, locale)
+    if (!needle) return countries
+    return countries.filter((country) => (
+      normalized(country.name, locale).includes(needle) || country.code.toLowerCase().includes(needle)
     ))
-  }, [query])
+  }, [countries, locale, query])
 
   return (
     <Combobox
@@ -54,23 +32,26 @@ export default function CountryCombobox({ value, onChange, disabled = false, req
       disabled={disabled}
     >
       <div className="relative">
-        <Combobox.Label className="text-sm font-medium">Fatura ülkesi (ISO)</Combobox.Label>
+        <Combobox.Label className="text-sm font-medium">{t('billing.country.label')}</Combobox.Label>
         <div className="relative mt-1">
           <Combobox.Input
-            className="w-full rounded-xl border border-[var(--billing-line)] bg-white px-3 py-2.5 pr-10 text-sm outline-none focus:border-[var(--billing-accent)] focus:ring-2 focus:ring-[var(--billing-accent-soft)] disabled:bg-gray-100"
+            className={`w-full rounded-xl border bg-white px-3 py-2.5 pr-10 text-sm outline-none focus:ring-2 disabled:bg-gray-100 ${error ? 'border-red-500 focus:border-red-600 focus:ring-red-100' : 'border-[var(--billing-line)] focus:border-[var(--billing-accent)] focus:ring-[var(--billing-accent-soft)]'}`}
             displayValue={(country) => country ? `${country.name} (${country.code})` : ''}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Ülke adı veya ISO kodu ara"
+            placeholder={t('billing.country.placeholder')}
             autoComplete="country-name"
             required={required}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'billing-country-error' : undefined}
           />
           <Combobox.Button className="absolute inset-y-0 right-0 flex items-center rounded-r-xl px-3 text-[var(--billing-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--billing-accent)]">
             <ChevronUpDownIcon className="h-5 w-5" aria-hidden="true" />
           </Combobox.Button>
         </div>
+        {error && <p id="billing-country-error" className="mt-1 text-xs text-red-700" role="alert">{error}</p>}
         <Combobox.Options className="absolute z-30 mt-2 max-h-64 w-full overflow-auto rounded-xl border border-[var(--billing-line)] bg-white p-1 shadow-xl focus:outline-none">
           {filteredCountries.length === 0 ? (
-            <div className="px-3 py-4 text-sm text-[var(--billing-muted)]">Eşleşen ülke bulunamadı.</div>
+            <div className="px-3 py-4 text-sm text-[var(--billing-muted)]">{t('billing.country.noResults')}</div>
           ) : filteredCountries.map((country) => (
             <Combobox.Option
               key={country.code}

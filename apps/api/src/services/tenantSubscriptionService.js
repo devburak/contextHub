@@ -1,7 +1,7 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
 const { BillingAccount, BillingSubscription } = require('@contexthub/common');
 const { DEFAULT_SUBSCRIPTION_PLANS } = require('../lib/defaultSubscriptionPlans');
-const { validateBillingProfile } = require('./billing/billingRouting');
+const { SERVICE_AGREEMENT_VERSION, validateBillingProfile } = require('./billing/billingRouting');
 
 const DEFAULT_PLAN_BY_SLUG = new Map(DEFAULT_SUBSCRIPTION_PLANS.map((plan) => [plan.slug, plan]));
 const PLAN_SLUG_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -36,7 +36,11 @@ class TenantSubscriptionService {
 
     const billingAccount = await BillingAccount.findOne({ accountId: tenant.accountId })
       .select('+taxId +taxIdEncrypted');
-    if (!billingAccount?.serviceAgreementAcceptedAt) {
+    const agreementAccepted = Boolean(billingAccount?.serviceAgreementAcceptedAt) && (
+      source === 'enterprise_contract'
+      || billingAccount.serviceAgreementVersion === SERVICE_AGREEMENT_VERSION
+    );
+    if (!agreementAccepted) {
       throw error('Ücretli plan aktivasyonu için hizmet sözleşmesi kabul edilmelidir');
     }
 

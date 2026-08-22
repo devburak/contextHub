@@ -51,6 +51,28 @@ describe('billing country routing', () => {
     ]);
   });
 
+  it('returns stable validation codes for invalid billing contact fields', () => {
+    const result = validateBillingProfile({
+      profileType: 'business',
+      billingEmail: 'broken@',
+      legalName: 'Example A.Ş.',
+      contactFirstName: 'Ada',
+      contactLastName: 'Yılmaz',
+      phone: '123',
+      country: 'TR',
+      taxId: '1234567890',
+      taxOffice: 'Kadıköy',
+      address: { line1: 'Örnek Sokak 1', city: 'İstanbul', postalCode: '34A10' },
+      declarationAcceptedAt: new Date(),
+    });
+
+    expect(result.errors).toEqual({
+      billingEmail: 'invalid_email',
+      phone: 'invalid_phone',
+      'address.postalCode': 'invalid_postal_code_tr',
+    });
+  });
+
   it('keeps tax identifiers and provider selection out of owner-visible data', () => {
     const serialized = serializeBillingAccount({
       provider: 'iyzico',
@@ -74,6 +96,42 @@ describe('billing country routing', () => {
     expect(serialized).not.toHaveProperty('taxId');
     expect(serialized).not.toHaveProperty('externalCustomerId');
     expect(serialized.taxIdMasked).toBe('******7890');
+  });
+
+  it('requires the current self-service agreement version but preserves Enterprise contracts', () => {
+    const base = {
+      billingEmail: 'finance@example.test',
+      legalName: 'Example Ltd',
+      profileType: 'business',
+      contactFirstName: 'Ada',
+      contactLastName: 'Lovelace',
+      phone: '+16175550100',
+      country: 'US',
+      address: { line1: '1 Main St', city: 'Boston', postalCode: '02108' },
+      declarationAcceptedAt: new Date(),
+      serviceAgreementAcceptedAt: new Date(),
+    };
+
+    expect(serializeBillingAccount({
+      ...base,
+      serviceAgreementVersion: 'ctxhub-cloud-terms-v1',
+      paymentMethodStatus: 'provider_verified',
+    }).commercialReadiness.agreementAccepted).toBe(false);
+    expect(serializeBillingAccount({
+      ...base,
+      serviceAgreementVersion: 'ctxhub-cloud-terms-v2',
+      paymentMethodStatus: 'provider_verified',
+    }).commercialReadiness.agreementAccepted).toBe(false);
+    expect(serializeBillingAccount({
+      ...base,
+      serviceAgreementVersion: 'ctxhub-cloud-terms-v3',
+      paymentMethodStatus: 'provider_verified',
+    }).commercialReadiness.agreementAccepted).toBe(true);
+    expect(serializeBillingAccount({
+      ...base,
+      serviceAgreementVersion: 'legacy-enterprise-contract-v1',
+      paymentMethodStatus: 'enterprise_contract',
+    }).commercialReadiness.agreementAccepted).toBe(true);
   });
 
   it('enables only explicitly configured providers', () => {

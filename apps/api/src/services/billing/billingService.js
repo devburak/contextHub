@@ -22,6 +22,7 @@ const {
   maskTaxId,
   normalizeCountry,
   normalizeDigits,
+  normalizeBillingPhone,
   paymentMethodsForCountry,
   resolveBillingProvider,
   validateBillingProfile,
@@ -31,6 +32,12 @@ const apiUsageService = require('../apiUsageService');
 
 const BYTES_PER_GB = 1024 ** 3;
 const CATALOG_CURRENCY = 'USD';
+
+function hasCurrentServiceAgreement(billingAccount) {
+  if (!billingAccount?.serviceAgreementAcceptedAt) return false;
+  if (billingAccount.paymentMethodStatus === 'enterprise_contract') return true;
+  return billingAccount.serviceAgreementVersion === SERVICE_AGREEMENT_VERSION;
+}
 
 function toMinorUnits(amountMajor) {
   const amount = Number(amountMajor || 0);
@@ -94,6 +101,7 @@ function serializeInvoice(invoice) {
 function serializeBillingAccount(billingAccount) {
   if (!billingAccount) return null;
   const profileValidation = validateBillingProfile(billingAccount);
+  const agreementAccepted = hasCurrentServiceAgreement(billingAccount);
   return {
     status: billingAccount.status,
     billingEmail: billingAccount.billingEmail,
@@ -118,7 +126,7 @@ function serializeBillingAccount(billingAccount) {
     missingFields: profileValidation.missingFields,
     hasProviderCustomer: Boolean(billingAccount.externalCustomerId),
     commercialReadiness: {
-      agreementAccepted: Boolean(billingAccount.serviceAgreementAcceptedAt),
+      agreementAccepted,
       billingProfileAccepted: profileValidation.complete || billingAccount.billingProfileStatus === 'legacy_enterprise',
       paymentVerified: ['provider_verified', 'enterprise_contract'].includes(billingAccount.paymentMethodStatus),
     },
@@ -296,6 +304,7 @@ async function getOverview(tenantId) {
     requests: metric(monthlyRequests, limits.monthlyRequestLimit),
   };
 
+  const agreementAccepted = hasCurrentServiceAgreement(billingAccount);
   return {
     tenant: {
       id: String(tenant._id),
@@ -314,11 +323,12 @@ async function getOverview(tenantId) {
     billingAccount: serializeBillingAccount(billingAccount),
     paymentRouting: {
       profileComplete: profileValidation.complete,
-      agreementAccepted: Boolean(billingAccount?.serviceAgreementAcceptedAt),
-      checkoutAvailable: profileValidation.complete && Boolean(billingAccount?.serviceAgreementAcceptedAt) && providerEnabled,
+      agreementAccepted,
+      requiredServiceAgreementVersion: SERVICE_AGREEMENT_VERSION,
+      checkoutAvailable: profileValidation.complete && agreementAccepted && providerEnabled,
       missingFields: [
         ...profileValidation.missingFields,
-        ...(!billingAccount?.serviceAgreementAcceptedAt ? ['serviceAgreementAccepted'] : []),
+        ...(!agreementAccepted ? ['serviceAgreementAccepted'] : []),
       ],
       paymentMethods: paymentMethodsForCountry(billingAccount?.country),
       jurisdictionLocked: Boolean(subscription && ['trialing', 'active', 'past_due', 'paused'].includes(subscription.status)),
@@ -371,7 +381,7 @@ async function createCheckout(tenantId, priceReference) {
     error.missingFields = profileValidation.missingFields;
     throw error;
   }
-  if (!billingAccount.serviceAgreementAcceptedAt) {
+  if (!hasCurrentServiceAgreement(billingAccount)) {
     const error = new Error('Checkout öncesinde ContextHub hizmet sözleşmesi kabul edilmelidir');
     error.code = 'CommercialAgreementRequired';
     throw error;
@@ -463,7 +473,7 @@ function normalizedBillingProfile(payload, existing = {}, declarationAcceptedBy)
     profileType: payload.profileType || 'business',
     contactFirstName: String(payload.contactFirstName || '').trim(),
     contactLastName: String(payload.contactLastName || '').trim(),
-    phone: String(payload.phone || '').trim(),
+    phone: normalizeBillingPhone(payload.phone, country) || String(payload.phone || '').trim(),
     country,
     taxId,
     taxOffice: String(payload.taxOffice || '').trim(),

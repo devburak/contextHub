@@ -125,7 +125,9 @@ tenantSchema.methods.getLimit = async function(limitType) {
     monthlyRequestLimit: 1000,
   };
   
-  return defaultLimits[limitType] || 0;
+  return Object.prototype.hasOwnProperty.call(defaultLimits, limitType)
+    ? defaultLimits[limitType]
+    : 0;
 };
 
 /**

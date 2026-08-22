@@ -1,19 +1,19 @@
-export function statusLabel(status) {
-  return ({ free: 'Ücretsiz', active: 'Aktif', trialing: 'Deneme', past_due: 'Ödeme bekliyor', canceled: 'İptal', paid: 'Ödendi', open: 'Açık' })[status] || status || '—'
+export function statusLabel(t, status) {
+  return status ? t(`billing.status.${status}`, { defaultValue: status }) : '—'
 }
 
-export function activePlanStatus(tenantPlan, subscription) {
-  if (subscription?.status) return statusLabel(subscription.status)
-  if (tenantPlan?.slug === 'enterprise') return 'Sözleşmeli'
-  if (tenantPlan?.slug && tenantPlan.slug !== 'free') return 'Ticari paket'
-  return 'Ücretsiz'
+export function activePlanStatus(t, tenantPlan, subscription) {
+  if (subscription?.status) return statusLabel(t, subscription.status)
+  if (tenantPlan?.slug === 'enterprise') return t('billing.status.contract')
+  if (tenantPlan?.slug && tenantPlan.slug !== 'free') return t('billing.status.commercial')
+  return t('billing.status.free')
 }
 
-export function checkoutButtonLabel({ current, enterprise, checkoutAvailable, checkoutReady, hasProfile, hasSubscription }) {
-  if (current) return 'Mevcut paket'
-  if (enterprise) return 'Teklif ve sözleşme'
-  if (hasSubscription) return 'Abonelik ekranından yönetin'
-  if (!hasProfile) return 'Önce fatura bilgilerini tamamlayın'
-  if (!checkoutAvailable || !checkoutReady) return 'Ödeme altyapısı hazırlanıyor'
-  return 'Güvenli ödemeye geç'
+export function checkoutButtonLabel(t, { current, enterprise, checkoutAvailable, checkoutReady, hasProfile, hasSubscription }) {
+  if (current) return t('billing.checkout.current')
+  if (enterprise) return t('billing.checkout.enterprise')
+  if (hasSubscription) return t('billing.checkout.hasSubscription')
+  if (!hasProfile) return t('billing.checkout.profileRequired')
+  if (!checkoutAvailable || !checkoutReady) return t('billing.checkout.unavailable')
+  return t('billing.checkout.start')
 }

@@ -19,6 +19,7 @@ import trPlacements from './locales/tr/placements.json'
 import trTenants from './locales/tr/tenants.json'
 import trDashboard from './locales/tr/dashboard.json'
 import trComponents from './locales/tr/components.json'
+import trBilling from './locales/tr/billing.json'
 
 import enCommon from './locales/en/common.json'
 import enNav from './locales/en/nav.json'
@@ -36,6 +37,7 @@ import enPlacements from './locales/en/placements.json'
 import enTenants from './locales/en/tenants.json'
 import enDashboard from './locales/en/dashboard.json'
 import enComponents from './locales/en/components.json'
+import enBilling from './locales/en/billing.json'
 
 /**
  * Çeviriler alan bazında ayrı JSON dosyalarında tutulur ama tek bir i18next
@@ -51,8 +53,8 @@ function bundle(...parts) {
 }
 
 const resources = {
-  tr: bundle(trCommon, trNav, trAuth, trUsers, trProfile, trErrors, trValidation, trContent, trMedia, trCollections, trForms, trMenus, trPlacements, trTenants, trDashboard, trComponents),
-  en: bundle(enCommon, enNav, enAuth, enUsers, enProfile, enErrors, enValidation, enContent, enMedia, enCollections, enForms, enMenus, enPlacements, enTenants, enDashboard, enComponents),
+  tr: bundle(trCommon, trNav, trAuth, trUsers, trProfile, trErrors, trValidation, trContent, trMedia, trCollections, trForms, trMenus, trPlacements, trTenants, trDashboard, trComponents, trBilling),
+  en: bundle(enCommon, enNav, enAuth, enUsers, enProfile, enErrors, enValidation, enContent, enMedia, enCollections, enForms, enMenus, enPlacements, enTenants, enDashboard, enComponents, enBilling),
 }
 
 const initialLocale = detectInitialLocale()
