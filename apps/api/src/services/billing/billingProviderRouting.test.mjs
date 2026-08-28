@@ -131,6 +131,11 @@ describe('billing country routing', () => {
       ...base,
       serviceAgreementVersion: 'ctxhub-cloud-terms-v4',
       paymentMethodStatus: 'provider_verified',
+    }).commercialReadiness.agreementAccepted).toBe(false);
+    expect(serializeBillingAccount({
+      ...base,
+      serviceAgreementVersion: 'ctxhub-cloud-terms-v5',
+      paymentMethodStatus: 'provider_verified',
     }).commercialReadiness.agreementAccepted).toBe(true);
     expect(serializeBillingAccount({
       ...base,

@@ -296,6 +296,31 @@
 .docs-machine-card strong { display: block; font-size: 12px; }
 .docs-machine-card p { margin: 4px 0 0; color: #dbeafe; font-size: 11px; line-height: 1.5; }
 
+.docs-payment-marks {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0 0;
+  padding: 14px;
+  background: var(--docs-panel);
+  border: 1px solid var(--docs-border);
+  border-radius: 12px;
+}
+
+.docs-payment-marks figcaption {
+  color: var(--docs-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.docs-payment-marks img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
 .docs-main {
   min-width: 0;
   padding: 42px clamp(28px, 5vw, 72px) 72px;

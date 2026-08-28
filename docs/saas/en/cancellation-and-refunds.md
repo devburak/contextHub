@@ -1,4 +1,4 @@
-# Cancellation and refund policy
+# Delivery, cancellation, and refund terms
 
 Effective date: 22 August 2026
 
@@ -6,6 +6,18 @@ This policy applies to standard ContextHub Cloud tenant subscriptions. Mandatory
 and the buyer terms displayed by the authorized collecting party remain unaffected.
 Signed Enterprise agreements may define additional cancellation, service-credit, and
 refund rules.
+
+## Digital delivery
+
+ContextHub Cloud is not a physical product and is not shipped. Delivery occurs
+electronically when the purchased plan entitlements are assigned to the selected tenant
+after verified payment; there are no shipping or physical-delivery fees.
+
+Under normal conditions, activation starts without undue delay after payment
+verification. If security review, payment verification, or a technical issue prevents
+the entitlements from being assigned, contact `support@ctxhub.net` with the tenant name,
+billing email, and transaction reference. Complete failure to provide the service is a
+reason for refund review.
 
 ## Cancellation and renewal
 
@@ -44,4 +56,5 @@ apply. This does not remove ContextHub product-support responsibility.
 
 See [Pricing and plans](./pricing-and-plans.md),
 [Terms and conditions](./terms-of-service.md), and
+[Distance selling agreement and pre-contract information](./distance-sales-agreement.md), and
 [Legal, service, and merchant identity](./legal-merchant-identity.md).

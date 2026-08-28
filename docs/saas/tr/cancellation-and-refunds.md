@@ -1,4 +1,4 @@
-# İptal ve iade politikası
+# Teslimat, iptal ve iade şartları
 
 Yürürlük tarihi: 22 Ağustos 2026
 
@@ -6,6 +6,17 @@ Bu politika standart ContextHub Cloud tenant abonelikleri için geçerlidir. Emr
 haklar ile yetkili tahsilat tarafının checkout sırasında gösterdiği alıcı koşulları
 saklıdır. İmzalı Enterprise sözleşmeleri ek iptal, hizmet kredisi ve iade kuralları
 belirleyebilir.
+
+## Dijital teslimat
+
+ContextHub Cloud fiziksel bir ürün değildir ve kargo ile gönderilmez. Teslimat,
+doğrulanmış ödeme sonrasında satın alınan plan yetkilerinin seçilen tenant'a elektronik
+olarak tanımlanmasıyla gerçekleşir; nakliye veya fiziksel teslimat ücreti yoktur.
+
+Normal koşullarda aktivasyon ödeme doğrulamasından sonra gecikmeksizin başlatılır.
+Güvenlik kontrolü, ödeme doğrulaması veya teknik bir sorun nedeniyle plan yetkileri
+tanımlanmazsa tenant adı, fatura e-postası ve işlem referansıyla `support@ctxhub.net`
+adresine başvurun. Hizmetin hiç sağlanmaması iade incelemesi sebebidir.
 
 ## İptal ve yenileme
 
@@ -44,4 +55,5 @@ Bu durum ContextHub'ın ürün destek sorumluluğunu kaldırmaz.
 
 [Fiyatlandırma ve paketler](./pricing-and-plans.md),
 [Hizmet ve abonelik koşulları](./terms-of-service.md) ve
+[Mesafeli satış sözleşmesi ve ön bilgilendirme formu](./distance-sales-agreement.md) ile
 [Hukuki hizmet ve merchant kimliği](./legal-merchant-identity.md) sayfalarını da inceleyin.

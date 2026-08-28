@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import * as dotenv from 'dotenv';
 
 import { resolveReleaseIdentity } from './lib/release-identity.mjs';
+import { assertHostedAdminBuild, parseAdminBuildContract } from './lib/hosted-admin-build.mjs';
 
 const rootDirectory = join(dirname(fileURLToPath(import.meta.url)), '..');
 const envPath = join(rootDirectory, '.env');
@@ -35,6 +36,9 @@ function verifyProductionBuild(localPath) {
       throw new Error(`${asset} contains a non-production API URL: ${forbiddenUrl}`);
     }
   }
+  const contract = parseAdminBuildContract(localPath);
+  assertHostedAdminBuild(contract);
+  console.log(`Verified hosted Admin plugins: ${contract.plugins.join(', ')}`);
 }
 
 const identity = resolveReleaseIdentity(rootDirectory, cliValue('--release'));

@@ -38,6 +38,16 @@ function buildPlanPriceUpdate(priceData, planId, env = process.env) {
   return update;
 }
 
+function buildCorePlanUpdate(planData) {
+  // Commercial feature keys and request weights are deployment-overlay data.
+  // Core may seed their initial empty values, but must never replace live values
+  // while refreshing an existing plan after a release.
+  const corePlanData = { ...planData };
+  delete corePlanData.features;
+  delete corePlanData.requestWeights;
+  return { $set: corePlanData, $unset: { tenantLimit: '' } };
+}
+
 /**
  * Seed Subscription Plans
  * Creates the 4 default subscription plans
@@ -59,12 +69,10 @@ async function seedSubscriptionPlans(options = {}) {
         console.log(`✓ Plan '${planData.slug}' already exists, updating...`);
         // Commercial/plugin feature keys are data owned by the deployment overlay.
         // Core seeding must preserve unknown entitlements on existing plan records.
-        const corePlanData = { ...planData };
-        delete corePlanData.features;
         if (!dryRun) {
           await SubscriptionPlan.findOneAndUpdate(
             { slug: planData.slug },
-            { $set: corePlanData, $unset: { tenantLimit: '' } },
+            buildCorePlanUpdate(planData),
             { new: true }
           );
         }
@@ -131,3 +139,4 @@ if (require.main === module) {
 
 module.exports = seedSubscriptionPlans;
 module.exports.buildPlanPriceUpdate = buildPlanPriceUpdate;
+module.exports.buildCorePlanUpdate = buildCorePlanUpdate;

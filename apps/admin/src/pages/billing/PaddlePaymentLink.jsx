@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import iyzicoCardBrands from '../../assets/payment-marks/iyzico-card-brands.png'
 import LanguageSwitcher from '../../components/LanguageSwitcher.jsx'
 import './PaddlePaymentLink.css'
 import { loadPaddleJs } from './paddleJs.js'
@@ -67,10 +68,12 @@ export default function PaddlePaymentLink({
             <span>ContextHub</span>
           </a>
           <div className="paddle-payment-nav-links">
+            <a href="/docs/about">{t('footer.about')}</a>
             <a href="/docs/pricing-and-plans">{t('footer.pricing')}</a>
             <a href="/docs/terms-of-service">{t('footer.terms')}</a>
             <a href="/docs/privacy-notice">{t('footer.privacy')}</a>
             <a href="/docs/cancellation-and-refunds">{t('footer.refunds')}</a>
+            <a href="/docs/distance-sales-agreement">{t('footer.distance_sales')}</a>
             <LanguageSwitcher persistToProfile={false} />
           </div>
         </nav>
@@ -88,6 +91,15 @@ export default function PaddlePaymentLink({
               <h2>{statusContent.title}</h2>
               <p>{statusContent.body}</p>
             </div>
+            <figure className="paddle-payment-marks">
+              <figcaption>{t('pay.payment_security')}</figcaption>
+              <img
+                src={iyzicoCardBrands}
+                width="429"
+                height="32"
+                alt={t('footer.payment_marks_alt')}
+              />
+            </figure>
           </section>
         </main>
 

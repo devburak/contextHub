@@ -1,6 +1,6 @@
 # Hizmet ve abonelik koşulları
 
-Belge sürümü: `ctxhub-cloud-terms-v4`  
+Belge sürümü: `ctxhub-cloud-terms-v5`  
 Yürürlük tarihi: 22 Ağustos 2026
 
 Bu açık koşullar, imzalı Enterprise teklif veya sözleşmesinde farklı ticari koşullar
@@ -45,8 +45,13 @@ edge altyapısı kullanabilir. Hizmet değişiklikleri, bakım, bağımlılıkla
 dışındaki olaylar kullanılabilirliği etkileyebilir. Enterprise hizmet seviyeleri yalnız
 imzalı sözleşmede belirtilmişse uygulanır.
 
-Hesap ve fatura verilerinin kullanımı [Gizlilik aydınlatmasında](./privacy-notice.md),
-iptal ve iade uygulaması [İptal ve iade politikasında](./cancellation-and-refunds.md)
+Hesap ve fatura verilerinin kullanımı [Gizlilik sözleşmesi ve aydınlatmada](./privacy-notice.md),
+dijital teslimat, iptal ve iade uygulaması [Teslimat, iptal ve iade şartlarında](./cancellation-and-refunds.md)
 açıklanır.
+
+Tüketici sıfatıyla uzaktan kurulan işlemlerde
+[Mesafeli satış sözleşmesi ve ön bilgilendirme formu](./distance-sales-agreement.md)
+ayrıca uygulanır; işlem-bazlı alıcı, plan, dönem ve toplam bedel ödeme öncesindeki
+özetle kesinleşir.
 
 Soru ve bildirimler `support@ctxhub.net` adresine gönderilebilir.

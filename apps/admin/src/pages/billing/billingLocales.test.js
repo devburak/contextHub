@@ -12,6 +12,8 @@ describe('billing locale catalog', () => {
     expect(en['billing.status.contract']).toBe('Contracted')
     expect(en['billing.country.placeholder']).toContain('ISO code')
     expect(en['billing.checkout.start']).toContain('secure checkout')
+    expect(en['billing.legal.openDistanceSales']).toContain('Distance Selling')
+    expect(tr['billing.legal.openDistanceSales']).toContain('Mesafeli Satış')
   })
 
   it('discloses distributed infrastructure and international data transfers in both locales', () => {

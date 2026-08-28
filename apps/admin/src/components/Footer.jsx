@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { BookOpenIcon } from '@heroicons/react/24/outline'
 
+import iyzicoCardBrands from '../assets/payment-marks/iyzico-card-brands.png'
 import LanguageSwitcher from './LanguageSwitcher.jsx'
 
 /**
@@ -35,6 +36,9 @@ export default function Footer({ showDeveloperDocs = false, authenticated = fals
                 <span>{t('footer.developer_docs')}</span>
               </a>
             )}
+            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/about">
+              {t('footer.about')}
+            </a>
             <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/pricing-and-plans">
               {t('footer.pricing')}
             </a>
@@ -47,6 +51,9 @@ export default function Footer({ showDeveloperDocs = false, authenticated = fals
             <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/cancellation-and-refunds">
               {t('footer.refunds')}
             </a>
+            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/distance-sales-agreement">
+              {t('footer.distance_sales')}
+            </a>
           </nav>
 
           {/* Marka - sağ */}
@@ -58,6 +65,17 @@ export default function Footer({ showDeveloperDocs = false, authenticated = fals
               ContextHub © {currentYear}
             </span>
           </div>
+        </div>
+        <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 py-3 sm:flex-row">
+          <span className="text-xs font-medium text-gray-500">{t('footer.payment_security')}</span>
+          <img
+            src={iyzicoCardBrands}
+            width="429"
+            height="32"
+            loading="lazy"
+            className="h-6 w-auto max-w-full object-contain"
+            alt={t('footer.payment_marks_alt')}
+          />
         </div>
       </div>
     </footer>

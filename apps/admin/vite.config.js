@@ -2,9 +2,40 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-const adminPluginEntry = process.env.CTXHUB_ADMIN_PLUGIN_ENTRY
-  ? path.resolve(process.env.CTXHUB_ADMIN_PLUGIN_ENTRY)
+const adminPluginNames = (process.env.CTXHUB_ADMIN_PLUGIN_NAMES || '')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean)
+const requireAdminPlugins = ['1', 'true', 'yes', 'on']
+  .includes(String(process.env.CTXHUB_REQUIRE_ADMIN_PLUGINS || '').toLowerCase())
+const configuredAdminPluginEntry = String(process.env.CTXHUB_ADMIN_PLUGIN_ENTRY || '').trim()
+if (requireAdminPlugins && !configuredAdminPluginEntry) {
+  throw new Error('CTXHUB_ADMIN_PLUGIN_ENTRY is required for a hosted Admin build')
+}
+if (requireAdminPlugins && adminPluginNames.length === 0) {
+  throw new Error('CTXHUB_ADMIN_PLUGIN_NAMES is required for a hosted Admin build')
+}
+const adminPluginEntry = configuredAdminPluginEntry
+  ? path.resolve(configuredAdminPluginEntry)
   : path.resolve(process.cwd(), './src/plugins/noPlugins.js')
+
+function buildContractPlugin() {
+  const contract = {
+    schemaVersion: 1,
+    variant: configuredAdminPluginEntry ? 'hosted' : 'community',
+    plugins: [...new Set(adminPluginNames)].sort(),
+  }
+  return {
+    name: 'ctxhub-admin-build-contract',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'ctxhub-build.json',
+        source: `${JSON.stringify(contract, null, 2)}\n`,
+      })
+    },
+  }
+}
 
 function validateProductionApiUrl(mode) {
   if (mode !== 'production') return
@@ -28,7 +59,7 @@ function validateProductionApiUrl(mode) {
 }
 
 const config = {
-  plugins: [react()],
+  plugins: [react(), buildContractPlugin()],
   server: {
     // Use a distinct port to avoid clashing with API service (default API port is 3000)
     port: 3100,

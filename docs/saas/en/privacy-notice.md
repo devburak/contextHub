@@ -1,8 +1,9 @@
-# Privacy notice
+# Privacy policy and personal-data notice
 
 Effective date: 22 August 2026
 
-For ContextHub Cloud account and billing data, the service provider and data controller
+This document combines the ContextHub Cloud privacy policy with its personal-data
+notice. For ContextHub Cloud account and billing data, the service provider and data controller
 is **İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.** Registered identity and contact
 details are published in [Legal, service, and merchant identity](./legal-merchant-identity.md).
 

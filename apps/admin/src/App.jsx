@@ -57,7 +57,8 @@ function App() {
   const [authReady, setAuthReady] = useState(false)
   const isPublicDocsPath =
     window.location.pathname === '/docs' || window.location.pathname.startsWith('/docs/')
-  const isPublicPaymentPath = window.location.pathname === '/pay'
+  const isPublicPaymentPath =
+    window.location.pathname === '/pay' || window.location.pathname === '/pay/'
   const isPublicPath = isPublicDocsPath || isPublicPaymentPath
 
   // Panel dili: kullanıcı profilinde bir tercih varsa o kazanır, yoksa i18n'in

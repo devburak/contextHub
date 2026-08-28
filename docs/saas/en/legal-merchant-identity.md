@@ -4,7 +4,7 @@ This page identifies the legal entity that provides ContextHub Cloud, explains t
 relationship between the corporate and product domains, and describes the roles that
 may appear during payment collection.
 
-Document version: `ctxhub-cloud-terms-v4`
+Document version: `ctxhub-cloud-terms-v5`
 
 Effective date: 22 August 2026
 
@@ -34,12 +34,15 @@ account data:**
 `ctxhub.net` is not a separate or unrelated seller. The ContextHub Cloud product and
 brand are operated by the company identified above. Using separate corporate and
 product domains does not change the service provider or contractual party.
+The product and company overview is published on [About us](./about.md).
 
 ## Service and subscription terms
 
 The complete public terms and current plan table are available at
 [Terms and conditions](./terms-of-service.md) and
 [Pricing and plans](./pricing-and-plans.md).
+The [Distance selling agreement and pre-contract information](./distance-sales-agreement.md)
+is also published for consumer transactions in Türkiye.
 
 - A subscription belongs to the selected tenant and does not transfer plan, user, or
   quota rights to another tenant.
@@ -72,10 +75,10 @@ responsibility away from it.
 ContextHub does not store card numbers or card security codes. Card information is
 processed on the authorized payment party's secure interface.
 
-## Cancellation and refund policy
+## Delivery, cancellation, and refund terms
 
 The standalone policy is published at
-[Cancellation and refund policy](./cancellation-and-refunds.md).
+[Delivery, cancellation, and refund terms](./cancellation-and-refunds.md).
 
 - Unless checkout or the customer portal clearly states otherwise, cancellation takes
   effect at the end of the current paid period.
@@ -90,7 +93,7 @@ The standalone policy is published at
 
 ## Billing data and privacy
 
-The standalone notice is published at [Privacy notice](./privacy-notice.md).
+The standalone document is published at [Privacy policy and notice](./privacy-notice.md).
 
 Identity, contact, tax, and address data submitted for billing is processed to establish
 and perform the contract, collect payment, invoice and keep accounts, provide support,

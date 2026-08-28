@@ -32,9 +32,13 @@ describe('PaddlePaymentLink', () => {
     expect(loader).toHaveBeenCalledTimes(1)
     expect(container.textContent).toContain('Payment collection is not active yet')
     expect(container.querySelector('a[href="/docs/pricing-and-plans"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/docs/about"]')).not.toBeNull()
     expect(container.querySelector('a[href="/docs/terms-of-service"]')).not.toBeNull()
     expect(container.querySelector('a[href="/docs/privacy-notice"]')).not.toBeNull()
     expect(container.querySelector('a[href="/docs/cancellation-and-refunds"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/docs/distance-sales-agreement"]')).not.toBeNull()
+    expect(container.querySelector('img[width="429"][height="32"]')?.alt)
+      .toContain('Pay with iyzico')
     expect(Array.from(container.querySelectorAll('button')).map((button) => button.textContent)).toEqual(
       expect.arrayContaining(['TR', 'EN']),
     )

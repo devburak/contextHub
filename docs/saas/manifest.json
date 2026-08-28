@@ -8,7 +8,7 @@
     "en": "Build secure, cache-aware applications with the managed ContextHub service at ctxhub.net.",
     "tr": "ctxhub.net üzerindeki yönetilen ContextHub servisiyle güvenli ve cache uyumlu uygulamalar geliştirin."
   },
-  "version": "2026.08.22",
+  "version": "2026.08.22.1",
   "updatedAt": "2026-08-22",
   "defaultSlug": "overview",
   "defaultLocale": "en",
@@ -50,6 +50,16 @@
       "tags": ["open core", "cloud", "self hosted", "trust"]
     },
     {
+      "slug": "about",
+      "files": { "en": "en/about.md", "tr": "tr/about.md" },
+      "title": { "en": "About ContextHub", "tr": "ContextHub hakkında" },
+      "description": { "en": "Meet the company operating ContextHub Cloud, the product model, and the Community/Cloud boundary.", "tr": "ContextHub Cloud'u işleten şirketi, ürün modelini ve Community/Cloud sınırını tanıyın." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 17,
+      "tags": ["about", "company", "ikonx", "ctxhub.net", "community", "cloud"]
+    },
+    {
       "slug": "legal-merchant-identity",
       "files": { "en": "en/legal-merchant-identity.md", "tr": "tr/legal-merchant-identity.md" },
       "title": { "en": "Legal, service, and merchant identity", "tr": "Hukuki hizmet ve merchant kimliği" },
@@ -82,8 +92,8 @@
     {
       "slug": "privacy-notice",
       "files": { "en": "en/privacy-notice.md", "tr": "tr/privacy-notice.md" },
-      "title": { "en": "Privacy notice", "tr": "Gizlilik ve fatura verileri aydınlatması" },
-      "description": { "en": "Understand how account, billing, support, and infrastructure data is processed for ContextHub Cloud.", "tr": "ContextHub Cloud hesap, fatura, destek ve altyapı verilerinin nasıl işlendiğini anlayın." },
+      "title": { "en": "Privacy policy and notice", "tr": "Gizlilik sözleşmesi ve aydınlatma" },
+      "description": { "en": "Understand the ContextHub Cloud privacy policy and how account, billing, support, and infrastructure data is processed.", "tr": "ContextHub Cloud gizlilik politikasını ve hesap, fatura, destek ve altyapı verilerinin nasıl işlendiğini anlayın." },
       "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
       "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
       "order": 22,
@@ -92,12 +102,22 @@
     {
       "slug": "cancellation-and-refunds",
       "files": { "en": "en/cancellation-and-refunds.md", "tr": "tr/cancellation-and-refunds.md" },
-      "title": { "en": "Cancellation and refund policy", "tr": "İptal ve iade politikası" },
-      "description": { "en": "Review renewal cancellation, refund review, payment dispute, and support rules.", "tr": "Yenileme iptali, iade incelemesi, ödeme itirazı ve destek kurallarını inceleyin." },
+      "title": { "en": "Delivery, cancellation, and refund terms", "tr": "Teslimat, iptal ve iade şartları" },
+      "description": { "en": "Review digital delivery, renewal cancellation, refund review, payment dispute, and support rules.", "tr": "Dijital teslimat, yenileme iptali, iade incelemesi, ödeme itirazı ve destek kurallarını inceleyin." },
       "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
       "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
       "order": 23,
-      "tags": ["cancellation", "refund", "renewal", "payment dispute"]
+      "tags": ["delivery", "digital delivery", "cancellation", "refund", "renewal", "payment dispute"]
+    },
+    {
+      "slug": "distance-sales-agreement",
+      "files": { "en": "en/distance-sales-agreement.md", "tr": "tr/distance-sales-agreement.md" },
+      "title": { "en": "Distance selling agreement", "tr": "Mesafeli satış sözleşmesi" },
+      "description": { "en": "Review pre-contract information, digital delivery, payment, renewal, withdrawal, and dispute terms for consumer purchases in Türkiye.", "tr": "Türkiye'deki tüketici işlemleri için ön bilgilendirme, dijital teslimat, ödeme, yenileme, cayma ve uyuşmazlık koşullarını inceleyin." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "consumer", "legal"], "tr": ["müşteri", "tüketici", "hukuk"] },
+      "order": 24,
+      "tags": ["distance selling", "consumer", "pre-contract information", "withdrawal", "digital delivery"]
     },
     {
       "slug": "api-reference",

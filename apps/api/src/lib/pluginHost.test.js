@@ -91,6 +91,26 @@ describe('plugin host', () => {
     await app.close()
   })
 
+  it('fails closed when a required runtime plugin is absent', async () => {
+    const app = fastify({ logger: false })
+    await expect(bootstrapExtensions({
+      mode: 'api',
+      app,
+      entries: [],
+      requiredPlugins: ['semantic-search'],
+      coreVersion: '0.1.0'
+    })).rejects.toMatchObject({ code: 'PLUGIN_REQUIRED_MISSING' })
+
+    await expect(bootstrapExtensions({
+      mode: 'api',
+      app,
+      entries: [dummyManifest],
+      requiredPlugins: ['semantic-search'],
+      coreVersion: '0.1.0'
+    })).rejects.toMatchObject({ code: 'PLUGIN_REQUIRED_MISSING' })
+    await app.close()
+  })
+
   it('rejects incompatible core and facade revisions', () => {
     expect(() =>
       validatePluginManifest(validManifest({ coreVersionRange: '>=1.0.0' }), {

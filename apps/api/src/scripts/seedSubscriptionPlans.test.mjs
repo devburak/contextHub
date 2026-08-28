@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { buildPlanPriceUpdate } = require('./seedSubscriptionPlans');
+const { buildCorePlanUpdate, buildPlanPriceUpdate } = require('./seedSubscriptionPlans');
 
 describe('subscription plan seed safety', () => {
   const price = {
@@ -17,6 +17,20 @@ describe('subscription plan seed safety', () => {
     const update = buildPlanPriceUpdate(price, 'plan-id', {});
 
     expect(update).not.toHaveProperty('externalPriceId');
+  });
+
+  it('never overwrites commercial plugin entitlements during a core seed', () => {
+    const update = buildCorePlanUpdate({
+      slug: 'pro',
+      name: 'Pro',
+      features: [],
+      requestWeights: {},
+      userLimit: 5,
+    });
+
+    expect(update.$set).toMatchObject({ slug: 'pro', name: 'Pro', userLimit: 5 });
+    expect(update.$set).not.toHaveProperty('features');
+    expect(update.$set).not.toHaveProperty('requestWeights');
   });
 
   it('sets a trimmed provider price ID when it is configured', () => {

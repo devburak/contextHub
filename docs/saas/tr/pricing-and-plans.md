@@ -44,7 +44,8 @@ oluşturmaz. Sorgular, faturalandırma ekranında ve ilgili paket koşullarında
   aşım tahsilatı oluşmaz.
 - Satın alma öncesinde [Hizmet ve abonelik koşulları](./terms-of-service.md),
   [Gizlilik aydınlatması](./privacy-notice.md) ve
-  [İptal ve iade politikası](./cancellation-and-refunds.md) incelenmelidir.
+  [Teslimat, iptal ve iade şartları](./cancellation-and-refunds.md) ile tüketici işlemlerinde
+  [Mesafeli satış sözleşmesi](./distance-sales-agreement.md) incelenmelidir.
 
 Yazılı Enterprise teklifi, satın alma soruları veya faturalandırma desteği için
 `support@ctxhub.net` adresine başvurun.

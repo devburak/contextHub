@@ -1,8 +1,9 @@
-# Gizlilik ve fatura verileri aydınlatması
+# Gizlilik sözleşmesi ve kişisel veriler aydınlatması
 
 Yürürlük tarihi: 22 Ağustos 2026
 
-ContextHub Cloud hesap ve fatura verileri bakımından hizmet sağlayıcı ve veri sorumlusu
+Bu metin ContextHub Cloud gizlilik politikasını ve KVKK kapsamındaki aydınlatmayı
+birlikte sunar. ContextHub Cloud hesap ve fatura verileri bakımından hizmet sağlayıcı ve veri sorumlusu
 **İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.**'dir. Kayıtlı kimlik ve iletişim
 bilgileri [Hukuki hizmet ve merchant kimliği](./legal-merchant-identity.md) sayfasındadır.
 

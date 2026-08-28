@@ -98,10 +98,14 @@
   "tenantTabs.upgrade_required": "Plan upgrade required",
   "tenantTabs.webhooks": "Webhooks",
   "footer.public_information": "Pricing and legal information",
+  "footer.about": "About us",
   "footer.pricing": "Pricing",
   "footer.terms": "Terms",
-  "footer.privacy": "Privacy",
-  "footer.refunds": "Cancellation & refunds",
+  "footer.privacy": "Privacy policy",
+  "footer.refunds": "Delivery & refunds",
+  "footer.distance_sales": "Distance selling agreement",
+  "footer.payment_security": "Secure payment infrastructure and card brands",
+  "footer.payment_marks_alt": "Pay with iyzico, Mastercard, Visa, American Express, and Troy logos",
   "pay.eyebrow": "SECURE PAYMENT",
   "pay.title": "Complete your ContextHub subscription",
   "pay.description": "The secure checkout opens on this approved ContextHub product page. Your plan, billing period, currency, taxes, renewal terms, and collecting party are shown before payment.",
@@ -113,5 +117,6 @@
   "pay.failed_body": "Please try again from Billing. If the problem continues, contact support@ctxhub.net.",
   "pay.back": "Back to sign in",
   "pay.support": "Billing support",
+  "pay.payment_security": "Secure card payment",
   "pay.merchant": "ContextHub Cloud is operated by İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti."
 }

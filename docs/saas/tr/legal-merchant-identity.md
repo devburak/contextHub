@@ -4,7 +4,7 @@ Bu sayfa ContextHub Cloud hizmetinin hangi tüzel kişi tarafından sunulduğunu
 alan adı ile ürün alan adının ilişkisini ve tahsilat sırasında tarafların rollerini
 açıklar.
 
-Belge sürümü: `ctxhub-cloud-terms-v4`
+Belge sürümü: `ctxhub-cloud-terms-v5`
 
 Yürürlük tarihi: 22 Ağustos 2026
 
@@ -34,12 +34,15 @@ bakımından veri sorumlusu:**
 `ctxhub.net`, ayrı veya bağlantısız bir satıcı değildir. ContextHub Cloud markası ve
 ürünü yukarıdaki şirket tarafından işletilir. Kurumsal domain ile ürün domaininin
 farklı olması hizmet sağlayıcının veya sözleşme tarafının değiştiği anlamına gelmez.
+Ürün ve şirket özeti [Hakkımızda](./about.md) sayfasında yayımlanır.
 
 ## Hizmet ve abonelik koşulları
 
 Tam açık koşullar ve güncel paket tablosu
 [Hizmet ve abonelik koşulları](./terms-of-service.md) ile
 [Fiyatlandırma ve paketler](./pricing-and-plans.md) sayfalarındadır.
+Tüketici işlemleri için [Mesafeli satış sözleşmesi ve ön bilgilendirme formu](./distance-sales-agreement.md)
+ayrıca yayımlanır.
 
 - Abonelik seçilen tenant'a aittir; başka tenant'lara plan, kullanıcı veya kota hakkı
   taşımaz.
@@ -72,9 +75,9 @@ değiştirmez.
 Kart numarası ve kart güvenlik kodu ContextHub tarafından saklanmaz. Kart bilgileri
 yetkili ödeme tarafının güvenli ekranında işlenir.
 
-## İptal ve iade politikası
+## Teslimat, iptal ve iade şartları
 
-Ayrı politika [İptal ve iade politikası](./cancellation-and-refunds.md) sayfasında
+Ayrı politika [Teslimat, iptal ve iade şartları](./cancellation-and-refunds.md) sayfasında
 yayımlanır.
 
 - Abonelik iptali, checkout veya müşteri portalında aksi açıkça belirtilmedikçe mevcut
@@ -91,7 +94,7 @@ yayımlanır.
 
 ## Fatura verileri ve gizlilik
 
-Ayrı aydınlatma [Gizlilik ve fatura verileri aydınlatması](./privacy-notice.md)
+Ayrı metin [Gizlilik sözleşmesi ve kişisel veriler aydınlatması](./privacy-notice.md)
 sayfasında yayımlanır.
 
 Faturalandırma için beyan edilen kimlik, iletişim, vergi ve adres verileri; sözleşmenin

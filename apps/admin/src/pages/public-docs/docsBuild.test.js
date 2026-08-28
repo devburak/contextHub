@@ -35,6 +35,10 @@ describe('public documentation build', () => {
     expect(fullCorpus).toContain('# Roles and permissions')
     expect(fullCorpus).toContain('# Extensions and Plugin API')
     expect(fullCorpus).toContain('# Legal, service, and merchant identity')
+    expect(fullCorpus).toContain('# About us')
+    expect(fullCorpus).toContain('# Distance selling agreement and pre-contract information')
+    expect(fullCorpus).toContain('# Delivery, cancellation, and refund terms')
+    expect(fullCorpus).toContain('# Privacy policy and personal-data notice')
     expect(fullCorpus).toContain('İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.')
     expect(fullCorpus).toContain('0470111421600001')
     expect(fullCorpus).toContain('210240')
@@ -95,6 +99,8 @@ describe('public documentation build', () => {
       expect(robots).toContain('Sitemap: https://ctxhub.test/sitemap.xml')
       expect(sitemap).toContain('<loc>https://ctxhub.test/docs/content</loc>')
       expect(sitemap).toContain('<loc>https://ctxhub.test/docs</loc>')
+      expect(sitemap).toContain('<loc>https://ctxhub.test/docs/about</loc>')
+      expect(sitemap).toContain('<loc>https://ctxhub.test/docs/distance-sales-agreement</loc>')
 
       const paymentPage = await readFile(join(distDirectory, 'pay', 'index.html'), 'utf8')
       expect(paymentPage).toContain('<title>Secure payment | ContextHub</title>')
@@ -103,5 +109,11 @@ describe('public documentation build', () => {
     } finally {
       await rm(distDirectory, { recursive: true, force: true })
     }
+  })
+
+  it('ships the official compact iyzico and card-brand logo band', async () => {
+    const asset = await readFile(join(process.cwd(), 'src', 'assets', 'payment-marks', 'iyzico-card-brands.png'))
+    expect(asset.byteLength).toBeGreaterThan(1000)
+    expect(asset.byteLength).toBeLessThan(20000)
   })
 })

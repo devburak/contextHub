@@ -6,8 +6,8 @@
 # 1. Build al ve deploy et (tek komut)
 pnpm deploy
 
-# 2. Sadece build al
-pnpm build:admin
+# 2. Canlı/hosted build al
+pnpm build:admin:hosted
 
 # 3. Sadece deploy et (build zaten alınmışsa)
 pnpm deploy:admin
@@ -26,12 +26,13 @@ adminDeployServer=server.name
 
 ### `pnpm deploy` komutu şunları yapar:
 
-1. ✅ Admin panel'i production için build eder
-2. ✅ SSH ile sunucuya bağlanır
-3. ✅ Mevcut dosyaları yedekler (`.backup-[timestamp]`)
-4. ✅ Tüm dosyaları sunucuya yükler
-5. ✅ Dosya izinlerini ayarlar (755)
-6. ✅ Deploy sonucunu gösterir
+1. ✅ Commercial pluginleri içeren hosted Admin panelini production için build eder
+2. ✅ Ücretli plan entitlement kayıtlarını doğrular; eksikse deploy'u durdurur
+3. ✅ SSH ile sunucuya bağlanır
+4. ✅ Mevcut dosyaları yedekler (`.backup-[timestamp]`)
+5. ✅ Tüm dosyaları sunucuya yükler
+6. ✅ Dosya izinlerini ayarlar (755)
+7. ✅ Deploy sonucunu gösterir
 
 ### Örnek Çıktı:
 
@@ -66,8 +67,14 @@ adminDeployServer=server.name
 
 ### "Build klasörü bulunamadı" hatası
 ```bash
-pnpm build:admin
+pnpm build:admin:hosted
 ```
+
+### "Community Admin build" veya "plugin entry was not found" hatası
+
+Canlı deploy bilerek durdurulmuştur. `ctxhub-commercial` checkout'unu public repo ile
+yan yana tutun veya root `.env` içinde `CTXHUB_ADMIN_PLUGIN_ENTRY` yolunu açıkça verin.
+Community `pnpm build:admin` çıktısı canlı hosted servise deploy edilemez.
 
 ### "SSH bağlantısı kurulamadı" hatası
 - `.env` dosyasındaki `adminDeployServer` değerini kontrol edin

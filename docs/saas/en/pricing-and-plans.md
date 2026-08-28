@@ -43,8 +43,10 @@ the billing screen and applicable plan terms.
 - Fixed packages do not create automatic PAYG or overage charges unless an Enterprise
   agreement explicitly enables them.
 - See [Terms and conditions](./terms-of-service.md),
-  [Privacy notice](./privacy-notice.md), and
-  [Cancellation and refund policy](./cancellation-and-refunds.md) before purchase.
+  [Privacy policy and notice](./privacy-notice.md),
+  [Delivery, cancellation, and refund terms](./cancellation-and-refunds.md), and, for
+  consumer transactions in Türkiye, the [Distance selling agreement](./distance-sales-agreement.md)
+  before purchase.
 
 For a written Enterprise proposal, procurement questions, or billing support, contact
 `support@ctxhub.net`.

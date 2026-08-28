@@ -1,6 +1,6 @@
 # Terms and conditions
 
-Document version: `ctxhub-cloud-terms-v4`  
+Document version: `ctxhub-cloud-terms-v5`  
 Effective date: 22 August 2026
 
 These public terms apply to ContextHub Cloud accounts and tenant subscriptions unless a
@@ -46,7 +46,13 @@ reasonable control may affect availability. Enterprise service levels apply only
 stated in a signed agreement.
 
 Use of account and billing data is described in the
-[Privacy notice](./privacy-notice.md). Cancellation and refund handling is described in
-the [Cancellation and refund policy](./cancellation-and-refunds.md).
+[Privacy policy and notice](./privacy-notice.md). Digital delivery, cancellation, and
+refund handling are described in the
+[Delivery, cancellation, and refund terms](./cancellation-and-refunds.md).
+
+For remotely concluded consumer transactions in Türkiye, the
+[Distance selling agreement and pre-contract information](./distance-sales-agreement.md)
+also applies; the transaction-specific buyer, plan, term, and total price are finalized
+in the summary shown before payment.
 
 Questions and notices may be sent to `support@ctxhub.net`.

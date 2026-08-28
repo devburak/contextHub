@@ -1,12 +1,17 @@
 import process from 'node:process'
 
+const serializedExtensionSources = String(process.env.CTXHUB_ADMIN_PLUGIN_SOURCE || '').trim()
+const extensionSources = serializedExtensionSources.startsWith('[')
+  ? JSON.parse(serializedExtensionSources)
+  : [serializedExtensionSources].filter(Boolean)
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
-    process.env.CTXHUB_ADMIN_PLUGIN_SOURCE,
-  ].filter(Boolean),
+    ...extensionSources,
+  ],
   theme: {
     extend: {
       animation: {

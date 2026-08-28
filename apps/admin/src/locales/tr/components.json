@@ -98,10 +98,14 @@
   "tenantTabs.upgrade_required": "Plan yükseltme gerekli",
   "tenantTabs.webhooks": "Webhook'lar",
   "footer.public_information": "Fiyatlandırma ve hukuki bilgiler",
+  "footer.about": "Hakkımızda",
   "footer.pricing": "Fiyatlar",
   "footer.terms": "Koşullar",
-  "footer.privacy": "Gizlilik",
-  "footer.refunds": "İptal ve iade",
+  "footer.privacy": "Gizlilik sözleşmesi",
+  "footer.refunds": "Teslimat ve iade",
+  "footer.distance_sales": "Mesafeli satış sözleşmesi",
+  "footer.payment_security": "Güvenli ödeme altyapısı ve kart markaları",
+  "footer.payment_marks_alt": "iyzico ile Öde, Mastercard, Visa, American Express ve Troy logoları",
   "pay.eyebrow": "GÜVENLİ ÖDEME",
   "pay.title": "ContextHub aboneliğinizi tamamlayın",
   "pay.description": "Güvenli checkout bu onaylı ContextHub ürün sayfasında açılır. Paket, dönem, para birimi, vergi, yenileme koşulları ve tahsilatı yapan taraf ödeme öncesinde gösterilir.",
@@ -113,5 +117,6 @@
   "pay.failed_body": "Faturalandırma bölümünden yeniden deneyin. Sorun sürerse support@ctxhub.net ile iletişime geçin.",
   "pay.back": "Giriş ekranına dön",
   "pay.support": "Faturalandırma desteği",
+  "pay.payment_security": "Güvenli kart ödemesi",
   "pay.merchant": "ContextHub Cloud, İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti. tarafından işletilir."
 }

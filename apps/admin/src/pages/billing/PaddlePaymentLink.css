@@ -123,6 +123,33 @@
   margin: 0;
 }
 
+.paddle-payment-marks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin: 28px 0 0;
+  padding: 16px 20px;
+  color: var(--pay-ink-muted);
+  background: white;
+  border: 1px solid rgb(255 255 255 / 38%);
+  border-radius: var(--pay-radius-md);
+}
+
+.paddle-payment-marks figcaption {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.paddle-payment-marks img {
+  width: min(100%, 322px);
+  height: auto;
+  object-fit: contain;
+}
+
 .paddle-payment-status p {
   max-width: 620px;
   color: rgb(255 255 255 / 74%);
