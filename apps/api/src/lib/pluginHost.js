@@ -19,6 +19,7 @@ const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ROUTE_PREFIX_PATTERN = /^\/api\/[a-z][a-z0-9-]*(?:\/[a-z0-9-]+)*$/;
 const SUPPORTED_CAPABILITIES = Object.freeze([
   'tenant.backup.export',
+  'tenant.backup.restore',
   'tenant.settings.enumerate',
   'tenant.secrets.manage'
 ]);

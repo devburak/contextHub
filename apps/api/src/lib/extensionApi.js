@@ -10,6 +10,7 @@ const { createExtensionAuthFacade } = require('./extensionAuthFacade');
 const { createExtensionSettingsFacade } = require('./extensionSettingsFacade');
 const { createExtensionEntitlementFacade } = require('./extensionEntitlementFacade');
 const { createExtensionSecretsFacade } = require('./extensionSecretsFacade');
+const { createExtensionRestoreFacade } = require('./extensionRestoreFacade');
 
 class ExtensionApiError extends Error {
   constructor(message, code = 'EXTENSION_API_ERROR') {
@@ -139,6 +140,37 @@ function createSecretsApi(secrets, manifest) {
   });
 }
 
+function createRestoreApi(restore, manifest) {
+  if (!manifest.capabilities.includes('tenant.backup.restore')) return undefined;
+  for (const method of [
+    'getTenant',
+    'findPopulatedCollections',
+    'checkIdentity',
+    'upsert',
+    'delete',
+    'getMediaTarget',
+    'putFile',
+    'deleteFile'
+  ]) {
+    if (typeof restore?.[method] !== 'function') {
+      throw new ExtensionApiError(
+        `extension restore facade is missing ${method}`,
+        'EXTENSION_RESTORE_FACADE_INVALID'
+      );
+    }
+  }
+  return Object.freeze(Object.fromEntries([
+    'getTenant',
+    'findPopulatedCollections',
+    'checkIdentity',
+    'upsert',
+    'delete',
+    'getMediaTarget',
+    'putFile',
+    'deleteFile'
+  ].map((method) => [method, restore[method].bind(restore)])));
+}
+
 function createExtensionApi(options) {
   const manifest = options.manifest;
   const eventRegistry = options.eventRegistry || domainEventConsumerRegistry;
@@ -152,6 +184,11 @@ function createExtensionApi(options) {
   const secrets = options.secrets || (
     manifest.capabilities.includes('tenant.secrets.manage')
       ? createExtensionSecretsFacade({ plugin: manifest.name })
+      : null
+  );
+  const restore = options.restore || (
+    manifest.capabilities.includes('tenant.backup.restore')
+      ? createExtensionRestoreFacade()
       : null
   );
 
@@ -168,6 +205,8 @@ function createExtensionApi(options) {
   };
   const secretsApi = createSecretsApi(secrets, manifest);
   if (secretsApi) extension.secrets = secretsApi;
+  const restoreApi = createRestoreApi(restore, manifest);
+  if (restoreApi) extension.restore = restoreApi;
   return Object.freeze(extension);
 }
 
@@ -177,6 +216,7 @@ module.exports = {
   ExtensionApiError,
   createExtensionApi,
   createLoggerFacade,
+  createRestoreApi,
   createSecretsApi,
   createSettingsApi,
   createSourceFacade

@@ -1386,6 +1386,44 @@ async function openTenantBackupFile({ tenantId, key }) {
   }
 }
 
+function getTenantRestoreTarget() {
+  return Object.freeze({ bucket: BUCKET, publicDomain: PUBLIC_DOMAIN })
+}
+
+async function putTenantRestoreFile({ tenantId, key, body, contentType, contentLength }) {
+  const normalizedTenantId = String(tenantId || '').trim()
+  const normalizedKey = String(key || '').trim()
+  if (!normalizedTenantId || !normalizedKey || !body) {
+    throw new Error('tenantId, key and body are required')
+  }
+  const tenant = await Tenant.findById(normalizedTenantId).select('slug').lean()
+  if (!tenant?.slug) throw new Error('Restore target tenant was not found')
+  ensureKeyMatchesTenant(normalizedKey, tenant.slug)
+  const buffer = Buffer.isBuffer(body) ? body : Buffer.from(body)
+  if (Number.isFinite(contentLength) && contentLength !== buffer.length) {
+    throw new Error('Restore media content length does not match body')
+  }
+  await s3Client.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: normalizedKey,
+    Body: buffer,
+    ContentLength: buffer.length,
+    ContentType: contentType || inferMimeTypeFromFileName(normalizedKey),
+  }))
+  return Object.freeze({ key: normalizedKey, bytes: buffer.length })
+}
+
+async function deleteTenantRestoreFile({ tenantId, key }) {
+  const normalizedTenantId = String(tenantId || '').trim()
+  const normalizedKey = String(key || '').trim()
+  if (!normalizedTenantId || !normalizedKey) throw new Error('tenantId and key are required')
+  const tenant = await Tenant.findById(normalizedTenantId).select('slug').lean()
+  if (!tenant?.slug) throw new Error('Restore target tenant was not found')
+  ensureKeyMatchesTenant(normalizedKey, tenant.slug)
+  await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: normalizedKey }))
+  return Object.freeze({ key: normalizedKey, deleted: true })
+}
+
 module.exports = {
   generatePresignedUpload,
   completeUpload,
@@ -1397,4 +1435,7 @@ module.exports = {
   bulkDeleteMedia,
   bulkTagMedia,
   openTenantBackupFile,
+  getTenantRestoreTarget,
+  putTenantRestoreFile,
+  deleteTenantRestoreFile,
 }
