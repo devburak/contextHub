@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import iyzicoCardBrands from '../../assets/payment-marks/iyzico-card-brands.png'
 import LanguageSwitcher from '../../components/LanguageSwitcher.jsx'
+import { HOSTED_PAYMENT_MARKS_PATH } from '../../lib/hostedDeployment.js'
 import './PaddlePaymentLink.css'
 import { loadPaddleJs } from './paddleJs.js'
 
@@ -94,7 +94,7 @@ export default function PaddlePaymentLink({
             <figure className="paddle-payment-marks">
               <figcaption>{t('pay.payment_security')}</figcaption>
               <img
-                src={iyzicoCardBrands}
+                src={HOSTED_PAYMENT_MARKS_PATH}
                 width="429"
                 height="32"
                 alt={t('footer.payment_marks_alt')}

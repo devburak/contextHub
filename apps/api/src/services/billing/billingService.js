@@ -12,7 +12,12 @@ const {
   Tenant,
 } = require('@contexthub/common');
 const crypto = require('crypto');
-const { isAccountBillingEnabled, isBillingProviderEnabled } = require('../../lib/billingConfig');
+const {
+  isAccountBillingEnabled,
+  isBillingProviderEnabled,
+  isIyzicoReviewCheckoutFallbackConfigured,
+  isIyzicoReviewCheckoutFallbackEnabled,
+} = require('../../lib/billingConfig');
 const paddleProvider = require('./paddleProvider');
 const iyzicoProvider = require('./iyzicoProvider');
 const { decryptBillingPii, encryptBillingPii } = require('./billingPiiCrypto');
@@ -179,8 +184,8 @@ function checkoutTokenHash(token) {
   return crypto.createHash('sha256').update(String(token || '')).digest('hex');
 }
 
-function ensureProviderEnabled(provider, tenantId = null) {
-  if (isBillingProviderEnabled(provider, tenantId)) return;
+function ensureProviderEnabled(provider) {
+  if (isBillingProviderEnabled(provider)) return;
   const error = new Error('Fatura ülkeniz için güvenli ödeme altyapısı henüz etkin değil');
   error.code = 'BillingProviderUnavailable';
   throw error;
@@ -228,7 +233,11 @@ function serializePrice(price) {
   };
 }
 
-function serializeCatalogPlan(plan, prices = [], { selectedProvider = null, providerEnabled = false } = {}) {
+function serializeCatalogPlan(plan, prices = [], {
+  selectedProvider = null,
+  providerEnabled = false,
+  reviewCheckoutFallback = false,
+} = {}) {
   const serializedPrices = ['month', 'year'].map((interval) => {
     const intervalPrices = prices.filter((price) => (
       price.planId && String(price.planId._id || price.planId) === String(plan._id) && price.interval === interval
@@ -245,7 +254,11 @@ function serializeCatalogPlan(plan, prices = [], { selectedProvider = null, prov
       interval,
       currency: displayPrice.currency,
       amountMinor: displayPrice.amountMinor,
-      checkoutReady: Boolean(providerEnabled && checkoutPrice?.externalPriceId),
+      checkoutReady: Boolean(
+        providerEnabled
+        && checkoutPrice
+        && (checkoutPrice.externalPriceId || (selectedProvider === 'iyzico' && reviewCheckoutFallback))
+      ),
       catalogOnly: !checkoutPrice || !providerEnabled,
     };
   }).filter(Boolean);
@@ -264,13 +277,15 @@ function serializeCatalogPlan(plan, prices = [], { selectedProvider = null, prov
   };
 }
 
-async function getOverview(tenantId) {
+async function getOverview(tenantId, { actorEmail = '' } = {}) {
   const { tenant, account } = await getAccountForTenant(tenantId);
   const effectivePlan = await tenantSubscriptionService.getEffectivePlan(tenant);
   const billingAccount = await BillingAccount.findOne({ accountId: account._id }).select('+taxId').lean();
   const profileValidation = validateBillingProfile(billingAccount || {});
   const selectedProvider = billingAccount?.country ? resolveBillingProvider(billingAccount.country) : null;
-  const providerEnabled = selectedProvider ? isBillingProviderEnabled(selectedProvider, tenant._id) : false;
+  const providerEnabled = selectedProvider ? isBillingProviderEnabled(selectedProvider) : false;
+  const reviewCheckoutFallback = selectedProvider === 'iyzico'
+    && isIyzicoReviewCheckoutFallbackEnabled({ tenantId: tenant._id, userEmail: actorEmail });
   const [subscription, invoices, catalogPlans, catalogPrices, alerts, limits, userCount, ownerCount, storageRows, requestCount] = await Promise.all([
     BillingSubscription.findOne({ tenantId: tenant._id }).populate('planId planPriceId').lean(),
     BillingInvoice.find({ tenantId: tenant._id }).sort({ billedAt: -1, createdAt: -1 }).limit(24).lean(),
@@ -337,7 +352,11 @@ async function getOverview(tenantId) {
       jurisdictionLocked: Boolean(subscription && ['trialing', 'active', 'past_due', 'paused'].includes(subscription.status)),
     },
     subscription: serializeSubscription(subscription),
-    plans: catalogPlans.map((plan) => serializeCatalogPlan(plan, catalogPrices, { selectedProvider, providerEnabled })),
+    plans: catalogPlans.map((plan) => serializeCatalogPlan(plan, catalogPrices, {
+      selectedProvider,
+      providerEnabled,
+      reviewCheckoutFallback,
+    })),
     prices: catalogPrices
       .filter((price) => selectedProvider && price.provider === selectedProvider)
       .map(serializePrice),
@@ -363,7 +382,11 @@ async function getOverview(tenantId) {
   };
 }
 
-async function createCheckout(tenantId, priceReference) {
+async function createCheckout(tenantId, priceReference, {
+  customerIp = '',
+  actorUserId = null,
+  actorEmail = '',
+} = {}) {
   const { tenant, account } = await getAccountForTenant(tenantId);
   const [activeSubscription, billingAccount] = await Promise.all([
     BillingSubscription.findOne({
@@ -390,7 +413,7 @@ async function createCheckout(tenantId, priceReference) {
     throw error;
   }
   const selectedProvider = resolveBillingProvider(billingAccount.country);
-  ensureProviderEnabled(selectedProvider, tenant._id);
+  ensureProviderEnabled(selectedProvider);
   const checkoutTaxId = billingAccount.taxIdEncrypted
     ? decryptBillingPii(billingAccount.taxIdEncrypted)
     : billingAccount.taxId;
@@ -403,19 +426,28 @@ async function createCheckout(tenantId, priceReference) {
     error.code = 'PlanPriceUnavailable';
     throw error;
   }
-  if (!planPrice.externalPriceId) {
+  const reviewCheckoutFallback = selectedProvider === 'iyzico'
+    && isIyzicoReviewCheckoutFallbackEnabled({ tenantId: tenant._id, userEmail: actorEmail });
+  if (!planPrice.externalPriceId && !reviewCheckoutFallback) {
     const error = new Error('This plan price is not configured for checkout');
     error.code = 'CheckoutNotConfigured';
     throw error;
   }
 
-  billingAccount.provider = selectedProvider;
-  await billingAccount.save();
-  const result = await getProvider(selectedProvider).createCheckout({
+  if (!reviewCheckoutFallback) {
+    billingAccount.provider = selectedProvider;
+    await billingAccount.save();
+  }
+  const provider = getProvider(selectedProvider);
+  const checkoutMethod = reviewCheckoutFallback && !planPrice.externalPriceId
+    ? provider.createReviewCheckout
+    : provider.createCheckout;
+  const result = await checkoutMethod({
     billingAccount: { ...billingAccount.toObject(), taxId: checkoutTaxId },
     tenant,
     account,
     planPrice,
+    customerIp,
   });
 
   if (selectedProvider === 'iyzico') {
@@ -423,10 +455,14 @@ async function createCheckout(tenantId, priceReference) {
     await BillingCheckoutSession.findOneAndUpdate(
       { provider: 'iyzico', tokenHash: checkoutTokenHash(result.checkoutToken) },
       { $set: {
+        checkoutMode: result.checkoutMode || 'subscription',
         conversationId: result.conversationId,
         accountId: account._id,
         tenantId: tenant._id,
+        actorUserId,
         planPriceId: planPrice._id,
+        expectedAmountMinor: planPrice.amountMinor,
+        expectedCurrency: planPrice.currency,
         status: 'initialized',
         expiresAt: new Date(Date.now() + ttlSeconds * 1000),
       } },
@@ -453,7 +489,7 @@ async function createPortalSession(tenantId) {
     throw error;
   }
   const selectedProvider = subscription.provider;
-  ensureProviderEnabled(selectedProvider, tenant._id);
+  ensureProviderEnabled(selectedProvider);
   const result = await getProvider(selectedProvider).createPortalSession({
     externalCustomerId: billingAccount.externalCustomerId,
     externalSubscriptionId: subscription.externalSubscriptionId,
@@ -589,7 +625,7 @@ async function updateBillingProfile(tenantId, payload, userId) {
     paymentRouting: {
       profileComplete: true,
       agreementAccepted: true,
-      checkoutAvailable: isBillingProviderEnabled(nextProvider, tenant._id),
+      checkoutAvailable: isBillingProviderEnabled(nextProvider),
       missingFields: [],
       paymentMethods: paymentMethodsForCountry(profile.country),
       jurisdictionLocked: false,
@@ -603,6 +639,55 @@ function epochDate(value) {
   return new Date(number);
 }
 
+async function completeIyzicoReviewCheckout(session, checkoutToken) {
+  const result = await iyzicoProvider.retrieveReviewCheckout(checkoutToken, session.conversationId);
+  iyzicoProvider.verifyReviewCheckoutResponse(result, {
+    checkoutToken,
+    conversationId: session.conversationId,
+  });
+  const paidAmountMinor = Math.round(Number(result.paidPrice) * 100);
+  const listedAmountMinor = Math.round(Number(result.price) * 100);
+  const expectedAmountMinor = Number(session.expectedAmountMinor);
+  const expectedCurrency = String(session.expectedCurrency || '').toUpperCase();
+  if (String(result.paymentStatus || '').toUpperCase() !== 'SUCCESS') {
+    throw new Error('iyzico sandbox ödeme işlemi başarılı değil');
+  }
+  if (
+    !Number.isSafeInteger(expectedAmountMinor)
+    || !Number.isSafeInteger(paidAmountMinor)
+    || !Number.isSafeInteger(listedAmountMinor)
+    || paidAmountMinor !== expectedAmountMinor
+    || listedAmountMinor !== expectedAmountMinor
+  ) {
+    throw new Error('iyzico checkout tutarı beklenen planla eşleşmiyor');
+  }
+  if (!expectedCurrency || String(result.currency || '').toUpperCase() !== expectedCurrency) {
+    throw new Error('iyzico checkout para birimi beklenen planla eşleşmiyor');
+  }
+  const externalTransactionId = String(result.paymentId || '').trim();
+  if (!externalTransactionId) throw new Error('iyzico checkout ödeme kimliği eksik');
+
+  const tenant = await Tenant.findById(session.tenantId).select('_id status');
+  if (!tenant) throw new Error('Checkout hedefi bulunamadı');
+  if (tenant.status !== 'active') {
+    const unavailable = new Error('Tenant is no longer available for checkout completion');
+    unavailable.code = 'TenantUnavailable';
+    unavailable.statusCode = 409;
+    throw unavailable;
+  }
+
+  const paidAt = new Date();
+  session.status = 'completed';
+  session.completedAt = paidAt;
+  session.externalTransactionId = externalTransactionId;
+  session.verifiedAmountMinor = paidAmountMinor;
+  session.verifiedCurrency = expectedCurrency;
+  session.verifiedAt = paidAt;
+  session.lastError = '';
+  await session.save();
+  return { completed: true, duplicate: false, reviewCheckout: true };
+}
+
 async function completeIyzicoCheckout(checkoutToken) {
   const tokenHash = checkoutTokenHash(checkoutToken);
   const session = await BillingCheckoutSession.findOne({ provider: 'iyzico', tokenHash })
@@ -613,10 +698,22 @@ async function completeIyzicoCheckout(checkoutToken) {
     error.code = 'CheckoutSessionExpired';
     throw error;
   }
-  if (session.status === 'completed') return { completed: true, duplicate: true };
+  if (session.status === 'completed') {
+    return {
+      completed: true,
+      duplicate: true,
+      reviewCheckout: session.checkoutMode === 'review_checkout',
+    };
+  }
 
   try {
-    ensureProviderEnabled('iyzico', session.tenantId);
+    ensureProviderEnabled('iyzico');
+    if (session.checkoutMode === 'review_checkout') {
+      if (!isIyzicoReviewCheckoutFallbackConfigured()) {
+        throw new Error('iyzico review checkout fallback is disabled');
+      }
+      return await completeIyzicoReviewCheckout(session, checkoutToken);
+    }
     const result = await iyzicoProvider.retrieveCheckout(checkoutToken);
     const data = result.data || {};
     const planPrice = session.planPriceId;
@@ -687,6 +784,7 @@ async function completeIyzicoCheckout(checkoutToken) {
 module.exports = {
   buildChargeSummary,
   calculateUsageEstimate,
+  completeIyzicoReviewCheckout,
   completeIyzicoCheckout,
   createCheckout,
   createPortalSession,

@@ -12,17 +12,16 @@ function generateAuthorizationHeader(pathname, body, options = {}) {
   const secretKey = options.secretKey || process.env.IYZICO_SECRET_KEY;
   if (!apiKey || !secretKey) throw new Error('IYZICO_API_KEY and IYZICO_SECRET_KEY must be configured');
   const randomKey = options.randomKey || crypto.randomBytes(12).toString('hex');
-  const requestBody = body === undefined ? {} : body;
+  const serializedBody = body === undefined ? '' : JSON.stringify(body);
   const signature = crypto.createHmac('sha256', secretKey)
-    .update(`${randomKey}${pathname}${JSON.stringify(requestBody)}`)
+    .update(`${randomKey}${pathname}${serializedBody}`)
     .digest('hex');
   const encoded = Buffer.from(`apiKey:${apiKey}&randomKey:${randomKey}&signature:${signature}`).toString('base64');
   return { authorization: `IYZWSv2 ${encoded}`, randomKey };
 }
 
 async function iyzicoRequest(pathname, { method = 'GET', body } = {}) {
-  const requestBody = body === undefined ? {} : body;
-  const { authorization, randomKey } = generateAuthorizationHeader(pathname, requestBody);
+  const { authorization, randomKey } = generateAuthorizationHeader(pathname, body);
   const response = await fetch(`${getBaseUrl()}${pathname}`, {
     method,
     headers: {
@@ -31,7 +30,7 @@ async function iyzicoRequest(pathname, { method = 'GET', body } = {}) {
       'x-iyzi-rnd': randomKey,
       'x-iyzi-client-version': 'contexthub-1',
     },
-    body: method === 'GET' ? undefined : JSON.stringify(requestBody),
+    body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body),
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || String(result.status || '').toLowerCase() !== 'success') {
@@ -40,6 +39,134 @@ async function iyzicoRequest(pathname, { method = 'GET', body } = {}) {
     providerError.statusCode = response.status;
     providerError.providerPayload = result || null;
     throw providerError;
+  }
+  return result;
+}
+
+function reviewCheckoutRequestBody({ billingAccount, tenant, planPrice, customerIp }) {
+  const contactName = `${billingAccount.contactFirstName} ${billingAccount.contactLastName}`.trim();
+  const address = [billingAccount.address?.line1, billingAccount.address?.line2].filter(Boolean).join(' ');
+  const conversationId = `ctx_review_cf_${tenant._id}_${Date.now()}`;
+  const amount = Number((Number(planPrice.amountMinor || 0) / 100).toFixed(2));
+  return {
+    locale: 'tr',
+    conversationId,
+    price: amount,
+    paidPrice: amount,
+    currency: planPrice.currency,
+    basketId: conversationId,
+    paymentGroup: 'SUBSCRIPTION',
+    callbackUrl: process.env.IYZICO_CALLBACK_URL,
+    enabledInstallments: [1],
+    buyer: {
+      id: String(tenant._id),
+      name: billingAccount.contactFirstName,
+      surname: billingAccount.contactLastName,
+      identityNumber: String(billingAccount.taxId || '').replace(/\D/g, ''),
+      email: billingAccount.billingEmail,
+      gsmNumber: billingAccount.phone,
+      registrationAddress: address,
+      city: billingAccount.address?.city,
+      country: 'Turkey',
+      zipCode: billingAccount.address?.postalCode,
+      ip: customerIp || process.env.IYZICO_MERCHANT_IP || '127.0.0.1',
+    },
+    billingAddress: {
+      contactName,
+      city: billingAccount.address?.city,
+      country: 'Turkey',
+      address,
+      zipCode: billingAccount.address?.postalCode,
+    },
+    basketItems: [{
+      id: planPrice.key,
+      name: `${planPrice.planId?.name || tenant.name} ${planPrice.interval === 'year' ? 'Yıllık' : 'Aylık'}`,
+      category1: 'Software',
+      itemType: 'VIRTUAL',
+      price: amount,
+    }],
+  };
+}
+
+async function createReviewCheckout({ billingAccount, tenant, planPrice, customerIp }) {
+  if (!process.env.IYZICO_CALLBACK_URL) throw new Error('IYZICO_CALLBACK_URL is not configured');
+  const body = reviewCheckoutRequestBody({ billingAccount, tenant, planPrice, customerIp });
+  const result = await iyzicoRequest('/payment/iyzipos/checkoutform/initialize/auth/ecom', {
+    method: 'POST',
+    body,
+  });
+  return {
+    provider: 'iyzico',
+    checkoutMode: 'review_checkout',
+    transactionId: result.token,
+    conversationId: body.conversationId,
+    checkoutToken: result.token,
+    checkoutUrl: result.paymentPageUrl,
+    checkoutContent: result.checkoutFormContent,
+    expiresInSeconds: Number(result.tokenExpireTime || 1800),
+  };
+}
+
+async function retrieveReviewCheckout(checkoutToken, conversationId) {
+  return iyzicoRequest('/payment/iyzipos/checkoutform/auth/ecom/detail', {
+    method: 'POST',
+    body: {
+      locale: 'tr',
+      conversationId,
+      token: checkoutToken,
+    },
+  });
+}
+
+function checkoutFormSignaturePayload(result) {
+  const numericFields = new Set(['paidPrice', 'price']);
+  const fields = [
+    'paymentStatus',
+    'paymentId',
+    'currency',
+    'basketId',
+    'conversationId',
+    'paidPrice',
+    'price',
+    'token',
+  ];
+  return fields.map((field) => {
+    const value = result?.[field];
+    if (numericFields.has(field)) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return String(value ?? '');
+      return String(number);
+    }
+    return String(value ?? '');
+  }).join(':');
+}
+
+function verifyReviewCheckoutResponse(result, {
+  checkoutToken,
+  conversationId,
+  secretKey = process.env.IYZICO_SECRET_KEY,
+} = {}) {
+  if (!secretKey) throw new Error('IYZICO_SECRET_KEY must be configured');
+  if (String(result?.token || '') !== String(checkoutToken || '')) {
+    throw new Error('iyzico checkout token mismatch');
+  }
+  if (
+    String(result?.conversationId || '') !== String(conversationId || '')
+    || String(result?.basketId || '') !== String(conversationId || '')
+  ) {
+    throw new Error('iyzico checkout conversation mismatch');
+  }
+  const signature = String(result?.signature || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(signature)) {
+    throw new Error('iyzico checkout response signature is invalid');
+  }
+  const expected = crypto.createHmac('sha256', secretKey)
+    .update(checkoutFormSignaturePayload(result))
+    .digest('hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  const signatureBuffer = Buffer.from(signature, 'hex');
+  if (!crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) {
+    throw new Error('iyzico checkout response signature mismatch');
   }
   return result;
 }
@@ -82,6 +209,7 @@ async function createCheckout({ billingAccount, account, tenant, planPrice }) {
 
   return {
     provider: 'iyzico',
+    checkoutMode: 'subscription',
     transactionId: result.token,
     conversationId,
     checkoutToken: result.token,
@@ -158,10 +286,15 @@ function verifySubscriptionWebhook(payload, signatureHeader, options = {}) {
 module.exports = {
   cancelSubscription,
   createCheckout,
+  createReviewCheckout,
   createPortalSession,
   customerFromBillingAccount,
   generateAuthorizationHeader,
   getBaseUrl,
+  checkoutFormSignaturePayload,
+  reviewCheckoutRequestBody,
   retrieveCheckout,
+  retrieveReviewCheckout,
+  verifyReviewCheckoutResponse,
   verifySubscriptionWebhook,
 };

@@ -84,6 +84,7 @@ describe('public documentation build', () => {
         sourceDirectory: defaultSourceDirectory,
         distDirectory,
         siteUrl: 'https://ctxhub.test',
+        hosted: true,
       })
       const contentPage = await readFile(join(distDirectory, 'docs', 'content', 'index.html'), 'utf8')
       const robots = await readFile(join(distDirectory, 'robots.txt'), 'utf8')
@@ -106,6 +107,26 @@ describe('public documentation build', () => {
       expect(paymentPage).toContain('<title>Secure payment | ContextHub</title>')
       expect(paymentPage).toContain('rel="canonical" href="https://ctxhub.test/pay"')
       expect(paymentPage).toContain('name="robots" content="noindex, nofollow"')
+    } finally {
+      await rm(distDirectory, { recursive: true, force: true })
+    }
+  })
+
+  it('removes hosted merchant artifacts from Community builds', async () => {
+    const distDirectory = await mkdtemp(join(tmpdir(), 'ctxhub-community-prerender-'))
+    await mkdir(join(distDirectory, 'docs'), { recursive: true })
+    await mkdir(join(distDirectory, 'pay'), { recursive: true })
+    await mkdir(join(distDirectory, 'developer-docs'), { recursive: true })
+    await writeFile(join(distDirectory, 'docs', 'index.html'), 'hosted', 'utf8')
+    await writeFile(join(distDirectory, 'pay', 'index.html'), 'hosted', 'utf8')
+    await writeFile(join(distDirectory, 'developer-docs', 'catalog.json'), '{}', 'utf8')
+
+    try {
+      const result = await prerenderPublicDocs({ distDirectory, hosted: false })
+      expect(result).toMatchObject({ pages: 0, hosted: false })
+      await expect(readFile(join(distDirectory, 'docs', 'index.html'), 'utf8')).rejects.toThrow()
+      await expect(readFile(join(distDirectory, 'pay', 'index.html'), 'utf8')).rejects.toThrow()
+      await expect(readFile(join(distDirectory, 'developer-docs', 'catalog.json'), 'utf8')).rejects.toThrow()
     } finally {
       await rm(distDirectory, { recursive: true, force: true })
     }

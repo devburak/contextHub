@@ -5,6 +5,7 @@
   "billing.securePayment.close": "Ödeme ekranını kapat",
   "billing.securePayment.frameTitle": "Güvenli ödeme formu",
   "billing.toast.checkoutSuccess": "Abonelik ödemesi tamamlandı.",
+  "billing.toast.reviewCheckoutSuccess": "iyzico sandbox ödemesi doğrulandı. Bu deneme abonelik başlatmadı veya planınızı değiştirmedi.",
   "billing.toast.checkoutFailed": "Ödeme sonucu doğrulanamadı. Kartınızdan tahsilat olduysa destekle iletişime geçin.",
   "billing.toast.paymentMethodUpdated": "Ödeme yöntemi güncelleme işlemi tamamlandı.",
   "billing.error.checkoutLink": "Hosted checkout bağlantısı oluşturulamadı.",

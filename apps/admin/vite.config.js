@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { readFileSync } from 'node:fs'
 
 const adminPluginNames = (process.env.CTXHUB_ADMIN_PLUGIN_NAMES || '')
   .split(',')
@@ -9,11 +10,15 @@ const adminPluginNames = (process.env.CTXHUB_ADMIN_PLUGIN_NAMES || '')
 const requireAdminPlugins = ['1', 'true', 'yes', 'on']
   .includes(String(process.env.CTXHUB_REQUIRE_ADMIN_PLUGINS || '').toLowerCase())
 const configuredAdminPluginEntry = String(process.env.CTXHUB_ADMIN_PLUGIN_ENTRY || '').trim()
+const hostedBuild = String(process.env.VITE_CTXHUB_HOSTED || '').trim().toLowerCase() === 'true'
 if (requireAdminPlugins && !configuredAdminPluginEntry) {
   throw new Error('CTXHUB_ADMIN_PLUGIN_ENTRY is required for a hosted Admin build')
 }
 if (requireAdminPlugins && adminPluginNames.length === 0) {
   throw new Error('CTXHUB_ADMIN_PLUGIN_NAMES is required for a hosted Admin build')
+}
+if (Boolean(configuredAdminPluginEntry) !== hostedBuild) {
+  throw new Error('VITE_CTXHUB_HOSTED and the hosted Admin plugin entry must be configured together')
 }
 const adminPluginEntry = configuredAdminPluginEntry
   ? path.resolve(configuredAdminPluginEntry)
@@ -32,6 +37,20 @@ function buildContractPlugin() {
         type: 'asset',
         fileName: 'ctxhub-build.json',
         source: `${JSON.stringify(contract, null, 2)}\n`,
+      })
+    },
+  }
+}
+
+function hostedMerchantAssetsPlugin() {
+  return {
+    name: 'ctxhub-hosted-merchant-assets',
+    generateBundle() {
+      if (!hostedBuild) return
+      this.emitFile({
+        type: 'asset',
+        fileName: 'assets/iyzico-card-brands.png',
+        source: readFileSync(path.resolve(process.cwd(), './src/assets/payment-marks/iyzico-card-brands.png')),
       })
     },
   }
@@ -59,7 +78,7 @@ function validateProductionApiUrl(mode) {
 }
 
 const config = {
-  plugins: [react(), buildContractPlugin()],
+  plugins: [react(), buildContractPlugin(), hostedMerchantAssetsPlugin()],
   server: {
     // Use a distinct port to avoid clashing with API service (default API port is 3000)
     port: 3100,
@@ -89,6 +108,12 @@ const config = {
     alias: {
       '@': path.resolve(process.cwd(), './src'),
       'virtual:ctxhub-plugins': adminPluginEntry,
+      'virtual:ctxhub-public-documentation': hostedBuild
+        ? path.resolve(process.cwd(), './src/pages/public-docs/PublicDocumentation.jsx')
+        : path.resolve(process.cwd(), './src/pages/HostedSurfaceUnavailable.jsx'),
+      'virtual:ctxhub-payment-link': hostedBuild
+        ? path.resolve(process.cwd(), './src/pages/billing/PaddlePaymentLink.jsx')
+        : path.resolve(process.cwd(), './src/pages/HostedSurfaceUnavailable.jsx'),
     },
     dedupe: ['react', 'react-dom', 'react-router-dom', 'i18next'],
   },

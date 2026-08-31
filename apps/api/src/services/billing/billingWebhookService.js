@@ -6,12 +6,18 @@ const {
   BillingInvoice,
   BillingSubscription,
   PlanPrice,
+  SubscriptionPlan,
   Tenant,
+  User,
 } = require('@contexthub/common');
 const tenantSubscriptionService = require('../tenantSubscriptionService');
 const billingCancellationService = require('./billingCancellationService');
 const paddleProvider = require('./paddleProvider');
 const iyzicoProvider = require('./iyzicoProvider');
+const {
+  hostedOperationsNotificationService,
+  isEnabled: hostedOperationsNotificationsEnabled,
+} = require('../hostedOperationsNotificationService');
 
 const SUBSCRIPTION_EVENTS = new Set([
   'subscription.created',
@@ -58,6 +64,30 @@ function compactObject(value) {
   return Object.fromEntries(Object.entries(value)
     .filter(([, item]) => item !== undefined && item !== null)
     .map(([key, item]) => [key, compactObject(item)]));
+}
+
+async function notifySuccessfulPayment({
+  tenant,
+  subscription,
+  amountMinor,
+  currency,
+  occurredAt,
+}) {
+  if (!hostedOperationsNotificationsEnabled()) return { sent: false, disabled: true };
+  const [owner, plan, billingAccount] = await Promise.all([
+    tenant.createdBy ? User.findById(tenant.createdBy).select('email').lean() : null,
+    subscription?.planId ? SubscriptionPlan.findById(subscription.planId).select('slug name').lean() : null,
+    BillingAccount.findOne({ accountId: tenant.accountId }).select('billingEmail').lean(),
+  ]);
+  return hostedOperationsNotificationService.notifyPaymentReceived({
+    tenantName: tenant.name,
+    tenantSlug: tenant.slug,
+    ownerEmail: owner?.email || billingAccount?.billingEmail || '',
+    plan: plan?.slug || plan?.name || tenant.plan || 'unknown',
+    amountMinor,
+    currency,
+    occurredAt,
+  });
 }
 
 function minimizePaddlePayload(payload) {
@@ -223,6 +253,15 @@ async function processIyzicoEvent(event) {
     subscription.gracePeriodEndsAt ||= new Date(Date.now() + graceDays * 86400000);
   }
   await subscription.save();
+  if (success) {
+    await notifySuccessfulPayment({
+      tenant,
+      subscription,
+      amountMinor: subscription.amountMinor,
+      currency: subscription.currency,
+      occurredAt: event.occurredAt,
+    });
+  }
   if (['deletion_pending', 'deleted'].includes(tenant.status)
       && !['canceled', 'expired'].includes(subscription.status)) {
     await billingCancellationService.requestTenantCancellation(tenant._id, {
@@ -437,7 +476,17 @@ async function processEvent(eventId) {
     if (SUBSCRIPTION_EVENTS.has(event.eventType)) {
       await syncSubscriptionEvent(event, tenant, account, billingAccount);
     } else if (event.eventType.startsWith('transaction.')) {
-      await syncTransactionEvent(event, tenant, account);
+      const invoice = await syncTransactionEvent(event, tenant, account);
+      if (event.eventType === 'transaction.completed' && invoice?.status === 'paid') {
+        const subscription = await BillingSubscription.findOne({ tenantId: tenant._id });
+        await notifySuccessfulPayment({
+          tenant,
+          subscription,
+          amountMinor: invoice.totalMinor,
+          currency: invoice.currency,
+          occurredAt: invoice.paidAt || event.occurredAt,
+        });
+      }
     } else {
       event.status = 'ignored';
       event.lastError = 'Unsupported event type';

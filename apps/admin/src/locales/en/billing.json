@@ -5,6 +5,7 @@
   "billing.securePayment.close": "Close payment screen",
   "billing.securePayment.frameTitle": "Secure payment form",
   "billing.toast.checkoutSuccess": "Subscription payment completed.",
+  "billing.toast.reviewCheckoutSuccess": "The iyzico sandbox payment was verified. This test did not start a subscription or change your plan.",
   "billing.toast.checkoutFailed": "The payment result could not be verified. Contact support if your card was charged.",
   "billing.toast.paymentMethodUpdated": "Payment method update completed.",
   "billing.error.checkoutLink": "Could not create the hosted checkout link.",

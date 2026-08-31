@@ -17,7 +17,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react'
-import iyzicoCardBrands from '../../assets/payment-marks/iyzico-card-brands.png'
+import { HOSTED_PAYMENT_MARKS_PATH } from '../../lib/hostedDeployment.js'
 import {
   DOCS_BASE_PATH,
   getAdjacentDocuments,
@@ -395,7 +395,7 @@ export default function PublicDocumentation() {
           <figure className="docs-payment-marks">
             <figcaption>{labels.paymentSecurity}</figcaption>
             <img
-              src={iyzicoCardBrands}
+              src={HOSTED_PAYMENT_MARKS_PATH}
               width="429"
               height="32"
               loading="lazy"

@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { BookOpenIcon } from '@heroicons/react/24/outline'
 
-import iyzicoCardBrands from '../assets/payment-marks/iyzico-card-brands.png'
 import LanguageSwitcher from './LanguageSwitcher.jsx'
+import { HOSTED_PAYMENT_MARKS_PATH, isHostedDeployment } from '../lib/hostedDeployment.js'
 
 /**
  * @param {boolean} showDeveloperDocs Geliştirici dokümantasyonu bağlantısını göster.
@@ -10,7 +10,11 @@ import LanguageSwitcher from './LanguageSwitcher.jsx'
  *   profiline de yazılır; kapalıysa (login, şifre sıfırlama, davet ekranları)
  *   yalnızca bu cihazda saklanır — `PUT /users/me` orada 401 dönerdi.
  */
-export default function Footer({ showDeveloperDocs = false, authenticated = false }) {
+export default function Footer({
+  showDeveloperDocs = false,
+  authenticated = false,
+  hosted = isHostedDeployment(),
+}) {
   const { t } = useTranslation()
   const currentYear = new Date().getFullYear()
 
@@ -23,11 +27,12 @@ export default function Footer({ showDeveloperDocs = false, authenticated = fals
             <LanguageSwitcher persistToProfile={authenticated} />
           </div>
 
-          <nav
-            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs sm:text-sm"
-            aria-label={t('footer.public_information')}
-          >
-            {showDeveloperDocs && (
+          {hosted && (
+            <nav
+              className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs sm:text-sm"
+              aria-label={t('footer.public_information')}
+            >
+              {showDeveloperDocs && (
               <a
                 href="/docs/overview"
                 className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium text-blue-600 transition-colors hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -35,26 +40,27 @@ export default function Footer({ showDeveloperDocs = false, authenticated = fals
                 <BookOpenIcon className="h-4 w-4" aria-hidden="true" />
                 <span>{t('footer.developer_docs')}</span>
               </a>
-            )}
-            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/about">
-              {t('footer.about')}
-            </a>
-            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/pricing-and-plans">
-              {t('footer.pricing')}
-            </a>
-            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/terms-of-service">
-              {t('footer.terms')}
-            </a>
-            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/privacy-notice">
-              {t('footer.privacy')}
-            </a>
-            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/cancellation-and-refunds">
-              {t('footer.refunds')}
-            </a>
-            <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/distance-sales-agreement">
-              {t('footer.distance_sales')}
-            </a>
-          </nav>
+              )}
+              <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/about">
+                {t('footer.about')}
+              </a>
+              <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/pricing-and-plans">
+                {t('footer.pricing')}
+              </a>
+              <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/terms-of-service">
+                {t('footer.terms')}
+              </a>
+              <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/privacy-notice">
+                {t('footer.privacy')}
+              </a>
+              <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/cancellation-and-refunds">
+                {t('footer.refunds')}
+              </a>
+              <a className="font-medium text-gray-600 hover:text-blue-700" href="/docs/distance-sales-agreement">
+                {t('footer.distance_sales')}
+              </a>
+            </nav>
+          )}
 
           {/* Marka - sağ */}
           <div className="flex items-center gap-2 lg:justify-self-end">
@@ -66,17 +72,19 @@ export default function Footer({ showDeveloperDocs = false, authenticated = fals
             </span>
           </div>
         </div>
-        <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 py-3 sm:flex-row">
-          <span className="text-xs font-medium text-gray-500">{t('footer.payment_security')}</span>
-          <img
-            src={iyzicoCardBrands}
-            width="429"
-            height="32"
-            loading="lazy"
-            className="h-6 w-auto max-w-full object-contain"
-            alt={t('footer.payment_marks_alt')}
-          />
-        </div>
+        {hosted && (
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 py-3 sm:flex-row">
+            <span className="text-xs font-medium text-gray-500">{t('footer.payment_security')}</span>
+            <img
+              src={HOSTED_PAYMENT_MARKS_PATH}
+              width="429"
+              height="32"
+              loading="lazy"
+              className="h-6 w-auto max-w-full object-contain"
+              alt={t('footer.payment_marks_alt')}
+            />
+          </div>
+        )}
       </div>
     </footer>
   )
