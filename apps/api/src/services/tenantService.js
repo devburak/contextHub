@@ -5,6 +5,7 @@ const accountService = require('./accountService');
 const edgeGatewaySyncService = require('./edgeGatewaySyncService');
 const { invalidateTenantOriginPolicyCache } = require('./tenantOriginPolicy');
 const { mailService } = require('./mailService');
+const { hostedOperationsNotificationService } = require('./hostedOperationsNotificationService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
@@ -149,6 +150,17 @@ class TenantService {
       await edgeGatewaySyncService.syncTenantBundle({ tenantId: tenant._id, tenant });
     } catch (error) {
       console.error('[TenantService] Edge gateway sync failed after tenant create:', error.message);
+    }
+
+    try {
+      await hostedOperationsNotificationService.notifyTenantCreated({
+        tenantName: tenant.name,
+        tenantSlug: tenant.slug,
+        ownerEmail: owner?.email || '',
+        plan: tenant.plan || 'free',
+      });
+    } catch (error) {
+      console.error('[TenantService] Hosted tenant notification failed:', error.message);
     }
 
     return { tenant, membership };
