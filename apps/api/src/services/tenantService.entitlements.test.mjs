@@ -93,4 +93,16 @@ describe('TenantService entitlement summaries', () => {
       status: { $nin: ['deletion_pending', 'deleted'] },
     });
   });
+
+  it('suggests only available slugs when a tenant slug is already in use', async () => {
+    vi.spyOn(Tenant, 'exists').mockImplementation(({ slug }) => (
+      Promise.resolve(['acme-1', 'acme-3'].includes(slug))
+    ));
+
+    await expect(tenantService.generateSlugSuggestions('Acme', 3)).resolves.toEqual([
+      'acme-2',
+      'acme-4',
+      'acme-5',
+    ]);
+  });
 });

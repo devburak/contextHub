@@ -49,6 +49,7 @@
   "tenant.sign_in_other_account": "Sign in with a different account",
   "tenant.slug_hint": "Leave the slug empty and it will be generated from the tenant name.",
   "tenant.slug_placeholder": "e.g. acme-inc",
+  "tenant.slug_suggestions": "That slug is already in use. Choose one of these available options:",
   "tenant.sole_owner_warning": "You are the only owner of this tenant. Transfer ownership before you can leave. (Owners in total: {{count}})",
   "tenant.status_pending_invite": "Invitation Pending",
   "tenant.transfer_accept_failed": "Something went wrong while accepting the ownership transfer.",

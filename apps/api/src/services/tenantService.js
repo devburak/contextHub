@@ -55,6 +55,22 @@ class TenantService {
     return candidate;
   }
 
+  async generateSlugSuggestions(base, limit = 3) {
+    const normalized = this.#slugify(base) || 'tenant';
+    const suggestions = [];
+    let suffix = 1;
+
+    while (suggestions.length < limit) {
+      const candidate = `${normalized}-${suffix}`;
+      if (!(await Tenant.exists({ slug: candidate }))) {
+        suggestions.push(candidate);
+      }
+      suffix += 1;
+    }
+
+    return suggestions;
+  }
+
   async hasOwnedFreeTenant(ownerId) {
     const ownedMemberships = await Membership.find({
       userId: ownerId,
@@ -93,7 +109,10 @@ class TenantService {
         finalSlug = await this.generateUniqueSlug(name);
       }
       if (await Tenant.exists({ slug: finalSlug })) {
-        throw new Error('Tenant slug already exists');
+        const error = new Error('Tenant slug already exists');
+        error.code = 'SlugConflict';
+        error.suggestions = await this.generateSlugSuggestions(finalSlug);
+        throw error;
       }
     } else {
       finalSlug = await this.generateUniqueSlug(name);

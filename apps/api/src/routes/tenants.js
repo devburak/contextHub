@@ -112,8 +112,14 @@ async function tenantRoutes(fastify) {
           message: error.message,
         });
       }
-      if (error.message.includes('slug')) {
-        return reply.code(409).send({ error: 'Tenant slug already exists' });
+      if (error.code === 'SlugConflict' || error.message.includes('slug')) {
+        const suggestions = error.suggestions
+          || await tenantService.generateSlugSuggestions(request.body.slug || request.body.name);
+        return reply.code(409).send({
+          error: 'SlugConflict',
+          message: 'Tenant slug already exists',
+          suggestions,
+        });
       }
       return reply.code(400).send({ error: 'Tenant creation failed', message: error.message });
     }

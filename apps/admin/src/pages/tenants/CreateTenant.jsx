@@ -15,6 +15,7 @@ export default function CreateTenant() {
   const [formData, setFormData] = useState(initialFormState)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [slugSuggestions, setSlugSuggestions] = useState([])
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { refreshSession } = useAuth()
@@ -26,6 +27,7 @@ export default function CreateTenant() {
     onMutate: () => {
       setError('')
       setSuccessMessage('')
+      setSlugSuggestions([])
     },
     onSuccess: async ({ tenant }) => {
       await refreshSession()
@@ -39,11 +41,14 @@ export default function CreateTenant() {
     },
     onError: (err) => {
       setError(describeError(err, 'tenant.create_failed'))
+      const suggestions = err.response?.data?.suggestions
+      setSlugSuggestions(Array.isArray(suggestions) ? suggestions : [])
     }
   })
 
   const handleChange = (event) => {
     const { name, value } = event.target
+    setSlugSuggestions([])
     setFormData((prev) => {
       const next = { ...prev, [name]: value }
       if (name === 'name') {
@@ -56,6 +61,12 @@ export default function CreateTenant() {
       }
       return next
     })
+  }
+
+  const selectSlugSuggestion = (slug) => {
+    setFormData((prev) => ({ ...prev, slug }))
+    setSlugSuggestions([])
+    setError('')
   }
 
   const handleSubmit = (event) => {
@@ -72,7 +83,7 @@ export default function CreateTenant() {
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">{t('tenant.create_new')}</h1>
         <p className="mt-2 text-sm text-gray-600">
@@ -110,8 +121,30 @@ export default function CreateTenant() {
               onChange={handleChange}
               className="input"
               placeholder={t('tenant.slug_placeholder')}
+              aria-describedby="tenant-slug-help"
             />
-            <p className="mt-1 text-xs text-gray-500">{t('tenant.slug_hint')}</p>
+            <div id="tenant-slug-help">
+              <p className="mt-1 text-xs text-gray-500">{t('tenant.slug_hint')}</p>
+              {slugSuggestions.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-medium text-amber-950">
+                    {t('tenant.slug_suggestions')}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {slugSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => selectSlugSuggestion(suggestion)}
+                        className="rounded-md border border-amber-300 bg-white px-3 py-1.5 font-mono text-sm text-amber-950 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">

@@ -49,6 +49,7 @@
   "tenant.sign_in_other_account": "Farklı bir hesapla giriş yap",
   "tenant.slug_hint": "Kısa adı boş bırakırsanız varlık adından otomatik olarak üretilir.",
   "tenant.slug_placeholder": "ör. firma-adi",
+  "tenant.slug_suggestions": "Bu kısa ad kullanılıyor. Kullanılabilir seçeneklerden birini seçebilirsiniz:",
   "tenant.sole_owner_warning": "Bu varlığın tek sahibisiniz. Görevi bırakabilmek için önce sahipliği devretmelisiniz. (Toplam sahip: {{count}})",
   "tenant.status_pending_invite": "Davet Bekliyor",
   "tenant.transfer_accept_failed": "Sahiplik devri kabul edilirken bir hata oluştu.",
