@@ -9,6 +9,7 @@ const {
   Tenant,
 } = require('@contexthub/common');
 const tenantSubscriptionService = require('../tenantSubscriptionService');
+const billingCancellationService = require('./billingCancellationService');
 const paddleProvider = require('./paddleProvider');
 const iyzicoProvider = require('./iyzicoProvider');
 
@@ -211,14 +212,23 @@ async function processIyzicoEvent(event) {
   }
   subscription.lastProviderEventAt = event.occurredAt;
   if (success) {
-    subscription.status = 'active';
-    subscription.gracePeriodEndsAt = null;
+    if (!['deletion_pending', 'deleted'].includes(tenant.status)
+        && !subscription.cancellationRequestedAt) {
+      subscription.status = 'active';
+      subscription.gracePeriodEndsAt = null;
+    }
   } else {
     const graceDays = Math.max(1, Number(process.env.BILLING_GRACE_PERIOD_DAYS || 7));
     subscription.status = 'past_due';
     subscription.gracePeriodEndsAt ||= new Date(Date.now() + graceDays * 86400000);
   }
   await subscription.save();
+  if (['deletion_pending', 'deleted'].includes(tenant.status)
+      && !['canceled', 'expired'].includes(subscription.status)) {
+    await billingCancellationService.requestTenantCancellation(tenant._id, {
+      effectiveFrom: 'immediately',
+    });
+  }
   event.accountId = subscription.accountId;
   event.tenantId = subscription.tenantId;
   event.status = 'processed';
@@ -282,9 +292,14 @@ async function syncSubscriptionEvent(event, tenant, account, billingAccount) {
   const planPrice = externalPriceId
     ? await PlanPrice.findOne({ provider: 'paddle', externalPriceId }).populate('planId')
     : null;
-  const status = event.eventType === 'subscription.canceled'
+  const providerStatus = event.eventType === 'subscription.canceled'
     ? 'canceled'
     : normalizeStatus(data.status, subscription?.status || 'pending');
+  const tenantDeleted = ['deletion_pending', 'deleted'].includes(tenant.status);
+  const status = tenantDeleted
+    && ['active', 'trialing'].includes(providerStatus)
+    ? (subscription?.status || 'pending')
+    : providerStatus;
   const graceDays = Math.max(1, Number(process.env.BILLING_GRACE_PERIOD_DAYS || 7));
   const now = new Date();
   const gracePeriodEndsAt = status === 'past_due'
@@ -311,6 +326,9 @@ async function syncSubscriptionEvent(event, tenant, account, billingAccount) {
     update.currency = planPrice.currency;
     update.amountMinor = planPrice.amountMinor;
   }
+  if (status === 'canceled') {
+    update.cancellationLastError = '';
+  }
 
   subscription = await BillingSubscription.findOneAndUpdate(
     { tenantId: tenant._id },
@@ -318,7 +336,13 @@ async function syncSubscriptionEvent(event, tenant, account, billingAccount) {
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
-  if (status === 'active' || status === 'trialing') {
+  if (tenantDeleted && !['canceled', 'expired'].includes(subscription.status)) {
+    await billingCancellationService.requestTenantCancellation(tenant._id, {
+      effectiveFrom: 'immediately',
+    });
+  }
+
+  if (!tenantDeleted && (status === 'active' || status === 'trialing')) {
     if (planPrice?.planId?.slug) {
       await tenantSubscriptionService.applyPlanToTenant(tenant, planPrice.planId.slug, {
         source: 'provider_webhook',

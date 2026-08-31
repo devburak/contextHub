@@ -1327,6 +1327,17 @@ async function bulkDeleteMedia({ tenantId, mediaIds = [] }) {
   return { deleted: result.deletedCount || mediaList.length }
 }
 
+async function purgeTenantMedia({ tenantId }) {
+  const mediaList = await Media.find({ tenantId }).select('key variants sourceType').lean()
+  const keys = mediaList.flatMap((item) => item.sourceType === 'external'
+    ? []
+    : [item.key, ...(item.variants || []).map((variant) => variant.key)].filter(Boolean))
+  await deleteObjectsFromStorage(keys)
+  const result = await Media.deleteMany({ tenantId })
+  await limitCheckerService.clearStorageUsageCache(tenantId)
+  return { deleted: result.deletedCount || 0, objectsDeleted: keys.length }
+}
+
 async function bulkTagMedia({ tenantId, mediaIds = [], tags = [], mode = 'add', userId }) {
   const objectIds = toObjectIdList(mediaIds)
   if (!objectIds.length) {
@@ -1433,6 +1444,7 @@ module.exports = {
   updateMediaMetadata,
   deleteMedia,
   bulkDeleteMedia,
+  purgeTenantMedia,
   bulkTagMedia,
   openTenantBackupFile,
   getTenantRestoreTarget,

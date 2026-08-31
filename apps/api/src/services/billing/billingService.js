@@ -628,6 +628,12 @@ async function completeIyzicoCheckout(checkoutToken) {
       BillingAccount.findOne({ accountId: session.accountId }),
     ]);
     if (!tenant || !billingAccount) throw new Error('Checkout hedefi bulunamadı');
+    if (tenant.status !== 'active') {
+      const unavailable = new Error('Tenant is no longer available for checkout completion');
+      unavailable.code = 'TenantUnavailable';
+      unavailable.statusCode = 409;
+      throw unavailable;
+    }
     const status = data.subscriptionStatus === 'ACTIVE' ? 'active' : 'pending';
     const subscription = await BillingSubscription.findOneAndUpdate(
       { tenantId: session.tenantId },

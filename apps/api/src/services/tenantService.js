@@ -1,4 +1,4 @@
-const { Tenant, Membership, User, rbac } = require('@contexthub/common');
+const { Tenant, Membership, User, Account, BillingAccount, rbac } = require('@contexthub/common');
 const roleService = require('./roleService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
 const accountService = require('./accountService');
@@ -55,21 +55,34 @@ class TenantService {
     return candidate;
   }
 
+  async hasOwnedFreeTenant(ownerId) {
+    const ownedMemberships = await Membership.find({
+      userId: ownerId,
+      role: ROLE_KEYS.OWNER,
+      status: 'active',
+    }).select('tenantId');
+    const ownedTenantIds = ownedMemberships.map((membership) => membership.tenantId).filter(Boolean);
+    if (ownedTenantIds.length === 0) return false;
+
+    const ownedTenants = await Tenant.find({
+      _id: { $in: ownedTenantIds },
+      status: { $nin: ['deletion_pending', 'deleted'] },
+    }).select('plan currentPlan').populate('currentPlan', 'slug');
+    return ownedTenants.some(
+      (tenant) => tenantSubscriptionService.getEffectivePlanSlug(tenant) === 'free'
+    );
+  }
+
   async createTenant({ name, slug }, ownerId) {
     if (!name) {
       throw new Error('Tenant name is required');
     }
 
-    const existingOwnership = await Membership.exists({
-      userId: ownerId,
-      role: ROLE_KEYS.OWNER,
-      status: { $in: ['active', 'pending'] },
-    });
-    if (existingOwnership) {
+    if (await this.hasOwnedFreeTenant(ownerId)) {
       const error = new Error(
-        'Self-service tenant sınırına ulaşıldı. Yeni tenant ücretli checkout veya Enterprise sözleşme akışından oluşturulmalıdır.'
+        'Free tenant sınırına ulaşıldı. Yeni bir tenant oluşturmadan önce mevcut Free tenant için ücretli pakete geçmelisiniz.'
       );
-      error.code = 'SelfServiceTenantLimit';
+      error.code = 'FreeTenantLimit';
       throw error;
     }
 
@@ -127,11 +140,13 @@ class TenantService {
       .populate({
         path: 'tenantId',
         select: 'name slug plan status createdAt currentPlan',
+        match: { status: { $nin: ['deletion_pending', 'deleted'] } },
         populate: { path: 'currentPlan' }
       })
       .sort({ createdAt: -1 });
 
-    return Promise.all(memberships.map(async (membership) => {
+    const visibleMemberships = memberships.filter((membership) => Boolean(membership.tenantId));
+    return Promise.all(visibleMemberships.map(async (membership) => {
       const tenantDoc = membership.tenantId;
       const tenantId = tenantDoc?._id?.toString() || membership.tenantId?.toString();
       const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
@@ -210,7 +225,8 @@ class TenantService {
     const currentOwnerMembership = await Membership.findOne({
       userId: currentOwnerId,
       tenantId,
-      role: 'owner'
+      role: 'owner',
+      status: 'active'
     });
 
     if (!currentOwnerMembership) {
@@ -221,6 +237,7 @@ class TenantService {
     const otherOwners = await Membership.countDocuments({
       tenantId,
       role: 'owner',
+      status: 'active',
       userId: { $ne: currentOwnerId }
     });
 
@@ -369,6 +386,20 @@ class TenantService {
         oldOwnerMembership.role = 'admin';
         oldOwnerMembership.roleId = adminRole?._id || null;
         await oldOwnerMembership.save();
+      }
+    }
+
+    const tenant = await Tenant.findById(tenantId).select('accountId');
+    if (tenant?.accountId) {
+      await Account.updateOne(
+        { _id: tenant.accountId },
+        { $set: { ownerUserId: newOwnerId } }
+      );
+      if (newOwner?.email) {
+        await BillingAccount.updateOne(
+          { accountId: tenant.accountId },
+          { $set: { billingEmail: newOwner.email } }
+        );
       }
     }
 

@@ -1,4 +1,4 @@
-const { User, Membership, rbac, ApiToken } = require('@contexthub/common');
+const { User, Membership, Tenant, rbac, ApiToken } = require('@contexthub/common');
 const roleService = require('../services/roleService');
 const crypto = require('crypto');
 const tenantContextStore = require('@contexthub/common/src/tenantContext');
@@ -29,6 +29,30 @@ const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 const API_TOKEN_AUTH_PREFIX = 'Bearer ctx_';
 const isApiTokenHeader = (authHeader) =>
   typeof authHeader === 'string' && authHeader.startsWith(API_TOKEN_AUTH_PREFIX);
+
+const DELETED_TENANT_STATUSES = new Set(['deletion_pending', 'deleted']);
+
+async function ensureTenantAvailable(tenantId, request, reply, { apiToken = false } = {}) {
+  const tenant = await Tenant.findById(tenantId).select('status').lean();
+  if (!tenant) {
+    reply.code(404).send({ error: 'TenantNotFound', message: 'Tenant does not exist' });
+    return false;
+  }
+
+  const isBillingRecoveryRoute = String(request.url || '').startsWith('/api/billing/');
+  const unavailable = DELETED_TENANT_STATUSES.has(tenant.status)
+    || (apiToken && tenant.status !== 'active')
+    || (!apiToken && tenant.status !== 'active' && !isBillingRecoveryRoute);
+  if (unavailable) {
+    reply.code(403).send({
+      error: 'TenantUnavailable',
+      message: 'This tenant is inactive, suspended, or deleted',
+    });
+    return false;
+  }
+  request.tenant = tenant;
+  return true;
+}
 
 async function enforceBillingWriteAccess(request, reply) {
   if (!isAccountBillingEnabled() || SAFE_METHODS.has(request.method)) return true;
@@ -136,7 +160,7 @@ async function authenticateApiToken(request, reply) {
     const hash = crypto.createHash('sha256').update(token).digest('hex');
 
     // Token'ı veritabanında ara
-    const apiToken = await ApiToken.findOne({ hash });
+    const apiToken = await ApiToken.findOne({ hash, revokedAt: null });
 
     if (!apiToken) {
       return reply.code(401).send({
@@ -170,6 +194,8 @@ async function authenticateApiToken(request, reply) {
     request.authType = 'api_token';
     const effectiveScopes = resolveTokenScopes(apiToken.scopes || []);
     request.tokenScopes = effectiveScopes;
+
+    if (!await ensureTenantAvailable(request.tenantId, request, reply, { apiToken: true })) return;
 
     if (await checkRequestLimit(request, reply)) {
       return;
@@ -367,6 +393,8 @@ async function authenticate(request, reply) {
     }
 
     const tenantId = request.tenantId;
+
+    if (!await ensureTenantAvailable(tenantId, request, reply)) return;
 
     // User'ın bu tenant'taki membership'ini kontrol et
     const membership = await Membership.findOne({

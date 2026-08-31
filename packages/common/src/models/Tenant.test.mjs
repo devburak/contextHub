@@ -31,4 +31,19 @@ describe('Tenant quota limits', () => {
     const tenant = { getLimit: Tenant.schema.methods.getLimit }
     await expect(tenant.getLimit('unknownLimit')).resolves.toBe(0)
   })
+
+  it('keeps a soft-delete and purge window in the tenant document', () => {
+    expect(Tenant.schema.path('status').options.enum).toEqual(expect.arrayContaining([
+      'deletion_pending',
+      'deleted',
+    ]))
+    expect(Tenant.schema.path('purgeAfter')).toBeTruthy()
+    expect(Tenant.schema.path('legalHold')).toBeTruthy()
+    expect(Tenant.schema.path('purgedAt')).toBeTruthy()
+
+    const purgeIndex = Tenant.schema.indexes().find(([fields]) => (
+      fields.status === 1 && fields.purgeAfter === 1 && fields.legalHold === 1
+    ))
+    expect(purgeIndex).toBeTruthy()
+  })
 })

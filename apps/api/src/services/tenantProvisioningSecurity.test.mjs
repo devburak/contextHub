@@ -34,12 +34,21 @@ describe('tenant provisioning security contract', () => {
     expect(registerService).not.toContain('new Tenant(');
   });
 
-  it('enforces one public self-service bootstrap tenant per creator at database level', () => {
+  it('allows paid owners to create one free tenant without the retired creator-wide database lock', () => {
     const index = Tenant.schema.indexes().find(([, options]) => (
       options.unique && options.partialFilterExpression?.provisioningChannel === 'self_service'
     ));
+    const serviceSource = fs.readFileSync(new URL('./tenantService.js', import.meta.url), 'utf8');
+    const createTenant = serviceSource.slice(
+      serviceSource.indexOf('async createTenant('),
+      serviceSource.indexOf('async listUserTenants(')
+    );
 
-    expect(index?.[0]).toEqual({ createdBy: 1, provisioningChannel: 1 });
+    expect(index).toBeUndefined();
+    expect(createTenant).toContain("error.code = 'FreeTenantLimit'");
+    expect(createTenant).toContain('this.hasOwnedFreeTenant(ownerId)');
+    expect(createTenant).toContain("provisioningChannel: 'self_service'");
+    expect(createTenant).toContain("applyPlanToTenant(tenant, 'free')");
   });
 
   it('removes direct plan mutation even from the platform custom-limit route', () => {

@@ -111,7 +111,28 @@ async function getTransactionInvoice({ externalTransactionId }) {
   return { documentUrl: invoice.url, expiresInSeconds: 3600 };
 }
 
+async function cancelSubscription({ externalSubscriptionId, effectiveFrom = 'immediately' }) {
+  if (!externalSubscriptionId) throw new Error('Paddle subscription is not available');
+  const normalizedEffectiveFrom = effectiveFrom === 'next_billing_period'
+    ? 'next_billing_period'
+    : 'immediately';
+  const subscription = await paddleRequest(
+    `/subscriptions/${encodeURIComponent(externalSubscriptionId)}/cancel`,
+    {
+      method: 'POST',
+      body: { effective_from: normalizedEffectiveFrom },
+    }
+  );
+  return {
+    status: subscription.status,
+    cancelAtPeriodEnd: normalizedEffectiveFrom === 'next_billing_period',
+    canceledAt: subscription.canceled_at || null,
+    effectiveAt: subscription.scheduled_change?.effective_at || null,
+  };
+}
+
 module.exports = {
+  cancelSubscription,
   createCheckout,
   createPortalSession,
   getTransactionInvoice,

@@ -20,6 +20,7 @@ const childEnv = {
 };
 
 process.stdout.write(`Hosted Admin plugins: ${hosted.plugins.join(', ')}\n`);
+process.stdout.write(`Required hosted plugins: ${hosted.requiredPlugins.join(', ')}\n`);
 const result = spawnSync('pnpm', ['--filter', '@contexthub/admin', 'build'], {
   cwd: coreRoot,
   env: childEnv,

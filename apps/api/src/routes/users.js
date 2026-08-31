@@ -517,10 +517,32 @@ async function userRoutes(fastify) {
     }
   });
 
-  // DELETE /users/me - Hesabı kalıcı olarak sil
+  fastify.get('/users/me/deletion-preflight', {
+    preHandler: [authenticateWithoutTenant],
+  }, async function(request, reply) {
+    try {
+      return reply.send(await userService.getAccountDeletionPreflight(request.user._id));
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'AccountDeletionPreflightFailed',
+        message: error.message,
+      });
+    }
+  });
+
+  // DELETE /users/me - Kişisel verileri anonimleştir ve tüm üyelikleri sonlandır.
   fastify.delete('/users/me', {
     preHandler: [authenticateWithoutTenant], // Tenant kontrolü yapma, tüm hesabı sil
     schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          currentPassword: { type: 'string', minLength: 1 },
+          confirmation: { type: 'string', minLength: 3 },
+        },
+        required: ['currentPassword', 'confirmation'],
+      },
       response: {
         200: {
           type: 'object',
@@ -539,12 +561,12 @@ async function userRoutes(fastify) {
     }
   }, async function(request, reply) {
     try {
-      await userService.deleteOwnAccount(request.user._id);
+      await userService.deleteOwnAccount(request.user._id, request.body, request);
       return reply.send({ message: 'Account deleted successfully' });
     } catch (error) {
-      return reply.code(400).send({ 
-        error: 'AccountDeletionFailed', 
-        message: error.message 
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'AccountDeletionFailed',
+        message: error.message
       });
     }
   });

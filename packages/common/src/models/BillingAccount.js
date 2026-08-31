@@ -2,6 +2,13 @@ const mongoose = require('mongoose');
 
 const { Schema } = mongoose;
 
+const acceptanceActorSnapshotSchema = new Schema({
+  userId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  emailHash: { type: String, default: '', trim: true },
+  displayName: { type: String, default: '', trim: true },
+  capturedAt: { type: Date, default: null },
+}, { _id: false });
+
 const billingAccountSchema = new Schema({
   accountId: { type: Schema.Types.ObjectId, ref: 'Account', required: true, unique: true },
   provider: { type: String, enum: ['manual', 'paddle', 'iyzico'], default: 'manual' },
@@ -31,9 +38,11 @@ const billingAccountSchema = new Schema({
   declarationVersion: { type: String, default: '' },
   declarationAcceptedAt: { type: Date, default: null },
   declarationAcceptedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  declarationAcceptanceActor: { type: acceptanceActorSnapshotSchema, default: null },
   serviceAgreementVersion: { type: String, default: '' },
   serviceAgreementAcceptedAt: { type: Date, default: null },
   serviceAgreementAcceptedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  serviceAgreementAcceptanceActor: { type: acceptanceActorSnapshotSchema, default: null },
   billingProfileStatus: {
     type: String,
     enum: ['incomplete', 'declared', 'legacy_enterprise'],

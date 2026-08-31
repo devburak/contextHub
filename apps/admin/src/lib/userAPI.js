@@ -173,9 +173,16 @@ export const userAPI = {
     return data
   },
 
-  // Hesabı kalıcı olarak sil
-  deleteAccount: async () => {
-    const { data } = await apiClient.delete('/users/me')
+  getAccountDeletionPreflight: async () => {
+    const { data } = await apiClient.get('/users/me/deletion-preflight')
+    return data
+  },
+
+  // Hesabı anonimleştir ve üyelikleri sonlandır
+  deleteAccount: async ({ currentPassword, confirmation }) => {
+    const { data } = await apiClient.delete('/users/me', {
+      data: { currentPassword, confirmation }
+    })
     return data
   },
 

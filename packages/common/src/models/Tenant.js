@@ -6,7 +6,22 @@ const tenantSchema = new Schema({
   slug: { type: String, required: true, unique: true },
   accountId: { type: Schema.Types.ObjectId, ref: 'Account', default: null, index: true },
   plan: { type: String, default: 'free' },
-  status: { type: String, default: 'active', enum: ['active', 'inactive', 'suspended'] },
+  status: {
+    type: String,
+    default: 'active',
+    enum: ['active', 'inactive', 'suspended', 'deletion_pending', 'deleted'],
+    index: true,
+  },
+  deletedAt: { type: Date, default: null, index: true },
+  deletedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  deletionReason: { type: String, default: '', trim: true, maxlength: 1000 },
+  deletionRequestId: { type: String, default: null, trim: true },
+  purgeAfter: { type: Date, default: null, index: true },
+  legalHold: { type: Boolean, default: false, index: true },
+  restoredAt: { type: Date, default: null },
+  restoredBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  purgedAt: { type: Date, default: null, index: true },
+  lifecycleError: { type: String, default: '', trim: true, maxlength: 2000 },
   
   // === SUBSCRIPTION INFO ===
   
@@ -76,20 +91,14 @@ tenantSchema.pre('findOneAndUpdate', function(next) {
 tenantSchema.index({ slug: 1 }, { unique: true });
 tenantSchema.index({ currentPlan: 1 });
 tenantSchema.index({ status: 1 });
-// Launch boundary: a user can bootstrap at most one tenant through the public
-// self-service endpoint. Additional tenants must be provisioned by a paid or
-// contracted workflow, never by repeating POST /tenants.
+tenantSchema.index({ status: 1, purgeAfter: 1, legalHold: 1 });
 tenantSchema.index(
-  { createdBy: 1, provisioningChannel: 1 },
+  { deletionRequestId: 1 },
   {
     unique: true,
-    partialFilterExpression: {
-      createdBy: { $type: 'objectId' },
-      provisioningChannel: 'self_service',
-    },
+    partialFilterExpression: { deletionRequestId: { $type: 'string' } },
   }
 );
-
 // === INSTANCE METHODS ===
 
 const LIMIT_USAGE_KEY_MAP = {

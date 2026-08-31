@@ -540,6 +540,12 @@ export default function TenantSettings() {
   const [secretEditState, setSecretEditState] = useState({ smtpPassword: false, webhookSecret: false })
   const [feedback, setFeedback] = useState({ type: '', message: '' })
   const [featureKeyInput, setFeatureKeyInput] = useState('')
+  const [showTenantDeletion, setShowTenantDeletion] = useState(false)
+  const [tenantDeletionPreflight, setTenantDeletionPreflight] = useState(null)
+  const [tenantDeletionPassword, setTenantDeletionPassword] = useState('')
+  const [tenantDeletionConfirmation, setTenantDeletionConfirmation] = useState('')
+  const [tenantDeletionReason, setTenantDeletionReason] = useState('')
+  const [tenantDeletionBusy, setTenantDeletionBusy] = useState(false)
 
   useEffect(() => {
     setFormState(JSON.parse(JSON.stringify(EMPTY_STATE)))
@@ -712,6 +718,33 @@ export default function TenantSettings() {
     } catch (error) {
       // buildPayload çeviri anahtarı fırlatır; beklenmeyen hatalarda ham mesaj gösterilir.
       setFeedback({ type: 'error', message: t(error.message, { defaultValue: error.message }) })
+    }
+  }
+
+  const openTenantDeletion = async () => {
+    try {
+      setTenantDeletionPreflight(await tenantAPI.getDeletionPreflight(activeTenantId))
+      setShowTenantDeletion(true)
+    } catch (error) {
+      setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.delete_failed') })
+    }
+  }
+
+  const confirmTenantDeletion = async () => {
+    setTenantDeletionBusy(true)
+    try {
+      await tenantAPI.deleteTenant(activeTenantId, {
+        currentPassword: tenantDeletionPassword,
+        confirmation: tenantDeletionConfirmation,
+        reason: tenantDeletionReason,
+        cancelAtPeriodEnd: false
+      })
+      window.location.assign('/varliklar')
+    } catch (error) {
+      setFeedback({ type: 'error', message: describeError(error, 'tenantSettings.delete_failed') })
+      setShowTenantDeletion(false)
+    } finally {
+      setTenantDeletionBusy(false)
     }
   }
 
@@ -1228,7 +1261,64 @@ export default function TenantSettings() {
             {updateMutation.isPending ? t('common.saving') : t('tenantSettings.save')}
           </button>
         </div>
+
+        {activeMembership?.role === 'owner' && (
+          <section className="rounded-xl border border-red-200 bg-red-50 shadow-sm">
+            <div className="border-b border-red-200 px-6 py-4">
+              <h2 className="text-lg font-semibold text-red-900">{t('tenantSettings.danger_title')}</h2>
+              <p className="text-sm text-red-700">{t('tenantSettings.danger_desc')}</p>
+            </div>
+            <div className="flex items-center justify-between gap-4 px-6 py-5">
+              <p className="text-sm text-red-800">{t('tenantSettings.delete_retention_hint')}</p>
+              <button type="button" onClick={openTenantDeletion} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                {t('tenantSettings.delete_tenant')}
+              </button>
+            </div>
+          </section>
+        )}
       </form>
+
+      {showTenantDeletion && tenantDeletionPreflight && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-gray-900">{t('tenantSettings.delete_modal_title')}</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              {t('tenantSettings.delete_modal_desc', {
+                days: tenantDeletionPreflight.retentionDays,
+                content: tenantDeletionPreflight.impact?.content || 0,
+                media: tenantDeletionPreflight.impact?.media || 0
+              })}
+            </p>
+            <div className="mt-5 space-y-4">
+              <label className="block text-sm font-medium text-gray-700">
+                {t('tenantSettings.delete_password')}
+                <input type="password" autoComplete="current-password" value={tenantDeletionPassword} onChange={(event) => setTenantDeletionPassword(event.target.value)} className={FIELD_INPUT_WITH_MARGIN_CLASS} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                {t('tenantSettings.delete_confirmation', { slug: tenantDeletionPreflight.tenant.slug })}
+                <input type="text" value={tenantDeletionConfirmation} onChange={(event) => setTenantDeletionConfirmation(event.target.value)} className={FIELD_INPUT_WITH_MARGIN_CLASS} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                {t('tenantSettings.delete_reason')}
+                <textarea rows="3" value={tenantDeletionReason} onChange={(event) => setTenantDeletionReason(event.target.value)} className={FIELD_INPUT_WITH_MARGIN_CLASS} />
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" disabled={tenantDeletionBusy} onClick={() => setShowTenantDeletion(false)} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={tenantDeletionBusy || !tenantDeletionPassword || tenantDeletionConfirmation !== tenantDeletionPreflight.tenant.slug}
+                onClick={confirmTenantDeletion}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {tenantDeletionBusy ? t('common.deleting') : t('tenantSettings.delete_confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

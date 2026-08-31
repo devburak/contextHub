@@ -37,11 +37,12 @@ async function getActiveMembershipDetails(userId) {
   }).populate({
     path: 'tenantId',
     select: 'name slug plan currentPlan status createdAt',
+    match: { status: { $nin: ['deletion_pending', 'deleted'] } },
     populate: { path: 'currentPlan' }
   });
 
   return Promise.all(
-    memberships.map(async (membershipDoc) => {
+    memberships.filter((membershipDoc) => Boolean(membershipDoc.tenantId)).map(async (membershipDoc) => {
       const tenant = membershipDoc.tenantId;
       const tenantId = tenant?._id?.toString() || membershipDoc.tenantId?.toString();
       const { role: roleDoc, permissions } = await roleService.ensureRoleReference(

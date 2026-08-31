@@ -1,6 +1,24 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 
+export const DEFAULT_HOSTED_REQUIRED_PLUGINS = Object.freeze([
+  'semantic-search',
+  'tenant-backup',
+]);
+
+export function resolveHostedRequiredPlugins(env = process.env) {
+  const configured = String(env.CTXHUB_REQUIRED_PLUGINS || '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
+  const plugins = [...new Set([...DEFAULT_HOSTED_REQUIRED_PLUGINS, ...configured])].sort();
+  const invalid = plugins.filter((name) => !/^[a-z0-9][a-z0-9-]*$/.test(name));
+  if (invalid.length > 0) {
+    throw new Error(`CTXHUB_REQUIRED_PLUGINS contains invalid plugin names: ${invalid.join(', ')}`);
+  }
+  return Object.freeze(plugins);
+}
+
 export function resolveHostedAdminBuild({ coreRoot, env = process.env } = {}) {
   if (!coreRoot) throw new TypeError('coreRoot is required');
 
@@ -23,6 +41,12 @@ export function resolveHostedAdminBuild({ coreRoot, env = process.env } = {}) {
   if (plugins.length === 0) {
     throw new Error(`Hosted Admin plugin catalogue is empty: ${commercialRoot}`);
   }
+  const requiredPlugins = resolveHostedRequiredPlugins(env);
+  const availablePlugins = new Set(plugins);
+  const missingPlugins = requiredPlugins.filter((name) => !availablePlugins.has(name));
+  if (missingPlugins.length > 0) {
+    throw new Error(`Hosted Admin plugin catalogue is missing required plugins: ${missingPlugins.join(', ')}`);
+  }
 
   const configuredSource = String(env.CTXHUB_ADMIN_PLUGIN_SOURCE || '').trim();
   const sources = configuredSource
@@ -38,6 +62,7 @@ export function resolveHostedAdminBuild({ coreRoot, env = process.env } = {}) {
     entry,
     sources: Object.freeze(sources),
     plugins: Object.freeze(plugins),
+    requiredPlugins,
     commercialRoot,
   });
 }
@@ -91,7 +116,10 @@ export function parseAdminBuildContract(distDirectory) {
   return Object.freeze({ schemaVersion: 1, variant: contract.variant, plugins: Object.freeze(plugins) });
 }
 
-export function assertHostedAdminBuild(contract, { requiredPlugins = [] } = {}) {
+export function assertHostedAdminBuild(
+  contract,
+  { requiredPlugins = DEFAULT_HOSTED_REQUIRED_PLUGINS } = {},
+) {
   if (contract.variant !== 'hosted') {
     throw new Error('Refusing to deploy a Community Admin build over the hosted service');
   }

@@ -41,6 +41,9 @@ export default function Tenants() {
   const [password, setPassword] = useState('')
   const [transferEmail, setTransferEmail] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [restoringTenant, setRestoringTenant] = useState(null)
+  const [restorePassword, setRestorePassword] = useState('')
+  const [restoreConfirmation, setRestoreConfirmation] = useState('')
 
   const tenantsQuery = useQuery({
     queryKey: ['tenants', 'list'],
@@ -49,6 +52,26 @@ export default function Tenants() {
       updateMemberships(tenants)
       return tenants
     }
+  })
+
+  const deletedTenantsQuery = useQuery({
+    queryKey: ['tenants', 'deleted'],
+    queryFn: tenantAPI.getDeletedTenants
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: () => tenantAPI.restoreTenant(restoringTenant.tenantId, {
+      currentPassword: restorePassword,
+      confirmation: restoreConfirmation
+    }),
+    onSuccess: async () => {
+      toast.success(t('tenant.restore_success'))
+      setRestoringTenant(null)
+      setRestorePassword('')
+      setRestoreConfirmation('')
+      await Promise.all([tenantsQuery.refetch(), deletedTenantsQuery.refetch()])
+    },
+    onError: (error) => toast.error(describeError(error, 'tenant.restore_failed'))
   })
 
   const acceptInvitationMutation = useMutation({
@@ -200,6 +223,29 @@ export default function Tenants() {
         </div>
       </div>
 
+      {(deletedTenantsQuery.data || []).length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 shadow-sm">
+          <div className="border-b border-amber-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-amber-900">{t('tenant.deleted_title')}</h2>
+            <p className="text-sm text-amber-700">{t('tenant.deleted_desc')}</p>
+          </div>
+          <div className="space-y-3 p-6">
+            {deletedTenantsQuery.data.map((tenant) => (
+              <div key={tenant.tenantId} className="flex flex-col justify-between gap-3 rounded-lg border border-amber-200 bg-white p-4 sm:flex-row sm:items-center">
+                <div>
+                  <p className="font-semibold text-gray-900">{tenant.name}</p>
+                  <p className="text-sm text-gray-500">{tenant.slug}</p>
+                  <p className="mt-1 text-xs text-amber-700">{t('tenant.purge_after', { date: new Date(tenant.purgeAfter).toLocaleDateString() })}</p>
+                </div>
+                <button type="button" disabled={!tenant.restoreAvailable} onClick={() => setRestoringTenant(tenant)} className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  {t('tenant.restore')}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-white shadow-sm rounded-xl border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">{t('tenant.my_tenants')}</h2>
@@ -320,6 +366,25 @@ export default function Tenants() {
       </div>
 
       {/* Şifre Doğrulama Modal */}
+      {restoringTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-gray-900">{t('tenant.restore_title')}</h2>
+            <p className="mt-2 text-sm text-gray-600">{t('tenant.restore_desc', { name: restoringTenant.name, slug: restoringTenant.slug })}</p>
+            <div className="mt-5 space-y-4">
+              <input type="password" autoComplete="current-password" value={restorePassword} onChange={(event) => setRestorePassword(event.target.value)} placeholder={t('tenant.current_password_placeholder')} className="block w-full rounded-md border border-gray-300 px-3 py-2" />
+              <input type="text" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} placeholder={restoringTenant.slug} className="block w-full rounded-md border border-gray-300 px-3 py-2" />
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setRestoringTenant(null)} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium">{t('common.cancel')}</button>
+              <button type="button" disabled={restoreMutation.isPending || !restorePassword || restoreConfirmation !== restoringTenant.slug} onClick={() => restoreMutation.mutate()} className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                {restoreMutation.isPending ? t('tenant.processing') : t('tenant.restore')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex min-h-screen items-center justify-center p-4">

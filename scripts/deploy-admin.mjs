@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url';
 import * as dotenv from 'dotenv';
 
 import { resolveReleaseIdentity } from './lib/release-identity.mjs';
-import { assertHostedAdminBuild, parseAdminBuildContract } from './lib/hosted-admin-build.mjs';
+import {
+  assertHostedAdminBuild,
+  parseAdminBuildContract,
+  resolveHostedRequiredPlugins,
+} from './lib/hosted-admin-build.mjs';
 
 const rootDirectory = join(dirname(fileURLToPath(import.meta.url)), '..');
 const envPath = join(rootDirectory, '.env');
@@ -37,7 +41,7 @@ function verifyProductionBuild(localPath) {
     }
   }
   const contract = parseAdminBuildContract(localPath);
-  assertHostedAdminBuild(contract);
+  assertHostedAdminBuild(contract, { requiredPlugins: resolveHostedRequiredPlugins(process.env) });
   console.log(`Verified hosted Admin plugins: ${contract.plugins.join(', ')}`);
 }
 

@@ -114,6 +114,23 @@ async function createPortalSession({ externalSubscriptionId }) {
   };
 }
 
+async function cancelSubscription({ externalSubscriptionId }) {
+  if (!externalSubscriptionId) throw new Error('iyzico subscription is not available');
+  await iyzicoRequest(
+    `/v2/subscription/subscriptions/${encodeURIComponent(externalSubscriptionId)}/cancel`,
+    {
+      method: 'POST',
+      body: { subscriptionReferenceCode: externalSubscriptionId },
+    }
+  );
+  return {
+    status: 'canceled',
+    cancelAtPeriodEnd: false,
+    canceledAt: new Date(),
+    effectiveAt: new Date(),
+  };
+}
+
 function verifySubscriptionWebhook(payload, signatureHeader, options = {}) {
   const secretKey = options.secretKey || process.env.IYZICO_SECRET_KEY;
   const merchantId = options.merchantId || process.env.IYZICO_MERCHANT_ID;
@@ -139,6 +156,7 @@ function verifySubscriptionWebhook(payload, signatureHeader, options = {}) {
 }
 
 module.exports = {
+  cancelSubscription,
   createCheckout,
   createPortalSession,
   customerFromBillingAccount,

@@ -1,4 +1,5 @@
 const tenantService = require('../services/tenantService');
+const tenantLifecycleService = require('../services/tenantLifecycleService');
 const roleService = require('../services/roleService');
 const { authenticateWithoutTenant } = require('../middleware/auth');
 const AuthService = require('../services/authService');
@@ -105,13 +106,10 @@ async function tenantRoutes(fastify) {
         csrfToken: session.csrfToken
       });
     } catch (error) {
-      if (
-        error.code === 'SelfServiceTenantLimit'
-        || (error.code === 11000 && error.keyPattern?.provisioningChannel)
-      ) {
+      if (error.code === 'FreeTenantLimit') {
         return reply.code(409).send({
-          error: 'SelfServiceTenantLimit',
-          message: 'Self-service tenant sınırına ulaşıldı. Yeni tenant ücretli checkout veya Enterprise sözleşme akışından oluşturulmalıdır.',
+          error: error.code,
+          message: error.message,
         });
       }
       if (error.message.includes('slug')) {
@@ -374,6 +372,120 @@ async function tenantRoutes(fastify) {
       return reply.code(400).send({ 
         error: 'OwnershipTransferAcceptFailed', 
         message: error.message 
+      });
+    }
+  });
+
+  fastify.get('/tenants/:id/deletion-preflight', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: { id: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } },
+      },
+    },
+  }, async function(request, reply) {
+    try {
+      return reply.send(await tenantLifecycleService.getDeletionPreflight(
+        request.params.id,
+        request.user._id
+      ));
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'TenantDeletionPreflightFailed',
+        message: error.message,
+        details: error.details,
+      });
+    }
+  });
+
+  fastify.get('/tenants/deleted', {
+    preHandler: [authenticateWithoutTenant],
+  }, async function(request, reply) {
+    try {
+      return reply.send({
+        tenants: await tenantLifecycleService.listRestorableTenants(request.user._id),
+      });
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'DeletedTenantListFailed',
+        message: error.message,
+      });
+    }
+  });
+
+  fastify.delete('/tenants/:id', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: { id: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['currentPassword', 'confirmation'],
+        properties: {
+          currentPassword: { type: 'string', minLength: 1 },
+          confirmation: { type: 'string', minLength: 1, maxLength: 200 },
+          reason: { type: 'string', maxLength: 1000 },
+          cancelAtPeriodEnd: { type: 'boolean', default: false },
+        },
+      },
+    },
+  }, async function(request, reply) {
+    try {
+      return reply.send(await tenantLifecycleService.deleteTenant(
+        request.params.id,
+        request.user._id,
+        request.body,
+        request
+      ));
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'TenantDeletionFailed',
+        message: error.message,
+        details: error.details,
+      });
+    }
+  });
+
+  fastify.post('/tenants/:id/restore', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: { id: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['currentPassword', 'confirmation'],
+        properties: {
+          currentPassword: { type: 'string', minLength: 1 },
+          confirmation: { type: 'string', minLength: 1, maxLength: 200 },
+        },
+      },
+    },
+  }, async function(request, reply) {
+    try {
+      return reply.send(await tenantLifecycleService.restoreTenant(
+        request.params.id,
+        request.user._id,
+        request.body,
+        request
+      ));
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'TenantRestoreFailed',
+        message: error.message,
+        details: error.details,
       });
     }
   });
