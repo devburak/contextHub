@@ -134,6 +134,7 @@ export default function Billing() {
     const checkoutStatus = params.get('checkout')
     const paymentMethodStatus = params.get('payment_method')
     if (checkoutStatus === 'success') toast.success(t('billing.toast.checkoutSuccess'))
+    if (checkoutStatus === 'review_success') toast.success(t('billing.toast.reviewCheckoutSuccess'))
     if (checkoutStatus === 'failed') toast.error(t('billing.toast.checkoutFailed'))
     if (paymentMethodStatus === 'updated') toast.success(t('billing.toast.paymentMethodUpdated'))
     if (checkoutStatus || paymentMethodStatus) {

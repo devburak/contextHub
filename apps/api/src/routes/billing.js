@@ -17,7 +17,9 @@ async function billingRoutes(fastify) {
     preHandler: [authenticate, requirePermission(PERMISSIONS.BILLING_VIEW)],
   }, async (request, reply) => {
     try {
-      return reply.send(await billingService.getOverview(request.tenantId));
+      return reply.send(await billingService.getOverview(request.tenantId, {
+        actorEmail: request.user.email,
+      }));
     } catch (error) {
       request.log.error({ err: error }, 'Billing overview failed');
       return reply.code(errorStatus(error)).send({ error: error.code || 'BillingError', message: error.message });
@@ -37,7 +39,15 @@ async function billingRoutes(fastify) {
     } },
   }, async (request, reply) => {
     try {
-      return reply.send(await billingService.createCheckout(request.tenantId, request.body.priceId || request.body.priceKey));
+      return reply.send(await billingService.createCheckout(
+        request.tenantId,
+        request.body.priceId || request.body.priceKey,
+        {
+          customerIp: request.ip,
+          actorUserId: request.user._id,
+          actorEmail: request.user.email,
+        }
+      ));
     } catch (error) {
       request.log.error({ err: error }, 'Billing checkout failed');
       return reply.code(errorStatus(error)).send({ error: error.code || 'BillingError', message: error.message });

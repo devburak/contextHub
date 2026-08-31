@@ -17,6 +17,7 @@ const childEnv = {
   CTXHUB_ADMIN_PLUGIN_ENTRY: hosted.entry,
   CTXHUB_ADMIN_PLUGIN_SOURCE: JSON.stringify(hosted.sources),
   CTXHUB_ADMIN_PLUGIN_NAMES: hosted.plugins.join(','),
+  VITE_CTXHUB_HOSTED: 'true',
 };
 
 process.stdout.write(`Hosted Admin plugins: ${hosted.plugins.join(', ')}\n`);

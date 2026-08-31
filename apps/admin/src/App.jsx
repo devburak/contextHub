@@ -31,7 +31,7 @@ import { CollectionsList, CollectionDetail } from './pages/collections/index.js'
 import { AuthContext } from './contexts/AuthContext.jsx'
 import { ToastProvider } from './contexts/ToastContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
-import PublicDocumentation from './pages/public-docs/PublicDocumentation.jsx'
+import PublicDocumentation from 'virtual:ctxhub-public-documentation'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
 import { PermissionRoute } from './components/PermissionRoute.jsx'
 import { FeatureRoute } from './components/FeatureRoute.jsx'
@@ -40,9 +40,10 @@ import { PERMISSIONS, expandPermissions } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
 import ApiDocs from './pages/ApiDocs.jsx'
 import Billing from './pages/billing/Billing.jsx'
-import PaddlePaymentLink from './pages/billing/PaddlePaymentLink.jsx'
+import PaddlePaymentLink from 'virtual:ctxhub-payment-link'
 import i18n from './i18n.js'
 import { persistLocale, resolveUserLocale } from './lib/localePreference.js'
+import { isHostedDeployment } from './lib/hostedDeployment.js'
 import {
   authAPI,
   setActiveTenantId as setApiActiveTenantId,
@@ -55,10 +56,13 @@ function App() {
   const [memberships, setMembershipsState] = useState([])
   const [activeTenantId, setActiveTenantId] = useState(null)
   const [authReady, setAuthReady] = useState(false)
-  const isPublicDocsPath =
+  const hostedDeployment = isHostedDeployment()
+  const isPublicDocsPath = hostedDeployment && (
     window.location.pathname === '/docs' || window.location.pathname.startsWith('/docs/')
-  const isPublicPaymentPath =
+  )
+  const isPublicPaymentPath = hostedDeployment && (
     window.location.pathname === '/pay' || window.location.pathname === '/pay/'
+  )
   const isPublicPath = isPublicDocsPath || isPublicPaymentPath
 
   // Panel dili: kullanıcı profilinde bir tercih varsa o kazanır, yoksa i18n'in

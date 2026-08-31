@@ -60,8 +60,8 @@ async function billingWebhookRoutes(fastify) {
     try {
       const token = request.body?.token || request.body?.checkoutFormToken;
       if (!token) throw new Error('iyzico checkout token is missing');
-      await billingService.completeIyzicoCheckout(token);
-      redirectUrl.searchParams.set('checkout', 'success');
+      const result = await billingService.completeIyzicoCheckout(token);
+      redirectUrl.searchParams.set('checkout', result.reviewCheckout ? 'review_success' : 'success');
       return reply.redirect(303, redirectUrl.toString());
     } catch (error) {
       request.log.warn({ err: error }, 'iyzico checkout callback failed');

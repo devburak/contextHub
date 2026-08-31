@@ -57,5 +57,11 @@ describe('subscription plan seed safety', () => {
       IYZICO_PLAN_PRO_MONTH: 'plan-ref',
       IYZICO_AMOUNT_PRO_MONTH_MINOR: '49900',
     })).toMatchObject({ provider: 'iyzico', currency: 'TRY', amountMinor: 49900, externalPriceId: 'plan-ref' });
+
+    expect(buildPlanPriceUpdate(localPrice, 'plan-id', {
+      IYZICO_ENV: 'sandbox',
+      IYZICO_REVIEW_CHECKOUT_FALLBACK: 'true',
+      IYZICO_AMOUNT_PRO_MONTH_MINOR: '49900',
+    })).toBeNull();
   });
 });

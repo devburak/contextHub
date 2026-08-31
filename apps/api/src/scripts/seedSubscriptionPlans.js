@@ -13,7 +13,9 @@ function buildPlanPriceUpdate(priceData, planId, env = process.env) {
     ? env[priceData.envKey]?.trim()
     : null;
   const configuredAmount = priceData.amountEnvKey ? env[priceData.amountEnvKey]?.trim() : null;
-  if (priceData.optional && (!configuredAmount || !configuredExternalPriceId)) return null;
+  if (priceData.optional && (!configuredAmount || !configuredExternalPriceId)) {
+    return null;
+  }
   const amountMinor = configuredAmount === null || configuredAmount === undefined
     ? priceData.amountMinor
     : Number(configuredAmount);

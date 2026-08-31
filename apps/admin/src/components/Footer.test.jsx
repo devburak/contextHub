@@ -33,7 +33,7 @@ describe('Footer', () => {
 
   it('links login users to the documentation overview', async () => {
     await act(async () => {
-      root.render(<Footer showDeveloperDocs />)
+      root.render(<Footer showDeveloperDocs hosted />)
     })
 
     const link = container.querySelector('a[href="/docs/overview"]')
@@ -43,7 +43,7 @@ describe('Footer', () => {
 
   it('translates the documentation link when the language changes', async () => {
     await act(async () => {
-      root.render(<Footer showDeveloperDocs />)
+      root.render(<Footer showDeveloperDocs hosted />)
     })
     await act(async () => {
       await i18n.changeLanguage('en')
@@ -63,9 +63,9 @@ describe('Footer', () => {
     expect(labels).toContain('EN')
   })
 
-  it('keeps pricing and legal policies public on unauthenticated screens', async () => {
+  it('keeps hosted pricing and legal policies public on unauthenticated screens', async () => {
     await act(async () => {
-      root.render(<Footer />)
+      root.render(<Footer hosted />)
     })
 
     expect(container.querySelector('a[href="/docs/pricing-and-plans"]')).not.toBeNull()
@@ -76,5 +76,14 @@ describe('Footer', () => {
     expect(container.querySelector('a[href="/docs/distance-sales-agreement"]')).not.toBeNull()
     expect(container.querySelector('img[width="429"][height="32"]')?.alt)
       .toContain('iyzico ile Öde')
+  })
+
+  it('does not expose hosted merchant surfaces in Community builds', async () => {
+    await act(async () => {
+      root.render(<Footer hosted={false} showDeveloperDocs />)
+    })
+
+    expect(container.querySelector('a[href^="/docs"]')).toBeNull()
+    expect(container.querySelector('img[width="429"][height="32"]')).toBeNull()
   })
 })

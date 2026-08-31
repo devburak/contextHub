@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const {
@@ -8,23 +8,59 @@ const {
   resolveBillingProvider,
   validateBillingProfile,
 } = require('./billingRouting');
-const { serializeBillingAccount } = require('./billingService');
-const { generateAuthorizationHeader, verifySubscriptionWebhook } = require('./iyzicoProvider');
-const { BillingAccount, BillingCheckoutSession } = require('@contexthub/common');
-const { getEnabledBillingProviders, isBillingProviderEnabled } = require('../../lib/billingConfig');
+const {
+  completeIyzicoReviewCheckout,
+  serializeBillingAccount,
+  serializeCatalogPlan,
+} = require('./billingService');
+const {
+  generateAuthorizationHeader,
+  reviewCheckoutRequestBody,
+  checkoutFormSignaturePayload,
+  verifyReviewCheckoutResponse,
+  verifySubscriptionWebhook,
+} = require('./iyzicoProvider');
+const {
+  BillingAccount,
+  BillingCheckoutSession,
+  BillingInvoice,
+  Tenant,
+} = require('@contexthub/common');
+const tenantSubscriptionService = require('../tenantSubscriptionService');
+const {
+  getEnabledBillingProviders,
+  isBillingProviderEnabled,
+  isIyzicoReviewCheckoutFallbackEnabled,
+} = require('../../lib/billingConfig');
 const { decryptBillingPii, encryptBillingPii } = require('./billingPiiCrypto');
 
 const originalEnabledProviders = process.env.BILLING_ENABLED_PROVIDERS;
 const originalProvider = process.env.BILLING_PROVIDER;
 const originalIyzicoReviewTenantIds = process.env.IYZICO_REVIEW_TENANT_IDS;
+const originalIyzicoReviewUserEmails = process.env.IYZICO_REVIEW_USER_EMAILS;
+const originalIyzicoReviewCheckoutFallback = process.env.IYZICO_REVIEW_CHECKOUT_FALLBACK;
+const originalIyzicoEnvironment = process.env.IYZICO_ENV;
+const originalIyzicoCallbackUrl = process.env.IYZICO_CALLBACK_URL;
+const originalIyzicoSecretKey = process.env.IYZICO_SECRET_KEY;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   if (originalEnabledProviders === undefined) delete process.env.BILLING_ENABLED_PROVIDERS;
   else process.env.BILLING_ENABLED_PROVIDERS = originalEnabledProviders;
   if (originalProvider === undefined) delete process.env.BILLING_PROVIDER;
   else process.env.BILLING_PROVIDER = originalProvider;
   if (originalIyzicoReviewTenantIds === undefined) delete process.env.IYZICO_REVIEW_TENANT_IDS;
   else process.env.IYZICO_REVIEW_TENANT_IDS = originalIyzicoReviewTenantIds;
+  if (originalIyzicoReviewUserEmails === undefined) delete process.env.IYZICO_REVIEW_USER_EMAILS;
+  else process.env.IYZICO_REVIEW_USER_EMAILS = originalIyzicoReviewUserEmails;
+  if (originalIyzicoReviewCheckoutFallback === undefined) delete process.env.IYZICO_REVIEW_CHECKOUT_FALLBACK;
+  else process.env.IYZICO_REVIEW_CHECKOUT_FALLBACK = originalIyzicoReviewCheckoutFallback;
+  if (originalIyzicoEnvironment === undefined) delete process.env.IYZICO_ENV;
+  else process.env.IYZICO_ENV = originalIyzicoEnvironment;
+  if (originalIyzicoCallbackUrl === undefined) delete process.env.IYZICO_CALLBACK_URL;
+  else process.env.IYZICO_CALLBACK_URL = originalIyzicoCallbackUrl;
+  if (originalIyzicoSecretKey === undefined) delete process.env.IYZICO_SECRET_KEY;
+  else process.env.IYZICO_SECRET_KEY = originalIyzicoSecretKey;
 });
 
 describe('billing country routing', () => {
@@ -158,27 +194,82 @@ describe('billing country routing', () => {
     expect(getEnabledBillingProviders()).toEqual([]);
   });
 
-  it('limits sandbox iyzico access to explicitly allowed review tenants', () => {
+  it('does not let the review allow-list disable normal provider operations', () => {
     process.env.BILLING_ENABLED_PROVIDERS = 'paddle,iyzico';
     process.env.IYZICO_REVIEW_TENANT_IDS = 'tenant-review, tenant-second,tenant-review';
 
-    expect(isBillingProviderEnabled('iyzico', 'tenant-review')).toBe(true);
-    expect(isBillingProviderEnabled('iyzico', 'tenant-second')).toBe(true);
-    expect(isBillingProviderEnabled('iyzico', 'tenant-other')).toBe(false);
-    expect(isBillingProviderEnabled('iyzico')).toBe(false);
-    expect(isBillingProviderEnabled('paddle', 'tenant-other')).toBe(true);
+    expect(isBillingProviderEnabled('iyzico')).toBe(true);
+    expect(isBillingProviderEnabled('paddle')).toBe(true);
   });
 
-  it('keeps normal provider behavior when no tenant allow-list is configured', () => {
-    process.env.BILLING_ENABLED_PROVIDERS = 'iyzico';
-    delete process.env.IYZICO_REVIEW_TENANT_IDS;
+  it('enables review checkout only for the sandbox tenant and authenticated user pair', () => {
+    process.env.IYZICO_ENV = 'sandbox';
+    process.env.IYZICO_REVIEW_CHECKOUT_FALLBACK = 'true';
+    process.env.IYZICO_REVIEW_TENANT_IDS = 'tenant-review';
+    process.env.IYZICO_REVIEW_USER_EMAILS = 'Review@Example.Test';
 
-    expect(isBillingProviderEnabled('iyzico', 'tenant-any')).toBe(true);
+    expect(isIyzicoReviewCheckoutFallbackEnabled({
+      tenantId: 'tenant-review',
+      userEmail: 'review@example.test',
+    })).toBe(true);
+    expect(isIyzicoReviewCheckoutFallbackEnabled({
+      tenantId: 'tenant-other',
+      userEmail: 'review@example.test',
+    })).toBe(false);
+    expect(isIyzicoReviewCheckoutFallbackEnabled({
+      tenantId: 'tenant-review',
+      userEmail: 'other@example.test',
+    })).toBe(false);
+    process.env.IYZICO_ENV = 'live';
+    expect(isIyzicoReviewCheckoutFallbackEnabled({
+      tenantId: 'tenant-review',
+      userEmail: 'review@example.test',
+    })).toBe(false);
+  });
+
+  it('fails review checkout closed when either allow-list is absent', () => {
+    process.env.IYZICO_ENV = 'sandbox';
+    process.env.IYZICO_REVIEW_CHECKOUT_FALLBACK = 'true';
+    process.env.IYZICO_REVIEW_TENANT_IDS = 'tenant-review';
+    delete process.env.IYZICO_REVIEW_USER_EMAILS;
+    expect(isIyzicoReviewCheckoutFallbackEnabled({
+      tenantId: 'tenant-review',
+      userEmail: 'review@example.test',
+    })).toBe(false);
+  });
+
+  it('marks an allowlisted iyzico review price ready without a subscription plan reference', () => {
+    const plan = { _id: 'plan-pro', slug: 'pro', name: 'Pro', price: 12 };
+    const result = serializeCatalogPlan(plan, [{
+      _id: 'price-pro',
+      planId: plan,
+      provider: 'iyzico',
+      interval: 'month',
+      currency: 'TRY',
+      amountMinor: 49900,
+      externalPriceId: null,
+    }], {
+      selectedProvider: 'iyzico',
+      providerEnabled: true,
+      reviewCheckoutFallback: true,
+    });
+
+    expect(result.prices[0]).toMatchObject({
+      id: 'price-pro',
+      amountMinor: 49900,
+      checkoutReady: true,
+      catalogOnly: false,
+    });
   });
 
   it('stores only a hash of the hosted checkout token', () => {
     expect(BillingCheckoutSession.schema.path('tokenHash').options.select).toBe(false);
     expect(BillingCheckoutSession.schema.path('expiresAt')).toBeTruthy();
+    expect(BillingCheckoutSession.schema.path('checkoutMode').enumValues).toContain('review_checkout');
+    expect(BillingCheckoutSession.schema.path('actorUserId')).toBeTruthy();
+    expect(BillingCheckoutSession.schema.path('expectedAmountMinor')).toBeTruthy();
+    expect(BillingCheckoutSession.schema.path('expectedCurrency')).toBeTruthy();
+    expect(BillingCheckoutSession.schema.path('verifiedAt')).toBeTruthy();
     expect(BillingAccount.schema.path('taxId').options.select).toBe(false);
     expect(BillingAccount.schema.path('taxIdEncrypted').options.select).toBe(false);
   });
@@ -208,6 +299,134 @@ describe('iyzico signed subscription webhook', () => {
       .digest('hex');
 
     expect(decoded).toBe(`apiKey:api-key&randomKey:random-key&signature:${expectedSignature}`);
+  });
+
+  it('does not append an empty JSON body to GET request signatures', () => {
+    const header = generateAuthorizationHeader('/v2/subscription/products', undefined, {
+      apiKey: 'api-key',
+      secretKey: 'secret-key',
+      randomKey: 'random-key',
+    });
+    const decoded = Buffer.from(header.authorization.replace('IYZWSv2 ', ''), 'base64').toString('utf8');
+    const expectedSignature = crypto.createHmac('sha256', 'secret-key')
+      .update('random-key/v2/subscription/products')
+      .digest('hex');
+
+    expect(decoded).toBe(`apiKey:api-key&randomKey:random-key&signature:${expectedSignature}`);
+  });
+
+  it('builds a single-installment virtual basket for the sandbox review checkout', () => {
+    process.env.IYZICO_CALLBACK_URL = 'https://api.example.test/api/billing/callbacks/iyzico';
+    const body = reviewCheckoutRequestBody({
+      billingAccount: {
+        contactFirstName: 'Test',
+        contactLastName: 'User',
+        billingEmail: 'review@example.test',
+        phone: '+905301112233',
+        taxId: '11111111111',
+        address: { line1: 'Test Street 1', city: 'Istanbul', postalCode: '34000' },
+      },
+      tenant: { _id: 'tenant-review', name: 'Review Tenant' },
+      planPrice: {
+        key: 'pro.iyzico.month.try',
+        interval: 'month',
+        currency: 'TRY',
+        amountMinor: 49900,
+        planId: { name: 'Pro' },
+      },
+      customerIp: '203.0.113.5',
+    });
+
+    expect(body).toMatchObject({
+      price: 499,
+      paidPrice: 499,
+      currency: 'TRY',
+      paymentGroup: 'SUBSCRIPTION',
+      enabledInstallments: [1],
+      callbackUrl: 'https://api.example.test/api/billing/callbacks/iyzico',
+      buyer: { ip: '203.0.113.5' },
+      basketItems: [{ id: 'pro.iyzico.month.try', itemType: 'VIRTUAL', price: 499 }],
+    });
+  });
+
+  it('verifies the documented checkout-form response signature and identifiers', () => {
+    const result = {
+      paymentStatus: 'SUCCESS',
+      paymentId: 'payment-1',
+      currency: 'TRY',
+      basketId: 'conversation-1',
+      conversationId: 'conversation-1',
+      paidPrice: '499.00',
+      price: '499.0',
+      token: 'checkout-token',
+    };
+    result.signature = crypto.createHmac('sha256', 'test-secret')
+      .update(checkoutFormSignaturePayload(result))
+      .digest('hex');
+
+    expect(verifyReviewCheckoutResponse(result, {
+      checkoutToken: 'checkout-token',
+      conversationId: 'conversation-1',
+      secretKey: 'test-secret',
+    })).toBe(result);
+    expect(() => verifyReviewCheckoutResponse({ ...result, basketId: 'other' }, {
+      checkoutToken: 'checkout-token',
+      conversationId: 'conversation-1',
+      secretKey: 'test-secret',
+    })).toThrow(/conversation mismatch/);
+    expect(() => verifyReviewCheckoutResponse({ ...result, signature: '0'.repeat(64) }, {
+      checkoutToken: 'checkout-token',
+      conversationId: 'conversation-1',
+      secretKey: 'test-secret',
+    })).toThrow(/signature mismatch/);
+  });
+
+  it('records a verified review proof without creating entitlement, subscription, or invoice state', async () => {
+    process.env.IYZICO_SECRET_KEY = 'test-secret';
+    const result = {
+      status: 'success',
+      paymentStatus: 'SUCCESS',
+      paymentId: 'payment-review-1',
+      currency: 'TRY',
+      basketId: 'conversation-review-1',
+      conversationId: 'conversation-review-1',
+      paidPrice: '499.00',
+      price: '499.0',
+      token: 'checkout-token',
+    };
+    result.signature = crypto.createHmac('sha256', 'test-secret')
+      .update(checkoutFormSignaturePayload(result))
+      .digest('hex');
+
+    const save = vi.fn().mockResolvedValue(undefined);
+    const session = {
+      conversationId: 'conversation-review-1',
+      tenantId: 'tenant-review',
+      expectedAmountMinor: 49900,
+      expectedCurrency: 'TRY',
+      save,
+    };
+    vi.spyOn(require('./iyzicoProvider'), 'retrieveReviewCheckout').mockResolvedValue(result);
+    vi.spyOn(Tenant, 'findById').mockReturnValue({ select: vi.fn().mockResolvedValue({ status: 'active' }) });
+    const invoiceWrite = vi.spyOn(BillingInvoice, 'findOneAndUpdate');
+    const billingAccountWrite = vi.spyOn(BillingAccount, 'findOneAndUpdate');
+    const applyPlan = vi.spyOn(tenantSubscriptionService, 'applyPlanToTenant');
+
+    await expect(completeIyzicoReviewCheckout(session, 'checkout-token')).resolves.toMatchObject({
+      completed: true,
+      reviewCheckout: true,
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(session).toMatchObject({
+      status: 'completed',
+      externalTransactionId: 'payment-review-1',
+      verifiedAmountMinor: 49900,
+      verifiedCurrency: 'TRY',
+    });
+    expect(session.externalSubscriptionId).toBeUndefined();
+    expect(invoiceWrite).not.toHaveBeenCalled();
+    expect(billingAccountWrite).not.toHaveBeenCalled();
+    expect(applyPlan).not.toHaveBeenCalled();
   });
 
   it('accepts the documented X-IYZ-SIGNATURE-V3 field order', () => {

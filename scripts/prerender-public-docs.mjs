@@ -1,4 +1,4 @@
-import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { readFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { marked } from 'marked'
@@ -149,7 +149,18 @@ export async function prerenderPublicDocs({
   sourceDirectory = defaultDocsSourceDirectory,
   distDirectory = defaultAdminDistDirectory,
   siteUrl = process.env.DOCS_SITE_URL || defaultDocsSiteUrl,
+  hosted = String(process.env.VITE_CTXHUB_HOSTED || '').trim().toLowerCase() === 'true',
 } = {}) {
+  if (!hosted) {
+    await Promise.all([
+      rm(join(distDirectory, 'docs'), { recursive: true, force: true }),
+      rm(join(distDirectory, 'pay'), { recursive: true, force: true }),
+      rm(join(distDirectory, 'developer-docs'), { recursive: true, force: true }),
+      rm(join(distDirectory, 'robots.txt'), { force: true }),
+      rm(join(distDirectory, 'sitemap.xml'), { force: true }),
+    ])
+    return { pages: 0, locale: null, siteUrl, hosted: false }
+  }
   const manifest = JSON.parse(await readFile(join(sourceDirectory, 'manifest.json'), 'utf8'))
   const template = await readFile(join(distDirectory, 'index.html'), 'utf8')
   const locale = manifest.aiLocale
@@ -186,10 +197,15 @@ export async function prerenderPublicDocs({
     pages: manifest.documents.length,
     locale,
     siteUrl,
+    hosted: true,
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const result = await prerenderPublicDocs()
-  console.log(`Prerendered ${result.pages} ${result.locale.toUpperCase()} docs pages for ${result.siteUrl}.`)
+  if (result.hosted) {
+    console.log(`Prerendered ${result.pages} ${result.locale.toUpperCase()} docs pages for ${result.siteUrl}.`)
+  } else {
+    console.log('Skipped hosted public docs and payment pages for the Community Admin build.')
+  }
 }
