@@ -237,7 +237,7 @@ async function syncTenantBundle({ tenantId, tenant: tenantInput } = {}) {
   const [settings, domains, apiTokens] = await Promise.all([
     TenantSettings.findOne({ tenantId: tenant._id }).lean(),
     Domain.find({ tenantId: tenant._id, status: 'verified' }).select('host status').lean(),
-    ApiToken.find({ tenantId: tenant._id }).lean(),
+    ApiToken.find({ tenantId: tenant._id, revokedAt: null }).lean(),
   ]);
 
   const tenantIdString = tenant._id.toString();

@@ -21,7 +21,7 @@ const membershipSchema = new Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'inactive', 'pending'],
+    enum: ['active', 'inactive', 'pending', 'revoked'],
     default: 'active'
   },
   domainScopes: [{
@@ -34,6 +34,9 @@ const membershipSchema = new Schema({
   inviteTokenExpiresAt: { type: Date },
   lastInvitedAt: { type: Date },
   acceptedAt: { type: Date },
+  removedAt: { type: Date, default: null },
+  removedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  removalReason: { type: String, default: '', trim: true, maxlength: 500 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },

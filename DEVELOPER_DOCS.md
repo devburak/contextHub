@@ -1841,7 +1841,7 @@ MIT License
 ## Destek ve İletişim
 
 - **GitHub Issues** – Bug reports, feature requests
-- **Email** – support@contexthub.com (if available)
+- **Email** – support@ctxhub.net (if available)
 - **Documentation** – https://docs.contexthub.com (if available)
 
 ---

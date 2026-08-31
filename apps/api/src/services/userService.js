@@ -1,5 +1,15 @@
-const { User, Membership, Tenant, rbac, mongoose, ActivityLog } = require('@contexthub/common');
+const {
+  User,
+  Membership,
+  Tenant,
+  Account,
+  BillingAccount,
+  rbac,
+  mongoose,
+  ActivityLog,
+} = require('@contexthub/common');
 const bcrypt = require('bcryptjs');
+const crypto = require('node:crypto');
 const roleService = require('./roleService');
 const { mailService } = require('./mailService');
 
@@ -10,60 +20,6 @@ const SUPPORTED_UI_LANGUAGES = ['tr', 'en'];
 const { ROLE_KEYS } = rbac;
 
 class UserService {
-  async createUser({ email, password, firstName, lastName, tenantId, role = ROLE_KEYS.ADMIN }) {
-    // Şifre hash'leme işlemini User model'inde yaptığımız için burada yapmaya gerek yok
-    const user = new User({
-      email,
-      password, // Model'de pre-save middleware ile hash'lenecek
-      firstName,
-      lastName,
-      tenantId,
-      mustChangePassword: true
-    });
-
-    await user.save();
-
-    // Kullanıcı tenant ilişkisini oluştur
-    if (tenantId) {
-      const normalizedRole = roleService.normalizeKey(role) || ROLE_KEYS.ADMIN;
-      let resolvedRole = null;
-
-      if (normalizedRole) {
-        resolvedRole = await roleService.resolveRole({ tenantId, roleKey: normalizedRole });
-        if (!resolvedRole && normalizedRole !== ROLE_KEYS.VIEWER && normalizedRole !== ROLE_KEYS.ADMIN) {
-          throw new Error('Role not found');
-        }
-      }
-
-      const fallbackRole = resolvedRole
-        || await roleService.resolveRole({ tenantId, roleKey: ROLE_KEYS.ADMIN })
-        || await roleService.resolveRole({ tenantId: null, roleKey: ROLE_KEYS.ADMIN })
-        || await roleService.resolveRole({ tenantId, roleKey: ROLE_KEYS.OWNER })
-        || await roleService.resolveRole({ tenantId: null, roleKey: ROLE_KEYS.OWNER })
-        || await roleService.resolveRole({ tenantId, roleKey: ROLE_KEYS.VIEWER })
-        || await roleService.resolveRole({ tenantId: null, roleKey: ROLE_KEYS.VIEWER });
-
-      const membership = new Membership({
-        tenantId,
-        userId: user._id,
-        role: (resolvedRole || fallbackRole)?.key || ROLE_KEYS.ADMIN,
-        roleId: (resolvedRole || fallbackRole)?._id || null,
-        status: 'active'
-      });
-      await membership.save();
-    }
-
-    return user;
-  }
-
-  async findUserByEmail(email) {
-    if (!email) {
-      return null;
-    }
-
-    return await User.findOne({ email });
-  }
-
   async getUserById(userId, tenantId) {
     return await User.findOne({ _id: userId, tenantId }).select('-password');
   }
@@ -237,7 +193,13 @@ class UserService {
 
     const removedAt = new Date();
 
-    await Membership.deleteOne({ _id: membership._id });
+    membership.status = 'revoked';
+    membership.removedAt = removedAt;
+    membership.removedBy = options?.removedBy?._id || options?.removedBy || null;
+    membership.removalReason = 'removed_by_tenant_admin';
+    membership.inviteTokenHash = null;
+    membership.inviteTokenExpiresAt = null;
+    await membership.save();
 
     const sendEmail = options?.sendEmail !== false;
     if (sendEmail) {
@@ -524,30 +486,210 @@ class UserService {
     };
   }
 
-  async deleteOwnAccount(userId) {
-    // Önce kullanıcının sahip olduğu tenantları kontrol et
-    const ownedMemberships = await Membership.find({ 
-      userId, 
-      role: 'owner' 
-    }).populate('tenantId');
+  async getAccountDeletionPreflight(userId) {
+    const user = await User.findById(userId).select('email status');
+    if (!user) {
+      const error = new Error('Kullanıcı bulunamadı');
+      error.code = 'UserNotFound';
+      error.statusCode = 404;
+      throw error;
+    }
 
-    if (ownedMemberships.length > 0) {
-      const ownedTenantNames = ownedMemberships
-        .map(m => m.tenantId?.name || 'İsimsiz Varlık')
-        .join(', ');
-      
-      throw new Error(
-        `Hesabınızı silmeden önce sahip olduğunuz varlıkları devretmeniz veya silmeniz gerekmektedir: ${ownedTenantNames}`
+    const memberships = await Membership.find({
+      userId,
+      status: { $in: ['active', 'inactive', 'pending'] },
+    }).populate('tenantId', 'name slug status accountId');
+
+    const activeOwnerships = memberships.filter((membership) =>
+      membership.role === ROLE_KEYS.OWNER
+      && membership.status === 'active'
+      && membership.tenantId?.status === 'active'
+    );
+
+    const ownershipDetails = await Promise.all(activeOwnerships.map(async (membership) => {
+      const tenant = membership.tenantId;
+      const ownerCount = await Membership.countDocuments({
+        tenantId: tenant._id,
+        role: ROLE_KEYS.OWNER,
+        status: 'active',
+      });
+      const transferTargetMemberships = ownerCount > 1
+        ? await Membership.find({
+            tenantId: tenant._id,
+            userId: { $ne: userId },
+            role: ROLE_KEYS.OWNER,
+            status: 'active',
+          }).select('userId createdAt').sort({ createdAt: 1 })
+        : [];
+      const transferCandidates = transferTargetMemberships.length
+        ? await User.find({
+            _id: { $in: transferTargetMemberships.map((item) => item.userId) },
+            status: 'active',
+          }).select('email firstName lastName status')
+        : [];
+      const candidateById = new Map(transferCandidates.map((candidate) => [
+        candidate._id.toString(),
+        candidate,
+      ]));
+      const transferTarget = transferTargetMemberships
+        .map((candidateMembership) => candidateById.get(candidateMembership.userId.toString()))
+        .find(Boolean) || null;
+      return {
+        tenantId: tenant._id.toString(),
+        name: tenant.name,
+        slug: tenant.slug,
+        ownerCount,
+        blocking: ownerCount <= 1,
+        transferTarget: transferTarget && transferTarget.status === 'active'
+          ? {
+              userId: transferTarget._id.toString(),
+              email: transferTarget.email,
+              name: [transferTarget.firstName, transferTarget.lastName].filter(Boolean).join(' '),
+            }
+          : null,
+      };
+    }));
+
+    const blockingTenants = ownershipDetails.filter((item) => item.blocking || !item.transferTarget);
+    const accountTransfers = ownershipDetails
+      .filter((item) => !item.blocking && item.transferTarget)
+      .map((item) => ({
+        tenantId: item.tenantId,
+        tenantName: item.name,
+        targetUserId: item.transferTarget.userId,
+        targetEmail: item.transferTarget.email,
+      }));
+
+    return {
+      canDelete: blockingTenants.length === 0,
+      confirmation: user.email,
+      blockingTenants,
+      accountTransfers,
+      membershipsToRevoke: memberships.length,
+    };
+  }
+
+  async deleteOwnAccount(userId, { currentPassword, confirmation } = {}, request = null) {
+    const user = await User.findById(userId);
+    if (!user) {
+      const error = new Error('Kullanıcı bulunamadı');
+      error.code = 'UserNotFound';
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!currentPassword || !await bcrypt.compare(currentPassword, user.password)) {
+      const error = new Error('Şifre hatalı');
+      error.code = 'InvalidPassword';
+      error.statusCode = 401;
+      throw error;
+    }
+    if (String(confirmation || '').trim().toLowerCase() !== user.email.toLowerCase()) {
+      const error = new Error('Hesap silme onayı e-posta adresinizle eşleşmiyor');
+      error.code = 'AccountDeletionConfirmationMismatch';
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const preflight = await this.getAccountDeletionPreflight(userId);
+    if (!preflight.canDelete) {
+      const error = new Error(
+        `Aktif varlıkların tek sahibi olduğunuz için hesabınız silinemez: ${preflight.blockingTenants.map((item) => item.name).join(', ')}`
+      );
+      error.code = 'LastOwnerRestriction';
+      error.statusCode = 409;
+      error.details = { blockingTenants: preflight.blockingTenants };
+      throw error;
+    }
+
+    const now = new Date();
+    const deletionRequestId = crypto.randomUUID();
+
+    for (const transfer of preflight.accountTransfers) {
+      const tenant = await Tenant.findById(transfer.tenantId).select('accountId');
+      if (!tenant?.accountId) continue;
+      await Account.updateOne(
+        { _id: tenant.accountId, ownerUserId: userId },
+        { $set: { ownerUserId: transfer.targetUserId } }
+      );
+      await BillingAccount.updateOne(
+        { accountId: tenant.accountId },
+        { $set: { billingEmail: transfer.targetEmail } }
       );
     }
 
-    // Kullanıcıya ait tüm üyelikleri sil
-    await Membership.deleteMany({ userId });
+    const displayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.name || '';
+    const acceptanceActor = {
+      userId: user._id,
+      emailHash: crypto.createHash('sha256').update(user.email.toLowerCase()).digest('hex'),
+      displayName,
+      capturedAt: now,
+    };
+    const billingAccounts = await BillingAccount.find({
+      $or: [
+        { declarationAcceptedBy: userId },
+        { serviceAgreementAcceptedBy: userId },
+      ],
+    });
+    for (const billingAccount of billingAccounts) {
+      if (String(billingAccount.declarationAcceptedBy || '') === String(userId)
+          && !billingAccount.declarationAcceptanceActor) {
+        billingAccount.declarationAcceptanceActor = acceptanceActor;
+      }
+      if (String(billingAccount.serviceAgreementAcceptedBy || '') === String(userId)
+          && !billingAccount.serviceAgreementAcceptanceActor) {
+        billingAccount.serviceAgreementAcceptanceActor = acceptanceActor;
+      }
+      await billingAccount.save();
+    }
 
-    // Kullanıcıyı sil
-    await User.findByIdAndDelete(userId);
+    await Membership.updateMany(
+      { userId, status: { $ne: 'revoked' } },
+      {
+        $set: {
+          status: 'revoked',
+          removedAt: now,
+          removedBy: userId,
+          removalReason: 'account_deleted',
+          inviteTokenHash: null,
+          inviteTokenExpiresAt: null,
+        },
+      }
+    );
 
-    return { success: true };
+    user.email = `deleted+${user._id.toString()}@users.invalid`;
+    user.firstName = 'Deleted';
+    user.lastName = 'User';
+    user.name = 'Deleted User';
+    user.password = crypto.randomBytes(48).toString('hex');
+    user.status = 'deleted';
+    user.deletionRequestedAt = now;
+    user.deletionRequestId = deletionRequestId;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.platformRole = 'none';
+    user.isEmailVerified = false;
+    user.emailVerifiedAt = null;
+    user.emailVerificationToken = null;
+    user.emailVerificationTokenExpiresAt = null;
+    user.resetPasswordToken = null;
+    user.resetPasswordExpiresAt = null;
+    user.mustChangePassword = false;
+    user.language = null;
+    user.deletedAt = now;
+    await user.save();
+
+    await ActivityLog.create({
+      user: user._id,
+      action: 'user.delete',
+      description: 'User account anonymized and memberships revoked',
+      metadata: {
+        deletionRequestId,
+        membershipsRevoked: preflight.membershipsToRevoke,
+        billingOwnershipTransfers: preflight.accountTransfers.length,
+        ipAddress: request?.ip || null,
+      },
+    });
+
+    return { success: true, deletionRequestId };
   }
 
   async leaveMembership(userId, membershipId, password) {
@@ -579,6 +721,7 @@ class UserService {
       const otherOwners = await Membership.countDocuments({
         tenantId: membership.tenantId,
         role: 'owner',
+        status: 'active',
         _id: { $ne: membershipId }
       });
 
@@ -589,32 +732,17 @@ class UserService {
       }
     }
 
-    // Üyeliği sil
-    await Membership.findByIdAndDelete(membershipId);
+    membership.status = 'revoked';
+    membership.removedAt = new Date();
+    membership.removedBy = userId;
+    membership.removalReason = 'membership_left';
+    membership.inviteTokenHash = null;
+    membership.inviteTokenExpiresAt = null;
+    await membership.save();
 
     return { success: true };
   }
 
-  async checkUserByEmail(email) {
-    const user = await User.findOne({ email }).select('-password');
-    
-    if (!user) {
-      return {
-        exists: false,
-        user: null
-      };
-    }
-
-    return {
-      exists: true,
-      user: {
-        id: user._id.toString(),
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName
-      }
-    };
-  }
 }
 
 module.exports = new UserService();

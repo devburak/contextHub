@@ -1,4 +1,5 @@
 const tenantService = require('../services/tenantService');
+const tenantLifecycleService = require('../services/tenantLifecycleService');
 const roleService = require('../services/roleService');
 const { authenticateWithoutTenant } = require('../middleware/auth');
 const AuthService = require('../services/authService');
@@ -11,10 +12,10 @@ async function tenantRoutes(fastify) {
     schema: {
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           name: { type: 'string', minLength: 1 },
-          slug: { type: 'string', minLength: 1 },
-          plan: { type: 'string' }
+          slug: { type: 'string', minLength: 1 }
         },
         required: ['name']
       },
@@ -67,8 +68,8 @@ async function tenantRoutes(fastify) {
     }
   }, async function(request, reply) {
     try {
-      const { name, slug, plan } = request.body;
-      const { tenant, membership } = await tenantService.createTenant({ name, slug, plan }, request.user._id);
+      const { name, slug } = request.body;
+      const { tenant, membership } = await tenantService.createTenant({ name, slug }, request.user._id);
 
       const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
         membership,
@@ -105,8 +106,20 @@ async function tenantRoutes(fastify) {
         csrfToken: session.csrfToken
       });
     } catch (error) {
-      if (error.message.includes('slug')) {
-        return reply.code(409).send({ error: 'Tenant slug already exists' });
+      if (error.code === 'FreeTenantLimit') {
+        return reply.code(409).send({
+          error: error.code,
+          message: error.message,
+        });
+      }
+      if (error.code === 'SlugConflict' || error.message.includes('slug')) {
+        const suggestions = error.suggestions
+          || await tenantService.generateSlugSuggestions(request.body.slug || request.body.name);
+        return reply.code(409).send({
+          error: 'SlugConflict',
+          message: 'Tenant slug already exists',
+          suggestions,
+        });
       }
       return reply.code(400).send({ error: 'Tenant creation failed', message: error.message });
     }
@@ -365,6 +378,120 @@ async function tenantRoutes(fastify) {
       return reply.code(400).send({ 
         error: 'OwnershipTransferAcceptFailed', 
         message: error.message 
+      });
+    }
+  });
+
+  fastify.get('/tenants/:id/deletion-preflight', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: { id: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } },
+      },
+    },
+  }, async function(request, reply) {
+    try {
+      return reply.send(await tenantLifecycleService.getDeletionPreflight(
+        request.params.id,
+        request.user._id
+      ));
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'TenantDeletionPreflightFailed',
+        message: error.message,
+        details: error.details,
+      });
+    }
+  });
+
+  fastify.get('/tenants/deleted', {
+    preHandler: [authenticateWithoutTenant],
+  }, async function(request, reply) {
+    try {
+      return reply.send({
+        tenants: await tenantLifecycleService.listRestorableTenants(request.user._id),
+      });
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'DeletedTenantListFailed',
+        message: error.message,
+      });
+    }
+  });
+
+  fastify.delete('/tenants/:id', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: { id: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['currentPassword', 'confirmation'],
+        properties: {
+          currentPassword: { type: 'string', minLength: 1 },
+          confirmation: { type: 'string', minLength: 1, maxLength: 200 },
+          reason: { type: 'string', maxLength: 1000 },
+          cancelAtPeriodEnd: { type: 'boolean', default: false },
+        },
+      },
+    },
+  }, async function(request, reply) {
+    try {
+      return reply.send(await tenantLifecycleService.deleteTenant(
+        request.params.id,
+        request.user._id,
+        request.body,
+        request
+      ));
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'TenantDeletionFailed',
+        message: error.message,
+        details: error.details,
+      });
+    }
+  });
+
+  fastify.post('/tenants/:id/restore', {
+    preHandler: [authenticateWithoutTenant],
+    schema: {
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: { id: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } },
+      },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['currentPassword', 'confirmation'],
+        properties: {
+          currentPassword: { type: 'string', minLength: 1 },
+          confirmation: { type: 'string', minLength: 1, maxLength: 200 },
+        },
+      },
+    },
+  }, async function(request, reply) {
+    try {
+      return reply.send(await tenantLifecycleService.restoreTenant(
+        request.params.id,
+        request.user._id,
+        request.body,
+        request
+      ));
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'TenantRestoreFailed',
+        message: error.message,
+        details: error.details,
       });
     }
   });

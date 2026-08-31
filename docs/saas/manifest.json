@@ -8,8 +8,8 @@
     "en": "Build secure, cache-aware applications with the managed ContextHub service at ctxhub.net.",
     "tr": "ctxhub.net üzerindeki yönetilen ContextHub servisiyle güvenli ve cache uyumlu uygulamalar geliştirin."
   },
-  "version": "2026.08",
-  "updatedAt": "2026-08-13",
+  "version": "2026.08.22.1",
+  "updatedAt": "2026-08-22",
   "defaultSlug": "overview",
   "defaultLocale": "en",
   "aiLocale": "en",
@@ -48,6 +48,76 @@
       "audience": { "en": ["product", "platform", "procurement"], "tr": ["ürün", "platform", "satın alma"] },
       "order": 15,
       "tags": ["open core", "cloud", "self hosted", "trust"]
+    },
+    {
+      "slug": "about",
+      "files": { "en": "en/about.md", "tr": "tr/about.md" },
+      "title": { "en": "About ContextHub", "tr": "ContextHub hakkında" },
+      "description": { "en": "Meet the company operating ContextHub Cloud, the product model, and the Community/Cloud boundary.", "tr": "ContextHub Cloud'u işleten şirketi, ürün modelini ve Community/Cloud sınırını tanıyın." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 17,
+      "tags": ["about", "company", "ikonx", "ctxhub.net", "community", "cloud"]
+    },
+    {
+      "slug": "legal-merchant-identity",
+      "files": { "en": "en/legal-merchant-identity.md", "tr": "tr/legal-merchant-identity.md" },
+      "title": { "en": "Legal, service, and merchant identity", "tr": "Hukuki hizmet ve merchant kimliği" },
+      "description": { "en": "Identify the legal service provider, product and corporate domains, billing roles, and public policy terms.", "tr": "Hukuki hizmet sağlayıcıyı, ürün ve kurumsal domainleri, tahsilat rollerini ve açık politika koşullarını tanıyın." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 18,
+      "tags": ["legal", "merchant", "billing", "privacy", "refund", "ikonx", "ctxhub.net"]
+    },
+    {
+      "slug": "pricing-and-plans",
+      "files": { "en": "en/pricing-and-plans.md", "tr": "tr/pricing-and-plans.md" },
+      "title": { "en": "Pricing and plans", "tr": "Fiyatlandırma ve paketler" },
+      "description": { "en": "Compare tenant-based ContextHub Cloud plans, list prices, quotas, and managed capabilities.", "tr": "Tenant bazlı ContextHub Cloud paketlerini, liste fiyatlarını, kotaları ve yönetilen yetenekleri karşılaştırın." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "owner"], "tr": ["müşteri", "satın alma", "owner"] },
+      "order": 19,
+      "tags": ["pricing", "plans", "quota", "subscription", "semantic search"]
+    },
+    {
+      "slug": "terms-of-service",
+      "files": { "en": "en/terms-of-service.md", "tr": "tr/terms-of-service.md" },
+      "title": { "en": "Terms and conditions", "tr": "Hizmet ve abonelik koşulları" },
+      "description": { "en": "Read the public terms for ContextHub Cloud accounts, tenant subscriptions, renewals, and acceptable use.", "tr": "ContextHub Cloud hesapları, tenant abonelikleri, yenileme ve kabul edilebilir kullanım için açık koşulları okuyun." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 21,
+      "tags": ["terms", "subscription", "renewal", "acceptable use"]
+    },
+    {
+      "slug": "privacy-notice",
+      "files": { "en": "en/privacy-notice.md", "tr": "tr/privacy-notice.md" },
+      "title": { "en": "Privacy policy and notice", "tr": "Gizlilik sözleşmesi ve aydınlatma" },
+      "description": { "en": "Understand the ContextHub Cloud privacy policy and how account, billing, support, and infrastructure data is processed.", "tr": "ContextHub Cloud gizlilik politikasını ve hesap, fatura, destek ve altyapı verilerinin nasıl işlendiğini anlayın." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 22,
+      "tags": ["privacy", "billing data", "international transfer", "kvkk"]
+    },
+    {
+      "slug": "cancellation-and-refunds",
+      "files": { "en": "en/cancellation-and-refunds.md", "tr": "tr/cancellation-and-refunds.md" },
+      "title": { "en": "Delivery, cancellation, and refund terms", "tr": "Teslimat, iptal ve iade şartları" },
+      "description": { "en": "Review digital delivery, renewal cancellation, refund review, payment dispute, and support rules.", "tr": "Dijital teslimat, yenileme iptali, iade incelemesi, ödeme itirazı ve destek kurallarını inceleyin." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "procurement", "legal"], "tr": ["müşteri", "satın alma", "hukuk"] },
+      "order": 23,
+      "tags": ["delivery", "digital delivery", "cancellation", "refund", "renewal", "payment dispute"]
+    },
+    {
+      "slug": "distance-sales-agreement",
+      "files": { "en": "en/distance-sales-agreement.md", "tr": "tr/distance-sales-agreement.md" },
+      "title": { "en": "Distance selling agreement", "tr": "Mesafeli satış sözleşmesi" },
+      "description": { "en": "Review pre-contract information, digital delivery, payment, renewal, withdrawal, and dispute terms for consumer purchases in Türkiye.", "tr": "Türkiye'deki tüketici işlemleri için ön bilgilendirme, dijital teslimat, ödeme, yenileme, cayma ve uyuşmazlık koşullarını inceleyin." },
+      "category": { "en": "Legal and billing", "tr": "Hukuk ve faturalandırma" },
+      "audience": { "en": ["customer", "consumer", "legal"], "tr": ["müşteri", "tüketici", "hukuk"] },
+      "order": 24,
+      "tags": ["distance selling", "consumer", "pre-contract information", "withdrawal", "digital delivery"]
     },
     {
       "slug": "api-reference",

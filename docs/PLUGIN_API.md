@@ -126,6 +126,26 @@ olarak baglanir. `tenant.settings.enumerate` yalniz plugin'in kendi setting key'
 tenant ID'lerini listeler; baska plugin namespace'ini goremez. Bu uc capability
 manifestte yoksa ilgili metodlar context'e hic eklenmez.
 
+API revision 6, hosted tenant restore icin `tenant.backup.restore` capability'sini
+ekler. Bu capability yalniz trusted backup plugin'ine tenant-scoped database ve media
+yazma facade'i verir:
+
+```js
+context.restore.getTenant({ tenantId })
+context.restore.findPopulatedCollections({ tenantId, collections })
+context.restore.checkIdentity({ collection, id, tenantId })
+context.restore.upsert({ collection, id, tenantId, document })
+context.restore.delete({ collection, id, tenantId })
+context.restore.getMediaTarget({ tenantId })
+context.restore.putFile({ tenantId, key, body, contentType, contentLength })
+context.restore.deleteFile({ tenantId, key })
+```
+
+Facade yalniz allowlist'teki tenant-owned CMS koleksiyonlarini kabul eder. Tenant,
+User, Membership, Role, token, billing ve operasyonel kayitlar yazilamaz; user referansi
+iceren dokumanlar core tarafinda da fail-closed reddedilir. Media key'i hedef tenant
+slug prefix'i ile eslesmelidir. Mongo veya R2 credential'i plugin'e aciga cikmaz.
+
 Admin API revision 3, community fallback'li `virtual:ctxhub-plugins` girisini,
 plugin page/menu kaydina ek olarak tenant tab, content-search ve content-editor panel
 katkilarini ve bunlarin fail-fast kontrolunu ekler. Hosted composition

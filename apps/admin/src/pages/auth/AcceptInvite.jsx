@@ -20,7 +20,7 @@ export default function AcceptInvite() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const describeError = useApiError()
-  const { login } = useAuth()
+  const { login, logout, user: currentUser } = useAuth()
   const token = searchParams.get('token') || ''
 
   const [firstName, setFirstName] = useState('')
@@ -44,8 +44,10 @@ export default function AcceptInvite() {
       return
     }
 
-    setFirstName((current) => current || previewQuery.data.firstName || '')
-    setLastName((current) => current || previewQuery.data.lastName || '')
+    if (previewQuery.data.requiresProfileSetup) {
+      setFirstName((current) => current || previewQuery.data.firstName || '')
+      setLastName((current) => current || previewQuery.data.lastName || '')
+    }
   }, [previewQuery.data])
 
   const expiresAt = useMemo(() => {
@@ -91,7 +93,25 @@ export default function AcceptInvite() {
       return
     }
 
+    if (previewQuery.data?.requiresAuthentication && !currentUser) {
+      setFormError(t('invite.sign_in_required'))
+      return
+    }
+
+    if (
+      previewQuery.data?.requiresAuthentication
+      && currentUser?.email?.toLowerCase() !== previewQuery.data?.email?.toLowerCase()
+    ) {
+      setFormError(t('invite.account_mismatch'))
+      return
+    }
+
     if (previewQuery.data?.requiresPasswordSetup) {
+      if (!firstName.trim() || !lastName.trim()) {
+        setFormError(t('invite.profile_required'))
+        return
+      }
+
       if (password.length < 6) {
         setFormError(t('validation.min_length', { count: 6 }))
         return
@@ -105,8 +125,8 @@ export default function AcceptInvite() {
 
     acceptMutation.mutate({
       token,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
+      firstName: previewQuery.data?.requiresProfileSetup ? firstName.trim() : undefined,
+      lastName: previewQuery.data?.requiresProfileSetup ? lastName.trim() : undefined,
       password: previewQuery.data?.requiresPasswordSetup ? password : undefined,
     })
   }
@@ -195,6 +215,18 @@ export default function AcceptInvite() {
   }
 
   const preview = previewQuery.data
+  const returnTo = `${window.location.pathname}${window.location.search}`
+  const requiresSignIn = Boolean(preview?.requiresAuthentication && !currentUser)
+  const hasAccountMismatch = Boolean(
+    preview?.requiresAuthentication
+    && currentUser
+    && currentUser.email?.toLowerCase() !== preview.email?.toLowerCase()
+  )
+
+  const switchAccount = async () => {
+    await logout()
+    navigate('/login', { state: { returnTo } })
+  }
 
   return (
     <div className={shellClass}>
@@ -235,7 +267,13 @@ export default function AcceptInvite() {
             </p>
 
             <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2">
+              {(requiresSignIn || hasAccountMismatch) && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <p className="font-medium">{requiresSignIn ? t('invite.sign_in_required') : t('invite.account_mismatch')}</p>
+                  <p className="mt-1 text-amber-800">{t('invite.existing_account_security')}</p>
+                </div>
+              )}
+              {preview?.requiresProfileSetup && <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
                     {t('signup.first_name')}
@@ -248,6 +286,7 @@ export default function AcceptInvite() {
                     onChange={(event) => setFirstName(event.target.value)}
                     className="mt-1 block w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-blue-100"
                     autoComplete="given-name"
+                    required
                   />
                 </div>
                 <div>
@@ -262,9 +301,10 @@ export default function AcceptInvite() {
                     onChange={(event) => setLastName(event.target.value)}
                     className="mt-1 block w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-blue-100"
                     autoComplete="family-name"
+                    required
                   />
                 </div>
-              </div>
+              </div>}
 
               {preview?.requiresPasswordSetup && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -325,20 +365,30 @@ export default function AcceptInvite() {
                   <ArrowLeftIcon className="h-4 w-4" />
                   {t('forgot.back_to_login')}
                 </Link>
-                <button
-                  type="submit"
-                  disabled={acceptMutation.isPending}
-                  className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {acceptMutation.isPending ? (
-                    <>
-                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                      {t('invite.accepting')}
-                    </>
-                  ) : (
-                    t('invite.accept')
-                  )}
-                </button>
+                {requiresSignIn ? (
+                  <Link to="/login" state={{ returnTo }} className="inline-flex items-center justify-center rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2">
+                    {t('invite.sign_in_to_accept')}
+                  </Link>
+                ) : hasAccountMismatch ? (
+                  <button type="button" onClick={switchAccount} className="inline-flex items-center justify-center rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2">
+                    {t('invite.switch_account')}
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={acceptMutation.isPending}
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {acceptMutation.isPending ? (
+                      <>
+                        <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                        {t('invite.accepting')}
+                      </>
+                    ) : (
+                      t('invite.accept')
+                    )}
+                  </button>
+                )}
               </div>
             </form>
           </section>

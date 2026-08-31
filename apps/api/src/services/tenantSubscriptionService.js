@@ -1,5 +1,7 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
+const { BillingAccount, BillingSubscription } = require('@contexthub/common');
 const { DEFAULT_SUBSCRIPTION_PLANS } = require('../lib/defaultSubscriptionPlans');
+const { SERVICE_AGREEMENT_VERSION, validateBillingProfile } = require('./billing/billingRouting');
 
 const DEFAULT_PLAN_BY_SLUG = new Map(DEFAULT_SUBSCRIPTION_PLANS.map((plan) => [plan.slug, plan]));
 const PLAN_SLUG_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -17,6 +19,57 @@ const LIMIT_FIELD_TO_PLAN_FIELD = Object.freeze({
 });
 
 class TenantSubscriptionService {
+  async assertPaidPlanActivationAllowed(tenant, plan, source) {
+    const error = (message) => {
+      const denied = new Error(message);
+      denied.code = 'PaidPlanActivationDenied';
+      return denied;
+    };
+
+    if (!['provider_checkout', 'provider_webhook', 'enterprise_contract'].includes(source)) {
+      throw error('Ücretli plan yalnız doğrulanmış ödeme veya Enterprise sözleşme akışından etkinleştirilebilir');
+    }
+
+    if (!tenant?.accountId) {
+      throw error('Ücretli plan aktivasyonu için tenant billing account gereklidir');
+    }
+
+    const billingAccount = await BillingAccount.findOne({ accountId: tenant.accountId })
+      .select('+taxId +taxIdEncrypted');
+    const agreementAccepted = Boolean(billingAccount?.serviceAgreementAcceptedAt) && (
+      source === 'enterprise_contract'
+      || billingAccount.serviceAgreementVersion === SERVICE_AGREEMENT_VERSION
+    );
+    if (!agreementAccepted) {
+      throw error('Ücretli plan aktivasyonu için hizmet sözleşmesi kabul edilmelidir');
+    }
+
+    const profileAccepted = validateBillingProfile(billingAccount).complete
+      || billingAccount.billingProfileStatus === 'legacy_enterprise';
+    if (!profileAccepted) {
+      throw error('Ücretli plan aktivasyonu için fatura bilgileri tamamlanmalıdır');
+    }
+
+    if (source === 'enterprise_contract') {
+      if (plan?.slug !== 'enterprise' || billingAccount.paymentMethodStatus !== 'enterprise_contract') {
+        throw error('Enterprise plan yalnız doğrulanmış Enterprise sözleşmesiyle etkinleştirilebilir');
+      }
+      return;
+    }
+
+    if (billingAccount.status !== 'active' || billingAccount.paymentMethodStatus !== 'provider_verified') {
+      throw error('Ücretli plan aktivasyonu için doğrulanmış ödeme bilgisi gereklidir');
+    }
+
+    const subscription = await BillingSubscription.findOne({
+      tenantId: tenant._id,
+      status: { $in: ['active', 'trialing'] },
+    });
+    if (!subscription || this.getPlanId(subscription.planId) !== this.getPlanId(plan)) {
+      throw error('Aktif ödeme aboneliği istenen planla eşleşmiyor');
+    }
+  }
+
   normalizePlanSlug(planSlug = 'free') {
     const normalized = String(planSlug || 'free').trim().toLowerCase();
     if (!PLAN_SLUG_PATTERN.test(normalized)) {
@@ -156,13 +209,16 @@ class TenantSubscriptionService {
   async applyPlanToTenant(
     tenant,
     planSlug,
-    { trackActivation = true, resetDatesOnFree = true } = {}
+    { trackActivation = true, resetDatesOnFree = true, source = null } = {}
   ) {
     if (!tenant) {
       throw new Error('Tenant is required');
     }
 
     const { normalizedPlanSlug, plan } = await this.resolvePlan(planSlug);
+    if (normalizedPlanSlug !== 'free') {
+      await this.assertPaidPlanActivationAllowed(tenant, plan, source);
+    }
     const previousPlanId = this.getPlanId(tenant.currentPlan);
     const nextPlanId = this.getPlanId(plan);
     const planChanged = previousPlanId !== nextPlanId || tenant.plan !== normalizedPlanSlug;
@@ -271,6 +327,16 @@ class TenantSubscriptionService {
         exceeded: state?.exceeded ?? false,
         periodKey: state?.periodKey ?? null,
       };
+      if (Number.isFinite(state?.limit) && state.limit > 0) {
+        const quotaAlertService = require('./quotaAlertService');
+        await quotaAlertService.recordThresholds({
+          tenantId: id,
+          metric: 'requests',
+          usage: state?.usage || 0,
+          limit: state.limit,
+          periodKey: state?.periodKey,
+        });
+      }
     } catch (error) {
       console.error(`[TenantSubscription] Failed to refresh request limit flag (${id}):`, error.message);
     }

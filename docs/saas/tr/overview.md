@@ -2,6 +2,8 @@
 
 Bu kılavuz `ctxhub.net` üzerindeki yönetilen ContextHub SaaS hizmetini kullanan müşteriler içindir. ContextHub Cloud tarafından işletilen API'yi, tenant sınırını, içerik sunum yöntemlerini ve yönetilen yetenekleri açıklar. Burada anlatılan her servisin community repoda bulunduğu anlamına gelmez.
 
+ContextHub Cloud, **İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.** tarafından işletilir. `ctxhub.net`, kurumsal alan adı `ikon-x.com.tr`, abonelik koşulları, gizlilik ve tahsilat rolleri arasındaki ilişki için [Hukuki hizmet ve merchant kimliği](./legal-merchant-identity.md) sayfasını inceleyin.
+
 ## Hizmet sınırı
 
 ContextHub Cloud, temel içerik platformunu işletilen altyapı ve ticari servislerle birleştirir.

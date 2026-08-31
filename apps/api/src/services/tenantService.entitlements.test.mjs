@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { Membership } = require('@contexthub/common');
+const { Membership, Tenant } = require('@contexthub/common');
 const tenantService = require('./tenantService');
 const roleService = require('./roleService');
 
@@ -52,5 +52,57 @@ describe('TenantService entitlement summaries', () => {
       currentPlan: expect.objectContaining({ slug: 'enterprise' }),
       features: ['search.semantic', 'content.related'],
     });
+  });
+
+  it('does not count a paid tenant as the owner free-tenant allowance', async () => {
+    const membershipQuery = {
+      select: vi.fn().mockResolvedValue([{ tenantId: 'paid-tenant' }]),
+    };
+    const tenantQuery = {
+      select: vi.fn().mockReturnThis(),
+      populate: vi.fn().mockResolvedValue([{
+        plan: 'free',
+        currentPlan: { slug: 'pro' },
+      }]),
+    };
+    vi.spyOn(Membership, 'find').mockReturnValue(membershipQuery);
+    vi.spyOn(Tenant, 'find').mockReturnValue(tenantQuery);
+
+    await expect(tenantService.hasOwnedFreeTenant('user-1')).resolves.toBe(false);
+    expect(Membership.find).toHaveBeenCalledWith({
+      userId: 'user-1',
+      role: 'owner',
+      status: 'active',
+    });
+  });
+
+  it('counts an active Free tenant against the owner allowance', async () => {
+    const membershipQuery = {
+      select: vi.fn().mockResolvedValue([{ tenantId: 'free-tenant' }]),
+    };
+    const tenantQuery = {
+      select: vi.fn().mockReturnThis(),
+      populate: vi.fn().mockResolvedValue([{ plan: 'free', currentPlan: null }]),
+    };
+    vi.spyOn(Membership, 'find').mockReturnValue(membershipQuery);
+    vi.spyOn(Tenant, 'find').mockReturnValue(tenantQuery);
+
+    await expect(tenantService.hasOwnedFreeTenant('user-1')).resolves.toBe(true);
+    expect(Tenant.find).toHaveBeenCalledWith({
+      _id: { $in: ['free-tenant'] },
+      status: { $nin: ['deletion_pending', 'deleted'] },
+    });
+  });
+
+  it('suggests only available slugs when a tenant slug is already in use', async () => {
+    vi.spyOn(Tenant, 'exists').mockImplementation(({ slug }) => (
+      Promise.resolve(['acme-1', 'acme-3'].includes(slug))
+    ));
+
+    await expect(tenantService.generateSlugSuggestions('Acme', 3)).resolves.toEqual([
+      'acme-2',
+      'acme-4',
+      'acme-5',
+    ]);
   });
 });

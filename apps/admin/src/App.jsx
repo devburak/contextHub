@@ -39,6 +39,8 @@ import TenantTabs from './components/TenantTabs.jsx'
 import { PERMISSIONS, expandPermissions } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
 import ApiDocs from './pages/ApiDocs.jsx'
+import Billing from './pages/billing/Billing.jsx'
+import PaddlePaymentLink from './pages/billing/PaddlePaymentLink.jsx'
 import i18n from './i18n.js'
 import { persistLocale, resolveUserLocale } from './lib/localePreference.js'
 import {
@@ -55,6 +57,9 @@ function App() {
   const [authReady, setAuthReady] = useState(false)
   const isPublicDocsPath =
     window.location.pathname === '/docs' || window.location.pathname.startsWith('/docs/')
+  const isPublicPaymentPath =
+    window.location.pathname === '/pay' || window.location.pathname === '/pay/'
+  const isPublicPath = isPublicDocsPath || isPublicPaymentPath
 
   // Panel dili: kullanıcı profilinde bir tercih varsa o kazanır, yoksa i18n'in
   // açılışta tarayıcıdan tespit ettiği dil korunur. Dil hiçbir koşulda Türkçeye
@@ -319,7 +324,7 @@ function App() {
     hasFeature
   ])
 
-  if (!authReady && !isPublicDocsPath) {
+  if (!authReady && !isPublicPath) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 text-sm text-gray-600">
         Güvenli oturum yükleniyor...
@@ -336,6 +341,11 @@ function App() {
               <Route path="/docs" element={<PublicDocumentation />} />
               <Route path="/docs/:slug" element={<PublicDocumentation />} />
               <Route path="*" element={<Navigate to="/docs" replace />} />
+            </Routes>
+          ) : isPublicPaymentPath ? (
+            <Routes>
+              <Route path="/pay" element={<PaddlePaymentLink />} />
+              <Route path="*" element={<Navigate to="/pay" replace />} />
             </Routes>
           ) : pendingTenantSelection ? (
             <Routes>
@@ -390,6 +400,8 @@ function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
               <Route path="/apidocs" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><ApiDocs /></PermissionRoute>} />
+              <Route path="/faturalandirma" element={<Billing />} />
+              <Route path="/billing" element={<Navigate to="/faturalandirma" replace />} />
               {adminPluginPages.map((page) => (
                 <Route
                   key={page.id}

@@ -41,6 +41,19 @@ const subscriptionPlanSchema = new mongoose.Schema(
       enum: ['fixed', 'usage-based'], // fixed: monthly flat fee, usage-based: pay as you go
       default: 'fixed',
     },
+
+    marketing: {
+      tagline: { type: String, default: '' },
+      audience: { type: String, default: '' },
+      badge: { type: String, default: '' },
+      featured: { type: Boolean, default: false },
+    },
+
+    capabilities: [{
+      key: { type: String, required: true },
+      label: { type: String, required: true },
+      description: { type: String, default: '' },
+    }],
     
     // === LIMITS ===
     

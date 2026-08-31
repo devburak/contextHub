@@ -16,9 +16,9 @@ async function mediaRoutes(fastify) {
         properties: {
           fileName: { type: 'string' },
           contentType: { type: 'string' },
-          size: { type: 'number' },
+          size: { type: 'number', minimum: 1 },
         },
-        required: ['fileName', 'contentType'],
+        required: ['fileName', 'contentType', 'size'],
       },
       response: {
         200: {
@@ -48,8 +48,8 @@ async function mediaRoutes(fastify) {
       return reply.send(result)
     } catch (error) {
       request.log.error({ err: error }, 'Failed to generate upload URL')
-      return reply.code(400).send({
-        error: 'PresignFailed',
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'PresignFailed',
         message: error.message,
       })
     }
@@ -94,8 +94,8 @@ async function mediaRoutes(fastify) {
       return reply.code(201).send({ media })
     } catch (error) {
       request.log.error({ err: error }, 'Failed to register media upload')
-      return reply.code(400).send({
-        error: 'MediaPersistFailed',
+      return reply.code(error.statusCode || 400).send({
+        error: error.code || 'MediaPersistFailed',
         message: error.message,
       })
     }

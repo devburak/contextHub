@@ -105,7 +105,13 @@ describe('extension settings facade', () => {
     ]);
     const select = vi.fn().mockReturnValue({ lean });
     const model = { find: vi.fn().mockReturnValue({ select }) };
-    const facade = createExtensionSettingsFacade({ plugin: 'tenant-backup', model });
+    const tenantLean = vi.fn().mockResolvedValue([
+      { _id: TENANT_ID },
+      { _id: '6a1702eddffc9f11747a4206' }
+    ]);
+    const tenantSelect = vi.fn().mockReturnValue({ lean: tenantLean });
+    const tenantModel = { find: vi.fn().mockReturnValue({ select: tenantSelect }) };
+    const facade = createExtensionSettingsFacade({ plugin: 'tenant-backup', model, tenantModel });
 
     await expect(facade.listTenantIds({ key: 'backup-plan' })).resolves.toEqual([
       TENANT_ID,
@@ -114,6 +120,10 @@ describe('extension settings facade', () => {
     expect(model.find).toHaveBeenCalledWith({
       plugin: 'tenant-backup',
       key: 'backup-plan'
+    });
+    expect(tenantModel.find).toHaveBeenCalledWith({
+      _id: { $in: ['6a1702eddffc9f11747a4206', TENANT_ID] },
+      status: 'active'
     });
   });
 });

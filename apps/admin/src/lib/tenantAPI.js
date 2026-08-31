@@ -31,6 +31,26 @@ export const tenantAPI = {
     return data
   },
 
+  getDeletionPreflight: async (tenantId) => {
+    const { data } = await apiClient.get(`/tenants/${tenantId}/deletion-preflight`)
+    return data
+  },
+
+  getDeletedTenants: async () => {
+    const { data } = await apiClient.get('/tenants/deleted')
+    return data.tenants || []
+  },
+
+  deleteTenant: async (tenantId, payload) => {
+    const { data } = await apiClient.delete(`/tenants/${tenantId}`, { data: payload })
+    return data
+  },
+
+  restoreTenant: async (tenantId, payload) => {
+    const { data } = await apiClient.post(`/tenants/${tenantId}/restore`, payload)
+    return data
+  },
+
   getWebhooks: async (tenantId) => {
     if (!tenantId) throw new Error('tenantId gerekli')
     const { data } = await apiClient.get(`/admin/tenants/${tenantId}/webhooks`)

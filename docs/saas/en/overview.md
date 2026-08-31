@@ -2,6 +2,8 @@
 
 This guide is for customers building on the managed ContextHub SaaS at `ctxhub.net`. It documents the operated API, tenant boundary, delivery patterns, and managed capabilities available through ContextHub Cloud. It is not a promise that every described service exists in the community repository.
 
+ContextHub Cloud is operated by **İKONX Bilişim ve Tarım Sanayi ve Ticaret Ltd. Şti.** See [Legal, service, and merchant identity](./legal-merchant-identity.md) for the relationship between `ctxhub.net`, the corporate domain `ikon-x.com.tr`, subscription terms, privacy, and billing roles.
+
 ## Service boundary
 
 ContextHub Cloud combines the core content platform with operated infrastructure and commercial services.

@@ -5,6 +5,7 @@ const SKIP_PATH_PREFIXES = [
   '/ready',
   '/api-usage-sync',
   '/api/subscription-plans',
+  '/api/billing/',
   '/api/tenants/current/limits',
 ];
 

@@ -120,11 +120,29 @@ function buildRobots(siteUrl) {
     'User-agent: *',
     'Disallow: /',
     'Allow: /docs',
+    'Allow: /pay',
     'Allow: /developer-docs/',
     'Allow: /assets/',
     `Sitemap: ${siteUrl}/sitemap.xml`,
     '',
   ].join('\n')
+}
+
+function buildPaymentLinkPage(template, siteUrl) {
+  const title = 'Secure payment | ContextHub'
+  const description = 'Approved ContextHub Cloud payment-link page for secure subscription checkout.'
+  const metadata = [
+    `<meta name="description" content="${escapeHtml(description)}" />`,
+    `<link rel="canonical" href="${escapeHtml(`${siteUrl}/pay`)}" />`,
+    '<meta name="robots" content="noindex, nofollow" />',
+    '<meta property="og:type" content="website" />',
+    `<meta property="og:title" content="${escapeHtml(title)}" />`,
+    `<meta property="og:description" content="${escapeHtml(description)}" />`,
+  ].join('\n')
+
+  return template
+    .replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
+    .replace('</head>', `${metadata}\n</head>`)
 }
 
 export async function prerenderPublicDocs({
@@ -156,6 +174,10 @@ export async function prerenderPublicDocs({
       await writeFile(join(docsDirectory, 'index.html'), html, 'utf8')
     }
   }
+
+  const paymentDirectory = join(distDirectory, 'pay')
+  await mkdir(paymentDirectory, { recursive: true })
+  await writeFile(join(paymentDirectory, 'index.html'), buildPaymentLinkPage(template, siteUrl), 'utf8')
 
   await writeFile(join(distDirectory, 'robots.txt'), buildRobots(siteUrl), 'utf8')
   await writeFile(join(distDirectory, 'sitemap.xml'), buildSitemap(manifest, siteUrl), 'utf8')

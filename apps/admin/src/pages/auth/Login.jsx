@@ -108,6 +108,12 @@ export default function Login() {
         return
       }
 
+      const returnTo = location.state?.returnTo
+      if (typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+        navigate(returnTo, { replace: true })
+        return
+      }
+
       if (data.requiresTenantSelection) {
         navigate('/select-tenant')
       } else {

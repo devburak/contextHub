@@ -23,10 +23,10 @@ const targetTenant = targetArg ? targetArg.slice('--tenant='.length).trim() : nu
 
 async function fetchTenants() {
   if (!targetTenant) {
-    return Tenant.find({ status: { $ne: 'archived' } }, '_id slug status').lean();
+    return Tenant.find({ status: 'active' }, '_id slug status').lean();
   }
 
-  const query = resolveConsumerTenantQuery(targetTenant);
+  const query = { ...resolveConsumerTenantQuery(targetTenant), status: 'active' };
   const tenant = await Tenant.findOne(query, '_id slug status').lean();
   return tenant ? [tenant] : [];
 }

@@ -1495,10 +1495,10 @@ export default function ContentEditor() {
   return (
     <>
       <div className={clsx(
-        'grid grid-cols-1 gap-6 lg:h-[calc(100dvh-80px)]',
+        'grid grid-cols-1 gap-6 lg:h-full lg:min-h-0 lg:overflow-hidden',
         sidebarOpen && 'lg:grid-cols-[minmax(0,1fr)_300px]'
       )}>
-        <div className="min-w-0 space-y-6 lg:overflow-y-auto lg:pr-4">
+        <div className="min-w-0 space-y-6 lg:min-h-0 lg:overflow-y-auto lg:pr-4">
           <section className={`${cardClass} space-y-5 p-4 sm:p-6`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -1770,7 +1770,7 @@ export default function ContentEditor() {
             onClick={() => setSidebarOpen(false)}
             className="fixed inset-0 z-[60] bg-gray-950/40 lg:hidden"
           />
-          <aside className="fixed inset-x-0 bottom-0 z-[61] max-h-[85dvh] min-w-0 space-y-6 overflow-y-auto rounded-t-2xl bg-gray-50 p-4 shadow-2xl lg:static lg:z-auto lg:h-[calc(100dvh-80px)] lg:max-h-none lg:min-w-[300px] lg:rounded-none lg:bg-transparent lg:p-0 lg:pr-4 lg:shadow-none">
+          <aside className="fixed inset-x-0 bottom-0 z-[61] max-h-[85dvh] min-w-0 space-y-6 overflow-y-auto rounded-t-2xl bg-gray-50 p-4 shadow-2xl lg:static lg:z-auto lg:h-full lg:min-h-0 lg:max-h-none lg:min-w-[300px] lg:rounded-none lg:bg-transparent lg:p-0 lg:pr-4 lg:shadow-none">
             <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 lg:hidden">
               <h2 className="text-sm font-semibold text-gray-900">{t('content.publish_title')}</h2>
               <button

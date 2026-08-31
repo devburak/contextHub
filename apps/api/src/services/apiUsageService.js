@@ -316,6 +316,17 @@ async function refreshMonthlyLimitFlag(tenantId, date = new Date(), options = {}
 
   await updateTenantCurrentMonthlyUsage(tenantId, state.usage, date);
 
+  if (!state.isUnlimited && Number.isFinite(state.limit) && state.limit > 0) {
+    const quotaAlertService = require('./quotaAlertService');
+    await quotaAlertService.recordThresholds({
+      tenantId,
+      metric: 'requests',
+      usage: state.usage,
+      limit: state.limit,
+      periodKey: state.periodKey,
+    });
+  }
+
   if (!localRedisClient.isEnabled()) {
     return state;
   }

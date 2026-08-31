@@ -1,4 +1,4 @@
-const { ExtensionTenantSetting } = require('@contexthub/common');
+const { ExtensionTenantSetting, Tenant } = require('@contexthub/common');
 
 const SETTING_KEY_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
 const TENANT_ID_PATTERN = /^[a-f0-9]{24}$/i;
@@ -73,7 +73,11 @@ function conflict(plugin, key) {
   );
 }
 
-function createExtensionSettingsFacade({ plugin, model = ExtensionTenantSetting } = {}) {
+function createExtensionSettingsFacade({
+  plugin,
+  model = ExtensionTenantSetting,
+  tenantModel = Tenant,
+} = {}) {
   const pluginName = String(plugin ?? '').trim();
   if (!pluginName) throw new TypeError('plugin is required');
 
@@ -83,9 +87,13 @@ function createExtensionSettingsFacade({ plugin, model = ExtensionTenantSetting 
       const docs = await model.find({ plugin: pluginName, key: normalizedKey })
         .select('tenantId')
         .lean();
-      return Object.freeze(
-        Array.from(new Set((docs || []).map((doc) => String(doc.tenantId)))).sort()
-      );
+      const candidateIds = Array.from(new Set((docs || []).map((doc) => String(doc.tenantId))));
+      if (!candidateIds.length) return Object.freeze([]);
+      const activeTenants = await tenantModel.find({
+        _id: { $in: candidateIds },
+        status: 'active',
+      }).select('_id').lean();
+      return Object.freeze((activeTenants || []).map((tenant) => String(tenant._id)).sort());
     },
 
     async get({ tenantId, key } = {}) {

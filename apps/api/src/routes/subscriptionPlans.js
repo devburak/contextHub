@@ -1,7 +1,11 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
 const apiUsageService = require('../services/apiUsageService');
 const tenantSubscriptionService = require('../services/tenantSubscriptionService');
-const { tenantContext, authenticateWithoutTenant } = require('../middleware/auth');
+const {
+  tenantContext,
+  authenticateWithoutTenant,
+  requirePlatformRole,
+} = require('../middleware/auth');
 
 const LIMIT_USAGE_KEY_MAP = {
   userLimit: 'userCount',
@@ -62,14 +66,15 @@ async function subscriptionPlanRoutes(fastify) {
    * GET /subscription-plans
    * List all subscription plans
    * PUBLIC: This endpoint is accessible to all authenticated users
-   * (including those without a tenant) so they can view plans when creating a new tenant
+   * (including those without a tenant) so they can review the catalog before
+   * completing billing setup on their Free bootstrap tenant.
    */
   fastify.get('/subscription-plans', {
     preHandler: [authenticateWithoutTenant],
   }, async function listPlansHandler(request, reply) {
     try {
       // This endpoint is now public to all authenticated users
-      // No role check required - new users need to see plans to create their first tenant
+      // No role check required; this is a read-only catalog.
 
       const plans = await SubscriptionPlan.getActivePlans();
       
@@ -81,6 +86,8 @@ async function subscriptionPlanRoutes(fastify) {
           description: plan.description,
           price: plan.price,
           billingType: plan.billingType,
+          marketing: plan.marketing || {},
+          capabilities: plan.capabilities || [],
           features: plan.features || [],
           limits: {
             users: plan.userLimit,
@@ -160,7 +167,7 @@ async function subscriptionPlanRoutes(fastify) {
    * Update a subscription plan (owner only)
    */
   fastify.put('/subscription-plans/:slug', {
-    preHandler: [tenantContext, fastify.authenticate],
+    preHandler: [authenticateWithoutTenant, requirePlatformRole(['admin'])],
     schema: {
       body: {
         type: 'object',
@@ -187,16 +194,6 @@ async function subscriptionPlanRoutes(fastify) {
   }, async function updatePlanHandler(request, reply) {
     try {
       const { slug } = request.params;
-      const userRole = request.userRole;
-
-      // Only owners can update plans
-      if (userRole !== 'owner') {
-        return reply.code(403).send({
-          error: 'Forbidden',
-          message: 'Only owners can update subscription plans',
-        });
-      }
-
       const plan = await SubscriptionPlan.findOne({ slug });
       
       if (!plan) {
@@ -252,15 +249,17 @@ async function subscriptionPlanRoutes(fastify) {
 
   /**
    * PUT /tenants/:tenantId/subscription
-   * Update a tenant's subscription plan
+   * Update contract-defined custom limits. Plan entitlement is intentionally
+   * absent: paid plans are activated only by verified billing/contract flows.
    */
   fastify.put('/tenants/:tenantId/subscription', {
-    preHandler: [tenantContext, fastify.authenticate],
+    preHandler: [authenticateWithoutTenant, requirePlatformRole(['admin'])],
     schema: {
       body: {
         type: 'object',
+        additionalProperties: false,
+        required: ['customLimits'],
         properties: {
-          planSlug: { type: 'string' },
           customLimits: {
             type: 'object',
             properties: {
@@ -276,17 +275,7 @@ async function subscriptionPlanRoutes(fastify) {
   }, async function updateTenantSubscriptionHandler(request, reply) {
     try {
       const { tenantId } = request.params;
-      const { planSlug, customLimits } = request.body;
-      const userRole = request.userRole;
-
-      // Only owners can update subscriptions
-      if (userRole !== 'owner') {
-        return reply.code(403).send({
-          error: 'Forbidden',
-          message: 'Only owners can update tenant subscriptions',
-        });
-      }
-
+      const { customLimits } = request.body;
       const Tenant = require('@contexthub/common/src/models/Tenant');
       const tenant = await Tenant.findById(tenantId);
       
@@ -295,21 +284,6 @@ async function subscriptionPlanRoutes(fastify) {
           error: 'NotFound',
           message: 'Tenant not found',
         });
-      }
-
-      // Update plan
-      if (planSlug) {
-        try {
-          await tenantSubscriptionService.applyPlanToTenant(tenant, planSlug);
-        } catch (error) {
-          const notFound = error.message.includes('not available');
-          return reply.code(notFound ? 404 : 400).send({
-            error: notFound ? 'NotFound' : 'BadRequest',
-            message: error.message,
-          });
-        }
-
-        console.log(`[Tenant] Updated subscription for ${tenantId} to ${tenant.plan}`);
       }
 
       // Update custom limits
@@ -373,11 +347,9 @@ async function subscriptionPlanRoutes(fastify) {
         });
       }
 
-      // Check permission - only owner or members of the tenant
-      const userRole = request.userRole;
       const userTenantId = request.tenantId;
       
-      if (userRole !== 'owner' && userTenantId !== tenantId) {
+      if (String(userTenantId) !== String(tenantId)) {
         return reply.code(403).send({
           error: 'Forbidden',
           message: 'You can only view limits for your own tenant',
@@ -470,7 +442,11 @@ async function subscriptionPlanRoutes(fastify) {
       const Media = require('@contexthub/common/src/models/Media');
       const mediaAgg = await Media.aggregate([
         { $match: { tenantId: tenant._id, status: { $ne: 'deleted' } } },
-        { $group: { _id: null, totalSize: { $sum: { $ifNull: ['$size', 0] } } } },
+        { $project: { totalSize: { $add: [
+          { $ifNull: ['$size', 0] },
+          { $sum: { $map: { input: { $ifNull: ['$variants', []] }, as: 'variant', in: { $ifNull: ['$$variant.size', 0] } } } },
+        ] } } },
+        { $group: { _id: null, totalSize: { $sum: '$totalSize' } } },
       ]);
       const storageUsed = mediaAgg.length > 0 ? mediaAgg[0].totalSize : 0;
 

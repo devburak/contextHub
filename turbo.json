@@ -42,5 +42,5 @@
     }
   },
   "globalDependencies": [".env", ".env.local", ".env.development", ".env.production"],
-  "globalEnv": ["NODE_ENV", "PORT", "MONGODB_URI", "JWT_SECRET", "MONGO_USER", "MONGO_PASSWORD"]
+  "globalEnv": ["NODE_ENV", "PORT", "MONGODB_URI", "JWT_SECRET", "MONGO_USER", "MONGO_PASSWORD", "CTXHUB_ADMIN_PLUGIN_ENTRY"]
 }

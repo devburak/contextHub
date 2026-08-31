@@ -5,6 +5,8 @@ const sharp = require('sharp')
 const crypto = require('crypto')
 const path = require('path')
 const mongoose = require('mongoose')
+const limitCheckerService = require('./limitCheckerService')
+const quotaAlertService = require('./quotaAlertService')
 
 const MAX_UPLOAD_BYTES = Number(process.env.R2_UPLOAD_MAX_MB || 100) * 1024 * 1024
 const PUBLIC_DOMAIN = (process.env.R2_PUBLIC_DOMAIN || '').replace(/\/$/, '')
@@ -524,7 +526,11 @@ async function generatePresignedUpload({ tenantId, requestedName, contentType, s
     throw new Error('contentType is required')
   }
 
-  if (size && size > MAX_UPLOAD_BYTES) {
+  if (!Number.isFinite(Number(size)) || Number(size) <= 0) {
+    throw new Error('size is required and must be greater than zero')
+  }
+
+  if (size > MAX_UPLOAD_BYTES) {
     throw new Error(`File exceeds upload limit of ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB`)
   }
 
@@ -532,6 +538,21 @@ async function generatePresignedUpload({ tenantId, requestedName, contentType, s
   if (!tenant) {
     throw new Error('Tenant not found')
   }
+
+  const quota = await limitCheckerService.checkStorageLimit(tenantId, Number(size))
+  if (!quota.allowed) {
+    const error = new Error('Storage limit reached')
+    error.code = 'StorageLimitExceeded'
+    error.statusCode = 409
+    error.quota = quota
+    throw error
+  }
+  quotaAlertService.recordThresholds({
+    tenantId,
+    metric: 'storage',
+    usage: (quota.currentUsage || 0) + Number(size),
+    limit: quota.limit,
+  }).catch((error) => console.error('[MediaService] Quota alert failed:', error.message))
 
   const { fileName, ext } = createUniqueFileName(requestedName)
   const { folder } = buildFolderParts()
@@ -753,6 +774,17 @@ async function completeUpload({
     throw new Error(`Uploaded file exceeds upload limit of ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB`)
   }
 
+
+  const quota = await limitCheckerService.checkStorageLimit(tenantId, contentLength)
+  if (!quota.allowed) {
+    await deleteObjectsFromStorage([key]).catch(() => {})
+    const error = new Error('Storage limit reached')
+    error.code = 'StorageLimitExceeded'
+    error.statusCode = 409
+    error.quota = quota
+    throw error
+  }
+
   const mimeType = head.ContentType || providedMimeType || 'application/octet-stream'
 
   const getObjectCommand = new GetObjectCommand({ Bucket: BUCKET, Key: key })
@@ -811,6 +843,23 @@ async function completeUpload({
     }
   }
 
+  const persistedStorageSize = contentLength + variants.reduce((sum, variant) => sum + Number(variant.size || 0), 0)
+  const finalQuota = await limitCheckerService.checkStorageLimit(tenantId, persistedStorageSize)
+  if (!finalQuota.allowed) {
+    await deleteObjectsFromStorage([key, ...variants.map((variant) => variant.key)]).catch(() => {})
+    const error = new Error('Storage limit reached after image variants were generated')
+    error.code = 'StorageLimitExceeded'
+    error.statusCode = 409
+    error.quota = finalQuota
+    throw error
+  }
+  quotaAlertService.recordThresholds({
+    tenantId,
+    metric: 'storage',
+    usage: (finalQuota.currentUsage || 0) + persistedStorageSize,
+    limit: finalQuota.limit,
+  }).catch((error) => console.error('[MediaService] Quota alert failed:', error.message))
+
   const document = await Media.create({
     tenantId,
     tenantSlug: tenant.slug,
@@ -840,6 +889,11 @@ async function completeUpload({
     createdBy: userId,
     updatedBy: userId,
   })
+
+  await limitCheckerService.updateStorageUsageCache(
+    tenantId,
+    (finalQuota.currentUsage || 0) + persistedStorageSize
+  )
 
   return document.toObject()
 }
@@ -1249,6 +1303,7 @@ async function deleteMedia({ tenantId, mediaId }) {
   const keysToRemove = [media.key, ...(media.variants || []).map((variant) => variant.key)]
   await deleteObjectsFromStorage(keysToRemove)
   await Media.deleteOne({ _id: media._id, tenantId })
+  await limitCheckerService.clearStorageUsageCache(tenantId)
 
   return { deleted: 1 }
 }
@@ -1267,8 +1322,20 @@ async function bulkDeleteMedia({ tenantId, mediaIds = [] }) {
   const keys = mediaList.flatMap((item) => [item.key, ...(item.variants || []).map((variant) => variant.key)])
   await deleteObjectsFromStorage(keys)
   const result = await Media.deleteMany({ tenantId, _id: { $in: objectIds } })
+  await limitCheckerService.clearStorageUsageCache(tenantId)
 
   return { deleted: result.deletedCount || mediaList.length }
+}
+
+async function purgeTenantMedia({ tenantId }) {
+  const mediaList = await Media.find({ tenantId }).select('key variants sourceType').lean()
+  const keys = mediaList.flatMap((item) => item.sourceType === 'external'
+    ? []
+    : [item.key, ...(item.variants || []).map((variant) => variant.key)].filter(Boolean))
+  await deleteObjectsFromStorage(keys)
+  const result = await Media.deleteMany({ tenantId })
+  await limitCheckerService.clearStorageUsageCache(tenantId)
+  return { deleted: result.deletedCount || 0, objectsDeleted: keys.length }
 }
 
 async function bulkTagMedia({ tenantId, mediaIds = [], tags = [], mode = 'add', userId }) {
@@ -1330,6 +1397,44 @@ async function openTenantBackupFile({ tenantId, key }) {
   }
 }
 
+function getTenantRestoreTarget() {
+  return Object.freeze({ bucket: BUCKET, publicDomain: PUBLIC_DOMAIN })
+}
+
+async function putTenantRestoreFile({ tenantId, key, body, contentType, contentLength }) {
+  const normalizedTenantId = String(tenantId || '').trim()
+  const normalizedKey = String(key || '').trim()
+  if (!normalizedTenantId || !normalizedKey || !body) {
+    throw new Error('tenantId, key and body are required')
+  }
+  const tenant = await Tenant.findById(normalizedTenantId).select('slug').lean()
+  if (!tenant?.slug) throw new Error('Restore target tenant was not found')
+  ensureKeyMatchesTenant(normalizedKey, tenant.slug)
+  const buffer = Buffer.isBuffer(body) ? body : Buffer.from(body)
+  if (Number.isFinite(contentLength) && contentLength !== buffer.length) {
+    throw new Error('Restore media content length does not match body')
+  }
+  await s3Client.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: normalizedKey,
+    Body: buffer,
+    ContentLength: buffer.length,
+    ContentType: contentType || inferMimeTypeFromFileName(normalizedKey),
+  }))
+  return Object.freeze({ key: normalizedKey, bytes: buffer.length })
+}
+
+async function deleteTenantRestoreFile({ tenantId, key }) {
+  const normalizedTenantId = String(tenantId || '').trim()
+  const normalizedKey = String(key || '').trim()
+  if (!normalizedTenantId || !normalizedKey) throw new Error('tenantId and key are required')
+  const tenant = await Tenant.findById(normalizedTenantId).select('slug').lean()
+  if (!tenant?.slug) throw new Error('Restore target tenant was not found')
+  ensureKeyMatchesTenant(normalizedKey, tenant.slug)
+  await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: normalizedKey }))
+  return Object.freeze({ key: normalizedKey, deleted: true })
+}
+
 module.exports = {
   generatePresignedUpload,
   completeUpload,
@@ -1339,6 +1444,10 @@ module.exports = {
   updateMediaMetadata,
   deleteMedia,
   bulkDeleteMedia,
+  purgeTenantMedia,
   bulkTagMedia,
   openTenantBackupFile,
+  getTenantRestoreTarget,
+  putTenantRestoreFile,
+  deleteTenantRestoreFile,
 }

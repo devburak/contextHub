@@ -21,6 +21,7 @@ export default function Profile() {
   const location = useLocation()
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletionPreflight, setDeletionPreflight] = useState(null)
 
   // Görevi bırakma state'leri
   const [leavingMembership, setLeavingMembership] = useState(null)
@@ -97,13 +98,19 @@ export default function Profile() {
   }
 
   const handleDeleteAccount = async () => {
-    setShowDeleteModal(true)
+    try {
+      const preflight = await userAPI.getAccountDeletionPreflight()
+      setDeletionPreflight(preflight)
+      setShowDeleteModal(true)
+    } catch (error) {
+      toast.error(describeError(error, 'profile.delete_account_error'))
+    }
   }
 
-  const confirmDeleteAccount = async () => {
+  const confirmDeleteAccount = async (credentials) => {
     setIsDeleting(true)
     try {
-      await userAPI.deleteAccount()
+      await userAPI.deleteAccount(credentials)
       toast.success(t('profile.delete_account_success'))
       setTimeout(() => {
         logout()
@@ -749,7 +756,9 @@ export default function Profile() {
         onClose={() => setShowDeleteModal(false)}
         onConfirm={confirmDeleteAccount}
         isDeleting={isDeleting}
-        ownedTenants={(memberships || []).filter(m => m.role === 'owner')}
+        ownedTenants={deletionPreflight?.blockingTenants || []}
+        accountTransfers={deletionPreflight?.accountTransfers || []}
+        confirmationValue={deletionPreflight?.confirmation || profile?.email || ''}
       />
     </div>
   )

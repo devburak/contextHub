@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { useTranslation } from 'react-i18next'
 import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
@@ -8,10 +8,23 @@ export default function DeleteAccountModal({
   onClose,
   onConfirm,
   isDeleting,
-  ownedTenants = []
+  ownedTenants = [],
+  accountTransfers = [],
+  confirmationValue = ''
 }) {
   const { t } = useTranslation()
   const hasOwnedTenants = ownedTenants.length > 0
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const canConfirm = Boolean(currentPassword)
+    && confirmation.trim().toLowerCase() === confirmationValue.trim().toLowerCase()
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentPassword('')
+      setConfirmation('')
+    }
+  }, [isOpen])
 
   return (
     <Transition.Root show={isOpen} as={Fragment}>
@@ -77,7 +90,7 @@ export default function DeleteAccountModal({
                                   <ul className="list-disc list-inside space-y-1">
                                     {ownedTenants.map((tenant, index) => (
                                       <li key={index} className="font-medium">
-                                        {tenant.tenant?.name || t('profile.unnamed_tenant')}
+                                        {tenant.name || tenant.tenant?.name || t('profile.unnamed_tenant')}
                                       </li>
                                     ))}
                                   </ul>
@@ -115,6 +128,34 @@ export default function DeleteAccountModal({
                               {t('profile.delete_backup_hint')}
                             </p>
                           </div>
+
+                          {accountTransfers.length > 0 && (
+                            <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+                              {t('profile.delete_billing_transfer', { count: accountTransfers.length })}
+                            </div>
+                          )}
+
+                          <div className="space-y-3">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                              {t('profile.current_password')}
+                              <input
+                                type="password"
+                                autoComplete="current-password"
+                                value={currentPassword}
+                                onChange={(event) => setCurrentPassword(event.target.value)}
+                                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                              />
+                            </label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                              {t('profile.delete_confirmation_label', { value: confirmationValue })}
+                              <input
+                                type="text"
+                                value={confirmation}
+                                onChange={(event) => setConfirmation(event.target.value)}
+                                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                              />
+                            </label>
+                          </div>
                         </>
                       )}
                     </div>
@@ -135,8 +176,8 @@ export default function DeleteAccountModal({
                       <button
                         type="button"
                         className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
-                        onClick={onConfirm}
-                        disabled={isDeleting}
+                        onClick={() => onConfirm({ currentPassword, confirmation })}
+                        disabled={isDeleting || !canConfirm}
                       >
                         {isDeleting ? (
                           <>

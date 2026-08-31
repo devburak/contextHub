@@ -1,4 +1,4 @@
-const { User, Membership, rbac, ApiToken } = require('@contexthub/common');
+const { User, Membership, Tenant, rbac, ApiToken } = require('@contexthub/common');
 const roleService = require('../services/roleService');
 const crypto = require('crypto');
 const tenantContextStore = require('@contexthub/common/src/tenantContext');
@@ -9,6 +9,7 @@ const {
   enforceCookieCsrf,
 } = require('../services/sessionSecurity');
 const { logSecurityEvent } = require('../services/auditService');
+const { isAccountBillingEnabled } = require('../lib/billingConfig');
 
 const {
   getRoleLevel,
@@ -28,6 +29,48 @@ const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 const API_TOKEN_AUTH_PREFIX = 'Bearer ctx_';
 const isApiTokenHeader = (authHeader) =>
   typeof authHeader === 'string' && authHeader.startsWith(API_TOKEN_AUTH_PREFIX);
+
+const DELETED_TENANT_STATUSES = new Set(['deletion_pending', 'deleted']);
+
+async function ensureTenantAvailable(tenantId, request, reply, { apiToken = false } = {}) {
+  const tenant = await Tenant.findById(tenantId).select('status').lean();
+  if (!tenant) {
+    reply.code(404).send({ error: 'TenantNotFound', message: 'Tenant does not exist' });
+    return false;
+  }
+
+  const isBillingRecoveryRoute = String(request.url || '').startsWith('/api/billing/');
+  const unavailable = DELETED_TENANT_STATUSES.has(tenant.status)
+    || (apiToken && tenant.status !== 'active')
+    || (!apiToken && tenant.status !== 'active' && !isBillingRecoveryRoute);
+  if (unavailable) {
+    reply.code(403).send({
+      error: 'TenantUnavailable',
+      message: 'This tenant is inactive, suspended, or deleted',
+    });
+    return false;
+  }
+  request.tenant = tenant;
+  return true;
+}
+
+async function enforceBillingWriteAccess(request, reply) {
+  if (!isAccountBillingEnabled() || SAFE_METHODS.has(request.method)) return true;
+  if (String(request.url || '').startsWith('/api/billing/')) return true;
+  if (!request.tenantId) return true;
+  const { BillingSubscription } = require('@contexthub/common');
+  const subscription = await BillingSubscription.findOne({
+    tenantId: request.tenantId,
+    status: 'past_due',
+    gracePeriodEndsAt: { $ne: null, $lte: new Date() },
+  }).select('_id');
+  if (!subscription) return true;
+  reply.code(402).send({
+    error: 'BillingWriteRestricted',
+    message: 'Payment is overdue. Read access remains available; update payment details in Billing to continue writes.',
+  });
+  return false;
+}
 
 const resolveTokenScopes = (scopes) => {
   const normalized = normalizeScopes(scopes);
@@ -117,7 +160,7 @@ async function authenticateApiToken(request, reply) {
     const hash = crypto.createHash('sha256').update(token).digest('hex');
 
     // Token'ı veritabanında ara
-    const apiToken = await ApiToken.findOne({ hash });
+    const apiToken = await ApiToken.findOne({ hash, revokedAt: null });
 
     if (!apiToken) {
       return reply.code(401).send({
@@ -151,6 +194,8 @@ async function authenticateApiToken(request, reply) {
     request.authType = 'api_token';
     const effectiveScopes = resolveTokenScopes(apiToken.scopes || []);
     request.tokenScopes = effectiveScopes;
+
+    if (!await ensureTenantAvailable(request.tenantId, request, reply, { apiToken: true })) return;
 
     if (await checkRequestLimit(request, reply)) {
       return;
@@ -202,6 +247,8 @@ async function authenticateApiToken(request, reply) {
       tenantId: request.tenantId,
       userId: request.user?._id?.toString?.()
     });
+
+    if (!await enforceBillingWriteAccess(request, reply)) return;
 
     if (shouldAuditUsage) {
       await logSecurityEvent({
@@ -347,6 +394,8 @@ async function authenticate(request, reply) {
 
     const tenantId = request.tenantId;
 
+    if (!await ensureTenantAvailable(tenantId, request, reply)) return;
+
     // User'ın bu tenant'taki membership'ini kontrol et
     const membership = await Membership.findOne({
       userId,
@@ -360,6 +409,8 @@ async function authenticate(request, reply) {
         message: 'User does not have access to this tenant'
       });
     }
+
+    if (!await enforceBillingWriteAccess(request, reply)) return;
 
     if (await checkRequestLimit(request, reply)) {
       return;
@@ -480,6 +531,29 @@ function requirePermission(requiredPermissions, options = {}) {
   };
 }
 
+const PLATFORM_ROLE_LEVELS = Object.freeze({
+  none: 0,
+  support: 10,
+  admin: 20,
+});
+
+function requirePlatformRole(allowedRoles = ['admin']) {
+  const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+  const minimumLevel = Math.min(...roles.map((role) => PLATFORM_ROLE_LEVELS[role] ?? Infinity));
+
+  return async function(request, reply) {
+    const platformRole = request.user?.platformRole || 'none';
+    const level = PLATFORM_ROLE_LEVELS[platformRole] ?? 0;
+
+    if (!Number.isFinite(minimumLevel) || level < minimumLevel) {
+      return reply.code(403).send({
+        error: 'PlatformAccessRequired',
+        message: 'This operation requires a platform administrator role',
+      });
+    }
+  };
+}
+
 // Owner-only middleware
 const requireOwner = requireRole(['owner']);
 
@@ -502,5 +576,6 @@ module.exports = {
   requireAdmin,
   requireEditor,
   requireAuthor,
-  requirePermission
+  requirePermission,
+  requirePlatformRole
 };

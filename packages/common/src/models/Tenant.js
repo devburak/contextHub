@@ -4,8 +4,24 @@ const { Schema } = mongoose;
 const tenantSchema = new Schema({
   name: { type: String, required: true },
   slug: { type: String, required: true, unique: true },
+  accountId: { type: Schema.Types.ObjectId, ref: 'Account', default: null, index: true },
   plan: { type: String, default: 'free' },
-  status: { type: String, default: 'active', enum: ['active', 'inactive', 'suspended'] },
+  status: {
+    type: String,
+    default: 'active',
+    enum: ['active', 'inactive', 'suspended', 'deletion_pending', 'deleted'],
+    index: true,
+  },
+  deletedAt: { type: Date, default: null, index: true },
+  deletedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  deletionReason: { type: String, default: '', trim: true, maxlength: 1000 },
+  deletionRequestId: { type: String, default: null, trim: true },
+  purgeAfter: { type: Date, default: null, index: true },
+  legalHold: { type: Boolean, default: false, index: true },
+  restoredAt: { type: Date, default: null },
+  restoredBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  purgedAt: { type: Date, default: null, index: true },
+  lifecycleError: { type: String, default: '', trim: true, maxlength: 2000 },
   
   // === SUBSCRIPTION INFO ===
   
@@ -48,6 +64,12 @@ const tenantSchema = new Schema({
   // === END SUBSCRIPTION INFO ===
   
   createdAt: { type: Date, default: Date.now },
+  provisioningChannel: {
+    type: String,
+    enum: ['legacy', 'self_service', 'platform', 'enterprise_contract'],
+    default: 'legacy',
+    index: true,
+  },
   updatedAt: { type: Date },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   updatedBy: { type: Schema.Types.ObjectId, ref: 'User' }
@@ -69,7 +91,14 @@ tenantSchema.pre('findOneAndUpdate', function(next) {
 tenantSchema.index({ slug: 1 }, { unique: true });
 tenantSchema.index({ currentPlan: 1 });
 tenantSchema.index({ status: 1 });
-
+tenantSchema.index({ status: 1, purgeAfter: 1, legalHold: 1 });
+tenantSchema.index(
+  { deletionRequestId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { deletionRequestId: { $type: 'string' } },
+  }
+);
 // === INSTANCE METHODS ===
 
 const LIMIT_USAGE_KEY_MAP = {
@@ -99,13 +128,15 @@ tenantSchema.methods.getLimit = async function(limitType) {
   
   // Default free tier limits
   const defaultLimits = {
-    userLimit: 2,
+    userLimit: 1,
     ownerLimit: 1,
     storageLimit: 500 * 1024 * 1024, // 500 MB
     monthlyRequestLimit: 1000,
   };
   
-  return defaultLimits[limitType] || 0;
+  return Object.prototype.hasOwnProperty.call(defaultLimits, limitType)
+    ? defaultLimits[limitType]
+    : 0;
 };
 
 /**

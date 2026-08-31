@@ -52,7 +52,7 @@ describe('plugin host', () => {
       ok: true,
       plugin: 'dummy',
       apiVersion: 1,
-      apiRevision: 5
+      apiRevision: 6
     })
     expect(result.registry.inventory()).toEqual([
       expect.objectContaining({ name: 'dummy', routePrefix: '/api/dummy' })
@@ -91,6 +91,26 @@ describe('plugin host', () => {
     await app.close()
   })
 
+  it('fails closed when a required runtime plugin is absent', async () => {
+    const app = fastify({ logger: false })
+    await expect(bootstrapExtensions({
+      mode: 'api',
+      app,
+      entries: [],
+      requiredPlugins: ['semantic-search'],
+      coreVersion: '0.1.0'
+    })).rejects.toMatchObject({ code: 'PLUGIN_REQUIRED_MISSING' })
+
+    await expect(bootstrapExtensions({
+      mode: 'api',
+      app,
+      entries: [dummyManifest],
+      requiredPlugins: ['semantic-search'],
+      coreVersion: '0.1.0'
+    })).rejects.toMatchObject({ code: 'PLUGIN_REQUIRED_MISSING' })
+    await app.close()
+  })
+
   it('rejects incompatible core and facade revisions', () => {
     expect(() =>
       validatePluginManifest(validManifest({ coreVersionRange: '>=1.0.0' }), {
@@ -100,7 +120,7 @@ describe('plugin host', () => {
       code: 'PLUGIN_CORE_VERSION_INCOMPATIBLE'
     }))
     expect(() =>
-      validatePluginManifest(validManifest({ apiRevision: 6 }), {
+      validatePluginManifest(validManifest({ apiRevision: 7 }), {
         coreVersion: '0.1.0'
       })
     ).toThrowError(expect.objectContaining({
@@ -225,7 +245,7 @@ describe('plugin host', () => {
       }
     })
 
-    expect(context.revision).toBe(5)
+    expect(context.revision).toBe(6)
     expect(Object.isFrozen(context.sources)).toBe(true)
     expect(context.sources).toEqual({
       getContentSnapshot: expect.any(Function),
@@ -269,6 +289,37 @@ describe('plugin host', () => {
       get: expect.any(Function),
       set: expect.any(Function)
     })
+  })
+
+  it('exposes the restore facade only to the explicit restore capability', async () => {
+    const manifest = validatePluginManifest(validManifest({
+      capabilities: ['tenant.backup.restore']
+    }), { coreVersion: '0.1.0' })
+    const { createExtensionApi } = await import('./extensionApi.js')
+    const restore = Object.fromEntries([
+      'getTenant',
+      'findPopulatedCollections',
+      'checkIdentity',
+      'upsert',
+      'delete',
+      'getMediaTarget',
+      'putFile',
+      'deleteFile'
+    ].map((method) => [method, vi.fn()]))
+    const context = createExtensionApi({ manifest, logger: {}, restore })
+
+    expect(Object.isFrozen(context.restore)).toBe(true)
+    expect(context.restore).toEqual(expect.objectContaining({
+      getTenant: expect.any(Function),
+      upsert: expect.any(Function),
+      putFile: expect.any(Function)
+    }))
+
+    const plain = createExtensionApi({
+      manifest: validatePluginManifest(validManifest(), { coreVersion: '0.1.0' }),
+      logger: {}
+    })
+    expect(plain).not.toHaveProperty('restore')
   })
 
   it('rejects unknown privileged capabilities', () => {

@@ -150,9 +150,6 @@ export const usersAPI = {
   getUser: (id) =>
     apiClient.get(`/users/${id}`),
   
-  createUser: (userData) =>
-    apiClient.post('/users', userData),
-  
   updateUser: (id, userData) =>
     apiClient.put(`/users/${id}`, userData),
   

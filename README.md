@@ -67,12 +67,13 @@ The API will start at [http://localhost:3000](http://localhost:3000) with a `/he
 To deploy the admin panel to a production server:
 
 ```bash
-# Build and deploy in one command
-pnpm deploy
+# Build and deploy one exact tagged release
+pnpm deploy -- --release v0.1.6
 
 # Or separately:
 pnpm build:admin
-pnpm deploy:admin
+pnpm deploy:admin -- --release v0.1.6
+pnpm rollback:admin
 ```
 
 Deploy configuration is managed via environment variables in `.env`:
@@ -81,14 +82,21 @@ Deploy configuration is managed via environment variables in `.env`:
 adminUser=your_ssh_user
 adminPassword=your_ssh_password
 adminDeployPath=/path/to/deployment/directory
+# Optional; defaults to "${adminDeployPath}.releases"
+adminDeployReleaseRoot=/path/to/immutable/admin-releases
 adminDeployServer=your.server.com
 ```
 
 The deploy script will:
-- Connect to the server via SSH
-- Backup existing files
-- Upload the production build
-- Set correct file permissions
+- Refuse branches, floating tags, dirty trees, and tag/package version drift
+- Upload once to an immutable `vX.Y.Z-<commit>` release directory
+- Atomically switch `current` while preserving `previous`
+- Roll back by atomically swapping `current` and `previous`
+
+This public/core script deploys only the community-compatible admin artifact. Hosted
+API releases that compose private plugins are owned by the `ctxhub-commercial`
+release manifest, preflight, frozen lockfile, and entitlement verification flow; the
+core deploy command must not copy private plugin sources into this repository.
 
 For more details, see [DEPLOY.md](./DEPLOY.md) or [DEPLOY-QUICK.md](./DEPLOY-QUICK.md).
 

@@ -62,4 +62,19 @@ describe('Footer', () => {
     expect(labels).toContain('TR')
     expect(labels).toContain('EN')
   })
+
+  it('keeps pricing and legal policies public on unauthenticated screens', async () => {
+    await act(async () => {
+      root.render(<Footer />)
+    })
+
+    expect(container.querySelector('a[href="/docs/pricing-and-plans"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/docs/about"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/docs/terms-of-service"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/docs/privacy-notice"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/docs/cancellation-and-refunds"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/docs/distance-sales-agreement"]')).not.toBeNull()
+    expect(container.querySelector('img[width="429"][height="32"]')?.alt)
+      .toContain('iyzico ile Öde')
+  })
 })

@@ -17,6 +17,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react'
+import iyzicoCardBrands from '../../assets/payment-marks/iyzico-card-brands.png'
 import {
   DOCS_BASE_PATH,
   getAdjacentDocuments,
@@ -62,6 +63,8 @@ const COPY = {
     language: 'Documentation language',
     communityRepository: 'Community repository',
     apiReference: 'Interactive API reference',
+    paymentSecurity: 'Secure payment infrastructure and card brands',
+    paymentMarksAlt: 'Pay with iyzico, Mastercard, Visa, American Express, and Troy logos',
   },
   tr: {
     fieldManual: 'CLOUD GELİŞTİRİCİ KILAVUZU',
@@ -95,6 +98,8 @@ const COPY = {
     language: 'Doküman dili',
     communityRepository: 'Topluluk reposu',
     apiReference: 'İnteraktif API referansı',
+    paymentSecurity: 'Güvenli ödeme altyapısı ve kart markaları',
+    paymentMarksAlt: 'iyzico ile Öde, Mastercard, Visa, American Express ve Troy logoları',
   },
 }
 
@@ -387,6 +392,16 @@ export default function PublicDocumentation() {
               <p>{labels.machineBody}</p>
             </div>
           </div>
+          <figure className="docs-payment-marks">
+            <figcaption>{labels.paymentSecurity}</figcaption>
+            <img
+              src={iyzicoCardBrands}
+              width="429"
+              height="32"
+              loading="lazy"
+              alt={labels.paymentMarksAlt}
+            />
+          </figure>
         </aside>
 
         <main className="docs-main">

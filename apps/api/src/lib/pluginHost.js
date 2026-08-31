@@ -19,6 +19,7 @@ const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ROUTE_PREFIX_PATTERN = /^\/api\/[a-z][a-z0-9-]*(?:\/[a-z0-9-]+)*$/;
 const SUPPORTED_CAPABILITIES = Object.freeze([
   'tenant.backup.export',
+  'tenant.backup.restore',
   'tenant.settings.enumerate',
   'tenant.secrets.manage'
 ]);
@@ -201,6 +202,16 @@ function resolvePluginEntries(value = process.env.CTXHUB_PLUGINS || '') {
     .map((item) => path.resolve(item));
 }
 
+function resolveRequiredPluginNames(value = process.env.CTXHUB_REQUIRED_PLUGINS || '') {
+  const normalized = Array.isArray(value)
+    ? value
+    : String(value).split(',');
+  const names = normalized.map((item) => String(item).trim()).filter(Boolean);
+  const invalid = names.find((name) => !PLUGIN_NAME_PATTERN.test(name));
+  if (invalid) fail(`invalid required plugin name: ${invalid}`, 'PLUGIN_REQUIRED_INVALID');
+  return Object.freeze([...new Set(names)]);
+}
+
 async function getCoreVersion() {
   const payload = JSON.parse(await fs.readFile(CORE_PACKAGE_PATH, 'utf8'));
   if (!semver.valid(payload.version)) fail('core package version is invalid');
@@ -260,8 +271,17 @@ async function bootstrapExtensions(options = {}) {
     throw new PluginHostError('bootstrap mode must be api or consumer');
   }
   const entries = resolvePluginEntries(options.entries);
+  const requiredPluginNames = resolveRequiredPluginNames(options.requiredPlugins);
   const registry = options.registry || createExtensionRegistry();
-  if (!entries.length) return Object.freeze({ registry, plugins: Object.freeze([]) });
+  if (!entries.length) {
+    if (requiredPluginNames.length > 0) {
+      fail(
+        `required plugins are not configured: ${requiredPluginNames.join(', ')}`,
+        'PLUGIN_REQUIRED_MISSING'
+      );
+    }
+    return Object.freeze({ registry, plugins: Object.freeze([]) });
+  }
   if (mode === 'api' && !options.app) {
     throw new PluginHostError('Fastify app is required in api mode');
   }
@@ -273,6 +293,15 @@ async function bootstrapExtensions(options = {}) {
     const plugin = await loadPlugin(entry, coreVersion);
     registry.registerManifest(plugin.manifest);
     plugins.push(plugin);
+  }
+
+  const loadedPluginNames = new Set(plugins.map(({ manifest }) => manifest.name));
+  const missingRequiredPlugins = requiredPluginNames.filter((name) => !loadedPluginNames.has(name));
+  if (missingRequiredPlugins.length > 0) {
+    fail(
+      `required plugins were not loaded: ${missingRequiredPlugins.join(', ')}`,
+      'PLUGIN_REQUIRED_MISSING'
+    );
   }
 
   const preparedPlugins = plugins.map((plugin) => ({
@@ -324,6 +353,7 @@ module.exports = {
   bootstrapExtensions,
   loadPlugin,
   resolvePluginEntries,
+  resolveRequiredPluginNames,
   validatePluginExports,
   validatePluginManifest
 };

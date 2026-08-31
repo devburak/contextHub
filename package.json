@@ -1,6 +1,6 @@
 {
   "name": "contexthub",
-  "version": "0.1.1",
+  "version": "0.1.10",
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "description": "Multi‑tenant headless CMS and content services platform.",
@@ -14,8 +14,11 @@
     "build": "turbo build",
     "build:api": "turbo build --filter=@contexthub/api",
     "build:admin": "turbo build --filter=@contexthub/admin",
-    "deploy": "pnpm build:admin && node scripts/deploy-admin.mjs",
-    "deploy:admin": "node scripts/deploy-admin.mjs",
+    "build:admin:hosted": "node scripts/build-hosted-admin.mjs",
+    "hosted:entitlements:verify": "node scripts/verify-hosted-entitlements.mjs",
+    "deploy": "pnpm build:admin:hosted && pnpm hosted:entitlements:verify && node scripts/deploy-admin.mjs",
+    "deploy:admin": "pnpm hosted:entitlements:verify && node scripts/deploy-admin.mjs",
+    "rollback:admin": "node scripts/rollback-admin.mjs",
     "test": "turbo test",
     "test:watch": "turbo test:watch",
     "lint": "turbo lint",
@@ -36,7 +39,9 @@
     "db:backfill-domain-event-sequences": "node apps/api/scripts/backfill-domain-event-sequences.js",
     "dispatch:webhooks": "node apps/api/scripts/dispatch-webhooks.js",
     "cron:webhooks": "node apps/api/scripts/webhook-cron.js",
-    "cron:consumers": "node apps/api/scripts/consumer-cron.js"
+    "cron:consumers": "node apps/api/scripts/consumer-cron.js",
+    "cron:tenant-purge": "node apps/api/src/scripts/purgeDeletedTenants.js",
+    "db:migrate-tenant-provisioning": "node apps/api/src/scripts/dropLegacySelfServiceTenantIndex.js"
   },
   "workspaces": [
     "apps/*",
