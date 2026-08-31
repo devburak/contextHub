@@ -39,7 +39,7 @@ async function requestTenantCancellation(tenantId, options = {}) {
   }
 
   const provider = providerFor(subscription.provider);
-  if (!provider || !isBillingProviderEnabled(subscription.provider)) {
+  if (!provider || !isBillingProviderEnabled(subscription.provider, tenantId)) {
     subscription.cancellationLastError = `Billing provider is unavailable: ${subscription.provider}`;
     await subscription.save();
     return {

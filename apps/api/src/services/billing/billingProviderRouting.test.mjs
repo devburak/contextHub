@@ -11,17 +11,20 @@ const {
 const { serializeBillingAccount } = require('./billingService');
 const { generateAuthorizationHeader, verifySubscriptionWebhook } = require('./iyzicoProvider');
 const { BillingAccount, BillingCheckoutSession } = require('@contexthub/common');
-const { getEnabledBillingProviders } = require('../../lib/billingConfig');
+const { getEnabledBillingProviders, isBillingProviderEnabled } = require('../../lib/billingConfig');
 const { decryptBillingPii, encryptBillingPii } = require('./billingPiiCrypto');
 
 const originalEnabledProviders = process.env.BILLING_ENABLED_PROVIDERS;
 const originalProvider = process.env.BILLING_PROVIDER;
+const originalIyzicoReviewTenantIds = process.env.IYZICO_REVIEW_TENANT_IDS;
 
 afterEach(() => {
   if (originalEnabledProviders === undefined) delete process.env.BILLING_ENABLED_PROVIDERS;
   else process.env.BILLING_ENABLED_PROVIDERS = originalEnabledProviders;
   if (originalProvider === undefined) delete process.env.BILLING_PROVIDER;
   else process.env.BILLING_PROVIDER = originalProvider;
+  if (originalIyzicoReviewTenantIds === undefined) delete process.env.IYZICO_REVIEW_TENANT_IDS;
+  else process.env.IYZICO_REVIEW_TENANT_IDS = originalIyzicoReviewTenantIds;
 });
 
 describe('billing country routing', () => {
@@ -153,6 +156,24 @@ describe('billing country routing', () => {
     delete process.env.BILLING_ENABLED_PROVIDERS;
     process.env.BILLING_PROVIDER = 'paddle';
     expect(getEnabledBillingProviders()).toEqual([]);
+  });
+
+  it('limits sandbox iyzico access to explicitly allowed review tenants', () => {
+    process.env.BILLING_ENABLED_PROVIDERS = 'paddle,iyzico';
+    process.env.IYZICO_REVIEW_TENANT_IDS = 'tenant-review, tenant-second,tenant-review';
+
+    expect(isBillingProviderEnabled('iyzico', 'tenant-review')).toBe(true);
+    expect(isBillingProviderEnabled('iyzico', 'tenant-second')).toBe(true);
+    expect(isBillingProviderEnabled('iyzico', 'tenant-other')).toBe(false);
+    expect(isBillingProviderEnabled('iyzico')).toBe(false);
+    expect(isBillingProviderEnabled('paddle', 'tenant-other')).toBe(true);
+  });
+
+  it('keeps normal provider behavior when no tenant allow-list is configured', () => {
+    process.env.BILLING_ENABLED_PROVIDERS = 'iyzico';
+    delete process.env.IYZICO_REVIEW_TENANT_IDS;
+
+    expect(isBillingProviderEnabled('iyzico', 'tenant-any')).toBe(true);
   });
 
   it('stores only a hash of the hosted checkout token', () => {

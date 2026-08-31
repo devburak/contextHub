@@ -22,12 +22,26 @@ function getEnabledBillingProviders() {
   return [...new Set(configured)];
 }
 
-function isBillingProviderEnabled(provider) {
-  return getEnabledBillingProviders().includes(String(provider || '').trim().toLowerCase());
+function getBillingProviderTenantAllowlist(provider) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  if (normalizedProvider !== 'iyzico') return [];
+  return [...new Set(String(process.env.IYZICO_REVIEW_TENANT_IDS || '')
+    .split(',')
+    .map((tenantId) => tenantId.trim())
+    .filter(Boolean))];
+}
+
+function isBillingProviderEnabled(provider, tenantId = null) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  if (!getEnabledBillingProviders().includes(normalizedProvider)) return false;
+  const tenantAllowlist = getBillingProviderTenantAllowlist(normalizedProvider);
+  if (tenantAllowlist.length === 0) return true;
+  return Boolean(tenantId && tenantAllowlist.includes(String(tenantId)));
 }
 
 module.exports = {
   envFlag,
+  getBillingProviderTenantAllowlist,
   getEnabledBillingProviders,
   isAccountBillingEnabled,
   isBillingProviderEnabled,

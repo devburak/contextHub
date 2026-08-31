@@ -179,8 +179,8 @@ function checkoutTokenHash(token) {
   return crypto.createHash('sha256').update(String(token || '')).digest('hex');
 }
 
-function ensureProviderEnabled(provider) {
-  if (isBillingProviderEnabled(provider)) return;
+function ensureProviderEnabled(provider, tenantId = null) {
+  if (isBillingProviderEnabled(provider, tenantId)) return;
   const error = new Error('Fatura ülkeniz için güvenli ödeme altyapısı henüz etkin değil');
   error.code = 'BillingProviderUnavailable';
   throw error;
@@ -270,7 +270,7 @@ async function getOverview(tenantId) {
   const billingAccount = await BillingAccount.findOne({ accountId: account._id }).select('+taxId').lean();
   const profileValidation = validateBillingProfile(billingAccount || {});
   const selectedProvider = billingAccount?.country ? resolveBillingProvider(billingAccount.country) : null;
-  const providerEnabled = selectedProvider ? isBillingProviderEnabled(selectedProvider) : false;
+  const providerEnabled = selectedProvider ? isBillingProviderEnabled(selectedProvider, tenant._id) : false;
   const [subscription, invoices, catalogPlans, catalogPrices, alerts, limits, userCount, ownerCount, storageRows, requestCount] = await Promise.all([
     BillingSubscription.findOne({ tenantId: tenant._id }).populate('planId planPriceId').lean(),
     BillingInvoice.find({ tenantId: tenant._id }).sort({ billedAt: -1, createdAt: -1 }).limit(24).lean(),
@@ -390,7 +390,7 @@ async function createCheckout(tenantId, priceReference) {
     throw error;
   }
   const selectedProvider = resolveBillingProvider(billingAccount.country);
-  ensureProviderEnabled(selectedProvider);
+  ensureProviderEnabled(selectedProvider, tenant._id);
   const checkoutTaxId = billingAccount.taxIdEncrypted
     ? decryptBillingPii(billingAccount.taxIdEncrypted)
     : billingAccount.taxId;
@@ -453,7 +453,7 @@ async function createPortalSession(tenantId) {
     throw error;
   }
   const selectedProvider = subscription.provider;
-  ensureProviderEnabled(selectedProvider);
+  ensureProviderEnabled(selectedProvider, tenant._id);
   const result = await getProvider(selectedProvider).createPortalSession({
     externalCustomerId: billingAccount.externalCustomerId,
     externalSubscriptionId: subscription.externalSubscriptionId,
@@ -496,7 +496,7 @@ async function getInvoiceDocument(tenantId, invoiceId) {
     error.statusCode = 409;
     throw error;
   }
-  ensureProviderEnabled('paddle');
+  ensureProviderEnabled('paddle', tenant._id);
   return paddleProvider.getTransactionInvoice({
     externalTransactionId: invoice.externalTransactionId,
   });
@@ -589,7 +589,7 @@ async function updateBillingProfile(tenantId, payload, userId) {
     paymentRouting: {
       profileComplete: true,
       agreementAccepted: true,
-      checkoutAvailable: isBillingProviderEnabled(nextProvider),
+      checkoutAvailable: isBillingProviderEnabled(nextProvider, tenant._id),
       missingFields: [],
       paymentMethods: paymentMethodsForCountry(profile.country),
       jurisdictionLocked: false,
@@ -616,7 +616,7 @@ async function completeIyzicoCheckout(checkoutToken) {
   if (session.status === 'completed') return { completed: true, duplicate: true };
 
   try {
-    ensureProviderEnabled('iyzico');
+    ensureProviderEnabled('iyzico', session.tenantId);
     const result = await iyzicoProvider.retrieveCheckout(checkoutToken);
     const data = result.data || {};
     const planPrice = session.planPriceId;
