@@ -85,6 +85,7 @@ describe('account and tenant deletion lifecycle contract', () => {
     expect(softDelete).not.toContain('ExtensionTenantSetting.deleteMany');
     expect(softDelete).not.toContain('ExtensionTenantSecret.deleteMany');
     expect(restore).toContain("applyPlanToTenant(tenant, 'free')");
+    expect(restore).toContain("tenant.requestedPlanSlug ? 'pending_payment' : 'active'");
     expect(restore).toContain('apiTokensRestored: false');
     expect(lifecycle).toContain('reconcileDeletedTenantControls');
   });

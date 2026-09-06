@@ -7,6 +7,12 @@ const { setSessionCookie } = require('../services/sessionSecurity');
 
 async function tenantRoutes(fastify) {
 
+  fastify.get('/tenants/creation-options', {
+    preHandler: [authenticateWithoutTenant],
+  }, async function(request) {
+    return tenantService.getCreationOptions(request.user._id);
+  });
+
   fastify.post('/tenants', {
     preHandler: [authenticateWithoutTenant],
     schema: {
@@ -15,7 +21,8 @@ async function tenantRoutes(fastify) {
         additionalProperties: false,
         properties: {
           name: { type: 'string', minLength: 1 },
-          slug: { type: 'string', minLength: 1 }
+          slug: { type: 'string', minLength: 1 },
+          requestedPlanSlug: { type: 'string', pattern: '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$', maxLength: 80 }
         },
         required: ['name']
       },
@@ -68,8 +75,8 @@ async function tenantRoutes(fastify) {
     }
   }, async function(request, reply) {
     try {
-      const { name, slug } = request.body;
-      const { tenant, membership } = await tenantService.createTenant({ name, slug }, request.user._id);
+      const { name, slug, requestedPlanSlug } = request.body;
+      const { tenant, membership } = await tenantService.createTenant({ name, slug, requestedPlanSlug }, request.user._id);
 
       const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
         membership,

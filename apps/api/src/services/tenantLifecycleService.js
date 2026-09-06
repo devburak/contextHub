@@ -272,7 +272,8 @@ async function restoreTenant(tenantId, userId, payload = {}, request = null) {
   if (cancellationWasRequested) {
     await tenantSubscriptionService.applyPlanToTenant(tenant, 'free');
   }
-  tenant.status = 'active';
+  // Restoring an abandoned paid signup must not grant a second usable Free tenant.
+  tenant.status = tenant.requestedPlanSlug ? 'pending_payment' : 'active';
   tenant.deletedAt = null;
   tenant.deletedBy = null;
   tenant.deletionReason = '';

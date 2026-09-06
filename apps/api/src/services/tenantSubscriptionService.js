@@ -251,6 +251,13 @@ class TenantSubscriptionService {
       };
     }
 
+    // This runs only after assertPaidPlanActivationAllowed has verified commercial state.
+    if (tenant.status === 'pending_payment') {
+      tenant.status = 'active';
+      tenant.requestedPlanSlug = null;
+      changed = true;
+    }
+
     const activationDate =
       trackActivation && (previousPlanId !== nextPlanId || !tenant.subscriptionStartDate)
         ? new Date()

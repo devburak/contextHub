@@ -259,5 +259,20 @@
   "tenantWebhooks.title": "Varlık Webhook'ları",
   "tenantWebhooks.update_failed": "Webhook güncellenemedi.",
   "tenantWebhooks.updated": "Webhook güncellendi.",
-  "tenantWebhooks.url_label": "Hedef URL"
+  "tenantWebhooks.url_label": "Hedef URL",
+  "tenant.plan_required": "Devam etmek için kullanılabilir bir paket seçin.",
+  "tenant.plans_loading": "Paketler yükleniyor…",
+  "tenant.plans_error": "Paketler yüklenemedi. Lütfen tekrar deneyin.",
+  "tenant.plans_retry": "Tekrar dene",
+  "tenant.plans_empty": "Şu anda kullanılabilir paket bulunmuyor.",
+  "tenant.free_limit_hint": "Ücretsiz varlık hakkınızı kullanıyorsunuz. Yeni varlığınız için ücretli paket seçebilirsiniz.",
+  "tenant.free_plan_hint": "Ücretsiz başlayın. Kullanıcı başına bir Free varlık oluşturabilirsiniz.",
+  "tenant.paid_plan_hint": "Fatura bilgilerini tamamlayıp ödemeye geçin. Varlığınız ödeme doğrulandıktan sonra aktifleşir.",
+  "tenant.enterprise_hint": "Enterprise için bizimle iletişime geçin.",
+  "tenant.plan_unavailable": "Bu paket şu anda yeni varlıklar için kullanılamıyor.",
+  "tenant.plan_payment_hint": "Ücretli paketlerin fiyatını ve aylık/yıllık ödeme dönemini sonraki adımda görebilirsiniz. Ödeme tamamlanana kadar içerik ve API erişimi kapalıdır.",
+  "tenant.continue_payment": "Ödemeye devam et",
+  "tenant.payment_pending": "Ödeme bekleniyor",
+  "tenant.selected_plan_hint": "Başlangıçta seçtiğiniz paket. Etkinleştirmek için fatura bilgilerini tamamlayıp ödemeye devam edin.",
+  "tenant.creation_plan_label": "Başlangıç paketi"
 }

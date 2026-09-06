@@ -259,5 +259,20 @@
   "tenantWebhooks.title": "Tenant Webhooks",
   "tenantWebhooks.update_failed": "The webhook could not be updated.",
   "tenantWebhooks.updated": "Webhook updated.",
-  "tenantWebhooks.url_label": "Target URL"
+  "tenantWebhooks.url_label": "Target URL",
+  "tenant.plan_required": "Select an available plan to continue.",
+  "tenant.plans_loading": "Loading plans…",
+  "tenant.plans_error": "Could not load plans. Please retry.",
+  "tenant.plans_retry": "Retry",
+  "tenant.plans_empty": "No plans are currently available.",
+  "tenant.free_limit_hint": "You already use your free workspace allowance. Choose a paid plan for your new workspace.",
+  "tenant.free_plan_hint": "Start for free. Each user can own one Free workspace.",
+  "tenant.paid_plan_hint": "Complete your billing details and proceed to payment. Your workspace activates after payment verification.",
+  "tenant.enterprise_hint": "Contact us for Enterprise.",
+  "tenant.plan_unavailable": "This plan is currently unavailable for new workspaces.",
+  "tenant.plan_payment_hint": "Review paid plan prices and monthly/yearly billing on the next step. Content and API access remain disabled until payment is completed.",
+  "tenant.continue_payment": "Continue to payment",
+  "tenant.payment_pending": "Payment pending",
+  "tenant.selected_plan_hint": "Your starting plan. Complete billing details and payment to activate it.",
+  "tenant.creation_plan_label": "Starting plan"
 }

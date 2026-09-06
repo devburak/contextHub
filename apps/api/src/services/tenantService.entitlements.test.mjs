@@ -90,7 +90,7 @@ describe('TenantService entitlement summaries', () => {
     await expect(tenantService.hasOwnedFreeTenant('user-1')).resolves.toBe(true);
     expect(Tenant.find).toHaveBeenCalledWith({
       _id: { $in: ['free-tenant'] },
-      status: { $nin: ['deletion_pending', 'deleted'] },
+      status: { $nin: ['pending_payment', 'deletion_pending', 'deleted'] },
     });
   });
 

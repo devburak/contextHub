@@ -11,7 +11,7 @@ export default function TenantSelection() {
   const handleSelect = async (membership) => {
     const success = await selectTenant(membership)
     if (success) {
-      navigate('/')
+      navigate(membership.tenant?.status === 'pending_payment' ? '/faturalandirma' : '/')
     }
   }
 
@@ -64,7 +64,7 @@ export default function TenantSelection() {
                     onClick={() => handleSelect(membership)}
                     className="mt-4 w-full inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                   >
-                    {t('tenant.continue_with')}
+                    {t(membership.tenant?.status === 'pending_payment' ? 'tenant.continue_payment' : 'tenant.continue_with')}
                   </button>
                 </div>
               ))}

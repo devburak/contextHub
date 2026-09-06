@@ -197,7 +197,7 @@ async function getAccountForTenant(tenantId) {
     error.code = 'BillingDisabled';
     throw error;
   }
-  const tenant = await Tenant.findById(tenantId).select('_id accountId name slug plan currentPlan customLimits').populate('currentPlan');
+  const tenant = await Tenant.findById(tenantId).select('_id accountId name slug plan currentPlan customLimits status requestedPlanSlug').populate('currentPlan');
   if (!tenant) throw new Error('Tenant not found');
   if (!tenant.accountId) {
     const error = new Error('Billing account migration is required for this tenant');
@@ -328,6 +328,8 @@ async function getOverview(tenantId, { actorEmail = '' } = {}) {
       id: String(tenant._id),
       name: tenant.name,
       slug: tenant.slug,
+      status: tenant.status,
+      requestedPlanSlug: tenant.requestedPlanSlug,
       plan: {
         slug: effectivePlan?.slug || tenant.plan || 'free',
         name: effectivePlan?.name || (tenant.plan === 'free' ? 'Free' : tenant.plan),
@@ -423,6 +425,16 @@ async function createCheckout(tenantId, priceReference, {
     : await PlanPrice.findOne({ key: priceReference, active: true }).populate('planId');
   if (!planPrice || planPrice.provider !== selectedProvider) {
     const error = new Error('Bu fiyat fatura ülkeniz için kullanılamaz');
+    error.code = 'PlanPriceUnavailable';
+    throw error;
+  }
+  if (tenant.status === 'pending_payment' && (
+    !planPrice.planId?.isActive
+    || ['free', 'enterprise'].includes(planPrice.planId.slug)
+    || !planPrice.externalPriceId
+    || planPrice.amountMinor <= 0
+  )) {
+    const error = new Error('Select an active paid plan to complete tenant setup');
     error.code = 'PlanPriceUnavailable';
     throw error;
   }
@@ -725,7 +737,7 @@ async function completeIyzicoCheckout(checkoutToken) {
       BillingAccount.findOne({ accountId: session.accountId }),
     ]);
     if (!tenant || !billingAccount) throw new Error('Checkout hedefi bulunamadı');
-    if (tenant.status !== 'active') {
+    if (!['active', 'pending_payment'].includes(tenant.status)) {
       const unavailable = new Error('Tenant is no longer available for checkout completion');
       unavailable.code = 'TenantUnavailable';
       unavailable.statusCode = 409;

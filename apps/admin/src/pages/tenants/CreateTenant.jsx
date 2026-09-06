@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { tenantAPI } from '../../lib/tenantAPI.js'
@@ -13,6 +13,7 @@ const initialFormState = {
 
 export default function CreateTenant() {
   const [formData, setFormData] = useState(initialFormState)
+  const [requestedPlanSlug, setRequestedPlanSlug] = useState('')
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [slugSuggestions, setSlugSuggestions] = useState([])
@@ -21,6 +22,14 @@ export default function CreateTenant() {
   const { refreshSession } = useAuth()
   const { t } = useTranslation()
   const describeError = useApiError()
+
+  const options = useQuery({
+    queryKey: ['tenants', 'creation-options'],
+    queryFn: tenantAPI.getCreationOptions,
+    retry: 1,
+  })
+  const plans = options.data?.plans || []
+  const selectedPlan = plans.find((plan) => plan.slug === requestedPlanSlug && plan.available)
 
   const createMutation = useMutation({
     mutationFn: tenantAPI.createTenant,
@@ -31,9 +40,14 @@ export default function CreateTenant() {
     },
     onSuccess: async ({ tenant }) => {
       await refreshSession()
+      await queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      await queryClient.resetQueries({ queryKey: ['billing'] })
+      if (tenant.status === 'pending_payment') {
+        navigate('/faturalandirma')
+        return
+      }
       setSuccessMessage(t('tenant.created_success', { name: tenant.name }))
       setFormData(initialFormState)
-      queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
 
       setTimeout(() => {
         navigate('/varliklar')
@@ -41,6 +55,7 @@ export default function CreateTenant() {
     },
     onError: (err) => {
       setError(describeError(err, 'tenant.create_failed'))
+      options.refetch()
       const suggestions = err.response?.data?.suggestions
       setSlugSuggestions(Array.isArray(suggestions) ? suggestions : [])
     }
@@ -76,9 +91,14 @@ export default function CreateTenant() {
       return
     }
 
+    if (!selectedPlan || options.isError || options.isFetching) {
+      setError(t('tenant.plan_required'))
+      return
+    }
     createMutation.mutate({
       name: formData.name.trim(),
       slug: formData.slug.trim() || undefined,
+      requestedPlanSlug: selectedPlan.slug,
     })
   }
 
@@ -147,10 +167,21 @@ export default function CreateTenant() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-            <p className="text-sm font-semibold text-blue-950">Free paket ile güvenli başlangıç</p>
-            <p className="mt-1 text-sm text-blue-800">Varlık oluşturulduktan sonra tenant owner, Faturalandırma ekranındaki hosted checkout üzerinden paket seçebilir.</p>
-          </div>
+          <fieldset disabled={createMutation.isLoading} className="space-y-3">
+            <legend className="mb-3 text-sm font-semibold text-gray-900">{t('tenant.creation_plan_label')}</legend>
+            {options.isLoading ? <div role="status" className="animate-pulse rounded-lg bg-gray-100 p-4 text-sm">{t('tenant.plans_loading')}</div>
+              : options.isError ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                <p>{t('tenant.plans_error')}</p>
+                <button type="button" onClick={() => options.refetch()} className="mt-2 underline">{t('tenant.plans_retry')}</button>
+              </div> : plans.length === 0 ? <p className="text-sm text-gray-600">{t('tenant.plans_empty')}</p>
+                : plans.map((plan) => <label key={plan.slug} className={`flex items-start gap-3 rounded-lg border p-4 ${!plan.available ? 'border-gray-200 bg-gray-50 text-gray-500' : requestedPlanSlug === plan.slug ? 'border-blue-600 bg-blue-50 text-gray-900' : 'border-gray-200 text-gray-900'}`}>
+                  <input type="radio" name="requestedPlanSlug" value={plan.slug} checked={requestedPlanSlug === plan.slug} disabled={!plan.available} onChange={() => { setRequestedPlanSlug(plan.slug); setError('') }} className="mt-1 h-4 w-4 accent-blue-600 focus:ring-2 focus:ring-blue-500" />
+                  <span><span className="block text-sm font-semibold">{plan.name}</span>
+                    <span className="mt-1 block text-sm">{t(plan.slug === 'free' ? options.data.hasFreeTenant ? 'tenant.free_limit_hint' : 'tenant.free_plan_hint' : !plan.available ? plan.slug === 'enterprise' ? 'tenant.enterprise_hint' : 'tenant.plan_unavailable' : 'tenant.paid_plan_hint')}</span>
+                  </span>
+                </label>)}
+            <p className="text-xs text-gray-500">{t('tenant.plan_payment_hint')}</p>
+          </fieldset>
 
           {error && (
             <div className="rounded-md bg-red-50 border border-red-200 p-4">
@@ -191,10 +222,10 @@ export default function CreateTenant() {
             </Link>
             <button
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={createMutation.isLoading || !selectedPlan || options.isFetching || options.isError}
               className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {createMutation.isPending ? (
+              {createMutation.isLoading ? (
                 <>
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -203,7 +234,7 @@ export default function CreateTenant() {
                   {t('tenant.creating')}
                 </>
               ) : (
-                t('tenant.create_submit')
+                t(selectedPlan?.slug && selectedPlan.slug !== 'free' ? 'tenant.continue_payment' : 'tenant.create_submit')
               )}
             </button>
           </div>

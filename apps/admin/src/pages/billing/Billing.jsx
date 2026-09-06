@@ -108,7 +108,7 @@ function HostedPaymentFrame({ content, onClose, t }) {
 export default function Billing() {
   const { t, i18n } = useTranslation()
   const toast = useToast()
-  const { hasPermission } = useAuth()
+  const { hasPermission, activeTenantId, activeMembership, refreshSession } = useAuth()
   const canView = hasPermission(PERMISSIONS.BILLING_VIEW)
   const canManage = hasPermission(PERMISSIONS.BILLING_MANAGE)
   const [interval, setInterval] = useState('month')
@@ -117,7 +117,13 @@ export default function Billing() {
   const [fieldErrors, setFieldErrors] = useState({})
   const [hostedPaymentContent, setHostedPaymentContent] = useState('')
   const locale = i18n.resolvedLanguage === 'en' ? 'en-US' : 'tr-TR'
-  const overview = useQuery({ queryKey: ['billing', 'overview'], queryFn: fetchBillingOverview, retry: 1, enabled: canView })
+  const overview = useQuery({ queryKey: ['billing', 'overview', activeTenantId], queryFn: fetchBillingOverview, retry: 1, enabled: canView, refetchInterval: (data) => data?.tenant?.status === 'pending_payment' ? 5000 : false })
+
+  useEffect(() => {
+    if (overview.data?.tenant?.status === 'active' && activeMembership?.tenant?.status === 'pending_payment') {
+      refreshSession?.().catch(() => {})
+    }
+  }, [overview.data?.tenant?.status, activeMembership?.tenant?.status, refreshSession])
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine)
@@ -261,7 +267,7 @@ export default function Billing() {
             <section className="grid overflow-hidden rounded-2xl border border-[var(--billing-line)] bg-[var(--billing-surface)] lg:grid-cols-[1.4fr_1fr]">
               <div className="p-6 sm:p-8">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--billing-muted)]">{t('billing.active.eyebrow')}</p>
-                <div className="mt-3 flex flex-wrap items-baseline gap-3"><h2 className="text-4xl font-semibold">{overview.data.tenant.plan.name}</h2><span className="rounded-full bg-[var(--billing-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--billing-accent)]">{activePlanStatus(t, overview.data.tenant.plan, overview.data.subscription)}</span></div>
+                <div className="mt-3 flex flex-wrap items-baseline gap-3"><h2 className="text-4xl font-semibold">{overview.data.tenant.status === 'pending_payment' ? t('tenant.payment_pending') : overview.data.tenant.plan.name}</h2><span className="rounded-full bg-[var(--billing-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--billing-accent)]">{overview.data.tenant.status === 'pending_payment' ? overview.data.plans?.find((plan) => plan.slug === overview.data.tenant.requestedPlanSlug)?.name : activePlanStatus(t, overview.data.tenant.plan, overview.data.subscription)}</span></div>
                 <p className="mt-5 text-sm text-[var(--billing-muted)]">{t('billing.active.accountLine', { tenant: overview.data.tenant.name, account: overview.data.account.name })}</p>
               </div>
               <div className="border-t border-[var(--billing-line)] bg-[var(--billing-accent)] p-6 text-white lg:border-l lg:border-t-0 sm:p-8">
@@ -436,15 +442,17 @@ export default function Billing() {
                   {plans.map((plan) => {
                     const price = plan.selectedPrice
                     const enterprise = plan.pricingMode === 'contract'
-                    const current = overview.data.tenant.plan.slug === plan.slug
+                    const current = overview.data.tenant.status !== 'pending_payment' && overview.data.tenant.plan.slug === plan.slug
+                    const requested = overview.data.tenant.status === 'pending_payment' && overview.data.tenant.requestedPlanSlug === plan.slug
                     const hasSubscription = Boolean(overview.data.subscription && ['active', 'trialing', 'past_due', 'paused'].includes(overview.data.subscription.status))
                     const checkoutAvailable = Boolean(overview.data.paymentRouting?.checkoutAvailable)
                     const canCheckout = !enterprise && !current && !hasSubscription && canManage && online && checkoutAvailable && price?.checkoutReady && price?.id
                     const canOpenProfile = !enterprise && !current && !hasSubscription && canManage && online && !overview.data.paymentRouting?.profileComplete
                     const buttonLabel = checkoutButtonLabel(t, { current, enterprise, checkoutAvailable, checkoutReady: price?.checkoutReady, hasProfile: overview.data.paymentRouting?.profileComplete, hasSubscription })
-                    return <article key={plan.id} className={`flex flex-col rounded-2xl border bg-[var(--billing-surface)] p-6 shadow-sm ${current ? 'border-[var(--billing-accent)] ring-2 ring-[var(--billing-accent-soft)]' : 'border-[var(--billing-line)]'}`}>
+                    return <article key={plan.id} className={`flex flex-col rounded-2xl border bg-[var(--billing-surface)] p-6 shadow-sm ${current || requested ? 'border-[var(--billing-accent)] ring-2 ring-[var(--billing-accent-soft)]' : 'border-[var(--billing-line)]'}`}>
                       <div className="flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--billing-accent)]">{t(`billing.plan.${plan.slug}.badge`, { defaultValue: plan.marketing?.badge || plan.name })}</p>{current && <span className="rounded-full bg-[var(--billing-accent-soft)] px-2.5 py-1 text-[11px] font-bold text-[var(--billing-accent)]">{t('billing.plans.active')}</span>}</div>
                       <h3 className="mt-2 text-2xl font-semibold">{plan.name}</h3>
+                      {requested && <p className="mt-2 text-sm text-[var(--billing-accent)]">{t('tenant.selected_plan_hint')}</p>}
                       <p className="mt-1 min-h-10 text-sm text-[var(--billing-muted)]">{t(`billing.plan.${plan.slug}.tagline`, { defaultValue: plan.marketing?.tagline || plan.description })}</p>
                       {enterprise ? <div className="mt-5"><p className="text-3xl font-semibold">{t('billing.plans.contractPrice')}</p><p className="mt-1 text-xs text-[var(--billing-muted)]">{t('billing.plans.contractNote')}</p></div> : price ? <div className="mt-5"><p className="text-3xl font-semibold">{money(price.amountMinor, price.currency, locale)} <span className="text-sm font-normal text-[var(--billing-muted)]">{t('billing.plans.priceUnit', { interval: intervalLabel(t, interval) })}</span></p>{price.catalogOnly && <p className="mt-1 text-xs text-[var(--billing-muted)]">{t('billing.plans.catalogOnly')}</p>}</div> : <div className="mt-5"><p className="text-2xl font-semibold">{t('billing.plans.pricePending')}</p><p className="mt-1 text-xs text-[var(--billing-muted)]">{t('billing.plans.pricePendingNote')}</p></div>}
                       <ul className="mt-5 flex-1 space-y-2 text-sm">{(plan.capabilities || []).slice(0, 4).map((capability) => <li key={capability.key} className="flex gap-2"><CheckIcon className="h-5 w-5 shrink-0 text-[var(--billing-accent)]" /> {t(`billing.capability.${capability.key}${['capacity', 'support'].includes(capability.key) ? `.${plan.slug}` : ''}`, { defaultValue: capability.label })}</li>)}</ul>

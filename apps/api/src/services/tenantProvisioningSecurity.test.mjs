@@ -6,14 +6,15 @@ const require = createRequire(import.meta.url);
 const { BillingAccount, Tenant } = require('@contexthub/common');
 
 describe('tenant provisioning security contract', () => {
-  it('does not accept a plan in the public tenant creation contract', () => {
+  it('accepts only a requested plan, never direct paid entitlements', () => {
     const source = fs.readFileSync(new URL('../routes/tenants.js', import.meta.url), 'utf8');
     const createRoute = source.slice(source.indexOf("fastify.post('/tenants'"), source.indexOf("fastify.get('/tenants'"));
     const requestContract = createRoute.slice(0, createRoute.indexOf('response:'));
 
     expect(requestContract).toContain('additionalProperties: false');
     expect(requestContract).not.toMatch(/plan:\s*\{\s*type:/);
-    expect(createRoute).not.toMatch(/createTenant\(\{[^}]*plan/);
+    expect(requestContract).toContain('requestedPlanSlug:');
+    expect(createRoute).toContain('createTenant({ name, slug, requestedPlanSlug }');
   });
 
   it('does not provision tenants from unauthenticated registration payloads', () => {
