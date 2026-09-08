@@ -52,7 +52,7 @@ describe('plugin host', () => {
       ok: true,
       plugin: 'dummy',
       apiVersion: 1,
-      apiRevision: 6
+      apiRevision: 7
     })
     expect(result.registry.inventory()).toEqual([
       expect.objectContaining({ name: 'dummy', routePrefix: '/api/dummy' })
@@ -120,7 +120,7 @@ describe('plugin host', () => {
       code: 'PLUGIN_CORE_VERSION_INCOMPATIBLE'
     }))
     expect(() =>
-      validatePluginManifest(validManifest({ apiRevision: 7 }), {
+      validatePluginManifest(validManifest({ apiRevision: 8 }), {
         coreVersion: '0.1.0'
       })
     ).toThrowError(expect.objectContaining({
@@ -245,13 +245,22 @@ describe('plugin host', () => {
       }
     })
 
-    expect(context.revision).toBe(6)
+    expect(context.revision).toBe(7)
     expect(Object.isFrozen(context.sources)).toBe(true)
     expect(context.sources).toEqual({
       getContentSnapshot: expect.any(Function),
       getCollectionEntrySnapshot: expect.any(Function)
     })
     expect(context.sources).not.toHaveProperty('unsafeRawDatabase')
+    expect(context).not.toHaveProperty('indexing')
+  })
+
+  it('exposes source indexing only to a plugin that declares the capability', async () => {
+    const manifest = validatePluginManifest(validManifest({ capabilities: ['tenant.sources.index'], apiRevision: 7 }), { coreVersion: '0.1.0' })
+    const { createExtensionApi } = await import('./extensionApi.js')
+    const context = createExtensionApi({ manifest, logger: {} })
+    expect(Object.isFrozen(context.indexing)).toBe(true)
+    expect(Object.keys(context.indexing).sort()).toEqual(['allocateSequence', 'scanSources'])
   })
 
   it('exposes privileged backup sources and secrets only to declared capabilities', async () => {
