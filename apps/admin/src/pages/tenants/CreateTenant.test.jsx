@@ -122,7 +122,9 @@ describe('CreateTenant', () => {
         <Route path="/faturalandirma" element={<div>Payment setup</div>} />
       </Routes>
     </MemoryRouter>))
-    await act(async () => mutationOptions.onSuccess({ tenant: { name: 'Acme', status: 'pending_payment' } }))
+    await act(async () => mutationOptions.onSuccess({
+      tenant: { name: 'Acme', status: 'pending_payment', requestedPlanSlug: 'pro' },
+    }))
     expect(container.textContent).toBe('Payment setup')
   })
 

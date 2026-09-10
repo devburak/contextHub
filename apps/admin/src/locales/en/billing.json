@@ -154,6 +154,8 @@
   "billing.plans.catalogOnly": "List price; the amount for your country is finalized when checkout opens.",
   "billing.plans.pricePending": "Price coming soon",
   "billing.plans.pricePendingNote": "A local price has not been published for this period yet.",
+  "billing.plans.tryCatalogNote": "TRY plan prices for Türkiye billing addresses include VAT. The catalog is reviewed against exchange rates periodically; there is no card-time currency conversion and the checkout amount is fixed for that charge.",
+  "billing.plans.usdCatalogNote": "The USD catalog applies to billing addresses outside Türkiye. Applicable taxes and the final amount are shown in secure checkout.",
   "billing.plan.free.tagline": "Explore your tenant",
   "billing.plan.pro.tagline": "Take your tenant to production",
   "billing.plan.promax.tagline": "Scale your tenant",

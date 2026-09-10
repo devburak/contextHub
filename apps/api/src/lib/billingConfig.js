@@ -38,6 +38,16 @@ function getIyzicoReviewUserEmailAllowlist(env = process.env) {
   return envList(env.IYZICO_REVIEW_USER_EMAILS, { lowercase: true });
 }
 
+function getBillingCheckoutTenantAllowlist(env = process.env) {
+  return envList(env.BILLING_CHECKOUT_TENANT_IDS);
+}
+
+function isBillingCheckoutEnabledForTenant(tenantId, env = process.env) {
+  const allowlist = getBillingCheckoutTenantAllowlist(env);
+  if (allowlist.length === 0) return true;
+  return Boolean(tenantId && allowlist.includes(String(tenantId)));
+}
+
 function isIyzicoReviewCheckoutFallbackConfigured(env = process.env) {
   const environment = String(env.IYZICO_ENV || 'sandbox').trim().toLowerCase();
   const enabled = ['1', 'true', 'yes', 'on'].includes(
@@ -66,10 +76,12 @@ function isBillingProviderEnabled(provider) {
 
 module.exports = {
   envFlag,
+  getBillingCheckoutTenantAllowlist,
   getEnabledBillingProviders,
   getIyzicoReviewTenantAllowlist,
   getIyzicoReviewUserEmailAllowlist,
   isAccountBillingEnabled,
+  isBillingCheckoutEnabledForTenant,
   isBillingProviderEnabled,
   isIyzicoReviewCheckoutFallbackConfigured,
   isIyzicoReviewCheckoutFallbackEnabled,

@@ -1,17 +1,24 @@
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../contexts/AuthContext.jsx'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import Footer from '../../components/Footer.jsx'
+import { safeReturnTo, tenantCreationPathFor } from '../../lib/returnTo.js'
 
 export default function TenantSelection() {
   const { user, memberships, selectTenant, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const { t } = useTranslation()
+  const returnTo = safeReturnTo(
+    location.state?.returnTo || new URLSearchParams(location.search).get('returnTo'),
+  )
 
   const handleSelect = async (membership) => {
     const success = await selectTenant(membership)
     if (success) {
-      navigate(membership.tenant?.status === 'pending_payment' ? '/faturalandirma' : '/')
+      navigate(
+        returnTo || (membership.tenant?.status === 'pending_payment' ? '/faturalandirma' : '/'),
+      )
     }
   }
 
@@ -35,7 +42,7 @@ export default function TenantSelection() {
                 <p className="text-sm">{t('tenant.selection_empty_hint')}</p>
               </div>
               <button
-                onClick={() => navigate('/varliklar/yeni')}
+                onClick={() => navigate(tenantCreationPathFor(returnTo))}
                 className="inline-flex items-center rounded-md bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-700"
               >
                 <svg className="mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">

@@ -4,21 +4,25 @@ ContextHub Cloud subscriptions are priced **per tenant**. A tenant normally repr
 one site, product surface, or language edition. Plans do not bundle an arbitrary number
 of sites, and quota is not pooled between tenants.
 
-Published prices below are standard list prices in USD. Taxes, the currency charged,
-and the final payable amount are shown before purchase in the secure checkout. Billing
-for customers in Türkiye may use a separately published TRY amount rather than an
-automatic card-time currency conversion.
+Published prices below are the standard USD catalog for billing addresses outside
+Türkiye. Taxes, the currency charged, and the final payable amount are shown before
+purchase in the secure checkout. Customers with a Türkiye billing address are charged
+the separately published fixed TRY catalog price instead of a card-time currency
+conversion.
 
-| Plan | Monthly | Annual | Users / owners | Storage | API request units |
-| --- | ---: | ---: | --- | ---: | ---: |
-| Free | $0 | $0 | 1 user / 1 owner; invitations disabled | 500 MB | 1,000 / month |
-| Pro | $12 | $132 | 5 users / 2 owners | 3 GB | 50,000 / month |
-| Pro Max | $45 | $450 | Unlimited users / 5 owners | 5 GB | 150,000 / month |
-| Enterprise | Custom quote | Custom quote | Contract limits | Contract limits | Contract or usage-based limits |
+| Plan | Monthly | Annual | Users / owners | Storage | API request units | Purchase |
+| --- | ---: | ---: | --- | ---: | ---: | --- |
+| Free | $0 | $0 | 1 user / 1 owner; invitations disabled | 500 MB | 1,000 / month | [Start free](/signup?returnTo=%2Fvarliklar%2Fyeni%3Fplan%3Dfree%26interval%3Dmonth) |
+| Pro | $12 | $132 | 5 users / 2 owners | 3 GB | 50,000 / month | [Choose plan](/login?returnTo=%2Ffaturalandirma%3Fplan%3Dpro%26interval%3Dmonth) |
+| Pro Max | $45 | $450 | Unlimited users / 5 owners | 5 GB | 150,000 / month | [Choose plan](/login?returnTo=%2Ffaturalandirma%3Fplan%3Dpromax%26interval%3Dmonth) |
+| Enterprise | Custom quote | Custom quote | Contract limits | Contract limits | Contract or usage-based limits | [Request a quote](mailto:support@ctxhub.net?subject=ContextHub%20Enterprise%20quote) |
 
 Annual prices are billed once per annual period. Enterprise is not a free plan and is
 not available through self-service checkout; price, service levels, quota, and any
 usage-based terms are stated in a signed quote or contract.
+
+Türkiye TRY prices include VAT. Taxes applicable to international purchases are
+calculated and disclosed during checkout.
 
 ## Included capabilities
 

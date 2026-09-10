@@ -29,12 +29,14 @@ const {
 const tenantSubscriptionService = require('../tenantSubscriptionService');
 const {
   getEnabledBillingProviders,
+  isBillingCheckoutEnabledForTenant,
   isBillingProviderEnabled,
   isIyzicoReviewCheckoutFallbackEnabled,
 } = require('../../lib/billingConfig');
 const { decryptBillingPii, encryptBillingPii } = require('./billingPiiCrypto');
 
 const originalEnabledProviders = process.env.BILLING_ENABLED_PROVIDERS;
+const originalCheckoutTenantIds = process.env.BILLING_CHECKOUT_TENANT_IDS;
 const originalProvider = process.env.BILLING_PROVIDER;
 const originalIyzicoReviewTenantIds = process.env.IYZICO_REVIEW_TENANT_IDS;
 const originalIyzicoReviewUserEmails = process.env.IYZICO_REVIEW_USER_EMAILS;
@@ -47,6 +49,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   if (originalEnabledProviders === undefined) delete process.env.BILLING_ENABLED_PROVIDERS;
   else process.env.BILLING_ENABLED_PROVIDERS = originalEnabledProviders;
+  if (originalCheckoutTenantIds === undefined) delete process.env.BILLING_CHECKOUT_TENANT_IDS;
+  else process.env.BILLING_CHECKOUT_TENANT_IDS = originalCheckoutTenantIds;
   if (originalProvider === undefined) delete process.env.BILLING_PROVIDER;
   else process.env.BILLING_PROVIDER = originalProvider;
   if (originalIyzicoReviewTenantIds === undefined) delete process.env.IYZICO_REVIEW_TENANT_IDS;
@@ -194,6 +198,14 @@ describe('billing country routing', () => {
     expect(getEnabledBillingProviders()).toEqual([]);
   });
 
+  it('limits new checkout to configured canary tenants without disabling provider operations', () => {
+    process.env.BILLING_CHECKOUT_TENANT_IDS = 'tenant-canary, tenant-second';
+    expect(isBillingCheckoutEnabledForTenant('tenant-canary')).toBe(true);
+    expect(isBillingCheckoutEnabledForTenant('tenant-other')).toBe(false);
+    delete process.env.BILLING_CHECKOUT_TENANT_IDS;
+    expect(isBillingCheckoutEnabledForTenant('tenant-other')).toBe(true);
+  });
+
   it('does not let the review allow-list disable normal provider operations', () => {
     process.env.BILLING_ENABLED_PROVIDERS = 'paddle,iyzico';
     process.env.IYZICO_REVIEW_TENANT_IDS = 'tenant-review, tenant-second,tenant-review';
@@ -308,6 +320,20 @@ describe('iyzico signed subscription webhook', () => {
       randomKey: 'random-key',
     });
     const decoded = Buffer.from(header.authorization.replace('IYZWSv2 ', ''), 'base64').toString('utf8');
+    const expectedSignature = crypto.createHmac('sha256', 'secret-key')
+      .update('random-key/v2/subscription/products')
+      .digest('hex');
+
+    expect(decoded).toBe(`apiKey:api-key&randomKey:random-key&signature:${expectedSignature}`);
+  });
+
+  it('signs subscription list requests without query parameters', async () => {
+    const withoutQuery = generateAuthorizationHeader('/v2/subscription/products', undefined, {
+      apiKey: 'api-key',
+      secretKey: 'secret-key',
+      randomKey: 'random-key',
+    });
+    const decoded = Buffer.from(withoutQuery.authorization.replace('IYZWSv2 ', ''), 'base64').toString('utf8');
     const expectedSignature = crypto.createHmac('sha256', 'secret-key')
       .update('random-key/v2/subscription/products')
       .digest('hex');

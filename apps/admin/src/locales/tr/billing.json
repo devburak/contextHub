@@ -154,6 +154,8 @@
   "billing.plans.catalogOnly": "Liste bedeli; ülkenize ait ödeme tutarı checkout açıldığında kesinleşir.",
   "billing.plans.pricePending": "Fiyat hazırlanıyor",
   "billing.plans.pricePendingNote": "Bu dönem için yerel fiyat henüz yayınlanmadı.",
+  "billing.plans.tryCatalogNote": "Türkiye fatura adreslerinde gösterilen TRY paket bedelleri KDV dahildir. Fiyatlar belirli dönemlerde kur değerlendirmesiyle katalog olarak gözden geçirilir; kart anında kur çevrimi yapılmaz ve ödeme ekranındaki tutar ilgili tahsilat için sabittir.",
+  "billing.plans.usdCatalogNote": "Türkiye dışındaki fatura adreslerinde USD kataloğu kullanılır. Vergiler ve ödenecek son tutar güvenli ödeme ekranında gösterilir.",
   "billing.plan.free.tagline": "Tenant’ınızı keşfedin",
   "billing.plan.pro.tagline": "Tenant’ı üretime alın",
   "billing.plan.promax.tagline": "Tenant’ı ölçekleyin",

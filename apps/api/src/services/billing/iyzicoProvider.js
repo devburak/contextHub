@@ -21,7 +21,10 @@ function generateAuthorizationHeader(pathname, body, options = {}) {
 }
 
 async function iyzicoRequest(pathname, { method = 'GET', body } = {}) {
-  const { authorization, randomKey } = generateAuthorizationHeader(pathname, body);
+  // iyzico's V2 signature payload uses the URI path without its query string.
+  // The query remains on the actual request URL.
+  const signaturePath = String(pathname).split('?')[0];
+  const { authorization, randomKey } = generateAuthorizationHeader(signaturePath, body);
   const response = await fetch(`${getBaseUrl()}${pathname}`, {
     method,
     headers: {
@@ -292,6 +295,7 @@ module.exports = {
   generateAuthorizationHeader,
   getBaseUrl,
   checkoutFormSignaturePayload,
+  iyzicoRequest,
   reviewCheckoutRequestBody,
   retrieveCheckout,
   retrieveReviewCheckout,

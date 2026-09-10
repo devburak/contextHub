@@ -17,6 +17,7 @@ import { billingInvoiceDocumentUrl, createBillingCheckout, createBillingPortal, 
 import CountryCombobox from '../../components/CountryCombobox.jsx'
 import { activePlanStatus, checkoutButtonLabel, statusLabel } from './billingPresentation.js'
 import { errorsFromBillingResponse, localizeBillingProfileErrors, validateBillingProfileForm } from './billingProfileValidation.js'
+import { readCheckoutIntent } from '../../lib/returnTo.js'
 
 const TOKENS = {
   '--billing-canvas': '#f4f1ea',
@@ -106,12 +107,13 @@ function HostedPaymentFrame({ content, onClose, t }) {
 }
 
 export default function Billing() {
+  const checkoutIntent = readCheckoutIntent(window.location.search)
   const { t, i18n } = useTranslation()
   const toast = useToast()
   const { hasPermission, activeTenantId, activeMembership, refreshSession } = useAuth()
   const canView = hasPermission(PERMISSIONS.BILLING_VIEW)
   const canManage = hasPermission(PERMISSIONS.BILLING_MANAGE)
-  const [interval, setInterval] = useState('month')
+  const [interval, setInterval] = useState(checkoutIntent.interval)
   const [online, setOnline] = useState(() => navigator.onLine)
   const [profile, setProfile] = useState(EMPTY_PROFILE)
   const [fieldErrors, setFieldErrors] = useState({})
@@ -160,6 +162,14 @@ export default function Billing() {
       serviceAgreementAccepted: false,
     })
   }, [overview.data?.billingAccount])
+
+  useEffect(() => {
+    if (!overview.data || !checkoutIntent.planSlug) return
+    document.getElementById(`billing-plan-${checkoutIntent.planSlug}`)?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'center',
+    })
+  }, [checkoutIntent.planSlug, overview.data])
 
   const checkout = useMutation({
     mutationFn: createBillingCheckout,
@@ -437,6 +447,11 @@ export default function Billing() {
                   {['month', 'year'].map((key) => <button key={key} type="button" onClick={() => setInterval(key)} className={`rounded-lg px-4 py-2 text-sm font-semibold ${interval === key ? 'bg-[var(--billing-ink)] text-white' : 'text-[var(--billing-muted)]'}`}>{t(`billing.interval.${key}`)}</button>)}
                 </div>
               </div>
+              <p className="mt-3 max-w-3xl text-xs leading-5 text-[var(--billing-muted)]">
+                {t(overview.data.billingAccount?.country === 'TR'
+                  ? 'billing.plans.tryCatalogNote'
+                  : 'billing.plans.usdCatalogNote')}
+              </p>
               {plans.length === 0 ? <div className="mt-4 rounded-2xl border border-dashed border-[var(--billing-line)] p-8 text-center text-sm text-[var(--billing-muted)]">{t('billing.plans.empty')}</div> : (
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
                   {plans.map((plan) => {
@@ -444,12 +459,13 @@ export default function Billing() {
                     const enterprise = plan.pricingMode === 'contract'
                     const current = overview.data.tenant.status !== 'pending_payment' && overview.data.tenant.plan.slug === plan.slug
                     const requested = overview.data.tenant.status === 'pending_payment' && overview.data.tenant.requestedPlanSlug === plan.slug
+                    const highlighted = checkoutIntent.planSlug === plan.slug
                     const hasSubscription = Boolean(overview.data.subscription && ['active', 'trialing', 'past_due', 'paused'].includes(overview.data.subscription.status))
                     const checkoutAvailable = Boolean(overview.data.paymentRouting?.checkoutAvailable)
                     const canCheckout = !enterprise && !current && !hasSubscription && canManage && online && checkoutAvailable && price?.checkoutReady && price?.id
                     const canOpenProfile = !enterprise && !current && !hasSubscription && canManage && online && !overview.data.paymentRouting?.profileComplete
                     const buttonLabel = checkoutButtonLabel(t, { current, enterprise, checkoutAvailable, checkoutReady: price?.checkoutReady, hasProfile: overview.data.paymentRouting?.profileComplete, hasSubscription })
-                    return <article key={plan.id} className={`flex flex-col rounded-2xl border bg-[var(--billing-surface)] p-6 shadow-sm ${current || requested ? 'border-[var(--billing-accent)] ring-2 ring-[var(--billing-accent-soft)]' : 'border-[var(--billing-line)]'}`}>
+                    return <article id={`billing-plan-${plan.slug}`} key={plan.id} className={`flex flex-col scroll-mt-24 rounded-2xl border bg-[var(--billing-surface)] p-6 shadow-sm ${current || requested || highlighted ? 'border-[var(--billing-accent)] ring-2 ring-[var(--billing-accent-soft)]' : 'border-[var(--billing-line)]'}`}>
                       <div className="flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--billing-accent)]">{t(`billing.plan.${plan.slug}.badge`, { defaultValue: plan.marketing?.badge || plan.name })}</p>{current && <span className="rounded-full bg-[var(--billing-accent-soft)] px-2.5 py-1 text-[11px] font-bold text-[var(--billing-accent)]">{t('billing.plans.active')}</span>}</div>
                       <h3 className="mt-2 text-2xl font-semibold">{plan.name}</h3>
                       {requested && <p className="mt-2 text-sm text-[var(--billing-accent)]">{t('tenant.selected_plan_hint')}</p>}

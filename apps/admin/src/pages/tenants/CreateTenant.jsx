@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
+import { checkoutReturnTo, readCheckoutIntent } from '../../lib/returnTo.js'
 
 const initialFormState = {
   name: '',
@@ -12,8 +13,10 @@ const initialFormState = {
 }
 
 export default function CreateTenant() {
+  const location = useLocation()
+  const checkoutIntent = readCheckoutIntent(location.search)
   const [formData, setFormData] = useState(initialFormState)
-  const [requestedPlanSlug, setRequestedPlanSlug] = useState('')
+  const [requestedPlanSlug, setRequestedPlanSlug] = useState(checkoutIntent.planSlug)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [slugSuggestions, setSlugSuggestions] = useState([])
@@ -43,7 +46,8 @@ export default function CreateTenant() {
       await queryClient.invalidateQueries({ queryKey: ['tenants'] })
       await queryClient.resetQueries({ queryKey: ['billing'] })
       if (tenant.status === 'pending_payment') {
-        navigate('/faturalandirma')
+        const paidPlanSlug = tenant.requestedPlanSlug || selectedPlan?.slug || requestedPlanSlug
+        navigate(checkoutReturnTo(paidPlanSlug, checkoutIntent.interval))
         return
       }
       setSuccessMessage(t('tenant.created_success', { name: tenant.name }))

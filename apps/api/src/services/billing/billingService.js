@@ -13,6 +13,7 @@ const {
 } = require('@contexthub/common');
 const crypto = require('crypto');
 const {
+  isBillingCheckoutEnabledForTenant,
   isAccountBillingEnabled,
   isBillingProviderEnabled,
   isIyzicoReviewCheckoutFallbackConfigured,
@@ -191,6 +192,14 @@ function ensureProviderEnabled(provider) {
   throw error;
 }
 
+function ensureCheckoutEnabled(provider, tenantId) {
+  ensureProviderEnabled(provider);
+  if (isBillingCheckoutEnabledForTenant(tenantId)) return;
+  const error = new Error('Ödeme alma bu hesap için henüz etkin değil');
+  error.code = 'BillingProviderUnavailable';
+  throw error;
+}
+
 async function getAccountForTenant(tenantId) {
   if (!isAccountBillingEnabled()) {
     const error = new Error('Account billing is not enabled for this environment');
@@ -283,7 +292,9 @@ async function getOverview(tenantId, { actorEmail = '' } = {}) {
   const billingAccount = await BillingAccount.findOne({ accountId: account._id }).select('+taxId').lean();
   const profileValidation = validateBillingProfile(billingAccount || {});
   const selectedProvider = billingAccount?.country ? resolveBillingProvider(billingAccount.country) : null;
-  const providerEnabled = selectedProvider ? isBillingProviderEnabled(selectedProvider) : false;
+  const providerEnabled = selectedProvider
+    ? isBillingProviderEnabled(selectedProvider) && isBillingCheckoutEnabledForTenant(tenant._id)
+    : false;
   const reviewCheckoutFallback = selectedProvider === 'iyzico'
     && isIyzicoReviewCheckoutFallbackEnabled({ tenantId: tenant._id, userEmail: actorEmail });
   const [subscription, invoices, catalogPlans, catalogPrices, alerts, limits, userCount, ownerCount, storageRows, requestCount] = await Promise.all([
@@ -415,7 +426,7 @@ async function createCheckout(tenantId, priceReference, {
     throw error;
   }
   const selectedProvider = resolveBillingProvider(billingAccount.country);
-  ensureProviderEnabled(selectedProvider);
+  ensureCheckoutEnabled(selectedProvider, tenant._id);
   const checkoutTaxId = billingAccount.taxIdEncrypted
     ? decryptBillingPii(billingAccount.taxIdEncrypted)
     : billingAccount.taxId;
@@ -637,7 +648,8 @@ async function updateBillingProfile(tenantId, payload, userId) {
     paymentRouting: {
       profileComplete: true,
       agreementAccepted: true,
-      checkoutAvailable: isBillingProviderEnabled(nextProvider),
+      checkoutAvailable: isBillingProviderEnabled(nextProvider)
+        && isBillingCheckoutEnabledForTenant(tenant._id),
       missingFields: [],
       paymentMethods: paymentMethodsForCountry(profile.country),
       jurisdictionLocked: false,
