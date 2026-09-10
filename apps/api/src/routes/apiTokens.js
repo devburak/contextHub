@@ -3,6 +3,28 @@ const ApiToken = require('@contexthub/common/src/models/ApiToken');
 const { tenantContext, authenticate } = require('../middleware/auth');
 const edgeGatewaySyncService = require('../services/edgeGatewaySyncService');
 const { logSecurityEvent } = require('../services/auditService');
+const roleService = require('../services/roleService');
+
+function availableExtensionPermissions() {
+  return roleService.listExtensionPermissions().map(({ plugin, permissions }) => ({
+    plugin,
+    permissions: [...permissions],
+  }));
+}
+
+function validateExtensionPermissions(requested = []) {
+  const allowed = new Set(
+    availableExtensionPermissions().flatMap(({ permissions }) => permissions)
+  );
+  const normalized = Array.from(new Set(requested.map((item) => String(item || '').trim()).filter(Boolean)));
+  const unknown = normalized.find((permission) => !allowed.has(permission));
+  if (unknown) {
+    const error = new Error(`Unknown or unavailable extension permission: ${unknown}`);
+    error.code = 'INVALID_API_TOKEN_PERMISSION';
+    throw error;
+  }
+  return normalized;
+}
 
 /**
  * API Token Management Routes
@@ -36,6 +58,7 @@ async function apiTokenRoutes(fastify) {
                   name: { type: 'string' },
                   role: { type: 'string', description: 'Role-based permissions' },
                   scopes: { type: 'array', items: { type: 'string' } },
+                  permissions: { type: 'array', items: { type: 'string' } },
                   expiresAt: { type: 'string', format: 'date-time', nullable: true },
                   lastUsedAt: { type: 'string', format: 'date-time', nullable: true },
                   createdAt: { type: 'string', format: 'date-time' },
@@ -48,6 +71,16 @@ async function apiTokenRoutes(fastify) {
                       email: { type: 'string' }
                     }
                   }
+                }
+              }
+            },
+            availablePermissions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  plugin: { type: 'string' },
+                  permissions: { type: 'array', items: { type: 'string' } }
                 }
               }
             }
@@ -79,6 +112,7 @@ async function apiTokenRoutes(fastify) {
           name: token.name,
           role: token.role || 'viewer',
           scopes: token.scopes,
+          permissions: token.permissions || [],
           expiresAt: token.expiresAt,
           lastUsedAt: token.lastUsedAt,
           createdAt: token.createdAt,
@@ -88,6 +122,7 @@ async function apiTokenRoutes(fastify) {
             email: token.createdBy.email,
           } : null,
         })),
+        availablePermissions: availableExtensionPermissions(),
       });
     } catch (error) {
       request.log.error({ err: error }, 'Failed to list API tokens');
@@ -124,6 +159,12 @@ async function apiTokenRoutes(fastify) {
             description: 'Permissions for this token',
             default: ['read']
           },
+          permissions: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Explicit plugin permissions granted to this token',
+            default: []
+          },
           expiresInDays: {
             type: 'number',
             minimum: 0,
@@ -145,6 +186,7 @@ async function apiTokenRoutes(fastify) {
                 name: { type: 'string' },
                 role: { type: 'string', description: 'Role-based permissions for this token' },
                 scopes: { type: 'array', items: { type: 'string' } },
+                permissions: { type: 'array', items: { type: 'string' } },
                 expiresAt: { type: 'string', format: 'date-time', nullable: true },
                 createdAt: { type: 'string', format: 'date-time' }
               }
@@ -159,7 +201,7 @@ async function apiTokenRoutes(fastify) {
       const tenantId = request.tenantId;
       const userRole = request.userRole;
       const userId = request.user._id;
-      const { name, role = 'viewer', scopes = ['read'], expiresInDays } = request.body;
+      const { name, role = 'viewer', scopes = ['read'], permissions = [], expiresInDays } = request.body;
 
       // Only owners can create API tokens
       if (userRole !== 'owner') {
@@ -168,6 +210,8 @@ async function apiTokenRoutes(fastify) {
           message: 'Only owners can create API tokens',
         });
       }
+
+      const extensionPermissions = validateExtensionPermissions(permissions);
 
       // Generate a secure random token
       const tokenValue = crypto.randomBytes(32).toString('hex');
@@ -190,6 +234,7 @@ async function apiTokenRoutes(fastify) {
         hash,
         role,
         scopes,
+        permissions: extensionPermissions,
         expiresAt,
         createdBy: userId,
       });
@@ -209,6 +254,7 @@ async function apiTokenRoutes(fastify) {
           tokenId: apiToken._id.toString(),
           role: apiToken.role,
           scopes: apiToken.scopes,
+          permissions: apiToken.permissions,
           expiresAt: apiToken.expiresAt,
         },
         request,
@@ -223,6 +269,7 @@ async function apiTokenRoutes(fastify) {
           token: token, // Already has ctx_ prefix
           role: apiToken.role,
           scopes: apiToken.scopes,
+          permissions: apiToken.permissions,
           expiresAt: apiToken.expiresAt,
           createdAt: apiToken.createdAt,
         },
@@ -230,6 +277,12 @@ async function apiTokenRoutes(fastify) {
       });
     } catch (error) {
       request.log.error({ err: error }, 'Failed to create API token');
+      if (error?.code === 'INVALID_API_TOKEN_PERMISSION') {
+        return reply.code(400).send({
+          error: 'InvalidApiTokenPermission',
+          message: error.message,
+        });
+      }
       return reply.code(500).send({
         error: 'InternalServerError',
         message: 'Failed to create API token',
@@ -321,7 +374,7 @@ async function apiTokenRoutes(fastify) {
 
   /**
    * PUT /api-tokens/:tokenId
-   * Update an API token (name, scopes only - not the token itself)
+   * Update an API token without rotating the secret
    */
   fastify.put('/api-tokens/:tokenId', {
     preHandler: [authenticate],
@@ -332,8 +385,12 @@ async function apiTokenRoutes(fastify) {
           name: { type: 'string', minLength: 1 },
           scopes: {
             type: 'array',
-            items: { type: 'string' },
+            items: { type: 'string', enum: ['read', 'write', 'delete'] },
+            minItems: 1,
           },
+          role: { type: 'string', enum: ['viewer', 'author', 'editor', 'admin', 'owner'] },
+          permissions: { type: 'array', items: { type: 'string' } },
+          expiresInDays: { type: 'number', minimum: 0 },
         },
       },
     },
@@ -342,7 +399,7 @@ async function apiTokenRoutes(fastify) {
       const tenantId = request.tenantId;
       const userRole = request.userRole;
       const { tokenId } = request.params;
-      const { name, scopes } = request.body;
+      const { name, role, scopes, permissions, expiresInDays } = request.body;
 
       // Only owners can update API tokens
       if (userRole !== 'owner') {
@@ -363,7 +420,14 @@ async function apiTokenRoutes(fastify) {
 
       // Update fields
       if (name !== undefined) token.name = name;
+      if (role !== undefined) token.role = role;
       if (scopes !== undefined) token.scopes = scopes;
+      if (permissions !== undefined) token.permissions = validateExtensionPermissions(permissions);
+      if (expiresInDays !== undefined) {
+        token.expiresAt = expiresInDays === 0
+          ? null
+          : new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+      }
 
       await token.save();
       edgeGatewaySyncService.syncApiTokenConfig({ apiToken: token }).catch((error) => {
@@ -378,7 +442,9 @@ async function apiTokenRoutes(fastify) {
         tenantId,
         metadata: {
           tokenId: token._id.toString(),
+          role: token.role,
           scopes: token.scopes,
+          permissions: token.permissions,
         },
         request,
       });
@@ -388,7 +454,9 @@ async function apiTokenRoutes(fastify) {
         token: {
           id: token._id.toString(),
           name: token.name,
+          role: token.role,
           scopes: token.scopes,
+          permissions: token.permissions,
           expiresAt: token.expiresAt,
           lastUsedAt: token.lastUsedAt,
           createdAt: token.createdAt,
@@ -396,9 +464,10 @@ async function apiTokenRoutes(fastify) {
       });
     } catch (error) {
       request.log.error({ err: error }, 'Failed to update API token');
-      return reply.code(500).send({
-        error: 'InternalServerError',
-        message: 'Failed to update API token',
+      const invalidPermission = error?.code === 'INVALID_API_TOKEN_PERMISSION';
+      return reply.code(invalidPermission ? 400 : 500).send({
+        error: invalidPermission ? 'InvalidApiTokenPermission' : 'InternalServerError',
+        message: invalidPermission ? error.message : 'Failed to update API token',
       });
     }
   });

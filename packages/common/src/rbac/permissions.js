@@ -159,13 +159,14 @@ const normalizeScopes = (scopes = []) => {
 };
 
 const scopeAllowsPermission = (permission, scopeSet) => {
-  const [, action = ''] = String(permission || '').split(':');
+  const segments = String(permission || '').split(/[.:]/).filter(Boolean);
+  const action = segments.at(-1) || '';
 
   if (!action) {
     return false;
   }
 
-  if (action === 'view') {
+  if (action === 'view' || action === 'read') {
     return scopeSet.has('read') || scopeSet.has('write') || scopeSet.has('delete');
   }
 

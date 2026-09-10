@@ -79,6 +79,7 @@ function buildApiTokenPayload({ apiToken, tenant, settings, domains = [] }) {
     tokenId: apiToken._id?.toString?.() || null,
     role: apiToken.role || 'viewer',
     scopes: Array.isArray(apiToken.scopes) && apiToken.scopes.length ? apiToken.scopes : ['read'],
+    permissions: Array.isArray(apiToken.permissions) ? apiToken.permissions : [],
     expiresAt: apiToken.expiresAt ? new Date(apiToken.expiresAt).toISOString() : null,
   };
 }

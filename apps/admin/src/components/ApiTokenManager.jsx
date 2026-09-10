@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
-import { fetchApiTokens, createApiToken, deleteApiToken } from '../lib/api/apiTokens.js'
+import { fetchApiTokens, createApiToken, updateApiToken, deleteApiToken } from '../lib/api/apiTokens.js'
 import { useApiError } from '../lib/useApiError.js'
-import { KeyIcon, TrashIcon, ClipboardDocumentIcon, CheckIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { KeyIcon, TrashIcon, ClipboardDocumentIcon, CheckIcon, PlusIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 
 const ROLE_OPTIONS = [
   { value: 'viewer', labelKey: 'apiToken.role_viewer' },
@@ -27,6 +27,17 @@ const SCOPE_LABEL_KEYS = {
   delete: 'apiToken.scope_delete'
 }
 
+const PERMISSION_LABEL_KEYS = {
+  'semanticSearch.related.read': 'apiToken.permission_semantic_related_read',
+  'semanticSearch.related.manage': 'apiToken.permission_semantic_related_manage',
+  'semanticSearch.query': 'apiToken.permission_semantic_query',
+  'semanticSearch.configure': 'apiToken.permission_semantic_configure',
+  'semanticSearch.reindex': 'apiToken.permission_semantic_reindex',
+  'tenantBackup.configure': 'apiToken.permission_backup_configure',
+  'tenantBackup.run': 'apiToken.permission_backup_run',
+  'tenantBackup.restore': 'apiToken.permission_backup_restore',
+}
+
 export default function ApiTokenManager({ tenantId }) {
   const queryClient = useQueryClient()
   const { t } = useTranslation()
@@ -35,8 +46,10 @@ export default function ApiTokenManager({ tenantId }) {
   const [newTokenName, setNewTokenName] = useState('')
   const [newTokenRole, setNewTokenRole] = useState('viewer')
   const [newTokenScopes, setNewTokenScopes] = useState(['read'])
+  const [newTokenPermissions, setNewTokenPermissions] = useState([])
   const [newTokenExpires, setNewTokenExpires] = useState(90)
   const [createdToken, setCreatedToken] = useState(null)
+  const [editingToken, setEditingToken] = useState(null)
   const [copiedTokenId, setCopiedTokenId] = useState(null)
   const [feedback, setFeedback] = useState({ type: '', message: '' })
   const apiTokensQueryKey = ['api-tokens', { tenant: tenantId }]
@@ -65,6 +78,7 @@ export default function ApiTokenManager({ tenantId }) {
       setNewTokenName('')
       setNewTokenRole('viewer')
       setNewTokenScopes(['read'])
+      setNewTokenPermissions([])
       setNewTokenExpires(90)
       setFeedback({ type: 'success', message: t('apiToken.create_success') })
     },
@@ -85,17 +99,33 @@ export default function ApiTokenManager({ tenantId }) {
     }
   })
 
+  const updateTokenMutation = useMutation({
+    mutationFn: ({ id, data }) => updateApiToken(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: apiTokensQueryKey })
+      handleCloseModal()
+      setFeedback({ type: 'success', message: t('apiToken.update_success') })
+    },
+    onError: (error) => setFeedback({ type: 'error', message: describeError(error, 'apiToken.update_failed') })
+  })
+
   const handleCreateToken = () => {
     if (!newTokenName.trim()) {
       setFeedback({ type: 'error', message: t('apiToken.name_required') })
       return
     }
-    createTokenMutation.mutate({
+    const payload = {
       name: newTokenName.trim(),
       role: newTokenRole,
       scopes: newTokenScopes,
-      expiresInDays: newTokenExpires,
-    })
+      permissions: newTokenPermissions,
+      ...(newTokenExpires === '' ? {} : { expiresInDays: newTokenExpires }),
+    }
+    if (editingToken) {
+      updateTokenMutation.mutate({ id: editingToken.id, data: payload })
+    } else {
+      createTokenMutation.mutate(payload)
+    }
   }
 
   const handleCopyToken = (token) => {
@@ -107,11 +137,24 @@ export default function ApiTokenManager({ tenantId }) {
   const handleCloseModal = () => {
     setShowModal(false)
     setCreatedToken(null)
+    setEditingToken(null)
     setNewTokenName('')
     setNewTokenRole('viewer')
     setNewTokenScopes(['read'])
+    setNewTokenPermissions([])
     setNewTokenExpires(90)
     setFeedback({ type: '', message: '' })
+  }
+
+  const handleEditToken = (token) => {
+    setEditingToken(token)
+    setNewTokenName(token.name)
+    setNewTokenRole(token.role || 'viewer')
+    setNewTokenScopes(token.scopes?.length ? token.scopes : ['read'])
+    setNewTokenPermissions(token.permissions || [])
+    setNewTokenExpires('')
+    setFeedback({ type: '', message: '' })
+    setShowModal(true)
   }
 
   const handleToggleScope = (scope) => {
@@ -120,6 +163,16 @@ export default function ApiTokenManager({ tenantId }) {
         ? prev.filter(s => s !== scope)
         : [...prev, scope]
     )
+  }
+
+  const handleTogglePermission = (permission) => {
+    setNewTokenPermissions((previous) => (
+      previous.includes(permission)
+        ? previous.filter((item) => item !== permission)
+        : [...previous, permission]
+    ))
+    const requiredScope = permission.endsWith('.read') ? 'read' : 'write'
+    setNewTokenScopes((previous) => previous.includes(requiredScope) ? previous : [...previous, requiredScope])
   }
 
   const formatDate = (dateString) => {
@@ -132,6 +185,7 @@ export default function ApiTokenManager({ tenantId }) {
   }
 
   const tokens = tokensQuery.data?.tokens || []
+  const availablePermissions = tokensQuery.data?.availablePermissions || []
 
   return (
     <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
@@ -196,6 +250,9 @@ export default function ApiTokenManager({ tenantId }) {
                           {t(ROLE_BADGE_LABEL_KEYS[token.role] || ROLE_BADGE_LABEL_KEYS.viewer)}
                         </span>
                         <span>{t('apiToken.scopes_summary', { scopes: token.scopes.join(', ') })}</span>
+                        {token.permissions?.length > 0 && (
+                          <span>{t('apiToken.features_summary', { count: token.permissions.length })}</span>
+                        )}
                         <span>•</span>
                         <span>{t('apiToken.last_used', { date: token.lastUsedAt ? formatDate(token.lastUsedAt) : t('apiToken.never_used') })}</span>
                         <span>•</span>
@@ -205,6 +262,14 @@ export default function ApiTokenManager({ tenantId }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEditToken(token)}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                  >
+                    <PencilSquareIcon className="h-3 w-3" />
+                    {t('common.edit')}
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleCopyToken(token)}
@@ -248,14 +313,16 @@ export default function ApiTokenManager({ tenantId }) {
           <div className="flex min-h-screen items-center justify-center p-4">
             <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={handleCloseModal}></div>
 
-            <div className="relative w-full max-w-lg transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
+            <div className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-lg transform flex-col overflow-hidden rounded-lg bg-white shadow-xl transition-all">
               <div className="bg-white px-6 py-5 border-b border-gray-200">
                 <h3 className="text-xl font-semibold text-gray-900">
-                  {createdToken ? t('apiToken.created_title') : t('apiToken.create_title')}
+                  {createdToken
+                    ? t('apiToken.created_title')
+                    : editingToken ? t('apiToken.edit_title') : t('apiToken.create_title')}
                 </h3>
               </div>
 
-              <div className="px-6 py-6 space-y-4">
+              <div className="overflow-y-auto px-6 py-6 space-y-4">
                 {createdToken ? (
                   <>
                     <div className="rounded-md bg-yellow-50 border border-yellow-200 p-4">
@@ -321,6 +388,14 @@ export default function ApiTokenManager({ tenantId }) {
                       <div>
                         <p className="text-xs text-gray-500">{t('apiToken.scopes_label')}</p>
                         <p className="text-sm font-medium text-gray-900">{createdToken.scopes.join(', ')}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">{t('apiToken.features_label')}</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {createdToken.permissions?.length
+                            ? createdToken.permissions.map((permission) => t(PERMISSION_LABEL_KEYS[permission] || permission)).join(', ')
+                            : t('apiToken.features_none')}
+                        </p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">{t('common.created')}</p>
@@ -394,9 +469,10 @@ export default function ApiTokenManager({ tenantId }) {
                       </label>
                       <select
                         value={newTokenExpires}
-                        onChange={(e) => setNewTokenExpires(Number(e.target.value))}
+                        onChange={(e) => setNewTokenExpires(e.target.value === '' ? '' : Number(e.target.value))}
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
                       >
+                        {editingToken && <option value="">{t('apiToken.expiry_keep')}</option>}
                         <option value={30}>{t('apiToken.expiry_days', { count: 30 })}</option>
                         <option value={90}>{t('apiToken.expiry_days', { count: 90 })}</option>
                         <option value={180}>{t('apiToken.expiry_days', { count: 180 })}</option>
@@ -404,6 +480,39 @@ export default function ApiTokenManager({ tenantId }) {
                         <option value={0}>{t('apiToken.expiry_unlimited')}</option>
                       </select>
                     </div>
+
+                    {availablePermissions.length > 0 && (
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <div className="mb-3">
+                          <p className="text-sm font-medium text-gray-800">{t('apiToken.features_label')}</p>
+                          <p className="mt-1 text-xs text-gray-500">{t('apiToken.features_hint')}</p>
+                        </div>
+                        <div className="space-y-4">
+                          {availablePermissions.map((group) => (
+                            <div key={group.plugin}>
+                              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                {group.plugin}
+                              </p>
+                              <div className="space-y-2">
+                                {group.permissions.map((permission) => (
+                                  <label key={permission} className="flex items-start gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={newTokenPermissions.includes(permission)}
+                                      onChange={() => handleTogglePermission(permission)}
+                                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {t(PERMISSION_LABEL_KEYS[permission] || permission)}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -423,7 +532,9 @@ export default function ApiTokenManager({ tenantId }) {
                     disabled={createTokenMutation.isPending || !newTokenName.trim() || newTokenScopes.length === 0}
                     className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                   >
-                    {createTokenMutation.isPending ? t('apiToken.creating') : t('apiToken.create_submit')}
+                    {createTokenMutation.isPending || updateTokenMutation.isPending
+                      ? t('apiToken.saving')
+                      : editingToken ? t('apiToken.update_submit') : t('apiToken.create_submit')}
                   </button>
                 )}
               </div>
