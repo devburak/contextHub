@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('node:crypto');
 const roleService = require('./roleService');
 const { mailService } = require('./mailService');
+const { hostedOperationsNotificationService } = require('./hostedOperationsNotificationService');
 
 // Arayüz dili tercihi için desteklenen değerler. packages/common User şemasındaki
 // enum ile aynı kümedir; ikisi birlikte güncellenmelidir.
@@ -656,6 +657,7 @@ class UserService {
       }
     );
 
+    const deletedUserEmail = user.email;
     user.email = `deleted+${user._id.toString()}@users.invalid`;
     user.firstName = 'Deleted';
     user.lastName = 'User';
@@ -688,6 +690,17 @@ class UserService {
         ipAddress: request?.ip || null,
       },
     });
+
+    try {
+      await hostedOperationsNotificationService.notifyUserDeleted({
+        userId: user._id,
+        userEmail: deletedUserEmail,
+        deletionRequestId,
+        occurredAt: now,
+      });
+    } catch (error) {
+      console.error('[UserService] User deletion notification failed:', error.message);
+    }
 
     return { success: true, deletionRequestId };
   }

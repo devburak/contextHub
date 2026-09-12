@@ -6,6 +6,7 @@ const tenantSubscriptionService = require('./tenantSubscriptionService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { mailService } = require('./mailService');
+const { hostedOperationsNotificationService } = require('./hostedOperationsNotificationService');
 const loginRateLimiter = require('./loginRateLimiter');
 const tokenBlacklist = require('./tokenBlacklist');
 const { issueSessionToken } = require('./sessionSecurity');
@@ -457,6 +458,17 @@ class AuthService {
       request
     });
 
+    try {
+      await hostedOperationsNotificationService.notifyUserCreated({
+        userId: user._id,
+        userEmail: user.email,
+        displayName: [user.firstName, user.lastName].filter(Boolean).join(' '),
+        source: 'registration',
+      });
+    } catch (error) {
+      console.error('[AuthService] User creation notification failed:', error.message);
+    }
+
     // E-posta doğrulama e-postası gönder
     try {
       const emailSent = await mailService.sendEmailVerificationEmail(
@@ -875,6 +887,17 @@ class AuthService {
         mustChangePassword: true
       });
       await user.save();
+
+      try {
+        await hostedOperationsNotificationService.notifyUserCreated({
+          userId: user._id,
+          userEmail: user.email,
+          tenantId,
+          source: 'invitation',
+        });
+      } catch (error) {
+        console.error('[AuthService] User creation notification failed:', error.message);
+      }
 
       const membership = new Membership({
         tenantId,

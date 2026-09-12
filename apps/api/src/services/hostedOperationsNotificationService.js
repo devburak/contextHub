@@ -77,6 +77,46 @@ function paymentReceivedMessage(data, occurredAt = new Date()) {
   };
 }
 
+function lifecycleMessage(subject, title, fields, occurredAt) {
+  const rows = [...fields, ['Tarih', occurredAt.toISOString()]];
+  return {
+    subject: `[ContextHub] ${subject}`,
+    text: [title, ...rows.map(([label, value]) => `${label}: ${value}`)].join('\n'),
+    html: `<h2>${escapeHtml(title)}</h2><dl>${rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl>`,
+  };
+}
+
+function tenantDeletedMessage(data, occurredAt = new Date()) {
+  const slug = required(data.tenantSlug, 'tenantSlug');
+  return lifecycleMessage(`Tenant silindi: ${slug}`, 'Tenant silindi; erişim kapatıldı.', [
+    ['Tenant', required(data.tenantName, 'tenantName')],
+    ['Tenant slug', slug],
+    ['Silen kullanıcı', required(data.actorEmail, 'actorEmail').toLowerCase()],
+    ['Silme işlem kimliği', required(data.deletionRequestId, 'deletionRequestId')],
+    ['Fiziksel temizleme için en erken tarih', new Date(data.purgeAfter).toISOString()],
+  ], occurredAt);
+}
+
+function userCreatedMessage(data, occurredAt = new Date()) {
+  const userEmail = required(data.userEmail, 'userEmail').toLowerCase();
+  const fields = [
+    ['Kullanıcı', userEmail],
+    ['Kullanıcı kimliği', required(data.userId, 'userId')],
+    ['Ad soyad', String(data.displayName || '').trim() || 'Henüz belirtilmedi'],
+    ['Oluşturulma yolu', data.source === 'invitation' ? 'Tenant daveti (hesap kurulumu bekleniyor)' : 'Yeni hesap kaydı'],
+  ];
+  if (data.tenantId) fields.push(['Tenant kimliği', String(data.tenantId)]);
+  return lifecycleMessage(`Yeni kullanıcı oluşturuldu: ${userEmail}`, 'Yeni kullanıcı oluşturuldu.', fields, occurredAt);
+}
+
+function userDeletedMessage(data, occurredAt = new Date()) {
+  return lifecycleMessage('Kullanıcı hesabı silindi', 'Kullanıcı hesabı anonimleştirildi ve üyelikleri kaldırıldı.', [
+    ['Kullanıcı', required(data.userEmail, 'userEmail').toLowerCase()],
+    ['Kullanıcı kimliği', required(data.userId, 'userId')],
+    ['Silme işlem kimliği', required(data.deletionRequestId, 'deletionRequestId')],
+  ], occurredAt);
+}
+
 function createHostedOperationsNotificationService({
   mail = mailService,
   env = process.env,
@@ -94,6 +134,9 @@ function createHostedOperationsNotificationService({
 
   return Object.freeze({
     notifyTenantCreated: (data) => send(tenantCreatedMessage, data),
+    notifyTenantDeleted: (data) => send(tenantDeletedMessage, data),
+    notifyUserCreated: (data) => send(userCreatedMessage, data),
+    notifyUserDeleted: (data) => send(userDeletedMessage, data),
     notifyPaymentReceived: (data) => send(paymentReceivedMessage, data),
   });
 }
@@ -106,4 +149,7 @@ module.exports = {
   notificationRecipient,
   paymentReceivedMessage,
   tenantCreatedMessage,
+  tenantDeletedMessage,
+  userCreatedMessage,
+  userDeletedMessage,
 };

@@ -5,6 +5,7 @@ const edgeGatewaySyncService = require('./edgeGatewaySyncService');
 const { invalidateTenantOriginPolicyCache } = require('./tenantOriginPolicy');
 const billingCancellationService = require('./billing/billingCancellationService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
+const { hostedOperationsNotificationService } = require('./hostedOperationsNotificationService');
 
 const {
   Tenant,
@@ -237,6 +238,19 @@ async function deleteTenant(tenantId, userId, payload = {}, request = null) {
       warnings,
     },
   });
+
+  try {
+    await hostedOperationsNotificationService.notifyTenantDeleted({
+      tenantName: tenant.name,
+      tenantSlug: tenant.slug,
+      actorEmail: user.email,
+      deletionRequestId,
+      purgeAfter: tenant.purgeAfter,
+      occurredAt: now,
+    });
+  } catch (error) {
+    console.error('[TenantLifecycleService] Tenant deletion notification failed:', error.message);
+  }
 
   return {
     status: tenant.status,
