@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'module';
 import path from 'node:path';
 
@@ -44,8 +44,10 @@ describe('API server', () => {
   let app;
   let originalLogin;
   let databaseReady = true;
+  let schemaWarnings;
 
   beforeAll(async () => {
+    schemaWarnings = vi.spyOn(console, 'warn');
     Object.assign(process.env, TEST_R2_ENV);
     const { default: buildServer } = await import('./server.js');
 
@@ -92,10 +94,19 @@ describe('API server', () => {
         )
       ]
     });
+    app.post('/__test/union-validation', {
+      schema: { body: {
+        type: 'object',
+        required: ['title'],
+        properties: { title: { type: ['string', 'object'] } },
+      } },
+    }, async (request) => request.body);
+    await app.ready();
   });
   afterAll(async () => {
     if (app) await app.close();
     if (originalLogin) AuthService.prototype.login = originalLogin;
+    schemaWarnings?.mockRestore();
 
     for (const [key, value] of originalR2Env) {
       if (value === undefined) delete process.env[key];
@@ -110,6 +121,19 @@ describe('API server', () => {
     expect(body.status).toBe('ok');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['x-frame-options']).toBe('DENY');
+  });
+
+  it('compiles union schemas without strict-type warnings and still validates requests', async () => {
+    expect(schemaWarnings.mock.calls.flat().filter((message) => String(message).includes('strict mode:'))).toEqual([]);
+    for (const title of ['Title', { tr: 'Başlık', en: 'Title' }]) {
+      const response = await app.inject({ method: 'POST', url: '/__test/union-validation', payload: { title } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ title });
+    }
+    const invalid = await app.inject({ method: 'POST', url: '/__test/union-validation', payload: { title: ['one', 'two'] } });
+    expect(invalid.statusCode).toBe(400);
+    const missing = await app.inject({ method: 'POST', url: '/__test/union-validation', payload: {} });
+    expect(missing.statusCode).toBe(400);
   });
 
   it('reports database readiness and returns 503 when it is unavailable', async () => {

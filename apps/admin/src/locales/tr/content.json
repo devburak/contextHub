@@ -154,6 +154,8 @@
   "content.url_required": "URL gereklidir.",
   "content.version_apply_save_failed": "Değişiklikler kaydedilemedi. Seçilen sürüm yüklenmedi.",
   "content.version_load": "Bu sürümü yükle",
+  "content.version_load_failed": "Seçilen sürüm yüklenemedi.",
+  "content.versions_load_failed": "Sürüm geçmişi yüklenemedi.",
   "content.version_number": "Sürüm #{{version}}",
   "content.version_published_title": "Bu sürüm yayında - silmek için onay gerekir",
   "content.version_select_aria": "Sürüm {{version}} silme seçimi",

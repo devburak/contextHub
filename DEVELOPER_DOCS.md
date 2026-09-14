@@ -481,11 +481,15 @@ if (!canEditContent(user, content)) {
 ### Content API
 
 ```javascript
-// List contents
-GET /api/contents?status=published&category=news&page=1&limit=20
+// List content summaries (default view)
+GET /api/contents?status=published&categoryName=Haberler&page=1&limit=20&view=summary
+
+// Include full bodies when a list integration needs them
+GET /api/contents?status=published&page=1&limit=20&view=full
 
 // Get single content
 GET /api/contents/:id
+GET /api/contents/slug/:slug
 
 // Create content
 POST /api/contents
@@ -505,9 +509,24 @@ PUT /api/contents/:id
 // Delete content
 DELETE /api/contents/:id
 
-// Version history
-GET /api/contents/:id/versions
+// Paginated version history (metadata only)
+GET /api/contents/:id/versions?page=1&deletedPage=1&limit=20
+
+// Full selected version snapshot; versionId is the snapshot ObjectId
+GET /api/contents/:id/versions/:versionId
 ```
+
+Liste yanıtı `{ items, pagination }` biçimindedir; `pagination`, `page`, `limit`, `total` ve `pages` içerir. Sıralama `{ publishedAt: -1, _id: -1 }` olduğundan aynı yayın tarihindeki kayıtların sırası kararlıdır.
+
+`view=summary` açıkça seçildiğinde yalnız `html` ve `lexical` alanlarını dışarıda bırakır. Diğer içerik alanları, kategori/etiket ilişkileri ve featured media korunur. `view=full` içerik gövdelerini de döndürür. Her iki görünümde API token yanıtları public custom field filtresinden geçer. ID ve slug detay endpoint'leri tam gövde döndürmeye devam eder.
+
+Kategori ID filtreleri `category`/`categories`, etiket ID filtresi `tag` ile verilir. ID listesi geçersiz bir ID içeriyorsa istek `400` döner. `categoryName` ve `tagName`, büyük/küçük harf duyarsız düz metin içeren eşleşmesi kullanır; regex özel karakterleri kaçışlanır. Yalnız isimle filtreleme yapıldığında tenant içinde eşleşme yoksa boş sonuç döner. ID ve isim aynı kategori/etiket filtresinde birlikte verilirse mevcut OR davranışı korunur; kategori ve etiket filtrelerinin ikisi verilirse ikisi de sağlanmalıdır.
+
+#### Dağıtım ve entegrasyon geçişi
+
+**Mevcut entegrasyon uyumluluğu korunur.** `GET /api/contents` için `view` belirtilmezse tam yanıt (`full`) döner. Admin listeleri açıkça `view=summary` kullanır. Kart istemcileri gövdeye ihtiyaç duymuyorsa `view=summary` seçebilir. Cache anahtarları summary ve full yanıtlarını ayırt etmek için `view` değerini içermelidir.
+
+Sürüm geçmişi yanıtı da artık bütün snapshot'ları içermez: aktif ve silinmiş listeler ayrı sayfalanır, gövdeler seçilen sürüm endpoint'inden istenir. Geçmiş istemcileri pagination bilgilerine göre ek sayfaları yüklemeli ve tüm geçmişe ilişkin kararları yalnız mevcut `versions` sayfasından çıkarmamalıdır; yayınlanmış sürüm kontrolü için `hasPublishedVersion` kullanılabilir.
 
 ### Versioning System
 
@@ -528,6 +547,21 @@ Her content update'i yeni bir `ContentVersion` snapshot'ı oluşturur:
   createdAt: Date
 }
 ```
+
+Snapshot modeli tam gövdeyi saklar; `GET /api/contents/:id/versions` yalnız metadata seçer: `_id`, `tenantId`, `contentId`, `version`, `title`, `slug`, `status`, `summary`, `authorName`, yayınlama/oluşturma tarihleri ve kullanıcı ID'leri, `deletedAt`, `deletedBy`, `deletedByName`. Gövde, custom field, kategori/etiket ve medya alanları bu listede yüklenmez. Silinmiş sürümlerde `deletedBy` kullanıcı bilgisiyle doldurulur ve `deletedByDisplayName` eklenir.
+
+Geçmiş sorgusunda `page` aktif sürüm sayfası, `deletedPage` silinmiş sürüm sayfasıdır; varsayılanları `1`'dir. Ortak `limit`, varsayılan `20` ve en fazla `100` olur. Aktif sürümler sürüm numarasına göre azalan, silinmiş sürümler `{ deletedAt: -1, _id: -1 }` sırasıyla gelir.
+
+| Yanıt alanı | Açıklama |
+| --- | --- |
+| `versions` | Seçilen aktif sürüm sayfasının metadata'sı |
+| `deletedVersions` | Seçilen silinmiş sürüm sayfasının metadata'sı |
+| `pagination` | Aktif sürümler için `page`, `limit`, `total`, `pages` |
+| `deletedPagination` | Silinmiş sürümler için `page`, `limit`, `total`, `pages` |
+| `hasPublishedVersion` | Tüm aktif sürümler arasında `status=published` kaydı bulunup bulunmadığı |
+| `deletionLog` | Dönen silinmiş sürüm sayfasının silme kayıtları; tüm geçmiş değildir |
+
+`GET /api/contents/:id/versions/:versionId`, `{ version }` içinde seçilen tam snapshot'ı döndürür. `versionId`, sayısal sürüm numarası değil snapshot'ın `_id` değeridir. Snapshot hem tenant hem content ID ile sınırlandırılır; API token yanıtında private custom field'lar filtrelenir.
 
 **Version Recovery** (planned):
 ```javascript

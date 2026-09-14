@@ -43,6 +43,8 @@ Tam route ve şema listesinin otoritesi interaktif sözleşmedir. Bu rehberler, 
 
 Başarılı liste ve detay şekilleri kaynağa göre değişir. Bir alana bağımlı olmadan önce Swagger şemasını kontrol edin ve yanıtı uygulama sınırınızda normalize edin.
 
+Content listeleri uyumluluk için varsayılan `view=full` kullanır. Admin ve gövde gerektirmeyen kart listeleri açık `view=summary` ile `html` ve `lexical` alanlarını dışarıda bırakır. Sürüm geçmişi metadata olarak sayfalanır, tam snapshot tek sürüm endpoint'inden alınır. Sözleşme ve dağıtım geçişi için [Content](./content.md) rehberini okuyun.
+
 Status ailelerini ayrı yönetin:
 
 - Geçersiz input veya tenant context için `400`.

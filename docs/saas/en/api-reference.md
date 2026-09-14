@@ -43,6 +43,8 @@ The interactive contract is the authority for the complete route and schema list
 
 Successful list and detail shapes vary by resource. Check the Swagger schema before depending on a field, then normalize the response at your application boundary.
 
+Content lists default to `view=full` for compatibility. Admin and card lists that do not need bodies explicitly use `view=summary`, excluding `html` and `lexical`. Version history is paginated metadata, with full snapshots available from the single-version endpoint. See [Content](./content.md) for the contract and deployment migration steps.
+
 Treat status families deliberately:
 
 - `400` for invalid input or tenant context.
