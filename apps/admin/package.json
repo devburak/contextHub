@@ -1,6 +1,6 @@
 {
   "name": "@contexthub/admin",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "private": true,
   "description": "React administration interface for contextHub",
   "type": "module",
