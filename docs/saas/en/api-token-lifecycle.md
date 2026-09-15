@@ -25,6 +25,8 @@ Store the returned token in a secret manager immediately. ContextHub stores a SH
 
 `GET /api/api-tokens` returns token metadata including name, role, scopes, `expiresAt`, `lastUsedAt`, creation time, and creator—never the secret or its hash. Give every workload its own token so usage and revocation remain attributable.
 
+`lastUsedAt` is recorded in Redis and flushed to the database about every five minutes, so the inventory timestamp can lag by a few minutes. Revocation does not depend on this field.
+
 `expiresInDays: 0` creates a non-expiring token. Prefer a finite expiry and alert before it. A token's name and scopes can be updated with `PUT /api/api-tokens/:tokenId`; role and expiry are fixed at creation.
 
 ## Rotate without downtime
