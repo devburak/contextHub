@@ -158,14 +158,14 @@ function serializeSubscription(subscription) {
   };
 }
 
-function buildChargeSummary({ plan, subscription, invoices = [], storageBytes = 0, requestCount = 0 }) {
+function buildChargeSummary({ plan, subscription, estimatedPrice = null, invoices = [], storageBytes = 0, requestCount = 0 }) {
   const latestInvoice = invoices[0] ? serializeInvoice(invoices[0]) : null;
 
   return {
     subscription: {
-      amountMinor: subscription ? subscription.amountMinor : toMinorUnits(plan?.price),
-      currency: subscription?.currency || CATALOG_CURRENCY,
-      interval: subscription?.interval || 'month',
+      amountMinor: subscription ? subscription.amountMinor : (estimatedPrice?.amountMinor ?? toMinorUnits(plan?.price)),
+      currency: subscription?.currency || estimatedPrice?.currency || CATALOG_CURRENCY,
+      interval: subscription?.interval || estimatedPrice?.interval || 'month',
       isEstimated: !subscription,
       currentPeriodStart: subscription?.currentPeriodStart || null,
       currentPeriodEnd: subscription?.currentPeriodEnd || null,
@@ -244,6 +244,7 @@ function serializePrice(price) {
 
 function serializeCatalogPlan(plan, prices = [], {
   selectedProvider = null,
+  displayProvider = selectedProvider,
   providerEnabled = false,
   reviewCheckoutFallback = false,
 } = {}) {
@@ -254,21 +255,24 @@ function serializeCatalogPlan(plan, prices = [], {
     const checkoutPrice = selectedProvider
       ? intervalPrices.find((price) => price.provider === selectedProvider)
       : null;
-    const displayPrice = checkoutPrice
+    const displayPrice = checkoutPrice && selectedProvider === displayProvider ? checkoutPrice : null;
+    const visiblePrice = displayPrice
+      || intervalPrices.find((price) => price.provider === displayProvider)
       || intervalPrices.find((price) => price.provider === 'paddle')
       || intervalPrices[0];
-    if (!displayPrice) return null;
+    if (!visiblePrice) return null;
     return {
       id: checkoutPrice ? String(checkoutPrice._id) : null,
       interval,
-      currency: displayPrice.currency,
-      amountMinor: displayPrice.amountMinor,
+      currency: visiblePrice.currency,
+      amountMinor: visiblePrice.amountMinor,
       checkoutReady: Boolean(
         providerEnabled
         && checkoutPrice
+        && visiblePrice === checkoutPrice
         && (checkoutPrice.externalPriceId || (selectedProvider === 'iyzico' && reviewCheckoutFallback))
       ),
-      catalogOnly: !checkoutPrice || !providerEnabled,
+      catalogOnly: !checkoutPrice || !providerEnabled || visiblePrice !== checkoutPrice,
     };
   }).filter(Boolean);
 
@@ -286,12 +290,13 @@ function serializeCatalogPlan(plan, prices = [], {
   };
 }
 
-async function getOverview(tenantId, { actorEmail = '' } = {}) {
+async function getOverview(tenantId, { actorEmail = '', previewCountry = '', previewPlanSlug = '', previewInterval = 'month' } = {}) {
   const { tenant, account } = await getAccountForTenant(tenantId);
   const effectivePlan = await tenantSubscriptionService.getEffectivePlan(tenant);
   const billingAccount = await BillingAccount.findOne({ accountId: account._id }).select('+taxId').lean();
   const profileValidation = validateBillingProfile(billingAccount || {});
   const selectedProvider = billingAccount?.country ? resolveBillingProvider(billingAccount.country) : null;
+  const displayProvider = previewCountry ? resolveBillingProvider(previewCountry) : selectedProvider;
   const providerEnabled = selectedProvider
     ? isBillingProviderEnabled(selectedProvider) && isBillingCheckoutEnabledForTenant(tenant._id)
     : false;
@@ -334,6 +339,15 @@ async function getOverview(tenantId, { actorEmail = '' } = {}) {
   };
 
   const agreementAccepted = hasCurrentServiceAgreement(billingAccount);
+  const plans = catalogPlans.map((plan) => serializeCatalogPlan(plan, catalogPrices, {
+    selectedProvider,
+    displayProvider,
+    providerEnabled,
+    reviewCheckoutFallback,
+  }));
+  const estimatedPlanSlug = tenant.status === 'pending_payment' ? tenant.requestedPlanSlug : previewPlanSlug;
+  const estimatedPrice = plans.find((plan) => plan.slug === estimatedPlanSlug)?.prices
+    ?.find((price) => price.interval === previewInterval) || null;
   return {
     tenant: {
       id: String(tenant._id),
@@ -365,11 +379,7 @@ async function getOverview(tenantId, { actorEmail = '' } = {}) {
       jurisdictionLocked: Boolean(subscription && ['trialing', 'active', 'past_due', 'paused'].includes(subscription.status)),
     },
     subscription: serializeSubscription(subscription),
-    plans: catalogPlans.map((plan) => serializeCatalogPlan(plan, catalogPrices, {
-      selectedProvider,
-      providerEnabled,
-      reviewCheckoutFallback,
-    })),
+    plans,
     prices: catalogPrices
       .filter((price) => selectedProvider && price.provider === selectedProvider)
       .map(serializePrice),
@@ -388,6 +398,7 @@ async function getOverview(tenantId, { actorEmail = '' } = {}) {
     charges: buildChargeSummary({
       plan: effectivePlan,
       subscription,
+      estimatedPrice,
       invoices,
       storageBytes,
       requestCount: monthlyRequests,

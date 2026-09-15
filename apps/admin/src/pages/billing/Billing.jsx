@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -118,8 +118,18 @@ export default function Billing() {
   const [profile, setProfile] = useState(EMPTY_PROFILE)
   const [fieldErrors, setFieldErrors] = useState({})
   const [hostedPaymentContent, setHostedPaymentContent] = useState('')
+  const profileInitializedForTenant = useRef('')
+  const scrolledToPlanForTenant = useRef('')
   const locale = i18n.resolvedLanguage === 'en' ? 'en-US' : 'tr-TR'
-  const overview = useQuery({ queryKey: ['billing', 'overview', activeTenantId], queryFn: fetchBillingOverview, retry: 1, enabled: canView, refetchInterval: (data) => data?.tenant?.status === 'pending_payment' ? 5000 : false })
+  const previewCountry = profile.country
+  const overview = useQuery({
+    queryKey: ['billing', 'overview', activeTenantId, previewCountry, checkoutIntent.planSlug, interval],
+    queryFn: () => fetchBillingOverview({ previewCountry, previewPlanSlug: checkoutIntent.planSlug, previewInterval: interval }),
+    retry: 1,
+    enabled: canView,
+    keepPreviousData: true,
+    refetchInterval: (data) => data?.tenant?.status === 'pending_payment' ? 5000 : false,
+  })
 
   useEffect(() => {
     if (overview.data?.tenant?.status === 'active' && activeMembership?.tenant?.status === 'pending_payment') {
@@ -151,25 +161,31 @@ export default function Billing() {
   }, [t, toast])
 
   useEffect(() => {
+    if (!activeTenantId || overview.data?.tenant?.id !== activeTenantId || profileInitializedForTenant.current === activeTenantId) return
+    profileInitializedForTenant.current = activeTenantId
     const saved = overview.data?.billingAccount
-    if (!saved) return
     setProfile({
       ...EMPTY_PROFILE,
-      ...saved,
+      ...(saved || {}),
       taxId: '',
-      address: { ...EMPTY_PROFILE.address, ...(saved.address || {}) },
+      address: { ...EMPTY_PROFILE.address, ...(saved?.address || {}) },
       declarationAccepted: false,
       serviceAgreementAccepted: false,
     })
-  }, [overview.data?.billingAccount])
+  }, [activeTenantId, overview.data?.tenant?.id, overview.data?.billingAccount])
 
   useEffect(() => {
-    if (!overview.data || !checkoutIntent.planSlug) return
-    document.getElementById(`billing-plan-${checkoutIntent.planSlug}`)?.scrollIntoView({
+    if (!overview.data?.plans?.length || !checkoutIntent.planSlug || !activeTenantId) return
+    const scrollKey = `${activeTenantId}:${checkoutIntent.planSlug}`
+    if (scrolledToPlanForTenant.current === scrollKey) return
+    const planElement = document.getElementById(`billing-plan-${checkoutIntent.planSlug}`)
+    if (!planElement) return
+    scrolledToPlanForTenant.current = scrollKey
+    planElement.scrollIntoView({
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       block: 'center',
     })
-  }, [checkoutIntent.planSlug, overview.data])
+  }, [activeTenantId, checkoutIntent.planSlug, overview.data?.plans])
 
   const checkout = useMutation({
     mutationFn: createBillingCheckout,
@@ -448,7 +464,7 @@ export default function Billing() {
                 </div>
               </div>
               <p className="mt-3 max-w-3xl text-xs leading-5 text-[var(--billing-muted)]">
-                {t(overview.data.billingAccount?.country === 'TR'
+                {t((previewCountry || overview.data.billingAccount?.country) === 'TR'
                   ? 'billing.plans.tryCatalogNote'
                   : 'billing.plans.usdCatalogNote')}
               </p>
@@ -461,7 +477,7 @@ export default function Billing() {
                     const requested = overview.data.tenant.status === 'pending_payment' && overview.data.tenant.requestedPlanSlug === plan.slug
                     const highlighted = checkoutIntent.planSlug === plan.slug
                     const hasSubscription = Boolean(overview.data.subscription && ['active', 'trialing', 'past_due', 'paused'].includes(overview.data.subscription.status))
-                    const checkoutAvailable = Boolean(overview.data.paymentRouting?.checkoutAvailable)
+                    const checkoutAvailable = Boolean(overview.data.paymentRouting?.checkoutAvailable && profile.country === overview.data.billingAccount?.country)
                     const canCheckout = !enterprise && !current && !hasSubscription && canManage && online && checkoutAvailable && price?.checkoutReady && price?.id
                     const canOpenProfile = !enterprise && !current && !hasSubscription && canManage && online && !overview.data.paymentRouting?.profileComplete
                     const buttonLabel = checkoutButtonLabel(t, { current, enterprise, checkoutAvailable, checkoutReady: price?.checkoutReady, hasProfile: overview.data.paymentRouting?.profileComplete, hasSubscription })
