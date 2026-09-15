@@ -100,6 +100,11 @@ core deploy command must not copy private plugin sources into this repository.
 
 For more details, see [DEPLOY.md](./DEPLOY.md) or [DEPLOY-QUICK.md](./DEPLOY-QUICK.md).
 
+For an API managed by PM2, run `pnpm api:pm2:env:check` on the server before a
+release. It compares each running API process with the local `.env` and reports only
+drifting variable names. After changing `.env`, use `pnpm api:pm2:reload` to reload
+with the file's values, verify all instances, and save the corrected PM2 state.
+
 ## Versioning and releases
 
 The deployable core is released as a **single version**: the root `package.json`, `apps/*` and `packages/common` always carry the same number, and an annotated git tag points at it.  `@contexthub/promo-sdk` is excluded — it is published separately and keeps its own version.
