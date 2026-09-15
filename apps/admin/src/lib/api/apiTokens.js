@@ -11,7 +11,7 @@ export async function fetchApiTokens() {
 
 /**
  * Create a new API token
- * @param {Object} data - Token data { name, scopes, expiresInDays }
+ * @param {Object} data - Token data { name, role, scopes, permissions, expiresInDays }
  * @returns {Promise<Object>} Created token with the actual token value
  */
 export async function createApiToken(data) {

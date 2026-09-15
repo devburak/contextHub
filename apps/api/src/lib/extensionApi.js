@@ -11,6 +11,7 @@ const { createExtensionSettingsFacade } = require('./extensionSettingsFacade');
 const { createExtensionEntitlementFacade } = require('./extensionEntitlementFacade');
 const { createExtensionSecretsFacade } = require('./extensionSecretsFacade');
 const { createExtensionRestoreFacade } = require('./extensionRestoreFacade');
+const { createExtensionIndexingFacade } = require('./extensionIndexingFacade');
 
 class ExtensionApiError extends Error {
   constructor(message, code = 'EXTENSION_API_ERROR') {
@@ -204,6 +205,9 @@ function createExtensionApi(options) {
     log: createLoggerFacade(logger)
   };
   const secretsApi = createSecretsApi(secrets, manifest);
+  if (manifest.capabilities.includes('tenant.sources.index')) {
+    extension.indexing = options.indexing || createExtensionIndexingFacade();
+  }
   if (secretsApi) extension.secrets = secretsApi;
   const restoreApi = createRestoreApi(restore, manifest);
   if (restoreApi) extension.restore = restoreApi;

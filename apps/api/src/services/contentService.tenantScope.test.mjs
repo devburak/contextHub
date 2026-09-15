@@ -13,6 +13,7 @@ function queryResult(value) {
     skip: vi.fn(),
     limit: vi.fn(),
     populate: vi.fn(),
+    select: vi.fn(),
     lean: vi.fn().mockResolvedValue(value),
   };
 
@@ -20,6 +21,7 @@ function queryResult(value) {
   query.skip.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.populate.mockReturnValue(query);
+  query.select.mockReturnValue(query);
   return query;
 }
 

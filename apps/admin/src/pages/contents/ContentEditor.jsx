@@ -3,7 +3,10 @@ import { cloneElement, useEffect, useState, useCallback, useRef, useMemo } from 
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { getContent, createContent, updateContent, listVersions, deleteContentVersions, deleteContent, setContentGalleries, checkSlugAvailability } from '../../lib/api/contents'
+import { getContent, createContent, updateContent, deleteContentVersions, deleteContent, setContentGalleries, checkSlugAvailability } from '../../lib/api/contents'
+import { useContentVersionHistory } from './useContentVersionHistory'
+import { applyContentVersion } from './applyContentVersion'
+import VersionHistoryPagination from './components/VersionHistoryPagination'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { listCategories } from '../../lib/api/categories'
 import { searchTags, createTag } from '../../lib/api/tags'
@@ -379,6 +382,7 @@ export default function ContentEditor() {
   const isNew = id === 'new'
   const { isAuthenticated, activeTenantId, role, hasPermission, hasFeature } = useAuth()
   const queryClient = useQueryClient()
+  const contentScope = JSON.stringify([activeTenantId, id])
 
   const { data: tenantSettingsData } = useQuery({
     queryKey: ['tenants', 'settings', { tenant: activeTenantId }],
@@ -408,9 +412,7 @@ export default function ContentEditor() {
   const [html, setHtml] = useState('<p></p>')
   const [dirty, setDirty] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [selectedVersionId, setSelectedVersionId] = useState(null)
   const [selectedVersionIds, setSelectedVersionIds] = useState([])
-  const [previewVersion, setPreviewVersion] = useState(null)
   const [versionActionError, setVersionActionError] = useState('')
   const [featuredMedia, setFeaturedMedia] = useState(null)
   const [featuredMediaId, setFeaturedMediaId] = useState(null)
@@ -695,11 +697,16 @@ export default function ContentEditor() {
     { enabled: isAuthenticated && !!activeTenantId && !isNew }
   )
 
-  const { data: versionsPayload } = useQuery(
-    ['contentVersions', { tenant: activeTenantId, id }],
-    () => listVersions({ id }),
-    { enabled: isAuthenticated && !!activeTenantId && !isNew }
-  )
+  const {
+    versionsQuery, versionQuery, versionsPayload, versionsData, deletedVersionsData,
+    selectedVersionId, setSelectedVersionId, previewVersion, isSelectionCurrent,
+    page: versionsPage, deletedPage: deletedVersionsPage,
+    setPage: setVersionsPage, setDeletedPage: setDeletedVersionsPage,
+  } = useContentVersionHistory({
+    tenant: activeTenantId,
+    id,
+    enabled: isAuthenticated && !!activeTenantId && !isNew,
+  })
 
   const galleriesListQuery = useQuery(
     ['galleries', 'content-link', { tenant: activeTenantId, search: gallerySearch }],
@@ -721,12 +728,9 @@ export default function ContentEditor() {
 
   const customFieldDefinitions = customFieldDefinitionsQuery.data || []
 
-  const versionsData = useMemo(() => versionsPayload?.versions ?? [], [versionsPayload])
-  const deletedVersionsData = useMemo(() => versionsPayload?.deletedVersions ?? [], [versionsPayload])
-  const hasPublishedVersion = useMemo(
-    () => versionsData.some((item) => item.status === 'published'),
-    [versionsData]
-  )
+  const hasPublishedVersion = versionsPayload?.hasPublishedVersion
+    ?? versionsData.some((item) => item.status === 'published')
+  const versionTotal = versionsPayload?.pagination?.total ?? versionsData.length
 
   const availableGalleries = useMemo(() => {
     const resultMap = new Map()
@@ -747,25 +751,6 @@ export default function ContentEditor() {
 
   useEffect(() => {
     if (!versionsData) return
-    if (!versionsData.length) {
-      setPreviewVersion(null)
-      setSelectedVersionId(null)
-      return
-    }
-    const selected = selectedVersionId
-      ? versionsData.find((item) => String(item._id) === selectedVersionId)
-      : null
-    if (selected) {
-      setPreviewVersion(selected)
-      return
-    }
-    const newest = versionsData[0]
-    setPreviewVersion(newest)
-    setSelectedVersionId(String(newest._id))
-  }, [versionsData, selectedVersionId])
-
-  useEffect(() => {
-    if (!versionsData) return
     setSelectedVersionIds((prev) =>
       prev.filter((id) => {
         const version = versionsData.find((item) => String(item._id) === id)
@@ -776,13 +761,13 @@ export default function ContentEditor() {
 
   useEffect(() => {
     if (!contentData) return
-    if (skipNextContentSyncRef.current) {
-      skipNextContentSyncRef.current = false
+    const skipSync = skipNextContentSyncRef.current === contentScope
+    skipNextContentSyncRef.current = null
+    if (skipSync) {
       return
     }
     applyContentPayload(contentData, { markDirty: false })
-    setSelectedVersionId(contentData.lastVersionId ? String(contentData.lastVersionId) : null)
-  }, [contentData, applyContentPayload])
+  }, [contentData, applyContentPayload, contentScope])
 
   useEffect(() => {
     if (!canUseHtmlMode && renderMode === 'html') {
@@ -1110,7 +1095,6 @@ export default function ContentEditor() {
 
   const handleSelectVersion = (version) => {
     if (!version) return
-    setPreviewVersion(version)
     setSelectedVersionId(String(version._id))
     setSaveError('')
     setVersionActionError('')
@@ -1151,7 +1135,6 @@ export default function ContentEditor() {
     const idsToDelete = selectedVersionIds
 
     if (idsToDelete.includes(selectedVersionId)) {
-      setPreviewVersion(null)
       setSelectedVersionId(null)
     }
     setVersionActionError('')
@@ -1161,33 +1144,43 @@ export default function ContentEditor() {
       console.error('Version delete failed', error)
       setVersionActionError(describeError(error, 'content.versions_delete_failed'))
     }
-  }, [selectedVersionIds, isDeletingVersions, selectedVersionId, deleteVersionsMut, versionsData, t, describeError])
+  }, [selectedVersionIds, isDeletingVersions, selectedVersionId, setSelectedVersionId, deleteVersionsMut, versionsData, t, describeError])
 
   const handleApplyVersion = async () => {
-    if (!previewVersion) return
-
-    if (!isNew && dirty) {
-      try {
-        skipNextContentSyncRef.current = true
-        await handleSave({ silent: true })
-      } catch (error) {
-        skipNextContentSyncRef.current = false
+    if (!previewVersion || isSaving || versionQuery.isFetching || versionQuery.isError) return
+    try {
+      const applied = await applyContentVersion({
+        version: previewVersion,
+        isCurrent: isSelectionCurrent,
+        save: !isNew && dirty ? async () => {
+          skipNextContentSyncRef.current = contentScope
+          return handleSave({ silent: true })
+        } : null,
+        apply: (version) => {
+          skipNextContentSyncRef.current = contentScope
+          setSaveError('')
+          applyContentPayload(version, { markDirty: true })
+          setSelectedVersionId(String(version._id))
+        },
+      })
+      if (!applied && skipNextContentSyncRef.current === contentScope) {
+        skipNextContentSyncRef.current = null
+      }
+    } catch (error) {
+      if (skipNextContentSyncRef.current === contentScope) {
+        skipNextContentSyncRef.current = null
+      }
+      if (isSelectionCurrent()) {
         setSaveError(t('content.version_apply_save_failed'))
         console.error('Auto-save before switching version failed', error)
-        return
       }
     }
-
-    skipNextContentSyncRef.current = true
-    setSaveError('')
-    applyContentPayload(previewVersion, { markDirty: true })
-    setSelectedVersionId(String(previewVersion._id))
   }
 
   const handleDeleteEntireContent = useCallback(async () => {
     if (isNew) return
 
-    const confirmMessage = t('content.delete_confirm', { count: versionsData?.length || 0 })
+    const confirmMessage = t('content.delete_confirm', { count: versionTotal })
 
     const confirmation = window.confirm(confirmMessage)
     if (!confirmation) return
@@ -1197,7 +1190,7 @@ export default function ContentEditor() {
     } catch (error) {
       console.error('Content delete failed', error)
     }
-  }, [isNew, deleteContentMut, versionsData, t])
+  }, [isNew, deleteContentMut, versionTotal, t])
 
   function computeSlug(base) {
     const map = {
@@ -2025,7 +2018,7 @@ export default function ContentEditor() {
                     <button
                       type="button"
                       onClick={handleDeleteSelectedVersions}
-                      disabled={!selectedVersionIds.length || isDeletingVersions}
+                      disabled={!selectedVersionIds.length || isDeletingVersions || isSaving}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
                       title={t('content.versions_delete_selected')}
                     >
@@ -2033,7 +2026,7 @@ export default function ContentEditor() {
                       <span className="sr-only">{t('content.versions_delete_selected')}</span>
                     </button>
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-                      {t('content.record_count', { count: versionsData?.length || 0 })}
+                      {t('content.record_count', { count: versionTotal })}
                     </span>
                   </div>
                 )}
@@ -2042,7 +2035,16 @@ export default function ContentEditor() {
               {!isNew && versionActionError && (
                 <div className="text-xs text-red-500">{versionActionError}</div>
               )}
-              {!isNew && versionsData?.length === 0 && (
+              {!isNew && versionsQuery.isLoading && (
+                <div className="text-xs text-gray-500" role="status">{t('common.loading')}</div>
+              )}
+              {!isNew && versionsQuery.isError && (
+                <div className="text-xs text-red-600" role="alert">
+                  {t('content.versions_load_failed')}
+                  <button type="button" className="ml-2 underline" onClick={() => versionsQuery.refetch()}>{t('common.refresh')}</button>
+                </div>
+              )}
+              {!isNew && !versionsQuery.isLoading && !versionsQuery.isError && versionsData.length === 0 && (
                 <div className="text-xs text-gray-500">{t('content.versions_empty')}</div>
               )}
               {!isNew && hasPublishedVersion && (
@@ -2070,12 +2072,14 @@ export default function ContentEditor() {
                           aria-label={t('content.version_select_aria', { version: v.version })}
                           className="mt-1 h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-400"
                           checked={checked}
+                          disabled={isSaving || isDeletingVersions}
                           onChange={(event) => handleToggleVersionSelection(v, event.target.checked)}
                           title={isPublished ? t('content.version_published_title') : undefined}
                         />
                         <button
                           type="button"
                           onClick={() => handleSelectVersion(v)}
+                          disabled={isSaving || isDeletingVersions}
                           className="flex-1 cursor-pointer bg-transparent text-left focus:outline-none"
                         >
                           <div className="flex items-center justify-between">
@@ -2091,6 +2095,23 @@ export default function ContentEditor() {
                   )
                 })}
               </ul>
+              {!isNew && (
+                <VersionHistoryPagination
+                  pagination={versionsPayload?.pagination}
+                  page={versionsPage}
+                  onPageChange={setVersionsPage}
+                  disabled={versionsQuery.isFetching || isDeletingVersions || isSaving}
+                />
+              )}
+              {selectedVersionId && versionQuery.isFetching && (
+                <p className="text-xs text-gray-500" role="status">{t('common.loading')}</p>
+              )}
+              {selectedVersionId && versionQuery.isError && (
+                <div className="text-xs text-red-600" role="alert">
+                  {t('content.version_load_failed')}
+                  <button type="button" className="ml-2 underline" onClick={() => versionQuery.refetch()}>{t('common.refresh')}</button>
+                </div>
+              )}
               {previewVersion && (
                 <div className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2103,7 +2124,7 @@ export default function ContentEditor() {
                     <button
                       type="button"
                       onClick={handleApplyVersion}
-                      disabled={isSaving}
+                      disabled={isSaving || versionQuery.isFetching || versionQuery.isError}
                       className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
                     >
                       {t('content.version_load')}
@@ -2120,11 +2141,11 @@ export default function ContentEditor() {
                   )}
                 </div>
               )}
-              {!!deletedVersionsData.length && (
+              {(Boolean(deletedVersionsData.length) || deletedVersionsPage > 1) && (
                 <div className="border-t border-gray-200 pt-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-700">{t('content.deleted_versions_title')}</h4>
-                    <span className="text-[11px] text-gray-500">{t('content.record_count', { count: deletedVersionsData.length })}</span>
+                    <span className="text-[11px] text-gray-500">{t('content.record_count', { count: versionsPayload?.deletedPagination?.total ?? deletedVersionsData.length })}</span>
                   </div>
                   <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1 text-xs">
                     {deletedVersionsData.map((item) => {
@@ -2147,6 +2168,12 @@ export default function ContentEditor() {
                       )
                     })}
                   </ul>
+                  <VersionHistoryPagination
+                    pagination={versionsPayload?.deletedPagination}
+                    page={deletedVersionsPage}
+                    onPageChange={setDeletedVersionsPage}
+                    disabled={versionsQuery.isFetching || isDeletingVersions || isSaving}
+                  />
                 </div>
               )}
             </section>

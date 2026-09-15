@@ -33,6 +33,17 @@ curl --get "https://api.ctxhub.net/api/contents" \
 
 Filtreler arasında `search`, kategori/etiket ID veya isimleri, yayın tarih aralığı, pagination ve filterable custom field'lar bulunur.
 
+Liste yanıtı `{ items, pagination }` biçimindedir. `pagination`, `page`, `limit`, `total` ve `pages` alanlarını içerir. Kayıtlar önce `publishedAt`, aynı tarih için `_id` azalan sırada döner.
+
+| `view` | Liste içeriği |
+| --- | --- |
+| `summary` | `html` ve `lexical` hariç içerik alanları; başlık, özet, kategori/etiket ilişkileri, öne çıkan medya ve izin verilen custom field'lar korunur |
+| `full` (varsayılan) | `html` ve `lexical` dahil içerik alanları |
+
+Her iki görünümde de API token için public custom field kuralları geçerlidir. `view=full`, private custom field'ları açmaz.
+
+Kategori için `category` veya virgülle ayrılmış `categories`, etiket için `tag` ID filtresini kullanın. Geçersiz ID, listedeki diğer ID'ler geçerli olsa bile `400` döndürür. `categoryName` ve `tagName`, büyük/küçük harf duyarsız düz metin içeren eşleşmesi yapar; regex özel karakterleri arama ifadesi olarak çalıştırılmaz. Yalnızca isimle filtreleme yapıldığında tenant içinde eşleşme yoksa liste boş döner. Aynı kategori veya etiket filtresinde ID ve isim birlikte verilirse bunlardan herhangi biriyle eşleşen kayıtlar kabul edilir (OR); kategori ve etiket filtreleri birlikte verildiğinde ikisi de uygulanır.
+
 ## Slug ile getirin
 
 Sayfa render ederken slug lookup tercih edin:
@@ -49,6 +60,33 @@ if (response.status === 404) return null
 if (!response.ok) throw new Error(`Content request failed: ${response.status}`)
 const { content } = await response.json()
 ```
+
+`GET /api/contents/slug/:slug` ve `GET /api/contents/:id`, `html` ve `lexical` dahil tam içerik gövdesini döndürür. Detay için `view=full` eklemek gerekmez.
+
+## Sürüm geçmişi
+
+```text
+GET /api/contents/:id/versions?page=1&deletedPage=1&limit=20
+GET /api/contents/:id/versions/:versionId
+```
+
+Geçmiş listesi, gövdeleri taşımadan sürüm metadata'sını sayfalar. `page` aktif sürümleri, `deletedPage` silinmiş sürümleri seçer; ikisi de varsayılan `1` değerini kullanır. `limit` her iki liste için varsayılan `20`, en fazla `100` olur.
+
+| Yanıt alanı | İçerik |
+| --- | --- |
+| `versions` | Seçilen aktif sürüm sayfasının metadata'sı |
+| `deletedVersions` | Seçilen silinmiş sürüm sayfasının metadata'sı ve silen kullanıcı bilgisi |
+| `pagination`, `deletedPagination` | İlgili liste için `page`, `limit`, `total`, `pages` |
+| `hasPublishedVersion` | Aktif sürümler arasında yayınlanmış bir sürüm bulunup bulunmadığı; yalnız mevcut sayfaya bağlı değildir |
+| `deletionLog` | Seçilen silinmiş sürüm sayfasına ait silme kayıtları |
+
+Bir sürümün gövdesini ön izlemek veya düzenlemek için `:versionId` olarak sürüm kaydının `_id` değerini kullanın; bu değer sayısal `version` değildir. Tek sürüm endpoint'i `{ version }` içinde seçilen snapshot'ı, `html` ve `lexical` dahil döndürür. API token yanıtında custom field görünürlüğü yine korunur.
+
+## Dağıtımda entegrasyon geçişi
+
+**Mevcut tema uyumluluğu korunur:** `view` belirtilmeyen `GET /api/contents` istekleri `html` ve `lexical` dahil tam yanıt döndürmeye devam eder. Admin listeleri açıkça `view=summary` kullanır. Kart entegrasyonları da yalnız gövdeye ihtiyaç duymadıklarında `view=summary` seçmelidir.
+
+Sürüm geçmişi entegrasyonları da tüm snapshot'ların tek yanıtta geleceğini varsaymamalıdır. İlgili pagination bilgisini kullanarak sayfaları yükleyin ve gövde gerektiğinde tek sürüm endpoint'ini çağırın; `deletionLog` yalnız dönen silinmiş sayfayı kapsar.
 
 ## Custom field'lar
 

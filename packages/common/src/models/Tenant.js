@@ -9,9 +9,10 @@ const tenantSchema = new Schema({
   status: {
     type: String,
     default: 'active',
-    enum: ['active', 'inactive', 'suspended', 'deletion_pending', 'deleted'],
+    enum: ['active', 'pending_payment', 'inactive', 'suspended', 'deletion_pending', 'deleted'],
     index: true,
   },
+  requestedPlanSlug: { type: String, default: null },
   deletedAt: { type: Date, default: null, index: true },
   deletedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   deletionReason: { type: String, default: '', trim: true, maxlength: 1000 },

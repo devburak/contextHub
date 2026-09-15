@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ensureModelIndexes, ensureDeploymentIndexes } = require('./indexManagement');
 
 const getIntFromEnv = (key, defaultValue, { allowZero = false } = {}) => {
   const raw = process.env[key];
@@ -24,12 +25,16 @@ const shouldAutoCreateIndexes = () => {
     return false;
   }
 
-  const normalized = String(raw).toLowerCase();
+  const normalized = String(raw).trim().toLowerCase();
   return ['1', 'true', 'yes', 'on'].includes(normalized);
 };
 
 const buildMongoOptions = () => {
   const options = {
+    // Index creation belongs to the explicit API startup/CLI flow, not model
+    // initialization or read-only utilities that share this connection helper.
+    autoIndex: false,
+    autoCreate: false,
     useNewUrlParser: true,
     useUnifiedTopology: true,
     maxPoolSize: getIntFromEnv('MONGODB_MAX_POOL_SIZE', 50),
@@ -51,16 +56,10 @@ const connectDB = async () => {
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
 
-    if (shouldAutoCreateIndexes()) {
-      console.log('MONGODB_AUTO_CREATE_INDEXES enabled. Ensuring indexes...');
-      await createIndexes();
-      console.log('Indexes ensured during startup');
-    }
-    
     return conn;
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    process.exit(1);
+    throw error;
   }
 };
 
@@ -68,21 +67,31 @@ const createIndexes = async () => {
   try {
     const models = require('./models');
     
-    // Her model için indexleri oluştur
     const modelNames = Object.keys(models).filter(key => key !== 'mongoose');
     
     for (const modelName of modelNames) {
       const model = models[modelName];
-      if (model.createIndexes) {
-        await model.createIndexes();
-        console.log(`Indexes created for ${modelName}`);
+      if (model.schema && model.collection) {
+        await ensureModelIndexes(model, model.schema.indexes());
+        console.log(`Indexes created and verified for ${modelName}`);
       }
     }
     
-    console.log('All database indexes created successfully');
+    console.log('All declared database indexes created and verified successfully');
   } catch (error) {
     console.error('Error creating indexes:', error);
     throw error;
+  }
+};
+
+const initializeIndexes = async () => {
+  // Required deployment migrations run even when general schema index creation
+  // is disabled. Never drop or rebuild unrelated indexes during startup.
+  await ensureDeploymentIndexes(require('./models'));
+  console.log('Required deployment indexes verified');
+  if (shouldAutoCreateIndexes()) {
+    console.log('MONGODB_AUTO_CREATE_INDEXES enabled. Ensuring all schema indexes...');
+    await createIndexes();
   }
 };
 
@@ -101,5 +110,6 @@ module.exports = {
   connectDB,
   disconnectDB,
   createIndexes,
+  initializeIndexes,
   isReady,
 };

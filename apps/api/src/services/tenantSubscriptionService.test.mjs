@@ -34,6 +34,8 @@ describe('tenantSubscriptionService', () => {
 
     const tenant = {
       _id: 'tenant-1',
+      status: 'pending_payment',
+      requestedPlanSlug: 'pro',
       accountId: 'account-1',
       plan: 'free',
       currentPlan: null,
@@ -71,9 +73,21 @@ describe('tenantSubscriptionService', () => {
 
     expect(result.changed).toBe(true);
     expect(tenant.plan).toBe('pro');
+    expect(tenant.status).toBe('active');
+    expect(tenant.requestedPlanSlug).toBeNull();
     expect(tenant.currentPlan).toBe('plan-pro');
     expect(tenant.subscriptionStartDate).toBeInstanceOf(Date);
     expect(tenant.billingCycleStart).toBeInstanceOf(Date);
+  });
+
+  it('never activates an unpaid tenant by applying Free or trusting the selected plan', async () => {
+    const tenant = { status: 'pending_payment', plan: 'free', requestedPlanSlug: 'pro', currentPlan: null };
+    await tenantSubscriptionService.applyPlanToTenant(tenant, 'free');
+    expect(tenant.status).toBe('pending_payment');
+    vi.spyOn(SubscriptionPlan, 'getPlanBySlug').mockResolvedValue({ _id: 'plan-pro', slug: 'pro' });
+    await expect(tenantSubscriptionService.applyPlanToTenant(tenant, 'pro')).rejects.toMatchObject({ code: 'PaidPlanActivationDenied' });
+    expect(tenant.status).toBe('pending_payment');
+    expect(tenant.plan).toBe('free');
   });
 
   it('rejects paid entitlement without a verified commercial source', async () => {

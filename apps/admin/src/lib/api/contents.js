@@ -2,8 +2,8 @@ import { apiClient } from '../api.js'
 
 const BASE = '/contents'
 
-export async function listContents({ page = 1, limit = 20, filters = {} } = {}) {
-  const params = { page, limit }
+export async function listContents({ page = 1, limit = 20, filters = {}, view = 'summary' } = {}) {
+  const params = { page, limit, view }
   if (filters.status) params.status = filters.status
   if (filters.search) params.search = filters.search
   if (filters.category) params.category = filters.category
@@ -33,10 +33,17 @@ export async function setContentGalleries({ id, galleryIds }) {
   return response.data.galleries
 }
 
-export async function listVersions({ id }) {
-  const response = await apiClient.get(`${BASE}/${id}/versions`)
+export async function listVersions({ id, page = 1, deletedPage = 1, limit = 20 }) {
+  const response = await apiClient.get(`${BASE}/${id}/versions`, {
+    params: { page, deletedPage, limit },
+  })
   const { versions = [], deletedVersions = [], deletionLog = [] } = response.data || {}
-  return { versions, deletedVersions, deletionLog }
+  return { ...response.data, versions, deletedVersions, deletionLog }
+}
+
+export async function getContentVersion({ id, versionId }) {
+  const response = await apiClient.get(`${BASE}/${id}/versions/${versionId}`)
+  return response.data.version
 }
 
 export async function deleteContentVersions({ id, versionIds }) {

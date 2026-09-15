@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon, CreditCardIcon } from '@heroicons/react/24/outline'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, matchPath, useLocation, useNavigate, Outlet } from 'react-router-dom'
+import { Link, matchPath, useLocation, useNavigate, Navigate, Outlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
@@ -199,7 +199,10 @@ export default function Layout() {
       .filter(Boolean)
   }, [hasFeature, hasPermission])
 
-  const filteredNavigation = useMemo(() => filterNavigation(navigation), [navigation, filterNavigation])
+  const paymentPending = activeMembership?.tenant?.status === 'pending_payment'
+  const filteredNavigation = useMemo(() => filterNavigation(navigation).filter((item) =>
+    !paymentPending || ['billing', 'create-tenant'].includes(item.id)
+  ), [navigation, filterNavigation, paymentPending])
   const mainNavigation = useMemo(
     () => filteredNavigation.filter((item) => item.id !== 'billing'),
     [filteredNavigation]
@@ -552,7 +555,8 @@ export default function Layout() {
               'px-4 sm:px-6 lg:px-8',
               isContentEditorRoute && 'lg:h-full lg:min-h-0'
             )}>
-              <Outlet />
+              {paymentPending && !['/faturalandirma', '/billing', '/varliklar', '/varliklar/yeni', '/profil'].includes(location.pathname)
+                ? <Navigate to="/faturalandirma" replace /> : <Outlet />}
             </div>
           </main>
           <Footer authenticated />

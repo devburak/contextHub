@@ -1,4 +1,4 @@
-const { Tenant, Membership, User, Account, BillingAccount, rbac } = require('@contexthub/common');
+const { Tenant, Membership, User, Account, BillingAccount, SubscriptionPlan, PlanPrice, rbac } = require('@contexthub/common');
 const roleService = require('./roleService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
 const accountService = require('./accountService');
@@ -10,6 +10,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const { ROLE_KEYS } = rbac;
+const { isAccountBillingEnabled, getEnabledBillingProviders } = require('../lib/billingConfig');
 
 class TenantService {
   async #formatTenantSummary(tenantDoc) {
@@ -83,21 +84,55 @@ class TenantService {
 
     const ownedTenants = await Tenant.find({
       _id: { $in: ownedTenantIds },
-      status: { $nin: ['deletion_pending', 'deleted'] },
+      status: { $nin: ['pending_payment', 'deletion_pending', 'deleted'] },
     }).select('plan currentPlan').populate('currentPlan', 'slug');
     return ownedTenants.some(
       (tenant) => tenantSubscriptionService.getEffectivePlanSlug(tenant) === 'free'
     );
   }
 
-  async createTenant({ name, slug }, ownerId) {
+  async getCreationOptions(ownerId) {
+    const [hasFreeTenant, plans, prices] = await Promise.all([
+      this.hasOwnedFreeTenant(ownerId),
+      SubscriptionPlan.find({ isActive: true }).sort({ sortOrder: 1, price: 1 }).lean(),
+      isAccountBillingEnabled() ? PlanPrice.find({
+        active: true,
+        provider: { $in: getEnabledBillingProviders() },
+        externalPriceId: { $nin: [null, ''] },
+        amountMinor: { $gt: 0 },
+      }).select('planId').lean() : [],
+    ]);
+    const paidIds = new Set(prices.map((price) => String(price.planId)));
+    return {
+      hasFreeTenant,
+      plans: plans.map((plan) => ({
+        slug: plan.slug,
+        name: plan.name,
+        description: plan.description || '',
+        available: plan.slug === 'free' ? !hasFreeTenant
+          : plan.slug !== 'enterprise' && paidIds.has(String(plan._id)),
+      })),
+    };
+  }
+
+  async createTenant({ name, slug, requestedPlanSlug = 'free' }, ownerId) {
     if (!name) {
       throw new Error('Tenant name is required');
     }
 
-    if (await this.hasOwnedFreeTenant(ownerId)) {
+    const paid = requestedPlanSlug !== 'free';
+    if (paid) {
+      const options = await this.getCreationOptions(ownerId);
+      if (!options.plans.some((plan) => plan.slug === requestedPlanSlug && plan.available)) {
+        const error = new Error('Selected plan is not available for tenant creation');
+        error.code = 'PlanUnavailable';
+        throw error;
+      }
+    }
+
+    if (!paid && await this.hasOwnedFreeTenant(ownerId)) {
       const error = new Error(
-        'Free tenant sınırına ulaşıldı. Yeni bir tenant oluşturmadan önce mevcut Free tenant için ücretli pakete geçmelisiniz.'
+        'Free tenant sınırına ulaşıldı. Yeni varlığınız için ücretli bir paket seçebilirsiniz.'
       );
       error.code = 'FreeTenantLimit';
       throw error;
@@ -123,7 +158,8 @@ class TenantService {
       name,
       slug: finalSlug,
       plan: 'free',
-      status: 'active',
+      status: paid ? 'pending_payment' : 'active',
+      requestedPlanSlug: paid ? requestedPlanSlug : null,
       createdBy: ownerId,
       provisioningChannel: 'self_service',
     });

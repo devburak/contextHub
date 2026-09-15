@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { HOSTED_PAYMENT_MARKS_PATH } from '../../lib/hostedDeployment.js'
+import { AuthContext } from '../../contexts/AuthContext.jsx'
 import {
   DOCS_BASE_PATH,
   getAdjacentDocuments,
@@ -28,6 +29,7 @@ import {
   searchDocuments,
 } from './docsData.js'
 import { renderDocumentationMarkdown } from './markdown.js'
+import PublicPricingPlans from './PublicPricingPlans.jsx'
 import './PublicDocumentation.css'
 
 const COPY = {
@@ -139,6 +141,9 @@ function ErrorPanel({ labels, message, onRetry }) {
 export default function PublicDocumentation() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const auth = useContext(AuthContext)
+  const isAuthenticated = Boolean(auth?.isAuthenticated)
+  const activeTenantId = auth?.activeTenantId || null
   const [locale, setLocale] = useState(initialLocale)
   const [catalog, setCatalog] = useState(null)
   const [catalogError, setCatalogError] = useState(null)
@@ -423,7 +428,14 @@ export default function PublicDocumentation() {
               onRetry={() => setDocumentAttempt((value) => value + 1)}
             />
           )}
-          {!documentLoading && !documentError && renderedDocument.html && (
+          {!documentLoading && !documentError && activeSlug === 'pricing-and-plans' && (
+            <PublicPricingPlans
+              locale={locale}
+              isAuthenticated={isAuthenticated}
+              activeTenantId={activeTenantId}
+            />
+          )}
+          {!documentLoading && !documentError && activeSlug !== 'pricing-and-plans' && renderedDocument.html && (
             <article
               className="docs-article"
               onClick={handleArticleClick}

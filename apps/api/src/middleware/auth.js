@@ -217,7 +217,10 @@ async function authenticateApiToken(request, reply) {
     const roleDoc = await roleService.resolveRole({ tenantId: request.tenantId, roleKey: tokenRole });
     const fallbackRole = DEFAULT_ROLES.find((role) => role.key === tokenRole);
     const rolePermissions = roleDoc?.permissions || fallbackRole?.permissions || [];
-    const expandedPermissions = expandPermissions(rolePermissions);
+    const expandedPermissions = expandPermissions([
+      ...rolePermissions,
+      ...(Array.isArray(apiToken.permissions) ? apiToken.permissions : []),
+    ]);
     const scopedPermissions = filterPermissionsByScopes(expandedPermissions, effectiveScopes);
     const normalizedPermissions = expandPermissions(scopedPermissions);
     request.userPermissions = normalizedPermissions;

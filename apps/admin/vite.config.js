@@ -107,6 +107,7 @@ const config = {
   resolve: {
     alias: {
       '@': path.resolve(process.cwd(), './src'),
+      '@headlessui/react': path.resolve(process.cwd(), '../../node_modules/@headlessui/react/dist/headlessui.esm.js'),
       'virtual:ctxhub-plugins': adminPluginEntry,
       'virtual:ctxhub-public-documentation': hostedBuild
         ? path.resolve(process.cwd(), './src/pages/public-docs/PublicDocumentation.jsx')

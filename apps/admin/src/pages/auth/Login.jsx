@@ -6,6 +6,7 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
 import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
+import { safeReturnTo, signupPathFor } from '../../lib/returnTo.js'
 import Footer from '../../components/Footer.jsx'
 
 function Countdown({ target, onExpired }) {
@@ -51,6 +52,9 @@ export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const returnTo = safeReturnTo(
+    location.state?.returnTo || new URLSearchParams(location.search).get('returnTo'),
+  )
 
   useEffect(() => {
     // Check if there's a success message from navigation state
@@ -108,14 +112,13 @@ export default function Login() {
         return
       }
 
-      const returnTo = location.state?.returnTo
-      if (typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
-        navigate(returnTo, { replace: true })
-        return
-      }
-
       if (data.requiresTenantSelection) {
-        navigate('/select-tenant')
+        const selectionPath = returnTo
+          ? `/select-tenant?returnTo=${encodeURIComponent(returnTo)}`
+          : '/select-tenant'
+        navigate(selectionPath, { state: { returnTo }, replace: true })
+      } else if (returnTo) {
+        navigate(returnTo, { replace: true })
       } else {
         navigate('/')
       }
@@ -288,7 +291,8 @@ export default function Login() {
               <span className="text-sm text-gray-600">
                 {t('auth.no_account')}{' '}
                 <Link
-                  to="/signup"
+                  to={signupPathFor(returnTo)}
+                  state={{ returnTo }}
                   className="font-medium text-blue-600 hover:text-blue-500"
                 >
                   {t('auth.sign_up')}

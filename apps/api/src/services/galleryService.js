@@ -71,37 +71,33 @@ function serializeMedia(mediaDoc) {
   };
 }
 
-async function attachMediaData(gallery) {
-  if (!gallery) return gallery;
-
-  const galleryItems = Array.isArray(gallery.items)
+async function attachMediaDataToGalleries(galleries, tenantId) {
+  const sortedItems = galleries.map((gallery) => Array.isArray(gallery.items)
     ? [...gallery.items].sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
-    : [];
-
-  if (!galleryItems.length) {
-    return serializeGallery(gallery, []);
-  }
-
-  const mediaIds = galleryItems.map((item) => item.mediaId).filter(Boolean);
+    : []);
+  const mediaIds = sortedItems.flatMap((items) => items.map((item) => item.mediaId)).filter(Boolean);
   const uniqueIds = [...new Set(mediaIds.map((id) => id.toString()))].map((id) => new ObjectId(id));
-  const mediaDocs = await Media.find({
-    tenantId: gallery.tenantId,
+  const mediaDocs = uniqueIds.length ? await Media.find({
+    tenantId,
     _id: { $in: uniqueIds }
-  }).lean();
+  }).lean() : [];
   const mediaMap = new Map(mediaDocs.map((doc) => [doc._id.toString(), doc]));
 
-  const items = galleryItems.map((item) => {
-    const mediaDoc = mediaMap.get(item.mediaId.toString());
+  return galleries.map((gallery, index) => serializeGallery(gallery, sortedItems[index].map((item) => {
     return {
       mediaId: item.mediaId.toString(),
       title: item.title,
       caption: item.caption,
       order: item.order ?? 0,
-      media: serializeMedia(mediaDoc),
+      media: serializeMedia(mediaMap.get(item.mediaId.toString())),
     };
-  });
+  })));
+}
 
-  return serializeGallery(gallery, items);
+async function attachMediaData(gallery) {
+  if (!gallery) return gallery;
+  const [result] = await attachMediaDataToGalleries([gallery], gallery.tenantId);
+  return result;
 }
 
 class GalleryService {
@@ -129,7 +125,7 @@ class GalleryService {
       Gallery.countDocuments(query)
     ]);
 
-    const galleries = await Promise.all(docs.map((doc) => attachMediaData(doc)));
+    const galleries = await attachMediaDataToGalleries(docs, tenantId);
 
     return {
       items: galleries,
@@ -259,8 +255,11 @@ class GalleryService {
     if (!ObjectId.isValid(contentId)) {
       throw new Error('Invalid content id');
     }
-    const result = await this.listGalleries({ tenantId, contentId, page: 1, limit: 100 });
-    return result.items;
+    const docs = await Gallery.find({ tenantId, linkedContentIds: new ObjectId(contentId) })
+      .sort({ updatedAt: -1 })
+      .limit(100)
+      .lean();
+    return attachMediaDataToGalleries(docs, tenantId);
   }
 
   async setGalleriesForContent({ tenantId, contentId, galleryIds }) {

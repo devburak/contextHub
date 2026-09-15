@@ -1,6 +1,10 @@
 import { apiClient } from './api.js'
 
 export const tenantAPI = {
+  getCreationOptions: async () => {
+    const { data } = await apiClient.get('/tenants/creation-options')
+    return data
+  },
   getTenants: async () => {
     const { data } = await apiClient.get('/tenants')
     return data

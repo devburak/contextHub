@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const deploymentIndexes = require('../deploymentIndexes');
 const { Schema } = mongoose;
 
 const galleryItemSchema = new Schema({
@@ -22,6 +23,7 @@ const gallerySchema = new Schema({
 });
 
 gallerySchema.index({ tenantId: 1, title: 1 });
+deploymentIndexes.Gallery.forEach((key) => gallerySchema.index(key));
 
 gallerySchema.pre('save', function(next) {
   this.updatedAt = new Date();

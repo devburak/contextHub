@@ -857,6 +857,44 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+function resolvePagination({ page = 1, limit = 20 } = {}) {
+  const safePage = Number(page)
+  const requestedLimit = Number(limit)
+  if (!Number.isSafeInteger(safePage) || safePage < 1) {
+    throw new Error('page must be a positive integer')
+  }
+  if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
+    throw new Error('limit must be a positive integer')
+  }
+  const safeLimit = Math.min(requestedLimit, 100)
+  const skip = (safePage - 1) * safeLimit
+  if (!Number.isSafeInteger(skip)) {
+    throw new Error('page is too large')
+  }
+  return { page: safePage, limit: safeLimit, skip }
+}
+
+function paginationMetadata({ page, limit }, total) {
+  return { page, limit, total, pages: Math.ceil(total / limit) || 1 }
+}
+
+function parseReferenceFilter(value, label) {
+  if (value === undefined || value === null) return null
+  const values = typeof value === 'string' ? value.split(',').map((id) => id.trim()) : Array.isArray(value) ? value : [value]
+  if (!values.length || values.length > 100 || values.some((id) => !ObjectId.isValid(id))) {
+    throw new Error(`${label} must contain between 1 and 100 valid IDs`)
+  }
+  return values.map((id) => new ObjectId(id))
+}
+
+function parseNameFilter(value, label) {
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string' || !value.trim() || value.length > 200) {
+    throw new Error(`${label} must be a non-empty string of at most 200 characters`)
+  }
+  return new RegExp(escapeRegExp(value.trim()), 'i')
+}
+
 function normalizeCustomFilterValue(value) {
   if (Array.isArray(value)) {
     return value.flatMap((item) => normalizeCustomFilterValue(item))
@@ -1027,7 +1065,7 @@ async function getContentBySlug({ tenantId, slug, status = null, publishedFrom =
   }
 }
 
-async function listContents({ tenantId, filters = {}, pagination = {} }) {
+async function listContents({ tenantId, filters = {}, pagination = {}, view = 'summary' }) {
   const {
     status,
     search,
@@ -1041,9 +1079,15 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
     customFilters = {},
   } = filters
 
-  const page = Math.max(Number(pagination.page || 1), 1)
-  const limit = Math.min(Math.max(Number(pagination.limit || 20), 1), 100)
-  const skip = (page - 1) * limit
+  if (!['summary', 'full'].includes(view)) {
+    throw new Error('view must be summary or full')
+  }
+  const { page, limit, skip } = resolvePagination(pagination)
+  const emptyResult = () => ({ items: [], pagination: paginationMetadata({ page, limit }, 0) })
+  const requestedCategoryIds = parseReferenceFilter(categories ?? category, 'category')
+  const categoryNamePattern = parseNameFilter(categoryName, 'categoryName')
+  const requestedTagIds = parseReferenceFilter(tag, 'tag')
+  const tagNamePattern = parseNameFilter(tagName, 'tagName')
 
   const query = { tenantId }
   const statusClause = buildStatusFilter(status)
@@ -1051,80 +1095,37 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
     query.status = statusClause
   }
 
-  // Handle category filtering by ID or name
-  const categoryFilter = categories || category
-  if (categoryFilter || categoryName) {
-    let categoryIds = []
-
-    // If category IDs are provided
-    if (categoryFilter) {
-      const ids = typeof categoryFilter === 'string'
-        ? categoryFilter.split(',').map(id => id.trim()).filter(Boolean)
-        : Array.isArray(categoryFilter)
-          ? categoryFilter
-          : [categoryFilter]
-
-      categoryIds = ids
-        .filter(id => ObjectId.isValid(id))
-        .map(id => new ObjectId(id))
-    }
-
-    // If category name is provided, search by name
-    if (categoryName) {
-      const normalizedName = categoryName.trim()
+  // IDs and name matches retain their existing OR semantics within a reference filter.
+  if (requestedCategoryIds || categoryNamePattern) {
+    let categoryIds = requestedCategoryIds || []
+    if (categoryNamePattern) {
       const matchingCategories = await Category.find({
         tenantId,
-        name: new RegExp(normalizedName, 'i')
+        name: categoryNamePattern
       }).select('_id').lean()
-
-      const nameCategoryIds = matchingCategories.map(cat => cat._id)
-      categoryIds = [...categoryIds, ...nameCategoryIds]
+      categoryIds = [...categoryIds, ...matchingCategories.map((item) => item._id)]
     }
-
-    if (categoryIds.length > 0) {
-      // Find contents that have ANY of the specified categories
-      query.categories = { $in: categoryIds }
-    }
+    if (!categoryIds.length) return emptyResult()
+    query.categories = { $in: categoryIds }
   }
 
-  // Handle tag filtering by ID or name
-  if (tag || tagName) {
-    let tagIds = []
-
-    // If tag IDs are provided
-    if (tag) {
-      const ids = typeof tag === 'string'
-        ? tag.split(',').map(id => id.trim()).filter(Boolean)
-        : Array.isArray(tag)
-          ? tag
-          : [tag]
-
-      tagIds = ids
-        .filter(id => ObjectId.isValid(id))
-        .map(id => new ObjectId(id))
-    }
-
-    // If tag name is provided, search by title
-    if (tagName) {
-      const normalizedName = tagName.trim()
+  if (requestedTagIds || tagNamePattern) {
+    let tagIds = requestedTagIds || []
+    if (tagNamePattern) {
       // Tag.title can be a string or an object with language keys
       const matchingTags = await Tag.find({
         tenantId,
         $or: [
-          { 'title': new RegExp(normalizedName, 'i') }, // If title is a string
-          { 'title.en': new RegExp(normalizedName, 'i') }, // If title is an object
-          { 'title.tr': new RegExp(normalizedName, 'i') },
-          { slug: new RegExp(normalizedName, 'i') }
+          { title: tagNamePattern },
+          { 'title.en': tagNamePattern },
+          { 'title.tr': tagNamePattern },
+          { slug: tagNamePattern }
         ]
       }).select('_id').lean()
-
-      const nameTagIds = matchingTags.map(tag => tag._id)
-      tagIds = [...tagIds, ...nameTagIds]
+      tagIds = [...tagIds, ...matchingTags.map((item) => item._id)]
     }
-
-    if (tagIds.length > 0) {
-      query.tags = { $in: tagIds }
-    }
+    if (!tagIds.length) return emptyResult()
+    query.tags = { $in: tagIds }
   }
 
   // Handle text search in title, summary and exact slug match
@@ -1163,12 +1164,17 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
 
   const customContentIds = await resolveCustomFieldContentIds({ tenantId, customFilters })
   if (Array.isArray(customContentIds)) {
+    if (!customContentIds.length) return emptyResult()
     query._id = { $in: customContentIds }
   }
 
+  const contentQuery = Content.find(query)
+  if (view === 'summary') {
+    contentQuery.select({ html: 0, lexical: 0 })
+  }
   const [items, total] = await Promise.all([
-    Content.find(query)
-      .sort({ publishedAt: -1 })
+    contentQuery
+      .sort({ publishedAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .populate({ path: 'categories', match: { tenantId }, select: 'name slug' })
@@ -1184,28 +1190,38 @@ async function listContents({ tenantId, filters = {}, pagination = {} }) {
 
   return {
     items,
-    pagination: {
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit) || 1,
-    }
+    pagination: paginationMetadata({ page, limit }, total)
   }
 }
 
-async function listVersions({ tenantId, contentId }) {
+const VERSION_METADATA_FIELDS = '_id tenantId contentId version title slug status summary authorName publishAt publishedAt publishedBy createdAt createdBy deletedAt deletedBy deletedByName'
+
+async function listVersions({ tenantId, contentId, pagination = {} }) {
   if (!ObjectId.isValid(contentId)) {
     throw new Error('Invalid content id')
   }
 
-  const [versions, deletedVersionsRaw] = await Promise.all([
-    ContentVersion.find({ tenantId, contentId, deletedAt: null })
+  const activePagination = resolvePagination(pagination)
+  const deletedPagination = resolvePagination({ page: pagination.deletedPage, limit: pagination.limit })
+  const activeQuery = { tenantId, contentId, deletedAt: null }
+  const deletedQuery = { tenantId, contentId, deletedAt: { $ne: null } }
+  const [versions, deletedVersionsRaw, total, deletedTotal, publishedVersion] = await Promise.all([
+    ContentVersion.find(activeQuery)
+      .select(VERSION_METADATA_FIELDS)
       .sort({ version: -1 })
+      .skip(activePagination.skip)
+      .limit(activePagination.limit)
       .lean(),
-    ContentVersion.find({ tenantId, contentId, deletedAt: { $ne: null } })
-      .sort({ deletedAt: -1 })
+    ContentVersion.find(deletedQuery)
+      .select(VERSION_METADATA_FIELDS)
+      .sort({ deletedAt: -1, _id: -1 })
+      .skip(deletedPagination.skip)
+      .limit(deletedPagination.limit)
       .populate('deletedBy', 'name firstName lastName email')
       .lean(),
+    ContentVersion.countDocuments(activeQuery),
+    ContentVersion.countDocuments(deletedQuery),
+    ContentVersion.exists({ ...activeQuery, status: 'published' }),
   ])
 
   const deletedVersions = deletedVersionsRaw.map((item) => {
@@ -1246,7 +1262,21 @@ async function listVersions({ tenantId, contentId }) {
     versions,
     deletedVersions,
     deletionLog,
+    pagination: paginationMetadata(activePagination, total),
+    deletedPagination: paginationMetadata(deletedPagination, deletedTotal),
+    hasPublishedVersion: Boolean(publishedVersion),
   }
+}
+
+async function getContentVersion({ tenantId, contentId, versionId }) {
+  if (!ObjectId.isValid(contentId) || !ObjectId.isValid(versionId)) {
+    throw new Error('Invalid content or version id')
+  }
+  const version = await ContentVersion.findOne({ tenantId, contentId, _id: versionId }).lean()
+  if (!version) {
+    throw new Error('Content version not found')
+  }
+  return version
 }
 
 async function checkSlugAvailability({ tenantId, slug, excludeId }) {
@@ -1478,6 +1508,7 @@ module.exports = {
   getContentBySlug,
   listContents,
   listVersions,
+  getContentVersion,
   filterPublicCustomFields,
   filterPublicCustomFieldsInList,
   checkSlugAvailability,

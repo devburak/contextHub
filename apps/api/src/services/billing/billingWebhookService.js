@@ -253,6 +253,14 @@ async function processIyzicoEvent(event) {
     subscription.gracePeriodEndsAt ||= new Date(Date.now() + graceDays * 86400000);
   }
   await subscription.save();
+  if (success && tenant.status === 'pending_payment' && !subscription.cancellationRequestedAt) {
+    const price = await PlanPrice.findById(subscription.planPriceId).populate('planId');
+    const plan = price?.planId;
+    if (plan?.slug) {
+      await tenantSubscriptionService.applyPlanToTenant(tenant, plan.slug, { source: 'provider_webhook' });
+      await tenant.save();
+    }
+  }
   if (success) {
     await notifySuccessfulPayment({
       tenant,

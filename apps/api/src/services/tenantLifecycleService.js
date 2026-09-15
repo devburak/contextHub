@@ -5,6 +5,7 @@ const edgeGatewaySyncService = require('./edgeGatewaySyncService');
 const { invalidateTenantOriginPolicyCache } = require('./tenantOriginPolicy');
 const billingCancellationService = require('./billing/billingCancellationService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
+const { hostedOperationsNotificationService } = require('./hostedOperationsNotificationService');
 
 const {
   Tenant,
@@ -238,6 +239,19 @@ async function deleteTenant(tenantId, userId, payload = {}, request = null) {
     },
   });
 
+  try {
+    await hostedOperationsNotificationService.notifyTenantDeleted({
+      tenantName: tenant.name,
+      tenantSlug: tenant.slug,
+      actorEmail: user.email,
+      deletionRequestId,
+      purgeAfter: tenant.purgeAfter,
+      occurredAt: now,
+    });
+  } catch (error) {
+    console.error('[TenantLifecycleService] Tenant deletion notification failed:', error.message);
+  }
+
   return {
     status: tenant.status,
     deletionRequestId,
@@ -272,7 +286,8 @@ async function restoreTenant(tenantId, userId, payload = {}, request = null) {
   if (cancellationWasRequested) {
     await tenantSubscriptionService.applyPlanToTenant(tenant, 'free');
   }
-  tenant.status = 'active';
+  // Restoring an abandoned paid signup must not grant a second usable Free tenant.
+  tenant.status = tenant.requestedPlanSlug ? 'pending_payment' : 'active';
   tenant.deletedAt = null;
   tenant.deletedBy = null;
   tenant.deletionReason = '';

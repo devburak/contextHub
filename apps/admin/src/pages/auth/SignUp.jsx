@@ -1,14 +1,16 @@
 
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import Footer from '../../components/Footer';
 import { authAPI } from '../../lib/api';
 import { useApiError } from '../../lib/useApiError.js';
+import { loginPathFor, safeReturnTo } from '../../lib/returnTo.js';
 
 function SignUp() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const describeError = useApiError();
   const [formData, setFormData] = useState({
@@ -22,6 +24,9 @@ function SignUp() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const returnTo = safeReturnTo(
+    location.state?.returnTo || new URLSearchParams(location.search).get('returnTo'),
+  );
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -94,9 +99,10 @@ function SignUp() {
       console.log('Registration successful:', response.data);
       
       // Başarılı kayıt sonrası login sayfasına yönlendir
-      navigate('/login', {
+      navigate(loginPathFor(returnTo), {
         state: {
-          message: t('signup.success_signin')
+          message: t('signup.success_signin'),
+          returnTo,
         }
       });
 
@@ -119,7 +125,7 @@ function SignUp() {
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             {t('auth.have_account')}{' '}
-            <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
+            <Link to={loginPathFor(returnTo)} state={{ returnTo }} className="font-medium text-blue-600 hover:text-blue-500">
               {t('auth.signin_button')}
             </Link>
           </p>

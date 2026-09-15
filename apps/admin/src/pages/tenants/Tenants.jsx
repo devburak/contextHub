@@ -299,10 +299,10 @@ export default function Tenants() {
                           })}
                         </span>
                         <span className="text-xs uppercase tracking-wide text-gray-500">
-                          {t('tenant.plan_label', { plan: planLabel })}
+                          {membership.tenant?.status === 'pending_payment' ? t('tenant.payment_pending') : t('tenant.plan_label', { plan: planLabel })}
                         </span>
                         {(() => {
-                          const statusInfo = STATUS_STYLES[membership.status]
+                          const statusInfo = membership.tenant?.status === 'pending_payment' ? null : STATUS_STYLES[membership.status]
                           if (!statusInfo) return null
                           const Icon = statusInfo.icon
                           return (

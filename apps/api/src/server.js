@@ -110,7 +110,16 @@ async function buildServer(options = {}) {
   // to 240 so those slugs resolve; anything longer still 404s at the router, which is
   // the intended cap.
   const maxParamLength = Number(process.env.API_MAX_PARAM_LENGTH) || 240;
-  const app = fastify({ logger: true, trustProxy: true, bodyLimit, maxParamLength });
+  const app = fastify({
+    logger: true,
+    trustProxy: true,
+    bodyLimit,
+    maxParamLength,
+    // Existing schemas deliberately accept localized objects or strings and
+    // query parameters with multiple types. Keep strict validation enabled
+    // while explicitly supporting those JSON Schema unions.
+    ajv: { customOptions: { allowUnionTypes: true } },
+  });
 
   // Validate the edge-to-origin credential before CORS, auth, plugins or routes run.
   // Production is fail-closed: startup fails when protection is disabled or the
@@ -376,6 +385,7 @@ async function buildServer(options = {}) {
 async function start() {
   // Connect to MongoDB before starting the server
   await database.connectDB();
+  await database.initializeIndexes();
   await roleService.ensureSystemRoles();
 
   let usageStateRefreshPromise = null;
@@ -492,7 +502,10 @@ async function start() {
 }
 
 if (require.main === module) {
-  start();
+  start().catch((error) => {
+    console.error('[Server] Startup failed:', error);
+    process.exit(1);
+  });
 }
 
 module.exports = buildServer;

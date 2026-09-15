@@ -14,6 +14,7 @@ const {
 } = require('../src/lib/domainEventConsumerRunner');
 const { runConsumerBatch } = require('../src/lib/domainEventConsumerProcess');
 const { bootstrapExtensions } = require('../src/lib/pluginHost');
+const { createExtensionApi } = require('../src/lib/extensionApi');
 const {
   resolveConsumerTenantQuery
 } = require('../src/lib/consumerTenantTarget');
@@ -59,6 +60,22 @@ async function main() {
   const runner = createDomainEventConsumerRunner({ registry: eventRegistry });
   const summaries = await runConsumerBatch({ tenants, runner, logger: console });
   console.log('[consumer-cron] Run summary', JSON.stringify(summaries, null, 2));
+  // Establish event cursors before scanning existing sources. A new tenant's
+  // `latest` cursor must never skip changes made during its initial reindex.
+  for (const plugin of extensionHost.plugins) {
+    if (typeof plugin.api.runScheduledTasks !== 'function') continue;
+    const context = createExtensionApi({ manifest: plugin.manifest, eventRegistry });
+    for (const tenant of tenants) {
+      try {
+        const result = await plugin.api.runScheduledTasks(context, { tenantId: String(tenant._id) });
+        console.log('[consumer-cron] Scheduled task', { plugin: plugin.manifest.name, tenantId: String(tenant._id), result });
+        if (result?.status === 'failed') process.exitCode = 1;
+      } catch (error) {
+        console.error('[consumer-cron] Scheduled task failed', { plugin: plugin.manifest.name, tenantId: String(tenant._id), code: error.code || error.name });
+        process.exitCode = 1;
+      }
+    }
+  }
 }
 
 main()
