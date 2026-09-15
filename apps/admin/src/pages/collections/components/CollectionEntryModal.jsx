@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, TrashIcon } from '@heroicons/react/24/outline';
 import MediaPickerModal from '../../contents/components/MediaPickerModal.jsx';
@@ -6,10 +7,12 @@ import ContentPickerModal from '../../contents/components/ContentPickerModal.jsx
 import RefFieldAutocomplete from './RefFieldAutocomplete.jsx';
 import RichTextField from './RichTextField.jsx';
 
+// `value` alanları API'ye giden durum kodlarıdır ve çevrilmez;
+// yalnızca ekranda gösterilen etiketler çeviri anahtarıyla tutulur.
 const STATUS_OPTIONS = [
-  { value: 'draft', label: 'Taslak' },
-  { value: 'published', label: 'Yayında' },
-  { value: 'archived', label: 'Arşiv' }
+  { value: 'draft', labelKey: 'status.draft' },
+  { value: 'published', labelKey: 'status.published' },
+  { value: 'archived', labelKey: 'status.archived' }
 ];
 
 const formatDateForInput = (value) => {
@@ -94,7 +97,8 @@ const formatRelationsText = (relations) => {
   return Object.keys(normalized).length ? JSON.stringify(normalized, null, 2) : '';
 };
 
-const parseRelationsText = (text) => {
+// Hata metinleri doğrudan kullanıcıya gösterildiği için `t` çağıran taraftan geçirilir.
+const parseRelationsText = (text, t) => {
   if (!text || !text.trim()) {
     return {};
   }
@@ -103,11 +107,11 @@ const parseRelationsText = (text) => {
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    throw new Error('İlişkiler alanında geçerli bir JSON kullanmalısın.');
+    throw new Error(t('collection.relations_invalid_json'));
   }
 
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('İlişkiler alanı bir JSON nesnesi olmalıdır.');
+    throw new Error(t('collection.relations_not_object'));
   }
 
   return parsed;
@@ -125,6 +129,7 @@ export function CollectionEntryModal({
   onSubmit,
   isSubmitting = false
 }) {
+  const { t } = useTranslation();
   const initialData = useMemo(() => entry?.data || {}, [entry]);
   const initialRelations = useMemo(() => entry?.relations || {}, [entry]);
   const [data, setData] = useState(initialData);
@@ -330,7 +335,7 @@ export function CollectionEntryModal({
 
   const handleRelationsTextBlur = () => {
     try {
-      const parsed = parseRelationsText(relationsText);
+      const parsed = parseRelationsText(relationsText, t);
       const normalized = sanitizeRelations(parsed);
       setRelations(normalized);
       setRelationsText(formatRelationsText(normalized));
@@ -365,7 +370,7 @@ export function CollectionEntryModal({
       
       if (hasRelationsText) {
         try {
-          const parsed = sanitizeRelations(parseRelationsText(relationsText));
+          const parsed = sanitizeRelations(parseRelationsText(relationsText, t));
           setRelations(parsed);
           setRelationsParseError(null);
           // Backend'e her zaman tüm ilişki alanlarını gönder
@@ -410,7 +415,7 @@ export function CollectionEntryModal({
           case 'number': {
             const parsed = Number(rawValue);
             if (!Number.isFinite(parsed)) {
-              throw new Error(`${field.key} alanı için sayı değeri gerekli`);
+              throw new Error(t('collection.field_number_required', { field: field.key }));
             }
             payloadData[field.key] = parsed;
             break;
@@ -480,7 +485,7 @@ export function CollectionEntryModal({
       setError(null);
       onSubmit?.(payload);
     } catch (err) {
-      setError(err.message || 'Kayıt gönderilirken hata oluştu');
+      setError(err.message || t('collection.entry_submit_failed'));
     }
   };
 
@@ -560,7 +565,7 @@ export function CollectionEntryModal({
             onChange={(event) => handleFieldUpdate(field.key, event.target.value)}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           >
-            <option value="">Seçiniz</option>
+            <option value="">{t('common.select')}</option>
             {(field.options || []).map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label?.tr || option.label?.en || option.value}
@@ -575,7 +580,9 @@ export function CollectionEntryModal({
             value={value}
             onChange={(newValue) => handleFieldUpdate(field.key, newValue)}
             multiple={field.settings?.multiple}
-            placeholder={`${field.ref || 'Hedef koleksiyon'} içinden seçim yapın`}
+            placeholder={t('collection.ref_pick_placeholder', {
+              collection: field.ref || t('collection.ref_target_fallback')
+            })}
           />
         );
       case 'media':
@@ -600,16 +607,16 @@ export function CollectionEntryModal({
                           {thumbnail ? (
                             <img
                               src={thumbnail}
-                              alt={title || 'Seçili medya'}
+                              alt={title || t('collection.selected_media')}
                               className="h-10 w-14 flex-none rounded border border-gray-200 object-cover"
                             />
                           ) : (
                             <div className="flex h-10 w-14 flex-none items-center justify-center rounded border border-gray-200 bg-gray-50 text-xs text-gray-400">
-                              Medya
+                              {t('collection.media_thumb_fallback')}
                             </div>
                           )}
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-gray-900">{title || 'Seçili medya'}</p>
+                            <p className="truncate font-medium text-gray-900">{title || t('collection.selected_media')}</p>
                             <p className="truncate font-mono text-xs text-gray-500">{mediaId}</p>
                           </div>
                         </div>
@@ -619,7 +626,7 @@ export function CollectionEntryModal({
                           className="inline-flex flex-none items-center rounded-md border border-transparent bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
                         >
                           <TrashIcon className="mr-1 h-4 w-4" />
-                          Kaldır
+                          {t('common.remove')}
                         </button>
                       </li>
                     );
@@ -627,7 +634,7 @@ export function CollectionEntryModal({
                 </ul>
               ) : (
                 <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-4 text-sm text-gray-500">
-                  Medya kütüphanesinden bir varlık seçilmedi.
+                  {t('collection.media_empty')}
                 </div>
               )}
 
@@ -636,7 +643,9 @@ export function CollectionEntryModal({
                 onClick={() => openMediaPickerForField(field)}
                 className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
-                {selectedIds.length && !field.settings?.multiple ? 'Medyayı değiştir' : 'Medya seç'}
+                {selectedIds.length && !field.settings?.multiple
+                  ? t('collection.media_change')
+                  : t('collection.media_select')}
               </button>
             </div>
           );
@@ -647,7 +656,7 @@ export function CollectionEntryModal({
             key={`${entry?._id || 'new'}-${field.key}`}
             value={value}
             onChange={(nextValue) => handleFieldUpdate(field.key, nextValue)}
-            placeholder={`${getFieldLabel(field)} içeriğini yazın…`}
+            placeholder={t('collection.richtext_field_placeholder', { field: getFieldLabel(field) })}
           />
         );
       case 'geojson':
@@ -721,7 +730,7 @@ export function CollectionEntryModal({
                 <div className="flex items-start justify-between">
                   <div>
                     <Dialog.Title className="text-lg font-semibold text-gray-900">
-                      {entry ? 'Kaydı Düzenle' : 'Yeni Kayıt Oluştur'}
+                      {entry ? t('collection.entry_edit_title') : t('collection.entry_create_title')}
                     </Dialog.Title>
                     <p className="mt-1 text-sm text-gray-500">
                       {collection?.name?.tr || collection?.key}
@@ -740,18 +749,18 @@ export function CollectionEntryModal({
                 <form onSubmit={handleSubmit} className="mt-6 space-y-6">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Slug</label>
+                      <label className="block text-sm font-medium text-gray-700">{t('common.slug')}</label>
                       <input
                         ref={initialFocusRef}
                         type="text"
                         value={slug}
                         onChange={(event) => setSlug(event.target.value)}
                         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                        placeholder="ornek-slug"
+                        placeholder={t('collection.entry_slug_placeholder')}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Durum</label>
+                      <label className="block text-sm font-medium text-gray-700">{t('common.status')}</label>
                       <select
                         value={status}
                         onChange={(event) => setStatus(event.target.value)}
@@ -759,7 +768,7 @@ export function CollectionEntryModal({
                       >
                         {STATUS_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
-                            {option.label}
+                            {t(option.labelKey)}
                           </option>
                         ))}
                       </select>
@@ -774,7 +783,7 @@ export function CollectionEntryModal({
                             <label className="text-sm font-semibold text-gray-900">{getFieldLabel(field)}</label>
                             <p className="text-xs text-gray-500">{field.key} · {field.type}</p>
                           </div>
-                          {field.required && <span className="text-xs font-semibold text-red-500">Zorunlu</span>}
+                          {field.required && <span className="text-xs font-semibold text-red-500">{t('common.required')}</span>}
                         </div>
                         <div className="mt-3">
                           {renderFieldInput(field)}
@@ -787,15 +796,15 @@ export function CollectionEntryModal({
                     <div className="rounded-lg border border-gray-200 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <h3 className="text-sm font-semibold text-gray-900">Medya ilişkileri</h3>
-                          <p className="text-xs text-gray-500">Seçtiğin medya kimlikleri JSON alanına otomatik eklenir.</p>
+                          <h3 className="text-sm font-semibold text-gray-900">{t('collection.media_relations_title')}</h3>
+                          <p className="text-xs text-gray-500">{t('collection.media_relations_hint')}</p>
                         </div>
                         <button
                           type="button"
                           onClick={openMediaPickerForRelations}
                           className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                         >
-                          Medya seç
+                          {t('collection.media_select')}
                         </button>
                       </div>
                       <div className="mt-3 space-y-2">
@@ -813,13 +822,13 @@ export function CollectionEntryModal({
                                   className="inline-flex items-center rounded-md border border-transparent bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
                                 >
                                   <TrashIcon className="mr-1 h-4 w-4" />
-                                  Kaldır
+                                  {t('common.remove')}
                                 </button>
                               </li>
                             ))}
                           </ul>
                         ) : (
-                          <p className="text-xs text-gray-500">Henüz medya ilişkisi eklenmedi.</p>
+                          <p className="text-xs text-gray-500">{t('collection.media_relations_empty')}</p>
                         )}
                       </div>
                     </div>
@@ -827,15 +836,15 @@ export function CollectionEntryModal({
                     <div className="rounded-lg border border-gray-200 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <h3 className="text-sm font-semibold text-gray-900">İçerik ilişkileri</h3>
-                          <p className="text-xs text-gray-500">İçerik kayıtlarını seçerek JSON alanına ekleyebilirsin.</p>
+                          <h3 className="text-sm font-semibold text-gray-900">{t('collection.content_relations_title')}</h3>
+                          <p className="text-xs text-gray-500">{t('collection.content_relations_hint')}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => setContentPickerOpen(true)}
                           className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                         >
-                          İçerik seç
+                          {t('collection.content_select')}
                         </button>
                       </div>
                       <div className="mt-3 space-y-2">
@@ -853,33 +862,29 @@ export function CollectionEntryModal({
                                   className="inline-flex items-center rounded-md border border-transparent bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
                                 >
                                   <TrashIcon className="mr-1 h-4 w-4" />
-                                  Kaldır
+                                  {t('common.remove')}
                                 </button>
                               </li>
                             ))}
                           </ul>
                         ) : (
-                          <p className="text-xs text-gray-500">Henüz içerik ilişkisi eklenmedi.</p>
+                          <p className="text-xs text-gray-500">{t('collection.content_relations_empty')}</p>
                         )}
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">İlişkiler (JSON)</label>
+                      <label className="block text-sm font-medium text-gray-700">{t('collection.relations_json_label')}</label>
                       <textarea
                         rows={4}
                         value={relationsText}
                         onChange={handleRelationsTextChange}
                         onBlur={handleRelationsTextBlur}
-                        placeholder={`{
-  "media": ["mediaId"],
-  "contents": ["contentId"],
-  "refs": [{ "collectionKey": "diğer", "entryId": "kayitId" }]
-}`}
+                        placeholder={t('collection.relations_json_placeholder')}
                         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                       />
                       <p className="mt-1 text-xs text-gray-500">
-                        UI üzerinden yaptığın seçimler bu alana yansır; dilersen farklı ilişkileri JSON olarak elle ekleyebilirsin.
+                        {t('collection.relations_json_hint')}
                       </p>
                       {relationsParseError && (
                         <p className="mt-1 text-xs font-medium text-red-600">{relationsParseError}</p>
@@ -900,7 +905,7 @@ export function CollectionEntryModal({
                       disabled={isSubmitting}
                       className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                     >
-                      İptal
+                      {t('common.cancel')}
                     </button>
                     <button
                       type="submit"
@@ -910,7 +915,7 @@ export function CollectionEntryModal({
                       {isSubmitting && (
                         <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent" />
                       )}
-                      {entry ? 'Kaydı Güncelle' : 'Kaydı Oluştur'}
+                      {entry ? t('collection.entry_update_submit') : t('collection.entry_create_submit')}
                     </button>
                   </div>
                 </form>

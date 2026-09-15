@@ -1,15 +1,30 @@
-import { Fragment } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
+import { useTranslation } from 'react-i18next'
 import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
-export default function DeleteAccountModal({ 
-  isOpen, 
-  onClose, 
-  onConfirm, 
+export default function DeleteAccountModal({
+  isOpen,
+  onClose,
+  onConfirm,
   isDeleting,
-  ownedTenants = [] 
+  ownedTenants = [],
+  accountTransfers = [],
+  confirmationValue = ''
 }) {
+  const { t } = useTranslation()
   const hasOwnedTenants = ownedTenants.length > 0
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const canConfirm = Boolean(currentPassword)
+    && confirmation.trim().toLowerCase() === confirmationValue.trim().toLowerCase()
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentPassword('')
+      setConfirmation('')
+    }
+  }, [isOpen])
 
   return (
     <Transition.Root show={isOpen} as={Fragment}>
@@ -44,7 +59,7 @@ export default function DeleteAccountModal({
                     className="rounded-md bg-white dark:bg-gray-800 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
                     onClick={onClose}
                   >
-                    <span className="sr-only">Kapat</span>
+                    <span className="sr-only">{t('common.close')}</span>
                     <XMarkIcon className="h-6 w-6" aria-hidden="true" />
                   </button>
                 </div>
@@ -55,7 +70,7 @@ export default function DeleteAccountModal({
                   </div>
                   <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left flex-1">
                     <Dialog.Title as="h3" className="text-lg font-semibold leading-6 text-gray-900 dark:text-white">
-                      Hesabı Kalıcı Olarak Sil
+                      {t('profile.delete_account_title')}
                     </Dialog.Title>
                     
                     <div className="mt-4 space-y-4">
@@ -68,14 +83,14 @@ export default function DeleteAccountModal({
                               </div>
                               <div className="ml-3">
                                 <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                                  Sahip Olduğunuz Varlıklar Var
+                                  {t('profile.delete_owned_tenants_title')}
                                 </h3>
                                 <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-                                  <p className="mb-2">Hesabınızı silmeden önce aşağıdaki varlıkları devretmeniz veya silmeniz gerekmektedir:</p>
+                                  <p className="mb-2">{t('profile.delete_owned_tenants_body')}</p>
                                   <ul className="list-disc list-inside space-y-1">
                                     {ownedTenants.map((tenant, index) => (
                                       <li key={index} className="font-medium">
-                                        {tenant.tenant?.name || 'İsimsiz Varlık'}
+                                        {tenant.name || tenant.tenant?.name || t('profile.unnamed_tenant')}
                                       </li>
                                     ))}
                                   </ul>
@@ -93,15 +108,15 @@ export default function DeleteAccountModal({
                               </div>
                               <div className="ml-3">
                                 <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                                  Dikkat! Bu İşlem Geri Alınamaz
+                                  {t('profile.delete_warning_title')}
                                 </h3>
                                 <div className="mt-2 text-sm text-red-700 dark:text-red-300 space-y-2">
-                                  <p>Hesabınızı kalıcı olarak silmek üzeresiniz. Bu işlem:</p>
+                                  <p>{t('profile.delete_warning_intro')}</p>
                                   <ul className="list-disc list-inside space-y-1">
-                                    <li>Tüm kişisel bilgilerinizi silecek</li>
-                                    <li>Tüm varlık üyeliklerinizi sonlandıracak</li>
-                                    <li>Tüm oluşturduğunuz içerikleri silecek</li>
-                                    <li><strong>Geri alınamaz ve veriler kurtarılamaz</strong></li>
+                                    <li>{t('profile.delete_warning_personal_data')}</li>
+                                    <li>{t('profile.delete_warning_memberships')}</li>
+                                    <li>{t('profile.delete_warning_content')}</li>
+                                    <li><strong>{t('profile.delete_warning_irreversible')}</strong></li>
                                   </ul>
                                 </div>
                               </div>
@@ -110,8 +125,36 @@ export default function DeleteAccountModal({
 
                           <div className="bg-gray-50 dark:bg-gray-700/50 rounded-md p-4">
                             <p className="text-sm text-gray-600 dark:text-gray-300">
-                              Devam etmeden önce tüm önemli verilerinizin yedeğini aldığınızdan emin olun.
+                              {t('profile.delete_backup_hint')}
                             </p>
+                          </div>
+
+                          {accountTransfers.length > 0 && (
+                            <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+                              {t('profile.delete_billing_transfer', { count: accountTransfers.length })}
+                            </div>
+                          )}
+
+                          <div className="space-y-3">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                              {t('profile.current_password')}
+                              <input
+                                type="password"
+                                autoComplete="current-password"
+                                value={currentPassword}
+                                onChange={(event) => setCurrentPassword(event.target.value)}
+                                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                              />
+                            </label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                              {t('profile.delete_confirmation_label', { value: confirmationValue })}
+                              <input
+                                type="text"
+                                value={confirmation}
+                                onChange={(event) => setConfirmation(event.target.value)}
+                                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                              />
+                            </label>
                           </div>
                         </>
                       )}
@@ -126,15 +169,15 @@ export default function DeleteAccountModal({
                       className="inline-flex w-full justify-center rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 sm:w-auto"
                       onClick={onClose}
                     >
-                      Anladım
+                      {t('profile.understood')}
                     </button>
                   ) : (
                     <>
                       <button
                         type="button"
                         className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
-                        onClick={onConfirm}
-                        disabled={isDeleting}
+                        onClick={() => onConfirm({ currentPassword, confirmation })}
+                        disabled={isDeleting || !canConfirm}
                       >
                         {isDeleting ? (
                           <>
@@ -142,10 +185,10 @@ export default function DeleteAccountModal({
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            Siliniyor...
+                            {t('common.deleting')}
                           </>
                         ) : (
-                          'Evet, Hesabımı Sil'
+                          t('profile.delete_account_confirm')
                         )}
                       </button>
                       <button
@@ -154,7 +197,7 @@ export default function DeleteAccountModal({
                         onClick={onClose}
                         disabled={isDeleting}
                       >
-                        İptal
+                        {t('common.cancel')}
                       </button>
                     </>
                   )}

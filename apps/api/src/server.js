@@ -3,6 +3,7 @@ const fp = require('fastify-plugin');
 const crypto = require('crypto');
 const jwt = require('@fastify/jwt');
 const cors = require('@fastify/cors');
+const rateLimit = require('@fastify/rate-limit');
 const swagger = require('@fastify/swagger');
 const swaggerUi = require('@fastify/swagger-ui');
 const dotenv = require('dotenv');
@@ -11,11 +12,17 @@ const { database } = require('@contexthub/common');
 const roleService = require('./services/roleService');
 const tenantContext = require('@contexthub/common/src/tenantContext');
 const apiLogger = require('./middleware/apiLogger');
-const { createOriginProtectionHook } = require('./middleware/originProtection');
+const {
+  createOriginProtectionHook,
+  isPublicProbePath,
+} = require('./middleware/originProtection');
 const localRedisClient = require('./lib/localRedis');
 const { getSessionCookieName } = require('./services/sessionSecurity');
 const { resolveCorsOptions } = require('./services/tenantOriginPolicy');
 const { bootstrapExtensions } = require('./lib/pluginHost');
+const { extractTrustedClientIp } = require('./services/clientIp');
+const RedisRateLimitStore = require('./services/redisRateLimitStore');
+const { createErrorLocalizationHook } = require('./middleware/localizeErrors');
 
 // Load environment variables from a local .env file when present.  Production deployments should use secrets management instead.
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -37,6 +44,11 @@ function envList(name, defaultValue = '') {
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function positiveIntegerEnv(name, defaultValue) {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
 }
 
 // Minimum acceptable JWT secret length in bytes (256-bit).  Anything shorter is
@@ -89,14 +101,25 @@ async function buildServer(options = {}) {
   // on the first login request.
   getSessionCookieName();
 
-  // trustProxy true ensures request.ip reflects real client IP when behind Nginx/ELB
+  // Some non-security logging still uses Fastify's proxy-aware request.ip. Security
+  // controls use extractTrustedClientIp so a forged left-most X-Forwarded-For value
+  // cannot select the limiter key.
   const bodyLimit = Number(process.env.API_BODY_LIMIT_BYTES) || 10 * 1024 * 1024;
   // Fastify's default maxParamLength is 100; long slugs (e.g. migrated `id-detail`
   // slugs) exceed it and make the router 404 on /contents/slug/:slug. Raise the ceiling
   // to 240 so those slugs resolve; anything longer still 404s at the router, which is
   // the intended cap.
   const maxParamLength = Number(process.env.API_MAX_PARAM_LENGTH) || 240;
-  const app = fastify({ logger: true, trustProxy: true, bodyLimit, maxParamLength });
+  const app = fastify({
+    logger: true,
+    trustProxy: true,
+    bodyLimit,
+    maxParamLength,
+    // Existing schemas deliberately accept localized objects or strings and
+    // query parameters with multiple types. Keep strict validation enabled
+    // while explicitly supporting those JSON Schema unions.
+    ajv: { customOptions: { allowUnionTypes: true } },
+  });
 
   // Validate the edge-to-origin credential before CORS, auth, plugins or routes run.
   // Production is fail-closed: startup fails when protection is disabled or the
@@ -114,6 +137,29 @@ async function buildServer(options = {}) {
     return payload;
   });
 
+  // Hata gövdelerindeki `message` alanını istekte çözülen dile göre katalogdan doldurur.
+  // Route'lar değişmez; `error` kodu sözleşmenin kalıcı parçası olarak kalır.
+  app.addHook('onSend', createErrorLocalizationHook());
+
+  await app.register(rateLimit, {
+    global: true,
+    max: positiveIntegerEnv('API_RATE_LIMIT_MAX', 1000),
+    timeWindow: positiveIntegerEnv('API_RATE_LIMIT_WINDOW_MS', 60 * 1000),
+    keyGenerator: extractTrustedClientIp,
+    store: options.rateLimitStore || RedisRateLimitStore,
+    // Redis is shared by every PM2 worker, so counters are cluster-global. Keep
+    // the API available during a Redis incident; localRedis reports the outage
+    // and the store emits a throttled warning while requests fail open.
+    skipOnError: true,
+    allowList: (request) => isPublicProbePath(request.raw.url),
+    errorResponseBuilder: (_request, context) => ({
+      statusCode: 429,
+      error: 'RateLimitExceeded',
+      message: 'Too many requests. Please retry later.',
+      retryAfter: context.after,
+    }),
+  });
+
   // Register Swagger for OpenAPI documentation
   await app.register(swagger, {
     openapi: {
@@ -123,7 +169,7 @@ async function buildServer(options = {}) {
         version: '0.1.0',
         contact: {
           name: 'ContextHub Support',
-          email: 'support@contexthub.com'
+          email: 'support@ctxhub.net'
         },
         license: {
           name: 'MIT',
@@ -191,7 +237,9 @@ async function buildServer(options = {}) {
 
   // Register Swagger UI for interactive documentation
   await app.register(swaggerUi, {
-    routePrefix: '/docs',
+    // Keep Swagger under /api so the managed Edge Gateway can expose it via
+    // its existing /api/docs bypass policy without opening private routes.
+    routePrefix: '/api/docs',
     uiConfig: {
       docExpansion: 'list',
       deepLinking: true,
@@ -226,7 +274,7 @@ async function buildServer(options = {}) {
     const host = (request.headers.host || '').split(':')[0].toLowerCase();
 
     // Allow health checks and internal routes
-    if (request.url === '/health' || request.url === '/ready') {
+    if (isPublicProbePath(request.url)) {
       return done();
     }
 
@@ -293,6 +341,8 @@ async function buildServer(options = {}) {
   await app.register(require('./routes/dashboard'), { prefix: '/api' });
   await app.register(require('./routes/apiUsageSync'), { prefix: '/api' });
   await app.register(require('./routes/subscriptionPlans'), { prefix: '/api' });
+  await app.register(require('./routes/billing'), { prefix: '/api' });
+  await app.register(require('./routes/billingWebhooks'), { prefix: '/api' });
   await app.register(require('./routes/documentation'), { prefix: '/api' });
   await app.register(require('./routes/apiTokens'), { prefix: '/api' });
   await app.register(require('./routes/webhooks'), { prefix: '/api' });
@@ -309,6 +359,25 @@ async function buildServer(options = {}) {
     return { status: 'ok', timestamp: Date.now() };
   });
 
+  // Readiness is deliberately based on the essential datastore only. Redis-backed
+  // abuse/quota controls have an explicit fail-open availability policy, so a Redis
+  // incident must not drain every API worker from the load balancer.
+  const readinessCheck = options.readinessCheck || database.isReady;
+  app.get('/ready', async (_request, reply) => {
+    try {
+      if (await readinessCheck()) {
+        return { status: 'ready', timestamp: Date.now() };
+      }
+    } catch (error) {
+      app.log.error({ err: error }, 'Readiness check failed');
+    }
+
+    return reply.code(503).send({
+      status: 'not_ready',
+      timestamp: Date.now(),
+    });
+  });
+
   return app;
 }
 
@@ -316,6 +385,7 @@ async function buildServer(options = {}) {
 async function start() {
   // Connect to MongoDB before starting the server
   await database.connectDB();
+  await database.initializeIndexes();
   await roleService.ensureSystemRoles();
 
   let usageStateRefreshPromise = null;
@@ -356,6 +426,20 @@ async function start() {
   });
 
   await localRedisClient.initialize();
+
+  if (require('./lib/billingConfig').isAccountBillingEnabled()) {
+    const billingLifecycleService = require('./services/billing/billingLifecycleService');
+    const billingWebhookService = require('./services/billing/billingWebhookService');
+    billingLifecycleService.reconcile().catch((error) => console.error('[Server] Billing lifecycle reconcile failed:', error.message));
+    billingWebhookService.reprocessPending().catch((error) => console.error('[Server] Billing webhook recovery failed:', error.message));
+    billingWebhookService.redactExpiredPayloads().catch((error) => console.error('[Server] Billing payload retention failed:', error.message));
+    const billingTimer = setInterval(() => {
+      billingLifecycleService.reconcile().catch((error) => console.error('[Server] Billing lifecycle reconcile failed:', error.message));
+      billingWebhookService.reprocessPending().catch((error) => console.error('[Server] Billing webhook recovery failed:', error.message));
+      billingWebhookService.redactExpiredPayloads().catch((error) => console.error('[Server] Billing payload retention failed:', error.message));
+    }, 60 * 60 * 1000);
+    billingTimer.unref();
+  }
 
   // Kota bayragini tazeleyen zamanlanmis is.
   //
@@ -418,7 +502,10 @@ async function start() {
 }
 
 if (require.main === module) {
-  start();
+  start().catch((error) => {
+    console.error('[Server] Startup failed:', error);
+    process.exit(1);
+  });
 }
 
 module.exports = buildServer;

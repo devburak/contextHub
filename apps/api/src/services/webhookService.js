@@ -9,10 +9,16 @@ const {
   retryJobsByWebhookId,
   deleteJobsByWebhookId
 } = require('../lib/webhookDispatcher');
+const {
+  closeWebhookDispatcher,
+  prepareSafeWebhookRequest,
+  validateWebhookUrl
+} = require('./webhookUrlSecurity');
 
 const webhookServiceDeps = {
   fetch,
-  signPayload
+  signPayload,
+  prepareSafeWebhookRequest
 };
 
 const EVENT_SET = new Set(DOMAIN_EVENT_TYPES);
@@ -71,18 +77,6 @@ function generateSecret() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-function validateUrl(value) {
-  if (!value || typeof value !== 'string' || !value.trim()) {
-    throw new Error('Webhook URL is required');
-  }
-  try {
-    new URL(value.trim());
-  } catch (error) {
-    throw new Error('Webhook URL is invalid');
-  }
-  return value.trim();
-}
-
 function normalizeEvents(eventsInput) {
   if (!Array.isArray(eventsInput) || eventsInput.length === 0) {
     return ['*'];
@@ -137,7 +131,7 @@ async function listWebhooks(tenantId) {
 
 async function createWebhook(tenantId, payload = {}) {
   const normalizedTenantId = ensureTenantId(tenantId);
-  const url = validateUrl(payload.url);
+  const url = validateWebhookUrl(payload.url);
   const events = normalizeEvents(payload.events);
   const isActive = payload.isActive !== undefined ? Boolean(payload.isActive) : true;
   const secret = payload.secret && payload.secret.trim() ? payload.secret.trim() : generateSecret();
@@ -163,7 +157,7 @@ async function updateWebhook(tenantId, webhookId, payload = {}) {
   const updates = {};
 
   if (payload.url !== undefined) {
-    updates.url = validateUrl(payload.url);
+    updates.url = validateWebhookUrl(payload.url);
   }
 
   if (payload.isActive !== undefined) {
@@ -370,20 +364,29 @@ async function sendTestWebhook(tenantId, webhookId, payloadOverride = null) {
   const body = JSON.stringify(domainEventPayload);
   const signature = webhookServiceDeps.signPayload(webhook.secret, body);
   const startTime = Date.now();
-  const response = await webhookServiceDeps.fetch(webhook.url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CTXHUB-SIGNATURE': signature,
-      'X-CTXHUB-EVENT': domainEventPayload.type
-    },
-    body,
-    signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-      ? AbortSignal.timeout(5000)
-      : undefined
-  });
+  const prepared = await webhookServiceDeps.prepareSafeWebhookRequest(webhook.url);
+  let response;
+  let responseBody;
+  try {
+    response = await webhookServiceDeps.fetch(prepared.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CTXHUB-SIGNATURE': signature,
+        'X-CTXHUB-EVENT': domainEventPayload.type
+      },
+      body,
+      redirect: 'error',
+      dispatcher: prepared.dispatcher,
+      signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+        ? AbortSignal.timeout(5000)
+        : undefined
+    });
+    responseBody = await readResponseSnippet(response);
+  } finally {
+    await closeWebhookDispatcher(prepared.dispatcher);
+  }
   const durationMs = Date.now() - startTime;
-  const responseBody = await readResponseSnippet(response);
 
   if (!response.ok) {
     console.error('[webhookService] Test webhook failed', {
@@ -410,6 +413,8 @@ async function sendTestWebhook(tenantId, webhookId, payloadOverride = null) {
 function __setWebhookServiceDeps(overrides = {}) {
   webhookServiceDeps.fetch = overrides.fetch || fetch;
   webhookServiceDeps.signPayload = overrides.signPayload || signPayload;
+  webhookServiceDeps.prepareSafeWebhookRequest = overrides.prepareSafeWebhookRequest
+    || prepareSafeWebhookRequest;
 }
 
 /**

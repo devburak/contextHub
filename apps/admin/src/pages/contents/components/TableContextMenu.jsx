@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
   $getNodeByKey,
@@ -15,6 +16,7 @@ import {
 } from '../nodes/TableNode.jsx'
 
 function TableContextMenu({ show, x, y, nodeKey, nodeType, onClose, selectedCells = [] }) {
+  const { t } = useTranslation()
   const [editor] = useLexicalComposerContext()
   const menuRef = useRef(null)
 
@@ -147,20 +149,20 @@ function TableContextMenu({ show, x, y, nodeKey, nodeType, onClose, selectedCell
             className="context-menu-item"
             onClick={handleInsertRowAbove}
           >
-            Üsüne satır ekle
+            {t('content.table_insert_row_above')}
           </button>
           <button
             className="context-menu-item"
             onClick={handleInsertRowBelow}
           >
-            Altına satır ekle
+            {t('content.table_insert_row_below')}
           </button>
           <div className="context-menu-divider" />
           <button
             className="context-menu-item danger"
             onClick={handleDeleteRow}
           >
-            Satırı sil
+            {t('content.table_delete_row')}
           </button>
         </>
       )}
@@ -173,43 +175,43 @@ function TableContextMenu({ show, x, y, nodeKey, nodeType, onClose, selectedCell
                 className="context-menu-item"
                 onClick={handleMergeCells}
               >
-                Hücreleri birleştir
+                {t('content.table_merge_cells')}
               </button>
               <div className="context-menu-divider" />
             </>
           )}
           <div className="context-menu-item">
-            <span>Arka plan rengi:</span>
+            <span>{t('content.table_cell_background')}</span>
             <div className="flex gap-1 mt-1">
               <button
                 className="w-5 h-5 rounded border border-gray-300"
                 style={{ backgroundColor: 'transparent' }}
                 onClick={() => handleCellBackgroundColor(null)}
-                title="Renk yok"
+                title={t('content.table_color_none')}
               />
               <button
                 className="w-5 h-5 rounded border border-gray-300"
                 style={{ backgroundColor: '#fef3c7' }}
                 onClick={() => handleCellBackgroundColor('#fef3c7')}
-                title="Sarı"
+                title={t('content.color_yellow')}
               />
               <button
                 className="w-5 h-5 rounded border border-gray-300"
                 style={{ backgroundColor: '#dbeafe' }}
                 onClick={() => handleCellBackgroundColor('#dbeafe')}
-                title="Mavi"
+                title={t('content.color_blue')}
               />
               <button
                 className="w-5 h-5 rounded border border-gray-300"
                 style={{ backgroundColor: '#dcfce7' }}
                 onClick={() => handleCellBackgroundColor('#dcfce7')}
-                title="Yeşil"
+                title={t('content.color_green')}
               />
               <button
                 className="w-5 h-5 rounded border border-gray-300"
                 style={{ backgroundColor: '#fed7d7' }}
                 onClick={() => handleCellBackgroundColor('#fed7d7')}
-                title="Kırmızı"
+                title={t('content.color_red')}
               />
             </div>
           </div>
@@ -221,7 +223,7 @@ function TableContextMenu({ show, x, y, nodeKey, nodeType, onClose, selectedCell
         className="context-menu-item danger"
         onClick={handleDeleteTable}
       >
-        Tabloyu sil
+        {t('content.table_delete')}
       </button>
     </div>
   )

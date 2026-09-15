@@ -1,6 +1,10 @@
 import { apiClient } from './api.js'
 
 export const tenantAPI = {
+  getCreationOptions: async () => {
+    const { data } = await apiClient.get('/tenants/creation-options')
+    return data
+  },
   getTenants: async () => {
     const { data } = await apiClient.get('/tenants')
     return data
@@ -28,6 +32,26 @@ export const tenantAPI = {
 
   acceptOwnershipTransfer: async (token, tenantId) => {
     const { data } = await apiClient.post(`/tenants/${tenantId}/accept-transfer`, { token })
+    return data
+  },
+
+  getDeletionPreflight: async (tenantId) => {
+    const { data } = await apiClient.get(`/tenants/${tenantId}/deletion-preflight`)
+    return data
+  },
+
+  getDeletedTenants: async () => {
+    const { data } = await apiClient.get('/tenants/deleted')
+    return data.tenants || []
+  },
+
+  deleteTenant: async (tenantId, payload) => {
+    const { data } = await apiClient.delete(`/tenants/${tenantId}`, { data: payload })
+    return data
+  },
+
+  restoreTenant: async (tenantId, payload) => {
+    const { data } = await apiClient.post(`/tenants/${tenantId}/restore`, payload)
     return data
   },
 

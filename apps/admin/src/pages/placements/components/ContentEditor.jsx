@@ -108,7 +108,7 @@ export default function ContentEditor({ content = {}, onChange }) {
           <div className="border-t border-gray-200 pt-4">
             <h4 className="text-sm font-medium text-gray-900 mb-3">Call to Action</h4>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm text-gray-600 mb-2">Button Text</label>
                 <input
@@ -195,7 +195,7 @@ export default function ContentEditor({ content = {}, onChange }) {
           <div className="border-t border-gray-200 pt-4">
             <h4 className="text-sm font-medium text-gray-900 mb-3">Link (optional)</h4>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm text-gray-600 mb-2">Link Text</label>
                 <input

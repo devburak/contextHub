@@ -95,7 +95,7 @@ export default function UserEdit() {
   if (!user) {
     return (
       <div className="text-center">
-        <p className="text-gray-500">User not found</p>
+        <p className="text-gray-500">{t('user.not_found')}</p>
         <Link to="/users" className="btn-primary mt-4">
           {t('user.back_to_users')}
         </Link>

@@ -20,12 +20,11 @@ log('Starting index creation process...');
 const run = async () => {
   const start = Date.now();
   try {
-    process.env.MONGODB_AUTO_CREATE_INDEXES = 'false';
     await database.connectDB();
     log('Connected to MongoDB');
 
     await database.createIndexes();
-    log('Indexes created successfully');
+    log('Schema indexes created and verified successfully (existing indexes preserved)');
   } finally {
     await database.disconnectDB();
     const duration = Date.now() - start;

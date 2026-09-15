@@ -14,17 +14,14 @@ import {
   VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
+import { Trans, useTranslation } from 'react-i18next'
 import { mediaAPI } from '../../lib/mediaAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { buildExternalEmbed } from '../../utils/externalMedia.js'
 
-const MIME_FILTERS = [
-  { label: 'Tümü', value: '' },
-  { label: 'Görseller', value: 'image/' },
-  { label: 'Videolar', value: 'video/' },
-  { label: 'Dokümanlar', value: 'application/' },
-]
-
 export default function MediaLibrary() {
+  const { t, i18n } = useTranslation()
+  const describeError = useApiError()
   const [search, setSearch] = useState('')
   const [mimeFilter, setMimeFilter] = useState('')
   const [tagFilter, setTagFilter] = useState('')
@@ -58,6 +55,13 @@ export default function MediaLibrary() {
     tags: '',
     duration: '',
   })
+
+  const mimeFilters = useMemo(() => ([
+    { label: t('media.filter_all'), value: '' },
+    { label: t('media.filter_images'), value: 'image/' },
+    { label: t('media.filter_videos'), value: 'video/' },
+    { label: t('media.filter_documents'), value: 'application/' },
+  ]), [t])
 
   const queryClient = useQueryClient()
   const searchTimeoutRef = useRef(null)
@@ -142,7 +146,11 @@ export default function MediaLibrary() {
 
         if (!uploadResponse.ok) {
           const errorText = await uploadResponse.text()
-          throw new Error(`Dosya yüklenemedi: ${file.name}. Sunucu yanıtı: ${uploadResponse.status} ${errorText}`)
+          throw new Error(t('media.upload_failed_named', {
+            name: file.name,
+            status: uploadResponse.status,
+            details: errorText,
+          }))
         }
 
         const record = await mediaAPI.completeUpload({
@@ -219,7 +227,7 @@ export default function MediaLibrary() {
       queryClient.invalidateQueries({ queryKey: ['media'] })
     },
     onError: (error) => {
-      setExternalError(error)
+      setExternalError(describeError(error, 'media.external_add_failed'))
     },
   })
 
@@ -294,17 +302,17 @@ export default function MediaLibrary() {
 
   const handleModalDelete = useCallback(() => {
     if (!activeItem) return
-    const confirmed = window.confirm('Bu medya öğesini silmek istediğine emin misin? Bu işlem geri alınamaz.')
+    const confirmed = window.confirm(t('media.delete_confirm'))
     if (!confirmed) return
     deleteMutation.mutate(activeItem._id)
-  }, [activeItem, deleteMutation])
+  }, [activeItem, deleteMutation, t])
 
   const handleBulkDelete = useCallback(() => {
     if (!selectedIds.length) return
-    const confirmed = window.confirm('Seçili tüm medya öğeleri silinecek. Onaylıyor musun?')
+    const confirmed = window.confirm(t('media.bulk_delete_confirm'))
     if (!confirmed) return
     bulkDeleteMutation.mutate(selectedIds)
-  }, [bulkDeleteMutation, selectedIds])
+  }, [bulkDeleteMutation, selectedIds, t])
 
   const handleBulkTagSubmit = useCallback(() => {
     if (!selectedIds.length) return
@@ -314,12 +322,12 @@ export default function MediaLibrary() {
       .filter(Boolean)
 
     if (!tags.length) {
-      alert('En az bir etiket girmelisin.')
+      alert(t('media.tag_required'))
       return
     }
 
     bulkTagMutation.mutate({ ids: selectedIds, tags, mode: bulkTagMode })
-  }, [bulkTagInput, bulkTagMode, bulkTagMutation, selectedIds])
+  }, [bulkTagInput, bulkTagMode, bulkTagMutation, selectedIds, t])
 
   const handleFormChange = useCallback((event) => {
     const { name, value } = event.target
@@ -335,8 +343,8 @@ export default function MediaLibrary() {
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const totalCount = mediaQuery.data?.pages?.[0]?.pagination?.total ?? 0
   const totalLabel = !mediaQuery.data && mediaQuery.isLoading
-    ? 'Yükleniyor…'
-    : `Toplam ${totalCount.toLocaleString('tr-TR')} medya`
+    ? t('common.loading')
+    : t('media.total_count', { total: totalCount.toLocaleString(i18n.language) })
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -368,13 +376,13 @@ export default function MediaLibrary() {
       setCopiedId(id)
       window.setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 2000)
     } catch (error) {
-      const fallback = window.prompt("URL'yi kopyalamak için seçip kopyalayın:", url)
+      const fallback = window.prompt(t('media.copy_url_prompt'), url)
       if (fallback !== null) {
         setCopiedId(id)
         window.setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 2000)
       }
     }
-  }, [])
+  }, [t])
 
   const openExternalModal = useCallback(() => {
     setExternalError(null)
@@ -395,7 +403,7 @@ export default function MediaLibrary() {
   const handleExternalSubmit = useCallback(() => {
     const trimmedUrl = externalForm.url.trim()
     if (!trimmedUrl) {
-      setExternalError(new Error('Lütfen geçerli bir URL girin.'))
+      setExternalError(t('validation.url'))
       return
     }
 
@@ -417,32 +425,32 @@ export default function MediaLibrary() {
     }
 
     if (Number.isNaN(payload.duration)) {
-      setExternalError(new Error('Süre alanı sayı olmalıdır.'))
+      setExternalError(t('validation.number'))
       return
     }
 
     setExternalError(null)
     createExternalMutation.mutate(payload)
-  }, [createExternalMutation, externalForm])
+  }, [createExternalMutation, externalForm, t])
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-baseline gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">Medya Kütüphanesi</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t('media.title')}</h1>
             <span className="text-sm text-gray-400">
               {totalLabel}
             </span>
           </div>
           <p className="mt-2 text-sm text-gray-600">
-            Varlık bazlı dosyalarını yönet, yeni dosyalar yükle ve mevcut içerikleri filtreleyerek bul.
+            {t('media.subtitle')}
           </p>
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:flex-row">
           <label className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer">
             <CloudArrowUpIcon className="h-5 w-5" aria-hidden="true" />
-            <span>Dosya Yükle</span>
+            <span>{t('media.upload_file')}</span>
             <input
               type="file"
               multiple
@@ -459,7 +467,7 @@ export default function MediaLibrary() {
             className="inline-flex items-center justify-center gap-x-2 rounded-md border border-blue-400 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <VideoCameraIcon className="h-5 w-5" aria-hidden="true" />
-            URL'den Ekle
+            {t('media.add_from_url')}
           </button>
         </div>
       </div>
@@ -467,33 +475,33 @@ export default function MediaLibrary() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="sm:col-span-1">
           <label htmlFor="media-search" className="block text-sm font-medium text-gray-700">
-            Dosya Adı
+            {t('media.file_name')}
           </label>
           <input
             id="media-search"
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Dosya adında ara"
+            placeholder={t('media.search_placeholder')}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
           />
         </div>
         <div className="sm:col-span-1">
           <label htmlFor="media-tags" className="block text-sm font-medium text-gray-700">
-            Etiketler
+            {t('media.tags')}
           </label>
           <input
             id="media-tags"
             type="search"
             value={tagFilter}
             onChange={(event) => setTagFilter(event.target.value)}
-            placeholder="afiş, 2024"
+            placeholder={t('media.tags_placeholder')}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
           />
         </div>
         <div className="sm:col-span-1">
           <label htmlFor="media-type" className="block text-sm font-medium text-gray-700">
-            Tür
+            {t('common.type')}
           </label>
           <select
             id="media-type"
@@ -501,7 +509,7 @@ export default function MediaLibrary() {
             onChange={(event) => setMimeFilter(event.target.value)}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
           >
-            {MIME_FILTERS.map((filter) => (
+            {mimeFilters.map((filter) => (
               <option key={filter.value || 'all'} value={filter.value}>
                 {filter.label}
               </option>
@@ -515,7 +523,7 @@ export default function MediaLibrary() {
             className="mt-6 inline-flex items-center gap-x-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
           >
             <ArrowPathIcon className={clsx('h-5 w-5', mediaQuery.isFetching ? 'animate-spin' : '')} />
-            Yenile
+            {t('common.refresh')}
           </button>
         </div>
         <div className="sm:col-span-1 lg:col-span-1">
@@ -530,15 +538,15 @@ export default function MediaLibrary() {
             }}
             className="mt-6 inline-flex items-center gap-x-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
           >
-            Temizle
+            {t('common.clear')}
           </button>
         </div>
         {lastUploadedNames.length > 0 && (
           <div className="sm:col-span-2 lg:col-span-1">
             <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
               {lastUploadedNames.length === 1
-                ? `${lastUploadedNames[0]} yüklendi.`
-                : `${lastUploadedNames.length} dosya yüklendi.`}
+                ? t('media.uploaded_one', { name: lastUploadedNames[0] })
+                : t('media.uploaded_many', { count: lastUploadedNames.length })}
             </div>
           </div>
         )}
@@ -547,7 +555,7 @@ export default function MediaLibrary() {
       {selectedCount > 0 && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-medium text-blue-800">
-            {selectedCount} medya seçildi
+            {t('common.selected_count', { count: selectedCount })}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <button
@@ -557,7 +565,7 @@ export default function MediaLibrary() {
               disabled={bulkTagMutation.isPending}
             >
               <TagIcon className="h-4 w-4" />
-              Etiket Ata
+              {t('media.assign_tags')}
             </button>
             <button
               type="button"
@@ -566,14 +574,14 @@ export default function MediaLibrary() {
               disabled={bulkDeleteMutation.isPending}
             >
               <TrashIcon className="h-4 w-4" />
-              Seçiliyi Sil
+              {t('media.delete_selected')}
             </button>
             <button
               type="button"
               onClick={clearSelection}
               className="inline-flex items-center gap-x-2 rounded-md border border-transparent px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
             >
-              Seçimi Temizle
+              {t('media.clear_selection')}
             </button>
           </div>
         </div>
@@ -581,13 +589,13 @@ export default function MediaLibrary() {
 
       {showBulkTagPanel && selectedCount > 0 && (
         <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
-          <div className="text-sm font-semibold text-gray-800">Seçili öğelere etiket ata</div>
+          <div className="text-sm font-semibold text-gray-800">{t('media.bulk_tag_title')}</div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <input
               type="text"
               value={bulkTagInput}
               onChange={(event) => setBulkTagInput(event.target.value)}
-              placeholder="Örn. kampanya, banner"
+              placeholder={t('media.bulk_tag_placeholder')}
               className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
             />
             <select
@@ -595,8 +603,8 @@ export default function MediaLibrary() {
               onChange={(event) => setBulkTagMode(event.target.value)}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
             >
-              <option value="add">Var olanlara ekle</option>
-              <option value="replace">Var olanları değiştir</option>
+              <option value="add">{t('media.tag_mode_add')}</option>
+              <option value="replace">{t('media.tag_mode_replace')}</option>
             </select>
             <button
               type="button"
@@ -604,19 +612,19 @@ export default function MediaLibrary() {
               className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={bulkTagMutation.isPending}
             >
-              Uygula
+              {t('media.apply')}
             </button>
             <button
               type="button"
               onClick={() => setShowBulkTagPanel(false)}
               className="inline-flex items-center gap-x-2 rounded-md border border-transparent px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
             >
-              Kapat
+              {t('common.close')}
             </button>
           </div>
           {bulkTagMutation.isError && (
             <div className="text-sm text-red-600">
-              {(bulkTagMutation.error instanceof Error ? bulkTagMutation.error.message : 'Etiket atama sırasında hata oluştu')}
+              {describeError(bulkTagMutation.error, 'media.bulk_tag_failed')}
             </div>
           )}
         </div>
@@ -633,13 +641,13 @@ export default function MediaLibrary() {
         <div className="flex flex-col items-center justify-center gap-3 text-center text-sm text-gray-600">
           <CloudArrowUpIcon className="h-10 w-10 text-gray-400" />
           <div>
-            Dosyaları buraya sürükleyip bırakabilir veya <span className="font-medium text-blue-600">Dosya Yükle</span> butonunu kullanabilirsiniz.
+            <Trans i18nKey="media.drop_hint" components={{ strong: <span className="font-medium text-blue-600" /> }} />
           </div>
-          <div className="text-xs text-gray-500">Maksimum dosya boyutu 100 MB. Görseller otomatik olarak farklı boyutlara dönüştürülür.</div>
-          {uploadMutation.isPending && <div className="text-blue-600">Dosyalar yükleniyor…</div>}
+          <div className="text-xs text-gray-500">{t('media.upload_hint')}</div>
+          {uploadMutation.isPending && <div className="text-blue-600">{t('media.uploading')}</div>}
           {uploadMutation.isError && (
             <div className="text-red-600">
-              {(uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Yükleme sırasında bir hata oluştu')}
+              {(uploadMutation.error instanceof Error ? uploadMutation.error.message : t('media.upload_failed'))}
             </div>
           )}
         </div>
@@ -647,20 +655,20 @@ export default function MediaLibrary() {
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Dosyalar</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{t('media.files')}</h2>
           <span className="text-sm text-gray-500">
-            {totalCount} kayıt
+            {t('media.record_count', { count: totalCount })}
           </span>
         </div>
         <div className="p-6">
           {mediaQuery.isLoading ? (
-            <div className="text-sm text-gray-500">Medya dosyaları yükleniyor...</div>
+            <div className="text-sm text-gray-500">{t('media.loading')}</div>
           ) : mediaQuery.isError ? (
             <div className="text-sm text-red-600">
-              Medya dosyaları alınamadı. Lütfen tekrar deneyin.
+              {describeError(mediaQuery.error, 'media.load_failed')}
             </div>
           ) : items.length === 0 ? (
-            <div className="text-sm text-gray-500">Henüz yüklenmiş medya bulunmuyor.</div>
+            <div className="text-sm text-gray-500">{t('media.empty')}</div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {items.map((item) => {
@@ -725,16 +733,16 @@ export default function MediaLibrary() {
                       </div>
                       <dl className="text-xs text-gray-500 space-y-1">
                         <div className="flex justify-between gap-2">
-                          <dt>Boyut</dt>
+                          <dt>{t('media.size')}</dt>
                           <dd>{formatFileSize(item.size)}</dd>
                         </div>
                         <div className="flex justify-between gap-2">
-                          <dt>Tür</dt>
-                          <dd>{item.mimeType || 'Bilinmiyor'}</dd>
+                          <dt>{t('common.type')}</dt>
+                          <dd>{item.mimeType || t('media.unknown_type')}</dd>
                         </div>
                         {item.width && item.height && (
                           <div className="flex justify-between gap-2">
-                            <dt>Ölçüler</dt>
+                            <dt>{t('media.dimensions')}</dt>
                             <dd>
                               {item.width} × {item.height}
                             </dd>
@@ -756,19 +764,19 @@ export default function MediaLibrary() {
                           onClick={() => openModal(item)}
                           className="inline-flex flex-1 justify-center rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
                         >
-                          İncele
+                          {t('media.inspect')}
                         </button>
                         <button
                           type="button"
                           onClick={() => copyUrl(item.url, item._id)}
-                          title="URL'yi kopyala"
+                          title={t('media.copy_url')}
                           className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                         >
                           <DocumentDuplicateIcon className="h-5 w-5" />
                         </button>
                       </div>
                       {copiedId === item._id && (
-                        <span className="text-xs text-green-600">URL kopyalandı</span>
+                        <span className="text-xs text-green-600">{t('media.url_copied')}</span>
                       )}
                     </div>
                   </article>
@@ -780,11 +788,11 @@ export default function MediaLibrary() {
           {!mediaQuery.isLoading && items.length > 0 && (
             <div ref={loadMoreRef} className="py-4 text-center">
               {mediaQuery.isFetchingNextPage ? (
-                <div className="text-sm text-gray-500">Daha fazla medya yükleniyor...</div>
+                <div className="text-sm text-gray-500">{t('media.loading_more')}</div>
               ) : mediaQuery.hasNextPage ? (
-                <div className="text-sm text-gray-400">Aşağı kaydırarak daha fazla yükle</div>
+                <div className="text-sm text-gray-400">{t('media.scroll_for_more')}</div>
               ) : (
-                <div className="text-sm text-gray-400">Tüm medya dosyaları yüklendi</div>
+                <div className="text-sm text-gray-400">{t('media.all_loaded')}</div>
               )}
             </div>
           )}
@@ -819,6 +827,8 @@ export default function MediaLibrary() {
 }
 
 function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, onDelete, saving, deleting, error, copyUrl, copiedId }) {
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const isExternal = item?.sourceType === 'external'
   const isImage = item?.mimeType?.startsWith('image/')
   const previewUrl = isExternal ? item?.thumbnailUrl || item?.url : item?.url
@@ -858,10 +868,10 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                   <XMarkIcon className="h-6 w-6" />
                 </button>
                 <Dialog.Title className="text-lg font-semibold leading-6 text-gray-900">
-                  Medya Ayrıntıları
+                  {t('media.details_title')}
                 </Dialog.Title>
                 {!item ? (
-                  <p className="mt-6 text-sm text-gray-600">Yükleniyor...</p>
+                  <p className="mt-6 text-sm text-gray-600">{t('common.loading')}</p>
                 ) : (
                   <div className="mt-6 grid gap-6 lg:grid-cols-2">
                     <div className="space-y-4">
@@ -872,7 +882,7 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                               <div className="aspect-video">
                                 <iframe
                                   src={externalEmbed.src}
-                                  title={item.originalName || item.fileName || 'Video'}
+                                  title={item.originalName || item.fileName || t('media.video')}
                                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                   referrerPolicy="strict-origin-when-cross-origin"
                                   allowFullScreen
@@ -887,7 +897,7 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                               src={externalEmbed.src}
                               className="max-h-80 w-full rounded object-contain bg-black"
                             >
-                              Tarayıcınız video öğesini desteklemiyor.
+                              {t('media.video_unsupported')}
                             </video>
                           )
                         ) : isImage ? (
@@ -917,24 +927,24 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                       </div>
                       <div className="rounded-lg border border-gray-200 p-4 text-sm text-gray-600 space-y-2">
                         <div className="flex justify-between gap-2">
-                          <span className="font-medium text-gray-700">Kaynak</span>
-                          <span className="text-gray-900">{isExternal ? 'Harici Video' : 'Dosya Yükleme'}</span>
+                          <span className="font-medium text-gray-700">{t('media.source')}</span>
+                          <span className="text-gray-900">{isExternal ? t('media.source_external') : t('media.source_upload')}</span>
                         </div>
                         <div className="flex justify-between gap-2">
-                          <span className="font-medium text-gray-700">Dosya Adı</span>
+                          <span className="font-medium text-gray-700">{t('media.file_name')}</span>
                           <span className="text-gray-900">{item.fileName}</span>
                         </div>
                         <div className="flex justify-between gap-2">
-                          <span className="font-medium text-gray-700">Tür</span>
-                          <span className="text-gray-900">{item.mimeType || 'Bilinmiyor'}</span>
+                          <span className="font-medium text-gray-700">{t('common.type')}</span>
+                          <span className="text-gray-900">{item.mimeType || t('media.unknown_type')}</span>
                         </div>
                         <div className="flex justify-between gap-2">
-                          <span className="font-medium text-gray-700">Boyut</span>
+                          <span className="font-medium text-gray-700">{t('media.size')}</span>
                           <span className="text-gray-900">{formatFileSize(item.size)}</span>
                         </div>
                         {item.width && item.height && (
                           <div className="flex justify-between gap-2">
-                            <span className="font-medium text-gray-700">Ölçüler</span>
+                            <span className="font-medium text-gray-700">{t('media.dimensions')}</span>
                             <span className="text-gray-900">{item.width} × {item.height}</span>
                           </div>
                         )}
@@ -942,45 +952,45 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                           <button
                             type="button"
                             onClick={() => copyUrl(item.url, item._id)}
-                            title="URL'yi kopyala"
+                            title={t('media.copy_url')}
                             className="inline-flex items-center gap-x-1 text-blue-600 hover:text-blue-700"
                           >
                             <DocumentDuplicateIcon className="h-4 w-4" />
-                            <span>URL'yi kopyala</span>
+                            <span>{t('media.copy_url')}</span>
                           </button>
                           {copiedId === item._id && (
-                            <span className="ml-2 text-xs text-green-600">Kopyalandı</span>
+                            <span className="ml-2 text-xs text-green-600">{t('common.copied')}</span>
                           )}
                         </div>
                         {isExternal && (
                           <div className="space-y-1 text-sm">
                             {item.provider && (
                               <div className="flex justify-between gap-2">
-                                <span className="font-medium text-gray-700">Platform</span>
+                                <span className="font-medium text-gray-700">{t('media.platform')}</span>
                                 <span className="text-gray-900">{item.provider}</span>
                               </div>
                             )}
                             {item.providerId && (
                               <div className="flex justify-between gap-2">
-                                <span className="font-medium text-gray-700">Video ID</span>
+                                <span className="font-medium text-gray-700">{t('media.video_id')}</span>
                                 <span className="text-gray-900">{item.providerId}</span>
                               </div>
                             )}
                             {item.duration && (
                               <div className="flex justify-between gap-2">
-                                <span className="font-medium text-gray-700">Süre</span>
-                                <span className="text-gray-900">{Math.round(item.duration)} sn</span>
+                                <span className="font-medium text-gray-700">{t('media.duration')}</span>
+                                <span className="text-gray-900">{t('media.duration_seconds', { count: Math.round(item.duration) })}</span>
                               </div>
                             )}
                             <div className="flex justify-between gap-2">
-                              <span className="font-medium text-gray-700">Harici URL</span>
+                              <span className="font-medium text-gray-700">{t('media.external_url')}</span>
                               <a
                                 href={item.externalUrl || item.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-blue-600 hover:text-blue-700"
                               >
-                                Aç
+                                {t('media.open')}
                               </a>
                             </div>
                           </div>
@@ -991,7 +1001,7 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                     <form className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700" htmlFor="media-originalName">
-                          Görünen İsim
+                          {t('media.display_name')}
                         </label>
                         <input
                           id="media-originalName"
@@ -1000,26 +1010,26 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                           onChange={onChange}
                           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                         />
-                        <p className="mt-1 text-xs text-gray-500">Sistemdeki dosya adı değişmez, bu alan listelerde görünecek ismi temsil eder.</p>
+                        <p className="mt-1 text-xs text-gray-500">{t('media.display_name_hint')}</p>
                       </div>
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700" htmlFor="media-altText">
-                          Alternatif Metin
+                          {t('media.alt_text')}
                         </label>
                         <input
                           id="media-altText"
                           name="altText"
                           value={formState.altText}
                           onChange={onChange}
-                          placeholder="Erişilebilirlik için görsel açıklaması"
+                          placeholder={t('media.alt_text_placeholder')}
                           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                         />
                       </div>
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700" htmlFor="media-caption">
-                          Başlık / Caption
+                          {t('media.caption')}
                         </label>
                         <input
                           id="media-caption"
@@ -1032,7 +1042,7 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700" htmlFor="media-description">
-                          Açıklama
+                          {t('common.description')}
                         </label>
                         <textarea
                           id="media-description"
@@ -1046,22 +1056,22 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700" htmlFor="media-tags">
-                          Etiketler
+                          {t('media.tags')}
                         </label>
                         <input
                           id="media-tags"
                           name="tags"
                           value={formState.tags}
                           onChange={onChange}
-                          placeholder="Virgülle ayrılmış etiketler"
+                          placeholder={t('media.tags_input_placeholder')}
                           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                         />
-                        <p className="mt-1 text-xs text-gray-500">Örnek: kampanya, hero, blog</p>
+                        <p className="mt-1 text-xs text-gray-500">{t('media.tags_example')}</p>
                       </div>
 
                       {error && (
                         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-                          {(error instanceof Error ? error.message : 'Güncelleme sırasında bir hata oluştu')}
+                          {describeError(error, 'media.update_failed')}
                         </div>
                       )}
 
@@ -1072,7 +1082,7 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                           disabled={saving}
                           className="inline-flex flex-1 justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
                         >
-                          {saving ? 'Kaydediliyor…' : 'Kaydet'}
+                          {saving ? t('common.saving') : t('common.save')}
                         </button>
                         <button
                           type="button"
@@ -1081,7 +1091,7 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
                           className="inline-flex items-center justify-center gap-x-2 rounded-md border border-red-500 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
                         >
                           <TrashIcon className="h-4 w-4" />
-                          {deleting ? 'Siliniyor…' : 'Sil'}
+                          {deleting ? t('common.deleting') : t('common.delete')}
                         </button>
                       </div>
                     </form>
@@ -1097,6 +1107,8 @@ function MediaDetailModal({ open, onClose, item, formState, onChange, onSave, on
 }
 
 function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSubmitting, error }) {
+  const { t } = useTranslation()
+
   return (
     <Transition.Root show={open} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
@@ -1133,12 +1145,12 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                 </button>
                 <Dialog.Title className="text-lg font-semibold leading-6 text-gray-900 flex items-center gap-2">
                   <VideoCameraIcon className="h-6 w-6 text-blue-500" />
-                  URL'den Video Ekle
+                  {t('media.external_modal_title')}
                 </Dialog.Title>
                 <div className="mt-6 space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700" htmlFor="external-url">
-                      Video URL'si
+                      {t('media.external_url_label')}
                     </label>
                     <input
                       id="external-url"
@@ -1154,20 +1166,20 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700" htmlFor="external-title">
-                        Başlık
+                        {t('common.title')}
                       </label>
                       <input
                         id="external-title"
                         name="title"
                         value={formState.title}
                         onChange={onChange}
-                        placeholder="Örn. Lansman Videosu"
+                        placeholder={t('media.external_title_placeholder')}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700" htmlFor="external-thumbnail">
-                        Thumbnail URL
+                        {t('media.thumbnail_url')}
                       </label>
                       <input
                         id="external-thumbnail"
@@ -1182,7 +1194,7 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700" htmlFor="external-provider">
-                        Platform
+                        {t('media.platform')}
                       </label>
                       <input
                         id="external-provider"
@@ -1195,14 +1207,14 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700" htmlFor="external-providerId">
-                        Video ID
+                        {t('media.video_id')}
                       </label>
                       <input
                         id="external-providerId"
                         name="providerId"
                         value={formState.providerId}
                         onChange={onChange}
-                        placeholder="Opsiyonel"
+                        placeholder={t('common.optional')}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                       />
                     </div>
@@ -1210,20 +1222,20 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700" htmlFor="external-altText">
-                        Alternatif Metin
+                        {t('media.alt_text')}
                       </label>
                       <input
                         id="external-altText"
                         name="altText"
                         value={formState.altText}
                         onChange={onChange}
-                        placeholder="Erişilebilirlik açıklaması"
+                        placeholder={t('media.alt_text_placeholder')}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700" htmlFor="external-duration">
-                        Süre (sn)
+                        {t('media.duration_seconds_label')}
                       </label>
                       <input
                         id="external-duration"
@@ -1232,14 +1244,14 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                         min="0"
                         value={formState.duration}
                         onChange={onChange}
-                        placeholder="Opsiyonel"
+                        placeholder={t('common.optional')}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                       />
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700" htmlFor="external-description">
-                      Açıklama
+                      {t('common.description')}
                     </label>
                     <textarea
                       id="external-description"
@@ -1252,21 +1264,21 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700" htmlFor="external-tags">
-                      Etiketler
+                      {t('media.tags')}
                     </label>
                     <input
                       id="external-tags"
                       name="tags"
                       value={formState.tags}
                       onChange={onChange}
-                      placeholder="ör. youtube, kampanya"
+                      placeholder={t('media.external_tags_placeholder')}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                     />
-                    <p className="mt-1 text-xs text-gray-500">Virgülle ayırarak birden fazla etiket ekleyebilirsin.</p>
+                    <p className="mt-1 text-xs text-gray-500">{t('media.tags_comma_hint')}</p>
                   </div>
                   {error && (
                     <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-                      {error instanceof Error ? error.message : 'Video eklenemedi. Lütfen tekrar dene.'}
+                      {error}
                     </div>
                   )}
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -1275,7 +1287,7 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                       onClick={onClose}
                       className="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
                     >
-                      Vazgeç
+                      {t('common.cancel')}
                     </button>
                     <button
                       type="button"
@@ -1283,7 +1295,7 @@ function ExternalMediaModal({ open, onClose, formState, onChange, onSubmit, isSu
                       disabled={isSubmitting}
                       className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
                     >
-                      {isSubmitting ? 'Ekleniyor…' : 'Medyaya Ekle'}
+                      {isSubmitting ? t('media.adding') : t('media.add_to_library')}
                     </button>
                   </div>
                 </div>

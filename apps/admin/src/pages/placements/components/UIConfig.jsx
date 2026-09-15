@@ -57,7 +57,7 @@ export default function UIConfig({ ui = {}, trigger = {}, onUIChange, onTriggerC
       </div>
 
       {/* Width & Height */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Width
@@ -86,7 +86,7 @@ export default function UIConfig({ ui = {}, trigger = {}, onUIChange, onTriggerC
       </div>
 
       {/* Colors */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Background Color
@@ -149,7 +149,7 @@ export default function UIConfig({ ui = {}, trigger = {}, onUIChange, onTriggerC
       </div>
 
       {/* Styling */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Border Radius
@@ -195,7 +195,7 @@ export default function UIConfig({ ui = {}, trigger = {}, onUIChange, onTriggerC
           <label className="block text-sm font-medium text-gray-900 mb-2">
             Offset
           </label>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
               <label className="block text-xs text-gray-600 mb-1">Top</label>
               <input

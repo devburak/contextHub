@@ -178,8 +178,9 @@ export default function PlacementsList() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
+        <div className="overflow-hidden rounded-lg bg-white shadow-sm">
+          <div className="overflow-x-auto overscroll-x-contain">
+          <table className="min-w-[820px] divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -243,35 +244,35 @@ export default function PlacementsList() {
                       <div className="flex justify-end gap-2">
                         <Link
                           to={`/placements/${placement._id}`}
-                          className="text-blue-600 hover:text-blue-900"
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50 hover:text-blue-900"
                           title="Düzenle"
                         >
                           <Edit2 size={18} />
                         </Link>
                         <Link
                           to={`/placements/${placement._id}/analytics`}
-                          className="text-green-600 hover:text-green-900"
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-green-600 hover:bg-green-50 hover:text-green-900"
                           title="Analitik"
                         >
                           <TrendingUp size={18} />
                         </Link>
                         <button
                           onClick={() => handleDuplicate(placement._id, placement.name)}
-                          className="text-gray-600 hover:text-gray-900"
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                           title="Kopyala"
                         >
                           <Copy size={18} />
                         </button>
                         <button
                           onClick={() => handleArchive(placement._id)}
-                          className="text-orange-600 hover:text-orange-900"
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-orange-600 hover:bg-orange-50 hover:text-orange-900"
                           title="Arşivle"
                         >
                           <Archive size={18} />
                         </button>
                         <button
                           onClick={() => handleDelete(placement._id)}
-                          className="text-red-600 hover:text-red-900"
+                          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-red-600 hover:bg-red-50 hover:text-red-900"
                           title="Sil"
                         >
                           <Trash2 size={18} />
@@ -283,6 +284,7 @@ export default function PlacementsList() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

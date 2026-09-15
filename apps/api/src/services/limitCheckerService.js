@@ -143,7 +143,27 @@ class LimitCheckerService {
         const tenant = await this.getTenant(tenantId);
         const mediaAgg = await Media.aggregate([
           { $match: { tenantId: tenant._id, status: { $ne: 'deleted' } } },
-          { $group: { _id: null, totalSize: { $sum: { $ifNull: ['$size', 0] } } } },
+          {
+            $group: {
+              _id: null,
+              totalSize: {
+                $sum: {
+                  $add: [
+                    { $ifNull: ['$size', 0] },
+                    {
+                      $sum: {
+                        $map: {
+                          input: { $ifNull: ['$variants', []] },
+                          as: 'variant',
+                          in: { $ifNull: ['$$variant.size', 0] },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
         ]);
         
         currentUsage = mediaAgg.length > 0 ? mediaAgg[0].totalSize : 0;
@@ -181,12 +201,14 @@ class LimitCheckerService {
    * @param {string} tenantId - Tenant ID
    * @returns {Promise<Object>} { allowed: boolean, remaining: number, limit: number }
    */
-  async checkUserLimit(tenantId) {
+  async checkUserLimit(tenantId, role = 'member') {
     try {
       const limits = await this.getTenantLimits(tenantId);
       
       // Unlimited
-      if (limits.userLimit === null || limits.userLimit === -1) {
+      const isOwner = role === 'owner';
+      const limit = isOwner ? limits.ownerLimit : limits.userLimit;
+      if (limit === null || limit === -1) {
         return {
           allowed: true,
           remaining: Infinity,
@@ -198,16 +220,18 @@ class LimitCheckerService {
       // Get current user count
       const currentCount = await Membership.countDocuments({
         tenantId,
-        status: 'active',
+        status: { $in: ['active', 'pending'] },
+        ...(isOwner ? { role: 'owner' } : {}),
       });
 
-      const remaining = limits.userLimit - currentCount;
+      const remaining = limit - currentCount;
 
       return {
         allowed: remaining > 0,
         remaining,
         currentCount,
-        limit: limits.userLimit,
+        limit,
+        metric: isOwner ? 'owners' : 'users',
         isUnlimited: false,
       };
     } catch (error) {
@@ -220,6 +244,16 @@ class LimitCheckerService {
         error: error.message,
       };
     }
+  }
+
+  async updateStorageUsageCache(tenantId, usage) {
+    if (!localRedisClient.isEnabled()) return false;
+    return localRedisClient.cacheStorageUsage(tenantId, Math.max(0, Number(usage || 0)), 3600);
+  }
+
+  async clearStorageUsageCache(tenantId) {
+    if (!localRedisClient.isEnabled()) return false;
+    return localRedisClient.clearStorageUsage(tenantId);
   }
 
   /**

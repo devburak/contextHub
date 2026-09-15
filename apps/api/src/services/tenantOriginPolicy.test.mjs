@@ -79,6 +79,12 @@ describe('tenantOriginPolicy', () => {
 
     expect(options.origin).toBe('https://admin.ctxhub.example');
     expect(options.credentials).toBe(true);
+    expect(options.exposedHeaders).toEqual(expect.arrayContaining([
+      'RateLimit',
+      'X-RateLimit-Remaining',
+      'Retry-After',
+    ]));
+    expect(options.allowedHeaders).toContain('X-Locale');
   });
 
   it('allows tenant website origins without enabling session credentials', async () => {

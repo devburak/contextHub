@@ -1,13 +1,16 @@
-const { Tenant, Membership, User, rbac } = require('@contexthub/common');
+const { Tenant, Membership, User, Account, BillingAccount, SubscriptionPlan, PlanPrice, rbac } = require('@contexthub/common');
 const roleService = require('./roleService');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
+const accountService = require('./accountService');
 const edgeGatewaySyncService = require('./edgeGatewaySyncService');
 const { invalidateTenantOriginPolicyCache } = require('./tenantOriginPolicy');
 const { mailService } = require('./mailService');
+const { hostedOperationsNotificationService } = require('./hostedOperationsNotificationService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const { ROLE_KEYS } = rbac;
+const { isAccountBillingEnabled, getEnabledBillingProviders } = require('../lib/billingConfig');
 
 class TenantService {
   async #formatTenantSummary(tenantDoc) {
@@ -24,6 +27,7 @@ class TenantService {
       plan: plan.slug,
       planName: plan.name,
       currentPlan: plan,
+      features: plan.features || [],
       status: tenantDoc.status,
       createdAt: tenantDoc.createdAt
     };
@@ -53,9 +57,85 @@ class TenantService {
     return candidate;
   }
 
-  async createTenant({ name, slug, plan = 'free' }, ownerId) {
+  async generateSlugSuggestions(base, limit = 3) {
+    const normalized = this.#slugify(base) || 'tenant';
+    const suggestions = [];
+    let suffix = 1;
+
+    while (suggestions.length < limit) {
+      const candidate = `${normalized}-${suffix}`;
+      if (!(await Tenant.exists({ slug: candidate }))) {
+        suggestions.push(candidate);
+      }
+      suffix += 1;
+    }
+
+    return suggestions;
+  }
+
+  async hasOwnedFreeTenant(ownerId) {
+    const ownedMemberships = await Membership.find({
+      userId: ownerId,
+      role: ROLE_KEYS.OWNER,
+      status: 'active',
+    }).select('tenantId');
+    const ownedTenantIds = ownedMemberships.map((membership) => membership.tenantId).filter(Boolean);
+    if (ownedTenantIds.length === 0) return false;
+
+    const ownedTenants = await Tenant.find({
+      _id: { $in: ownedTenantIds },
+      status: { $nin: ['pending_payment', 'deletion_pending', 'deleted'] },
+    }).select('plan currentPlan').populate('currentPlan', 'slug');
+    return ownedTenants.some(
+      (tenant) => tenantSubscriptionService.getEffectivePlanSlug(tenant) === 'free'
+    );
+  }
+
+  async getCreationOptions(ownerId) {
+    const [hasFreeTenant, plans, prices] = await Promise.all([
+      this.hasOwnedFreeTenant(ownerId),
+      SubscriptionPlan.find({ isActive: true }).sort({ sortOrder: 1, price: 1 }).lean(),
+      isAccountBillingEnabled() ? PlanPrice.find({
+        active: true,
+        provider: { $in: getEnabledBillingProviders() },
+        externalPriceId: { $nin: [null, ''] },
+        amountMinor: { $gt: 0 },
+      }).select('planId').lean() : [],
+    ]);
+    const paidIds = new Set(prices.map((price) => String(price.planId)));
+    return {
+      hasFreeTenant,
+      plans: plans.map((plan) => ({
+        slug: plan.slug,
+        name: plan.name,
+        description: plan.description || '',
+        available: plan.slug === 'free' ? !hasFreeTenant
+          : plan.slug !== 'enterprise' && paidIds.has(String(plan._id)),
+      })),
+    };
+  }
+
+  async createTenant({ name, slug, requestedPlanSlug = 'free' }, ownerId) {
     if (!name) {
       throw new Error('Tenant name is required');
+    }
+
+    const paid = requestedPlanSlug !== 'free';
+    if (paid) {
+      const options = await this.getCreationOptions(ownerId);
+      if (!options.plans.some((plan) => plan.slug === requestedPlanSlug && plan.available)) {
+        const error = new Error('Selected plan is not available for tenant creation');
+        error.code = 'PlanUnavailable';
+        throw error;
+      }
+    }
+
+    if (!paid && await this.hasOwnedFreeTenant(ownerId)) {
+      const error = new Error(
+        'Free tenant sınırına ulaşıldı. Yeni varlığınız için ücretli bir paket seçebilirsiniz.'
+      );
+      error.code = 'FreeTenantLimit';
+      throw error;
     }
 
     let finalSlug;
@@ -65,7 +145,10 @@ class TenantService {
         finalSlug = await this.generateUniqueSlug(name);
       }
       if (await Tenant.exists({ slug: finalSlug })) {
-        throw new Error('Tenant slug already exists');
+        const error = new Error('Tenant slug already exists');
+        error.code = 'SlugConflict';
+        error.suggestions = await this.generateSlugSuggestions(finalSlug);
+        throw error;
       }
     } else {
       finalSlug = await this.generateUniqueSlug(name);
@@ -75,11 +158,15 @@ class TenantService {
       name,
       slug: finalSlug,
       plan: 'free',
-      status: 'active',
-      createdBy: ownerId
+      status: paid ? 'pending_payment' : 'active',
+      requestedPlanSlug: paid ? requestedPlanSlug : null,
+      createdBy: ownerId,
+      provisioningChannel: 'self_service',
     });
-    await tenantSubscriptionService.applyPlanToTenant(tenant, plan);
+    await tenantSubscriptionService.applyPlanToTenant(tenant, 'free');
     await tenant.save();
+    const owner = await User.findById(ownerId).select('email');
+    await accountService.createForTenant(tenant, ownerId, { billingEmail: owner?.email || '' });
     invalidateTenantOriginPolicyCache();
 
     const ownerRole = await roleService.resolveRole({ tenantId: tenant._id, roleKey: ROLE_KEYS.OWNER })
@@ -101,6 +188,17 @@ class TenantService {
       console.error('[TenantService] Edge gateway sync failed after tenant create:', error.message);
     }
 
+    try {
+      await hostedOperationsNotificationService.notifyTenantCreated({
+        tenantName: tenant.name,
+        tenantSlug: tenant.slug,
+        ownerEmail: owner?.email || '',
+        plan: tenant.plan || 'free',
+      });
+    } catch (error) {
+      console.error('[TenantService] Hosted tenant notification failed:', error.message);
+    }
+
     return { tenant, membership };
   }
 
@@ -109,11 +207,13 @@ class TenantService {
       .populate({
         path: 'tenantId',
         select: 'name slug plan status createdAt currentPlan',
+        match: { status: { $nin: ['deletion_pending', 'deleted'] } },
         populate: { path: 'currentPlan' }
       })
       .sort({ createdAt: -1 });
 
-    return Promise.all(memberships.map(async (membership) => {
+    const visibleMemberships = memberships.filter((membership) => Boolean(membership.tenantId));
+    return Promise.all(visibleMemberships.map(async (membership) => {
       const tenantDoc = membership.tenantId;
       const tenantId = tenantDoc?._id?.toString() || membership.tenantId?.toString();
       const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
@@ -192,7 +292,8 @@ class TenantService {
     const currentOwnerMembership = await Membership.findOne({
       userId: currentOwnerId,
       tenantId,
-      role: 'owner'
+      role: 'owner',
+      status: 'active'
     });
 
     if (!currentOwnerMembership) {
@@ -203,6 +304,7 @@ class TenantService {
     const otherOwners = await Membership.countDocuments({
       tenantId,
       role: 'owner',
+      status: 'active',
       userId: { $ne: currentOwnerId }
     });
 
@@ -351,6 +453,20 @@ class TenantService {
         oldOwnerMembership.role = 'admin';
         oldOwnerMembership.roleId = adminRole?._id || null;
         await oldOwnerMembership.save();
+      }
+    }
+
+    const tenant = await Tenant.findById(tenantId).select('accountId');
+    if (tenant?.accountId) {
+      await Account.updateOne(
+        { _id: tenant.accountId },
+        { $set: { ownerUserId: newOwnerId } }
+      );
+      if (newOwner?.email) {
+        await BillingAccount.updateOne(
+          { accountId: tenant.accountId },
+          { $set: { billingEmail: newOwner.email } }
+        );
       }
     }
 

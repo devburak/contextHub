@@ -12,10 +12,18 @@ const {
   EXTENSION_API_VERSION
 } = require('./extensionContract');
 const { createExtensionRegistry } = require('./extensionRegistry');
+const roleService = require('../services/roleService');
 
 const CORE_PACKAGE_PATH = path.resolve(__dirname, '../../../../package.json');
 const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ROUTE_PREFIX_PATTERN = /^\/api\/[a-z][a-z0-9-]*(?:\/[a-z0-9-]+)*$/;
+const SUPPORTED_CAPABILITIES = Object.freeze([
+  'tenant.sources.index',
+  'tenant.backup.export',
+  'tenant.backup.restore',
+  'tenant.settings.enumerate',
+  'tenant.secrets.manage'
+]);
 
 class PluginHostError extends Error {
   constructor(message, code = 'PLUGIN_HOST_ERROR') {
@@ -135,6 +143,11 @@ function validatePluginManifest(raw, options = {}) {
   }
   const permissions = uniqueStrings(raw.permissions || [], 'permissions');
   const featureKeys = uniqueStrings(raw.featureKeys || [], 'featureKeys');
+  const capabilities = uniqueStrings(raw.capabilities || [], 'capabilities');
+  const unknownCapability = capabilities.find(
+    (capability) => !SUPPORTED_CAPABILITIES.includes(capability)
+  );
+  if (unknownCapability) fail(`unsupported plugin capability: ${unknownCapability}`);
   const consumesDomainEvents = uniqueStrings(
     raw.consumesDomainEvents || [],
     'consumesDomainEvents'
@@ -160,6 +173,7 @@ function validatePluginManifest(raw, options = {}) {
     routePrefix,
     permissions,
     featureKeys,
+    capabilities,
     consumesDomainEvents,
     consumers,
     entrypoints: Object.freeze({ api: apiEntrypoint, admin: raw.entrypoints?.admin || null })
@@ -187,6 +201,16 @@ function resolvePluginEntries(value = process.env.CTXHUB_PLUGINS || '') {
     .map((item) => item.trim())
     .filter(Boolean)
     .map((item) => path.resolve(item));
+}
+
+function resolveRequiredPluginNames(value = process.env.CTXHUB_REQUIRED_PLUGINS || '') {
+  const normalized = Array.isArray(value)
+    ? value
+    : String(value).split(',');
+  const names = normalized.map((item) => String(item).trim()).filter(Boolean);
+  const invalid = names.find((name) => !PLUGIN_NAME_PATTERN.test(name));
+  if (invalid) fail(`invalid required plugin name: ${invalid}`, 'PLUGIN_REQUIRED_INVALID');
+  return Object.freeze([...new Set(names)]);
 }
 
 async function getCoreVersion() {
@@ -248,8 +272,17 @@ async function bootstrapExtensions(options = {}) {
     throw new PluginHostError('bootstrap mode must be api or consumer');
   }
   const entries = resolvePluginEntries(options.entries);
+  const requiredPluginNames = resolveRequiredPluginNames(options.requiredPlugins);
   const registry = options.registry || createExtensionRegistry();
-  if (!entries.length) return Object.freeze({ registry, plugins: Object.freeze([]) });
+  if (!entries.length) {
+    if (requiredPluginNames.length > 0) {
+      fail(
+        `required plugins are not configured: ${requiredPluginNames.join(', ')}`,
+        'PLUGIN_REQUIRED_MISSING'
+      );
+    }
+    return Object.freeze({ registry, plugins: Object.freeze([]) });
+  }
   if (mode === 'api' && !options.app) {
     throw new PluginHostError('Fastify app is required in api mode');
   }
@@ -263,10 +296,29 @@ async function bootstrapExtensions(options = {}) {
     plugins.push(plugin);
   }
 
+  const loadedPluginNames = new Set(plugins.map(({ manifest }) => manifest.name));
+  const missingRequiredPlugins = requiredPluginNames.filter((name) => !loadedPluginNames.has(name));
+  if (missingRequiredPlugins.length > 0) {
+    fail(
+      `required plugins were not loaded: ${missingRequiredPlugins.join(', ')}`,
+      'PLUGIN_REQUIRED_MISSING'
+    );
+  }
+
   const preparedPlugins = plugins.map((plugin) => ({
     plugin,
     hook: hookForMode(plugin, mode)
   }));
+
+  if (mode === 'api') {
+    const permissionRegistry = options.permissionRegistry || roleService;
+    for (const plugin of plugins) {
+      permissionRegistry.registerExtensionPermissions(
+        plugin.manifest.name,
+        plugin.manifest.permissions
+      );
+    }
+  }
 
   for (const { plugin, hook } of preparedPlugins) {
     if (mode === 'api') {
@@ -297,10 +349,12 @@ async function bootstrapExtensions(options = {}) {
 }
 
 module.exports = {
+  SUPPORTED_CAPABILITIES,
   PluginHostError,
   bootstrapExtensions,
   loadPlugin,
   resolvePluginEntries,
+  resolveRequiredPluginNames,
   validatePluginExports,
   validatePluginManifest
 };

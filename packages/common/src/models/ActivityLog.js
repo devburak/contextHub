@@ -48,6 +48,8 @@ const activityLogSchema = new Schema({
       'tenant.create',
       'tenant.update',
       'tenant.delete',
+      'tenant.restore',
+      'tenant.purge',
       'tenant.ownership.transfer',
       'membership.join',
       'membership.leave',

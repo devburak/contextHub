@@ -30,7 +30,7 @@ const webhookOutboxSchema = new Schema(
     payload: { type: Schema.Types.Mixed, required: true },
     status: {
       type: String,
-      enum: ['pending', 'processing', 'done', 'failed', 'dead'],
+      enum: ['pending', 'processing', 'done', 'failed', 'dead', 'paused'],
       default: 'pending'
     },
     retryCount: { type: Number, default: 0 },
@@ -43,6 +43,7 @@ const webhookOutboxSchema = new Schema(
     lastHttpStatus: { type: Number, default: null },
     lastDurationMs: { type: Number, default: null },
     nextRetryAt: { type: Date, default: null },
+    lifecyclePausedAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: null }
   },

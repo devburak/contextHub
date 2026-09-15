@@ -80,7 +80,7 @@ export default function PlacementAnalytics() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <Link to="/placements" className="text-gray-600 hover:text-gray-900">
             <ArrowLeft size={24} />
@@ -103,7 +103,7 @@ export default function PlacementAnalytics() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           title="Gösterimler"
           value={totals.impressions?.toLocaleString() || 0}
@@ -155,7 +155,7 @@ export default function PlacementAnalytics() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
                   <div>
                     <div className="text-xs text-gray-500">Gösterimler</div>
                     <div className="text-lg font-semibold">{exp.impressions?.toLocaleString()}</div>
@@ -184,7 +184,7 @@ export default function PlacementAnalytics() {
       )}
 
       {/* Device & Browser Breakdown */}
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h2 className="text-lg font-semibold mb-4">Cihazlara Göre</h2>
           <div className="space-y-3">

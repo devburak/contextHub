@@ -1,12 +1,6 @@
 import { apiClient } from './api.js'
 
 export const userAPI = {
-  // Email ile kullanıcı kontrol et
-  checkEmail: async (email) => {
-    const { data } = await apiClient.post('/users/check-email', { email })
-    return data
-  },
-
   // Tüm kullanıcıları getir
   getUsers: async (params = {}) => {
     const { data } = await apiClient.get('/users', { params })
@@ -131,12 +125,6 @@ export const userAPI = {
     }
   },
 
-  // Yeni kullanıcı oluştur
-  createUser: async (userData) => {
-    const { data } = await apiClient.post('/users', userData)
-    return data
-  },
-
   // Mevcut kullanıcıyı tenant'a davet et
   inviteUser: async (inviteData) => {
     const { data } = await apiClient.post('/users/invite', inviteData)
@@ -167,12 +155,6 @@ export const userAPI = {
     return data
   },
 
-  // Kullanıcı şifresini sıfırla
-  resetUserPassword: async (id) => {
-    const { data } = await apiClient.post(`/users/${id}/reset-password`)
-    return data
-  },
-
   // Kullanıcı rolünü değiştir
   updateUserRole: async (id, role) => {
     const { data } = await apiClient.put(`/users/${id}/role`, { role })
@@ -191,9 +173,16 @@ export const userAPI = {
     return data
   },
 
-  // Hesabı kalıcı olarak sil
-  deleteAccount: async () => {
-    const { data } = await apiClient.delete('/users/me')
+  getAccountDeletionPreflight: async () => {
+    const { data } = await apiClient.get('/users/me/deletion-preflight')
+    return data
+  },
+
+  // Hesabı anonimleştir ve üyelikleri sonlandır
+  deleteAccount: async ({ currentPassword, confirmation }) => {
+    const { data } = await apiClient.delete('/users/me', {
+      data: { currentPassword, confirmation }
+    })
     return data
   },
 

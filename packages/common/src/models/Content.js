@@ -1,4 +1,5 @@
 const mongoose = require('mongoose')
+const deploymentIndexes = require('../deploymentIndexes')
 const { Schema } = mongoose
 
 const contentSchema = new Schema({
@@ -39,6 +40,7 @@ contentSchema.index({ tenantId: 1, slug: 1 }, { unique: true })
 contentSchema.index({ tenantId: 1, status: 1, publishAt: 1 })
 contentSchema.index({ tenantId: 1, categories: 1 })
 contentSchema.index({ tenantId: 1, tags: 1 })
+deploymentIndexes.Content.forEach((key) => contentSchema.index(key))
 
 const Content = mongoose.model('Content', contentSchema)
 

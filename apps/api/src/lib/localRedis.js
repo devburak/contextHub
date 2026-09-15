@@ -234,6 +234,17 @@ class LocalRedisClient extends EventEmitter {
     }
   }
 
+  async clearStorageUsage(tenantId) {
+    if (!this.isEnabled()) return false;
+    try {
+      await this.client.del(this.getStorageUsageKey(tenantId));
+      return true;
+    } catch (error) {
+      console.error('[LocalRedis] Failed to clear storage usage:', error.message);
+      return false;
+    }
+  }
+
   async invalidateTenantCache(tenantId) {
     if (!this.isEnabled()) {
       return false;

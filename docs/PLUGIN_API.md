@@ -20,8 +20,8 @@ cakismasinda process fail-fast durur.
 Guncel public extension contract'i:
 
 - API version: `1`
-- API revision: `2`
-- Admin API version/revision: `1/1`
+- API revision: `5`
+- Admin API version/revision: `1/3`
 - Domain event schema version: `1`
 
 Major `version` kirici degisikliklerde, `revision` ayni major icindeki geriye uyumlu
@@ -67,6 +67,10 @@ Context dondurulmus, dar ve versioned bir yuzeydir:
   plugin: { name, version },
   events,
   sources,
+  auth,
+  entitlements,
+  settings,
+  secrets, // only with tenant.secrets.manage
   log,
 }
 ```
@@ -91,6 +95,62 @@ alanlarini tasir. Raw Mongoose model, Mongo client veya credential aciga cikmaz.
 Source facade salt okunurdur. Plugin kaynak Content/CollectionEntry kayitlarini bu
 yuzeyden olusturamaz, guncelleyemez veya silemez.
 
+`context.auth` ve `context.settings` API revision 3 ile eklenmistir. Auth facade
+yalniz manifestte bildirilen izinler icin session/JWT guard'i uretir; tenant ve user
+kimligini dogrulanmis request context'inden verir. Settings facade plugin adiyla
+namespace edilmis, tenant-scoped JSON ayarlarini optimistic revision kontroluyle
+okur/yazar. Raw model veya baska plugin namespace'i aciga cikmaz.
+
+API revision 4 `context.entitlements` facade'ini ekler. Plugin yalniz manifestinde
+bildirdigi feature key'ler icin guard uretebilir; aktif tenant planinda feature yoksa
+route `403 FeatureNotEntitled` doner. Commercial feature key'leri public core'da sabitlenmez.
+
+API revision 5, varsayilan plugin yuzeyini genisletmeden manifest capability'leri
+ekler. `tenant.backup.export` capability'sini acikca bildiren trusted plugin su salt
+okunur metodlari alir:
+
+```js
+context.sources.streamTenantBackupRecords({ tenantId })
+context.sources.listTenantBackupFiles({ tenantId })
+context.sources.openTenantBackupFile({ tenantId, key })
+```
+
+Export edilen veritabani kayitlari Mongo Extended JSON bicimindedir. Her sorgu
+`tenantId` filtresini uygular; media key'i hem tenant-scoped Media kaydiyla hem de
+tenant slug prefix'iyle dogrulanir. Facade baska tenant kaydi veya storage key'i
+gorurse islemi fail-closed sonlandirir.
+
+`tenant.secrets.manage`, plugin'e `context.secrets` kasasini verir. Secret deger AES-256-GCM
+ile sifrelenir ve tenant ID + plugin adi + key authenticated additional data (AAD)
+olarak baglanir. `tenant.settings.enumerate` yalniz plugin'in kendi setting key'i olan
+tenant ID'lerini listeler; baska plugin namespace'ini goremez. Bu uc capability
+manifestte yoksa ilgili metodlar context'e hic eklenmez.
+
+API revision 6, hosted tenant restore icin `tenant.backup.restore` capability'sini
+ekler. Bu capability yalniz trusted backup plugin'ine tenant-scoped database ve media
+yazma facade'i verir:
+
+```js
+context.restore.getTenant({ tenantId })
+context.restore.findPopulatedCollections({ tenantId, collections })
+context.restore.checkIdentity({ collection, id, tenantId })
+context.restore.upsert({ collection, id, tenantId, document })
+context.restore.delete({ collection, id, tenantId })
+context.restore.getMediaTarget({ tenantId })
+context.restore.putFile({ tenantId, key, body, contentType, contentLength })
+context.restore.deleteFile({ tenantId, key })
+```
+
+Facade yalniz allowlist'teki tenant-owned CMS koleksiyonlarini kabul eder. Tenant,
+User, Membership, Role, token, billing ve operasyonel kayitlar yazilamaz; user referansi
+iceren dokumanlar core tarafinda da fail-closed reddedilir. Media key'i hedef tenant
+slug prefix'i ile eslesmelidir. Mongo veya R2 credential'i plugin'e aciga cikmaz.
+
+Admin API revision 3, community fallback'li `virtual:ctxhub-plugins` girisini,
+plugin page/menu kaydina ek olarak tenant tab, content-search ve content-editor panel
+katkilarini ve bunlarin fail-fast kontrolunu ekler. Hosted composition
+commercial admin kaynagini local workspace'ten verir; private npm registry gerekmez.
+
 ## Guvenlik siniri
 
 - Manifest yollarini yalniz deploy composition belirler.
@@ -98,5 +158,7 @@ yuzeyden olusturamaz, guncelleyemez veya silemez.
 - Private plugin core ic servis/model dosyalarini import etmemeli, yalniz context
   facade'larini kullanmalidir.
 - Secret degerleri manifest, Git, log veya public health cevabina yazilmaz.
-- Permission ve entitlement guard'lari API revision 2'nin parcasi degildir; F3
-  tamamlanmadan commercial route acilmamalidir.
+- Manifest permission guard'i revision 3, plan feature entitlement guard'i revision
+  4'tedir. Authenticated commercial route'lar hem permission hem entitlement uygular.
+- Public tenant aramasi ayrica opt-in, public entitlement ve rate limit tamamlanana
+  kadar kapali kalir.

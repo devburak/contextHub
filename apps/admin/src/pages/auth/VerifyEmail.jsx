@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
+import { useApiError } from '../../lib/useApiError.js'
 import Footer from '../../components/Footer.jsx'
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const token = searchParams.get('token')
 
   const [status, setStatus] = useState('loading') // loading, success, error
@@ -15,7 +19,7 @@ export default function VerifyEmail() {
   useEffect(() => {
     if (!token) {
       setStatus('error')
-      setErrorMessage('Geçersiz doğrulama bağlantısı')
+      setErrorMessage(t('verify.invalid_link'))
       return
     }
 
@@ -26,16 +30,18 @@ export default function VerifyEmail() {
         // 3 saniye sonra login sayfasına yönlendir
         setTimeout(() => {
           navigate('/login', {
-            state: { message: 'E-posta adresiniz başarıyla doğrulandı. Giriş yapabilirsiniz.' }
+            state: { message: t('verify.success_signin') }
           })
         }, 3000)
       } catch (error) {
         setStatus('error')
-        setErrorMessage(error.response?.data?.message || 'E-posta doğrulama başarısız oldu')
+        setErrorMessage(describeError(error, 'verify.failed'))
       }
     }
 
     verifyEmail()
+    // Dil değişiminde doğrulama isteği tekrarlanmasın: yalnızca token/navigate izlenir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, navigate])
 
   if (status === 'loading') {
@@ -51,10 +57,10 @@ export default function VerifyEmail() {
                 </svg>
               </div>
               <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-                E-posta Doğrulanıyor
+                {t('verify.verifying')}
               </h2>
               <p className="mt-2 text-sm text-gray-600">
-                Lütfen bekleyin...
+                {t('auth.please_wait')}
               </p>
             </div>
           </div>
@@ -76,10 +82,10 @@ export default function VerifyEmail() {
                 </svg>
               </div>
               <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-                E-posta Doğrulandı!
+                {t('verify.success_title')}
               </h2>
               <p className="mt-2 text-sm text-gray-600">
-                E-posta adresiniz başarıyla doğrulandı. Giriş sayfasına yönlendiriliyorsunuz...
+                {t('verify.success_redirecting')}
               </p>
               <div className="mt-6">
                 <Link
@@ -87,7 +93,7 @@ export default function VerifyEmail() {
                   className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-500"
                 >
                   <ArrowLeftIcon className="h-4 w-4" />
-                  Giriş sayfasına git
+                  {t('verify.go_to_login')}
                 </Link>
               </div>
             </div>
@@ -110,7 +116,7 @@ export default function VerifyEmail() {
               </svg>
             </div>
             <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-              Doğrulama Başarısız
+              {t('verify.failed_title')}
             </h2>
             <p className="mt-2 text-sm text-gray-600">
               {errorMessage}
@@ -121,10 +127,10 @@ export default function VerifyEmail() {
                 className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-500"
               >
                 <ArrowLeftIcon className="h-4 w-4" />
-                Giriş sayfasına dön
+                {t('forgot.back_to_login')}
               </Link>
               <p className="text-xs text-gray-500">
-                Doğrulama bağlantısının süresi dolmuş olabilir. Giriş sayfasından yeni bir doğrulama e-postası talep edebilirsiniz.
+                {t('verify.expired_hint')}
               </p>
             </div>
           </div>

@@ -1,51 +1,71 @@
 import { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, CogIcon, BuildingOfficeIcon, PlusIcon, PhotoIcon, Squares2X2Icon, DocumentTextIcon, WrenchScrewdriverIcon, BookOpenIcon, ClipboardDocumentListIcon, SparklesIcon, Bars3BottomLeftIcon, ShieldCheckIcon, QueueListIcon, RectangleStackIcon, CodeBracketIcon, ChevronLeftIcon, ChevronRightIcon, CreditCardIcon } from '@heroicons/react/24/outline'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom'
+import { Link, matchPath, useLocation, useNavigate, Navigate, Outlet } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
 import { PERMISSIONS } from '../constants/permissions.js'
+import { adminPluginNavigation } from '../plugins/registry.jsx'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [switchingTenantId, setSwitchingTenantId] = useState(null)
-  const { user, memberships, activeMembership, selectTenant, logout, hasPermission } = useAuth()
+  const { user, memberships, activeMembership, selectTenant, logout, hasPermission, hasFeature } = useAuth()
   const location = useLocation()
+  const isContentEditorRoute = Boolean(matchPath('/contents/:id', location.pathname))
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
+
+  useEffect(() => {
+    if (!isContentEditorRoute) return undefined
+
+    const root = document.documentElement
+    const body = document.body
+
+    root.classList.add('lg:overflow-hidden')
+    body.classList.add('lg:overflow-hidden')
+    window.scrollTo(0, 0)
+
+    return () => {
+      root.classList.remove('lg:overflow-hidden')
+      body.classList.remove('lg:overflow-hidden')
+    }
+  }, [isContentEditorRoute])
 
   const navigation = useMemo(() => [
     {
       id: 'create-tenant',
-      name: 'Yeni Varlık Oluştur',
+      name: t('nav.create_tenant'),
       href: '/varliklar/yeni',
       icon: PlusIcon,
       // Herkes varlık oluşturabilir - permission yok
     },
     {
       id: 'dashboard',
-      name: 'Kontrol Paneli',
+      name: t('nav.dashboard'),
       href: '/',
       icon: CogIcon,
       permission: PERMISSIONS.DASHBOARD_VIEW
     },
     {
       id: 'users-group',
-      name: 'Kullanıcı Yönetimi',
+      name: t('nav.user_management'),
       icon: UserIcon,
       children: [
         {
           id: 'users',
-          name: 'Kullanıcılar',
+          name: t('nav.users'),
           href: '/users',
           icon: UserIcon,
           permission: PERMISSIONS.USERS_VIEW
         },
         {
           id: 'roles',
-          name: 'Roller',
+          name: t('nav.roles'),
           href: '/roles',
           icon: ShieldCheckIcon,
           permission: PERMISSIONS.ROLES_VIEW
@@ -54,97 +74,106 @@ export default function Layout() {
     },
     {
       id: 'media',
-      name: 'Medya',
+      name: t('nav.media'),
       href: '/media',
       icon: PhotoIcon,
       permission: PERMISSIONS.MEDIA_VIEW
     },
     {
       id: 'galleries',
-      name: 'Galeriler',
+      name: t('nav.galleries'),
       href: '/galeriler',
       icon: Squares2X2Icon,
       permission: PERMISSIONS.MEDIA_VIEW
     },
     {
       id: 'categories',
-      name: 'Kategoriler',
+      name: t('nav.categories'),
       href: '/categories',
       icon: QueueListIcon,
       permission: PERMISSIONS.CATEGORIES_VIEW
     },
     {
       id: 'contents',
-      name: 'İçerikler',
+      name: t('nav.contents'),
       href: '/contents',
       icon: DocumentTextIcon,
       permission: PERMISSIONS.CONTENT_VIEW
     },
+    ...adminPluginNavigation.filter((item) => !item.parentId),
     {
       id: 'collections',
-      name: 'Koleksiyonlar',
+      name: t('nav.collections'),
       href: '/collections',
       icon: RectangleStackIcon,
       permission: PERMISSIONS.COLLECTIONS_VIEW
     },
     {
       id: 'forms',
-      name: 'Formlar',
+      name: t('nav.forms'),
       href: '/forms',
       icon: ClipboardDocumentListIcon,
       permission: PERMISSIONS.FORMS_VIEW
     },
     {
       id: 'placements',
-      name: 'Yerleşimler',
+      name: t('nav.placements'),
       href: '/placements',
       icon: SparklesIcon,
       permission: PERMISSIONS.PLACEMENTS_VIEW
     },
     {
       id: 'menus',
-      name: 'Menüler',
+      name: t('nav.menus'),
       href: '/menus',
       icon: Bars3BottomLeftIcon,
       permission: PERMISSIONS.MENUS_VIEW
     },
     {
       id: 'tenants-group',
-      name: 'Varlıklar',
+      name: t('nav.tenants'),
       icon: BuildingOfficeIcon,
       // Varlıklar menüsü herkes için görünür - permission yok
       children: [
         {
           id: 'tenants',
-          name: 'Varlık Listesi',
+          name: t('nav.tenant_list'),
           href: '/varliklar',
           icon: BuildingOfficeIcon,
           // Varlık listesi herkes görebilir - permission yok
         },
         {
           id: 'tenant-settings',
-          name: 'Varlık Ayarları',
+          name: t('nav.tenant_settings'),
           href: '/varliklar/ayarlar',
           icon: WrenchScrewdriverIcon,
           permission: PERMISSIONS.TENANTS_MANAGE // Sadece ayarlar yetkili olmalı
-        }
+        },
+        ...adminPluginNavigation.filter((item) => item.parentId === 'tenants-group')
       ]
     },
     {
+      id: 'billing',
+      name: t('nav.billing'),
+      href: '/faturalandirma',
+      icon: CreditCardIcon,
+      permission: PERMISSIONS.BILLING_VIEW
+    },
+    {
       id: 'docs',
-      name: 'Belgeler',
+      name: t('nav.documents'),
       href: '/belgeler',
       icon: BookOpenIcon,
       permission: PERMISSIONS.DASHBOARD_VIEW
     },
     {
       id: 'apidocs',
-      name: 'API Dokümantasyonu',
+      name: t('nav.api_docs'),
       href: '/apidocs',
       icon: CodeBracketIcon,
       permission: PERMISSIONS.DASHBOARD_VIEW
     }
-  ], [])
+  ], [t])
 
   const filterNavigation = useCallback((items) => {
     return items
@@ -161,12 +190,27 @@ export default function Layout() {
           return null
         }
 
+        if (item.feature && !hasFeature(item.feature)) {
+          return null
+        }
+
         return item
       })
       .filter(Boolean)
-  }, [hasPermission])
+  }, [hasFeature, hasPermission])
 
-  const filteredNavigation = useMemo(() => filterNavigation(navigation), [navigation, filterNavigation])
+  const paymentPending = activeMembership?.tenant?.status === 'pending_payment'
+  const filteredNavigation = useMemo(() => filterNavigation(navigation).filter((item) =>
+    !paymentPending || ['billing', 'create-tenant'].includes(item.id)
+  ), [navigation, filterNavigation, paymentPending])
+  const mainNavigation = useMemo(
+    () => filteredNavigation.filter((item) => item.id !== 'billing'),
+    [filteredNavigation]
+  )
+  const billingNavigationItem = useMemo(
+    () => filteredNavigation.find((item) => item.id === 'billing') || null,
+    [filteredNavigation]
+  )
 
   const isActive = useCallback((href) => {
     if (!href) return false
@@ -191,9 +235,9 @@ export default function Layout() {
       })
     }
 
-    walk(filteredNavigation)
+    walk(mainNavigation)
     setExpandedGroups((prev) => ({ ...prev, ...nextState }))
-  }, [filteredNavigation, isActive])
+  }, [mainNavigation, isActive])
 
   const toggleGroup = (id) => {
     setExpandedGroups((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -282,8 +326,8 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <div className="flex-1">
+    <div className="min-h-screen bg-gray-50">
+      <div>
         <Transition.Root show={sidebarOpen} as={Fragment}>
           <Dialog as="div" className="relative z-50 lg:hidden" onClose={setSidebarOpen}>
             <Transition.Child
@@ -320,7 +364,7 @@ export default function Layout() {
                   >
                     <div className="absolute left-full top-0 flex w-16 justify-center pt-5">
                       <button type="button" className="-m-2.5 p-2.5" onClick={() => setSidebarOpen(false)}>
-                        <span className="sr-only">Close sidebar</span>
+                        <span className="sr-only">{t('nav.close_menu')}</span>
                         <XMarkIcon className="h-6 w-6 text-white" aria-hidden="true" />
                       </button>
                     </div>
@@ -338,7 +382,7 @@ export default function Layout() {
                           type="button"
                           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                           onClick={() => setSidebarOpen(false)}
-                          aria-label="Menüyü kapat"
+                          aria-label={t('nav.close_menu')}
                         >
                           <XMarkIcon className="h-5 w-5" aria-hidden="true" />
                         </button>
@@ -348,11 +392,18 @@ export default function Layout() {
                       <ul role="list" className="flex flex-1 flex-col gap-y-7">
                         <li>
                           <ul role="list" className="-mx-2 space-y-1">
-                            {filteredNavigation.map((item) => (
+                            {mainNavigation.map((item) => (
                               <li key={item.id || item.href}>{renderNavItem(item, false)}</li>
                             ))}
                           </ul>
                         </li>
+                        {billingNavigationItem && (
+                          <li className="mt-auto border-t border-gray-200 pt-3">
+                            <ul role="list" className="-mx-2">
+                              <li>{renderNavItem(billingNavigationItem, false)}</li>
+                            </ul>
+                          </li>
+                        )}
                       </ul>
                     </nav>
                   </div>
@@ -379,8 +430,8 @@ export default function Layout() {
                   type="button"
                   onClick={toggleSidebarCollapsed}
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
-                  title={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
+                  aria-label={sidebarCollapsed ? t('nav.expand_menu') : t('nav.collapse_menu')}
+                  title={sidebarCollapsed ? t('nav.expand_menu') : t('nav.collapse_menu')}
                 >
                   {sidebarCollapsed ? (
                     <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
@@ -394,20 +445,31 @@ export default function Layout() {
               <ul role="list" className="flex flex-1 flex-col gap-y-7">
                 <li>
                   <ul role="list" className="-mx-2 space-y-1">
-                    {filteredNavigation.map((item) => (
+                    {mainNavigation.map((item) => (
                       <li key={item.id || item.href}>{renderNavItem(item, sidebarCollapsed)}</li>
                     ))}
                   </ul>
                 </li>
+                {billingNavigationItem && (
+                  <li className="mt-auto border-t border-gray-200 pt-3">
+                    <ul role="list" className="-mx-2">
+                      <li>{renderNavItem(billingNavigationItem, sidebarCollapsed)}</li>
+                    </ul>
+                  </li>
+                )}
               </ul>
             </nav>
           </div>
         </div>
 
-        <div className={classNames('transition-[padding] duration-200', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
+        <div className={classNames(
+          'flex min-h-screen flex-col transition-[padding] duration-200',
+          sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72',
+          isContentEditorRoute && 'lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden'
+        )}>
           <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
             <button type="button" className="-m-2.5 p-2.5 text-gray-700 lg:hidden" onClick={() => setSidebarOpen(true)}>
-              <span className="sr-only">Open sidebar</span>
+              <span className="sr-only">{t('nav.open_menu')}</span>
               <Bars3Icon className="h-6 w-6" aria-hidden="true" />
             </button>
 
@@ -446,7 +508,7 @@ export default function Layout() {
                     >
                       {memberships.map((membership) => (
                         <option key={membership.tenantId} value={membership.tenantId}>
-                          {membership.tenant?.name || 'Varlık'}
+                          {membership.tenant?.name || t('tenant.unnamed')}
                         </option>
                       ))}
                     </select>
@@ -462,15 +524,15 @@ export default function Layout() {
                     to="/profile"
                     className="flex items-center gap-x-2 text-sm font-semibold leading-6 text-gray-900 hover:text-blue-600"
                   >
-                    <span className="sr-only">Profil</span>
+                    <span className="sr-only">{t('nav.profile')}</span>
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-800">
                       <span className="text-sm font-medium text-white">
                         {user?.firstName?.charAt(0)?.toUpperCase() || 'U'}
                       </span>
                     </div>
                     <span className="hidden lg:flex lg:flex-col lg:items-start">
-                      <span>{user?.firstName || 'Kullanıcı'}</span>
-                      <span className="text-xs font-normal text-gray-500">Profili görüntüle</span>
+                      <span>{user?.firstName || t('nav.user_fallback')}</span>
+                      <span className="text-xs font-normal text-gray-500">{t('nav.view_profile')}</span>
                     </span>
                   </Link>
                   <button
@@ -478,21 +540,28 @@ export default function Layout() {
                     onClick={logout}
                     className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
-                    Çıkış
+                    {t('nav.sign_out_short')}
                   </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <main className="py-10 bg-gray-50 min-h-screen">
-            <div className="px-4 sm:px-6 lg:px-8">
-              <Outlet />
+          <main className={classNames(
+            'flex-1 bg-gray-50 py-10',
+            isContentEditorRoute && 'lg:min-h-0 lg:overflow-hidden'
+          )}>
+            <div className={classNames(
+              'px-4 sm:px-6 lg:px-8',
+              isContentEditorRoute && 'lg:h-full lg:min-h-0'
+            )}>
+              {paymentPending && !['/faturalandirma', '/billing', '/varliklar', '/varliklar/yeni', '/profil'].includes(location.pathname)
+                ? <Navigate to="/faturalandirma" replace /> : <Outlet />}
             </div>
           </main>
+          <Footer authenticated />
         </div>
       </div>
-      <Footer />
     </div>
   )
 }

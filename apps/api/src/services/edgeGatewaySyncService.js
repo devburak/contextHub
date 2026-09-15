@@ -79,6 +79,7 @@ function buildApiTokenPayload({ apiToken, tenant, settings, domains = [] }) {
     tokenId: apiToken._id?.toString?.() || null,
     role: apiToken.role || 'viewer',
     scopes: Array.isArray(apiToken.scopes) && apiToken.scopes.length ? apiToken.scopes : ['read'],
+    permissions: Array.isArray(apiToken.permissions) ? apiToken.permissions : [],
     expiresAt: apiToken.expiresAt ? new Date(apiToken.expiresAt).toISOString() : null,
   };
 }
@@ -237,7 +238,7 @@ async function syncTenantBundle({ tenantId, tenant: tenantInput } = {}) {
   const [settings, domains, apiTokens] = await Promise.all([
     TenantSettings.findOne({ tenantId: tenant._id }).lean(),
     Domain.find({ tenantId: tenant._id, status: 'verified' }).select('host status').lean(),
-    ApiToken.find({ tenantId: tenant._id }).lean(),
+    ApiToken.find({ tenantId: tenant._id, revokedAt: null }).lean(),
   ]);
 
   const tenantIdString = tenant._id.toString();

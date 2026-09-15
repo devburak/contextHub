@@ -1,15 +1,24 @@
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../contexts/AuthContext.jsx'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import Footer from '../../components/Footer.jsx'
+import { safeReturnTo, tenantCreationPathFor } from '../../lib/returnTo.js'
 
 export default function TenantSelection() {
   const { user, memberships, selectTenant, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const { t } = useTranslation()
+  const returnTo = safeReturnTo(
+    location.state?.returnTo || new URLSearchParams(location.search).get('returnTo'),
+  )
 
   const handleSelect = async (membership) => {
     const success = await selectTenant(membership)
     if (success) {
-      navigate('/')
+      navigate(
+        returnTo || (membership.tenant?.status === 'pending_payment' ? '/faturalandirma' : '/'),
+      )
     }
   }
 
@@ -18,26 +27,28 @@ export default function TenantSelection() {
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-16">
         <div className="max-w-3xl w-full bg-white shadow-lg rounded-lg p-8">
           <div className="mb-6 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">Varlık Seçimi</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t('tenant.selection_title')}</h1>
             <p className="mt-2 text-sm text-gray-600">
-              Hoş geldin {user?.firstName || user?.name || 'kullanıcı'}. Lütfen devam etmek istediğin varlığı seç.
+              {t('tenant.selection_welcome', {
+                name: user?.firstName || user?.name || t('tenant.selection_fallback_name'),
+              })}
             </p>
           </div>
 
           {memberships.length === 0 ? (
             <div className="text-center space-y-6">
               <div className="text-gray-600">
-                <p className="text-lg mb-2">Aktif bir varlık erişiminiz bulunmuyor.</p>
-                <p className="text-sm">Yeni bir varlık oluşturarak başlayabilir veya mevcut bir varlığa katılım için davet bekleyebilirsiniz.</p>
+                <p className="text-lg mb-2">{t('tenant.selection_empty_title')}</p>
+                <p className="text-sm">{t('tenant.selection_empty_hint')}</p>
               </div>
               <button
-                onClick={() => navigate('/varliklar/yeni')}
+                onClick={() => navigate(tenantCreationPathFor(returnTo))}
                 className="inline-flex items-center rounded-md bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-700"
               >
                 <svg className="mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
-                Yeni Varlık Oluştur
+                {t('tenant.create_new')}
               </button>
             </div>
           ) : (
@@ -48,14 +59,19 @@ export default function TenantSelection() {
                   className="border border-gray-200 rounded-lg p-4 shadow-sm bg-gray-50"
                 >
                   <h2 className="text-lg font-semibold text-gray-900">
-                    {membership.tenant?.name || 'Adsız Varlık'}
+                    {membership.tenant?.name || t('tenant.unnamed')}
                   </h2>
-                  <p className="text-sm text-gray-500">Rol: {membership.role}</p>
+                  <p className="text-sm text-gray-500">
+                    {t('tenant.role_label', {
+                      // Rol adı özel (custom) olabilir; bilinen bir rol değilse ham değeri göster.
+                      role: t(`role.${membership.role}`, { defaultValue: membership.role }),
+                    })}
+                  </p>
                   <button
                     onClick={() => handleSelect(membership)}
                     className="mt-4 w-full inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                   >
-                    Bu varlıkla devam et
+                    {t(membership.tenant?.status === 'pending_payment' ? 'tenant.continue_payment' : 'tenant.continue_with')}
                   </button>
                 </div>
               ))}
@@ -67,12 +83,14 @@ export default function TenantSelection() {
               onClick={() => logout()}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
-              Farklı bir hesapla giriş yap
+              {t('tenant.sign_in_other_account')}
             </button>
           </div>
         </div>
       </div>
-      <Footer />
+      {/* Kullanıcı giriş yapmış, yalnızca varlık seçmemiş durumda: PUT /users/me
+          tenant gerektirmediği için dil tercihi profile de yazılabilir. */}
+      <Footer authenticated />
     </div>
   )
 }

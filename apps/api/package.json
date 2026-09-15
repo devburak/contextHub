@@ -1,6 +1,6 @@
 {
   "name": "@contexthub/api",
-  "version": "0.1.0",
+  "version": "0.1.15",
   "private": true,
   "description": "Fastify back‑end service for contextHub",
   "main": "src/server.js",
@@ -21,8 +21,12 @@
     "db:bootstrap": "node src/scripts/bootstrapCore.js",
     "db:migrate": "node scripts/migrate.js",
     "db:backfill-subscriptions": "node src/scripts/backfillTenantSubscriptions.js",
+    "db:backfill-accounts": "node src/scripts/backfillTenantAccounts.js",
+    "db:backfill-enterprise-commercial": "node src/scripts/backfillEnterpriseCommercialAssurance.js",
     "db:backfill-domain-event-sequences": "node scripts/backfill-domain-event-sequences.js",
     "cron:consumers": "node scripts/consumer-cron.js",
+    "cron:tenant-purge": "node src/scripts/purgeDeletedTenants.js",
+    "db:migrate-tenant-provisioning": "node src/scripts/dropLegacySelfServiceTenantIndex.js",
     "db:seed-plans": "node src/scripts/seedSubscriptionPlans.js",
     "db:seed-flags": "node src/scripts/seedFeatureFlags.js",
     "edge:sync-kv": "node src/scripts/syncEdgeGatewayKv.js"
@@ -33,6 +37,7 @@
     "@contexthub/common": "workspace:*",
     "@fastify/cors": "^8.5.0",
     "@fastify/jwt": "^7.2.4",
+    "@fastify/rate-limit": "^9.1.0",
     "@fastify/swagger": "^8.15.0",
     "@fastify/swagger-ui": "^4.2.0",
     "bcryptjs": "^2.4.3",

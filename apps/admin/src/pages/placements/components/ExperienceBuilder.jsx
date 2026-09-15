@@ -427,7 +427,7 @@ function ScheduleConfig({ schedule = {}, onChange }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Start Date
@@ -525,7 +525,7 @@ function FrequencyConfig({ frequencyCap = {}, conversionGoals = [], onFrequencyC
       {/* Frequency Cap */}
       <div>
         <h3 className="text-sm font-medium text-gray-900 mb-3">Frequency Cap</h3>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label className="block text-sm text-gray-600 mb-2">Per Session</label>
             <input

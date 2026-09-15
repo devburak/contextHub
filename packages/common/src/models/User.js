@@ -4,12 +4,23 @@ const { Schema } = mongoose;
 
 const userSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
-  email: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true, trim: true, lowercase: true },
   password: { type: String, required: true },
   firstName: { type: String },
   lastName: { type: String },
   name: { type: String },
-  status: { type: String, default: 'active', enum: ['active', 'inactive', 'suspended'] },
+  status: {
+    type: String,
+    default: 'active',
+    enum: ['active', 'inactive', 'suspended', 'pending', 'deletion_pending', 'deleted'],
+    index: true,
+  },
+  platformRole: {
+    type: String,
+    enum: ['none', 'support', 'admin'],
+    default: 'none',
+    index: true,
+  },
   isEmailVerified: { type: Boolean, default: false },
   emailVerifiedAt: { type: Date },
   emailVerificationToken: { type: String },
@@ -18,7 +29,13 @@ const userSchema = new Schema({
   resetPasswordToken: { type: String },
   resetPasswordExpiresAt: { type: Date },
   mustChangePassword: { type: Boolean, default: false },
+  // Arayüz ve bildirim dili tercihi. null = tercih belirtilmemiş; istemci
+  // tarayıcı diline göre karar verir (bkz. apps/admin/src/lib/localePreference.js).
+  language: { type: String, enum: ['tr', 'en', null], default: null },
   tokenVersion: { type: Number, default: 0 },
+  deletionRequestedAt: { type: Date, default: null },
+  deletedAt: { type: Date, default: null, index: true },
+  deletionRequestId: { type: String, default: null, trim: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -66,6 +83,13 @@ userSchema.methods.toJSON = function() {
 
 // Index
 userSchema.index({ email: 1 }, { unique: true });
+userSchema.index(
+  { deletionRequestId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { deletionRequestId: { $type: 'string' } },
+  }
+);
 
 const User = mongoose.model('User', userSchema);
 

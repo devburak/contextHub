@@ -42,19 +42,20 @@ async function contentRoutes(fastify) {
           search: { type: 'string', description: 'Search in title and summary fields (partial match), plus exact match on slug' },
           category: { type: 'string', description: 'Filter by category ID (single)' },
           categories: { type: 'string', description: 'Filter by category IDs (comma-separated: id1,id2,id3)' },
-          categoryName: { type: 'string', description: 'Search categories by name' },
+          categoryName: { type: 'string', minLength: 1, maxLength: 200, description: 'Search categories by literal name' },
           tag: { type: 'string', description: 'Filter by tag ID (single or comma-separated)' },
-          tagName: { type: 'string', description: 'Search tags by name/title' },
+          tagName: { type: 'string', minLength: 1, maxLength: 200, description: 'Search tags by literal name/title' },
           publishedFrom: { type: 'string', description: 'Filter contents published after or on this ISO date' },
           publishedTo: { type: 'string', description: 'Filter contents published before or on this ISO date' },
-          page: { type: 'number', description: 'Page number (default: 1)' },
-          limit: { type: 'number', description: 'Items per page (default: 20, max: 100)' },
+          page: { type: 'integer', minimum: 1, description: 'Page number (default: 1)' },
+          limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Items per page (default: 20, max: 100)' },
+          view: { type: 'string', enum: ['summary', 'full'], default: 'full', description: 'Summary omits html and lexical; full includes content bodies' },
         },
       },
     },
   }, async (request, reply) => {
     try {
-      const { status, search, category, categories, categoryName, tag, tagName, publishedFrom, publishedTo, page, limit } = request.query
+      const { status, search, category, categories, categoryName, tag, tagName, publishedFrom, publishedTo, page, limit, view } = request.query
       const result = await contentService.listContents({
         tenantId: request.tenantId,
         filters: {
@@ -70,6 +71,7 @@ async function contentRoutes(fastify) {
           customFilters: parseCustomFieldFilters(request.query)
         },
         pagination: { page, limit },
+        view,
       })
       if (request.authType === 'api_token') {
         const publicResult = await contentService.filterPublicCustomFieldsInList({
@@ -317,17 +319,59 @@ async function contentRoutes(fastify) {
         },
         required: ['id'],
       },
+      querystring: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', minimum: 1, default: 1 },
+          deletedPage: { type: 'integer', minimum: 1, default: 1 },
+          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+        },
+      },
     },
   }, async (request, reply) => {
     try {
       const versionsPayload = await contentService.listVersions({
         tenantId: request.tenantId,
         contentId: request.params.id,
+        pagination: {
+          page: request.query.page,
+          deletedPage: request.query.deletedPage,
+          limit: request.query.limit,
+        },
       })
       return reply.send(versionsPayload)
     } catch (error) {
       request.log.error({ err: error }, 'Failed to list versions')
       return reply.code(400).send({ error: 'ContentVersionListFailed', message: error.message })
+    }
+  })
+
+  fastify.get('/contents/:id/versions/:versionId', {
+    preHandler: [authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' },
+          versionId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' },
+        },
+        required: ['id', 'versionId'],
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const version = await contentService.getContentVersion({
+        tenantId: request.tenantId,
+        contentId: request.params.id,
+        versionId: request.params.versionId,
+      })
+      const result = request.authType === 'api_token'
+        ? await contentService.filterPublicCustomFields({ tenantId: request.tenantId, content: version })
+        : version
+      return reply.send({ version: result })
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to fetch content version')
+      return reply.code(404).send({ error: 'ContentVersionNotFound', message: error.message })
     }
   })
 

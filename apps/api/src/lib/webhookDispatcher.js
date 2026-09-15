@@ -1,6 +1,10 @@
 const crypto = require('node:crypto');
 const { fetch } = require('undici');
 const { mongoose } = require('@contexthub/common');
+const {
+  closeWebhookDispatcher,
+  prepareSafeWebhookRequest
+} = require('../services/webhookUrlSecurity');
 
 const DEFAULT_BATCH_LIMIT = 50;
 const MAX_LOG_BODY_LENGTH = 500;
@@ -31,6 +35,9 @@ const ERROR_TYPES = {
  * @returns {string} ERROR_TYPES değerlerinden biri
  */
 function classifyError(statusCode, error) {
+  if (error?.code === 'WEBHOOK_URL_BLOCKED') {
+    return ERROR_TYPES.PERMANENT;
+  }
   // Timeout hatası
   if (error?.name === 'TimeoutError' || error?.code === 'UND_ERR_CONNECT_TIMEOUT' || error?.message?.includes('timeout')) {
     return ERROR_TYPES.TIMEOUT;
@@ -254,24 +261,32 @@ async function dispatchWebhookOutboxBatch(options = {}) {
         ? performance.now()
         : Date.now();
 
-      const response = await fetch(webhook.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CTXHUB-SIGNATURE': signature,
-          'X-CTXHUB-EVENT': job.type
-        },
-        body,
-        signal: resolveAbortSignal(options.timeoutMs || 15000)
-      });
+      const prepared = await prepareSafeWebhookRequest(webhook.url);
+      let response;
+      try {
+        response = await fetch(prepared.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CTXHUB-SIGNATURE': signature,
+            'X-CTXHUB-EVENT': job.type
+          },
+          body,
+          redirect: 'error',
+          dispatcher: prepared.dispatcher,
+          signal: resolveAbortSignal(options.timeoutMs || 15000)
+        });
 
-      responseStatus = response.status;
-      const endTime = typeof performance !== 'undefined' && performance.now
-        ? performance.now()
-        : Date.now();
-      durationMs = Math.round(endTime - startTime);
+        responseStatus = response.status;
+        const endTime = typeof performance !== 'undefined' && performance.now
+          ? performance.now()
+          : Date.now();
+        durationMs = Math.round(endTime - startTime);
 
-      responseBodySnippet = await readResponseSnippet(response);
+        responseBodySnippet = await readResponseSnippet(response);
+      } finally {
+        await closeWebhookDispatcher(prepared.dispatcher);
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

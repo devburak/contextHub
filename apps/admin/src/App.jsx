@@ -1,5 +1,5 @@
 import { Routes, Route, BrowserRouter, Navigate } from 'react-router-dom'
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { Suspense, useState, useMemo, useCallback, useEffect } from 'react'
 import Layout from './components/Layout.jsx'
 import Login from './pages/auth/Login.jsx'
 import SignUp from './pages/auth/SignUp.jsx'
@@ -31,31 +31,50 @@ import { CollectionsList, CollectionDetail } from './pages/collections/index.js'
 import { AuthContext } from './contexts/AuthContext.jsx'
 import { ToastProvider } from './contexts/ToastContext.jsx'
 import Documentation from './pages/docs/Documentation.jsx'
+import PublicDocumentation from 'virtual:ctxhub-public-documentation'
 import GalleryManager from './pages/galleries/GalleryManager.jsx'
 import { PermissionRoute } from './components/PermissionRoute.jsx'
+import { FeatureRoute } from './components/FeatureRoute.jsx'
+import TenantTabs from './components/TenantTabs.jsx'
 import { PERMISSIONS, expandPermissions } from './constants/permissions.js'
 import Profile from './pages/profile/Profile.jsx'
 import ApiDocs from './pages/ApiDocs.jsx'
+import Billing from './pages/billing/Billing.jsx'
+import PaddlePaymentLink from 'virtual:ctxhub-payment-link'
 import i18n from './i18n.js'
+import { persistLocale, resolveUserLocale } from './lib/localePreference.js'
+import { isHostedDeployment } from './lib/hostedDeployment.js'
 import {
   authAPI,
   setActiveTenantId as setApiActiveTenantId,
   setCsrfToken,
 } from './lib/api.js'
+import { adminPluginPages } from './plugins/registry.jsx'
 
 function App() {
   const [user, setUser] = useState(null)
   const [memberships, setMembershipsState] = useState([])
   const [activeTenantId, setActiveTenantId] = useState(null)
   const [authReady, setAuthReady] = useState(false)
+  const hostedDeployment = isHostedDeployment()
+  const isPublicDocsPath = hostedDeployment && (
+    window.location.pathname === '/docs' || window.location.pathname.startsWith('/docs/')
+  )
+  const isPublicPaymentPath = hostedDeployment && (
+    window.location.pathname === '/pay' || window.location.pathname === '/pay/'
+  )
+  const isPublicPath = isPublicDocsPath || isPublicPaymentPath
 
-  // Set default language to Turkish on app mount
+  // Panel dili: kullanıcı profilinde bir tercih varsa o kazanır, yoksa i18n'in
+  // açılışta tarayıcıdan tespit ettiği dil korunur. Dil hiçbir koşulda Türkçeye
+  // sabitlenmez — yabancı bir kullanıcı ilk açılışta kendi dilini görmeli.
   useEffect(() => {
-    if (!localStorage.getItem('language')) {
-      localStorage.setItem('language', 'tr')
-      i18n.changeLanguage('tr')
+    const preferred = resolveUserLocale(user, i18n.language)
+    if (preferred !== i18n.language) {
+      i18n.changeLanguage(preferred)
     }
-  }, [])
+    persistLocale(preferred)
+  }, [user])
   const [pendingTenantSelection, setPendingTenantSelection] = useState(false)
 
   const updateMemberships = useCallback((list) => {
@@ -226,6 +245,10 @@ function App() {
       return true
     }
 
+    if (activeMembership?.role === 'owner') {
+      return true
+    }
+
     const mode = options.mode || 'all'
     const available = new Set(activePermissions)
 
@@ -238,11 +261,27 @@ function App() {
     }
 
     return required.every((permission) => available.has(permission))
-  }, [activePermissions])
+  }, [activeMembership?.role, activePermissions])
 
   const hasAnyPermission = useCallback((permissionsInput) => {
     return hasPermission(permissionsInput, { mode: 'any' })
   }, [hasPermission])
+
+  const activeFeatures = useMemo(
+    () => Array.isArray(activeMembership?.tenant?.features) ? activeMembership.tenant.features : [],
+    [activeMembership]
+  )
+
+  const hasFeature = useCallback((featuresInput, options = {}) => {
+    const required = Array.isArray(featuresInput)
+      ? featuresInput.filter(Boolean)
+      : [featuresInput].filter(Boolean)
+    if (!required.length) return true
+    const available = new Set(activeFeatures)
+    return options.mode === 'any'
+      ? required.some((feature) => available.has(feature))
+      : required.every((feature) => available.has(feature))
+  }, [activeFeatures])
 
   const authValue = useMemo(() => ({
     user,
@@ -264,7 +303,9 @@ function App() {
     authReady,
     isAuthenticated: Boolean(user),
     hasPermission,
-    hasAnyPermission
+    hasAnyPermission,
+    features: activeFeatures,
+    hasFeature
   }), [
     user,
     memberships,
@@ -282,10 +323,12 @@ function App() {
     refreshSession,
     authReady,
     hasPermission,
-    hasAnyPermission
+    hasAnyPermission,
+    activeFeatures,
+    hasFeature
   ])
 
-  if (!authReady) {
+  if (!authReady && !isPublicPath) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 text-sm text-gray-600">
         Güvenli oturum yükleniyor...
@@ -297,7 +340,18 @@ function App() {
     <BrowserRouter>
       <ToastProvider>
         <AuthContext.Provider value={authValue}>
-          {pendingTenantSelection ? (
+          {isPublicDocsPath ? (
+            <Routes>
+              <Route path="/docs" element={<PublicDocumentation />} />
+              <Route path="/docs/:slug" element={<PublicDocumentation />} />
+              <Route path="*" element={<Navigate to="/docs" replace />} />
+            </Routes>
+          ) : isPublicPaymentPath ? (
+            <Routes>
+              <Route path="/pay" element={<PaddlePaymentLink />} />
+              <Route path="*" element={<Navigate to="/pay" replace />} />
+            </Routes>
+          ) : pendingTenantSelection ? (
             <Routes>
               <Route path="/accept-invite" element={<AcceptInvite />} />
               <Route path="/select-tenant" element={<TenantSelection />} />
@@ -350,6 +404,22 @@ function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/belgeler" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><Documentation /></PermissionRoute>} />
               <Route path="/apidocs" element={<PermissionRoute permissions={PERMISSIONS.DASHBOARD_VIEW}><ApiDocs /></PermissionRoute>} />
+              <Route path="/faturalandirma" element={<Billing />} />
+              <Route path="/billing" element={<Navigate to="/faturalandirma" replace />} />
+              {adminPluginPages.map((page) => (
+                <Route
+                  key={page.id}
+                  path={page.path}
+                  element={(
+                    <PermissionRoute permissions={page.permission}>
+                      <Suspense fallback={<div className="p-6 text-sm text-gray-600">Eklenti yükleniyor...</div>}>
+                        {page.tenantTab && <TenantTabs active={page.id} />}
+                        <FeatureRoute feature={page.feature}>{page.element}</FeatureRoute>
+                      </Suspense>
+                    </PermissionRoute>
+                  )}
+                />
+              ))}
             </Route>
             {/* Fallback catch-all when authenticated */}
             <Route path="*" element={<Navigate to="/" replace />} />

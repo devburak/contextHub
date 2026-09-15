@@ -141,11 +141,11 @@ async function cronWebhooks(fastify) {
 
     try {
       if (!targetTenantValue) {
-        tenants = await Tenant.find({ status: { $ne: 'archived' } }, '_id slug status').lean();
+        tenants = await Tenant.find({ status: 'active' }, '_id slug status').lean();
       } else {
         const query = mongoose.Types.ObjectId.isValid(targetTenantValue)
-          ? { _id: targetTenantValue }
-          : { slug: targetTenantValue };
+          ? { _id: targetTenantValue, status: 'active' }
+          : { slug: targetTenantValue, status: 'active' };
         const tenant = await Tenant.findOne(query, '_id slug status').lean();
         if (!tenant) {
           return reply.code(404).send({ error: 'Tenant not found' });

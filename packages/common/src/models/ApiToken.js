@@ -15,9 +15,15 @@ const apiTokenSchema = new Schema({
     type: [{ type: String }],
     default: ['read']
   },
+  permissions: {
+    type: [{ type: String }],
+    default: []
+  },
   expiresAt: { type: Date },
   lastUsedAt: { type: Date },
   lastAuditAt: { type: Date },
+  revokedAt: { type: Date, default: null, index: true },
+  revokedReason: { type: String, default: '', trim: true, maxlength: 200 },
   createdAt: { type: Date, default: Date.now },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
 });
@@ -25,6 +31,8 @@ const apiTokenSchema = new Schema({
 // Index
 apiTokenSchema.index({ tenantId: 1, hash: 1 });
 apiTokenSchema.index({ tenantId: 1, scopes: 1 });
+apiTokenSchema.index({ tenantId: 1, permissions: 1 });
+apiTokenSchema.index({ tenantId: 1, revokedAt: 1 });
 
 const ApiToken = mongoose.model('ApiToken', apiTokenSchema);
 

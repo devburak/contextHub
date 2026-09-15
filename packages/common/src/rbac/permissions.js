@@ -18,6 +18,8 @@ const PERMISSIONS = Object.freeze({
   TENANTS_UPDATE: 'tenants:update',
   TENANTS_DELETE: 'tenants:delete',
   TENANTS_MANAGE: 'tenants:manage',
+  BILLING_VIEW: 'billing:view',
+  BILLING_MANAGE: 'billing:manage',
   CONTENT_VIEW: 'content:view',
   CONTENT_CREATE: 'content:create',
   CONTENT_UPDATE: 'content:update',
@@ -79,6 +81,9 @@ const MANAGE_IMPLIED_PERMISSIONS = Object.freeze({
     PERMISSIONS.TENANTS_CREATE,
     PERMISSIONS.TENANTS_UPDATE,
     PERMISSIONS.TENANTS_DELETE
+  ],
+  [PERMISSIONS.BILLING_MANAGE]: [
+    PERMISSIONS.BILLING_VIEW
   ],
   [PERMISSIONS.CONTENT_MANAGE]: [
     PERMISSIONS.CONTENT_VIEW,
@@ -154,13 +159,14 @@ const normalizeScopes = (scopes = []) => {
 };
 
 const scopeAllowsPermission = (permission, scopeSet) => {
-  const [, action = ''] = String(permission || '').split(':');
+  const segments = String(permission || '').split(/[.:]/).filter(Boolean);
+  const action = segments.at(-1) || '';
 
   if (!action) {
     return false;
   }
 
-  if (action === 'view') {
+  if (action === 'view' || action === 'read') {
     return scopeSet.has('read') || scopeSet.has('write') || scopeSet.has('delete');
   }
 
@@ -210,6 +216,7 @@ const PERMISSION_GROUPS = Object.freeze({
     PERMISSIONS.TENANTS_UPDATE,
     PERMISSIONS.TENANTS_DELETE
   ],
+  BILLING: [PERMISSIONS.BILLING_VIEW],
   CONTENT: [
     PERMISSIONS.CONTENT_VIEW,
     PERMISSIONS.CONTENT_CREATE,

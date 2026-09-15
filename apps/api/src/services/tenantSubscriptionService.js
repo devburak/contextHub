@@ -1,8 +1,10 @@
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
+const { BillingAccount, BillingSubscription } = require('@contexthub/common');
 const { DEFAULT_SUBSCRIPTION_PLANS } = require('../lib/defaultSubscriptionPlans');
+const { SERVICE_AGREEMENT_VERSION, validateBillingProfile } = require('./billing/billingRouting');
 
-const VALID_PLAN_SLUGS = new Set(DEFAULT_SUBSCRIPTION_PLANS.map((plan) => plan.slug));
 const DEFAULT_PLAN_BY_SLUG = new Map(DEFAULT_SUBSCRIPTION_PLANS.map((plan) => [plan.slug, plan]));
+const PLAN_SLUG_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const DEFAULT_RECOVERY_CUSTOM_LIMITS = Object.freeze({
   userLimit: 25,
   ownerLimit: 5,
@@ -17,9 +19,60 @@ const LIMIT_FIELD_TO_PLAN_FIELD = Object.freeze({
 });
 
 class TenantSubscriptionService {
+  async assertPaidPlanActivationAllowed(tenant, plan, source) {
+    const error = (message) => {
+      const denied = new Error(message);
+      denied.code = 'PaidPlanActivationDenied';
+      return denied;
+    };
+
+    if (!['provider_checkout', 'provider_webhook', 'enterprise_contract'].includes(source)) {
+      throw error('Ücretli plan yalnız doğrulanmış ödeme veya Enterprise sözleşme akışından etkinleştirilebilir');
+    }
+
+    if (!tenant?.accountId) {
+      throw error('Ücretli plan aktivasyonu için tenant billing account gereklidir');
+    }
+
+    const billingAccount = await BillingAccount.findOne({ accountId: tenant.accountId })
+      .select('+taxId +taxIdEncrypted');
+    const agreementAccepted = Boolean(billingAccount?.serviceAgreementAcceptedAt) && (
+      source === 'enterprise_contract'
+      || billingAccount.serviceAgreementVersion === SERVICE_AGREEMENT_VERSION
+    );
+    if (!agreementAccepted) {
+      throw error('Ücretli plan aktivasyonu için hizmet sözleşmesi kabul edilmelidir');
+    }
+
+    const profileAccepted = validateBillingProfile(billingAccount).complete
+      || billingAccount.billingProfileStatus === 'legacy_enterprise';
+    if (!profileAccepted) {
+      throw error('Ücretli plan aktivasyonu için fatura bilgileri tamamlanmalıdır');
+    }
+
+    if (source === 'enterprise_contract') {
+      if (plan?.slug !== 'enterprise' || billingAccount.paymentMethodStatus !== 'enterprise_contract') {
+        throw error('Enterprise plan yalnız doğrulanmış Enterprise sözleşmesiyle etkinleştirilebilir');
+      }
+      return;
+    }
+
+    if (billingAccount.status !== 'active' || billingAccount.paymentMethodStatus !== 'provider_verified') {
+      throw error('Ücretli plan aktivasyonu için doğrulanmış ödeme bilgisi gereklidir');
+    }
+
+    const subscription = await BillingSubscription.findOne({
+      tenantId: tenant._id,
+      status: { $in: ['active', 'trialing'] },
+    });
+    if (!subscription || this.getPlanId(subscription.planId) !== this.getPlanId(plan)) {
+      throw error('Aktif ödeme aboneliği istenen planla eşleşmiyor');
+    }
+  }
+
   normalizePlanSlug(planSlug = 'free') {
     const normalized = String(planSlug || 'free').trim().toLowerCase();
-    if (!VALID_PLAN_SLUGS.has(normalized)) {
+    if (!PLAN_SLUG_PATTERN.test(normalized)) {
       throw new Error(`Unsupported subscription plan: ${planSlug}`);
     }
     return normalized;
@@ -38,8 +91,7 @@ class TenantSubscriptionService {
   }
 
   getDefaultPlanBySlug(planSlug = 'free') {
-    const normalizedPlanSlug = VALID_PLAN_SLUGS.has(planSlug) ? planSlug : 'free';
-    return DEFAULT_PLAN_BY_SLUG.get(normalizedPlanSlug) || DEFAULT_PLAN_BY_SLUG.get('free');
+    return DEFAULT_PLAN_BY_SLUG.get(planSlug) || DEFAULT_PLAN_BY_SLUG.get('free');
   }
 
   getEffectivePlanSlug(tenant) {
@@ -50,16 +102,16 @@ class TenantSubscriptionService {
         ? tenant.currentPlan.slug.trim().toLowerCase()
         : null;
 
-    if (referencedSlug && VALID_PLAN_SLUGS.has(referencedSlug)) {
+    if (referencedSlug && PLAN_SLUG_PATTERN.test(referencedSlug)) {
       return referencedSlug;
     }
 
     const storedSlug = String(tenant?.plan || 'free').trim().toLowerCase();
-    return VALID_PLAN_SLUGS.has(storedSlug) ? storedSlug : 'free';
+    return PLAN_SLUG_PATTERN.test(storedSlug) ? storedSlug : 'free';
   }
 
   buildPlanPayload(plan, fallbackSlug = 'free') {
-    const normalizedFallback = VALID_PLAN_SLUGS.has(fallbackSlug) ? fallbackSlug : 'free';
+    const normalizedFallback = PLAN_SLUG_PATTERN.test(fallbackSlug) ? fallbackSlug : 'free';
     const defaults = this.getDefaultPlanBySlug(normalizedFallback);
     const source = plan || defaults;
     const slug = source.slug || normalizedFallback;
@@ -72,6 +124,7 @@ class TenantSubscriptionService {
       description: getValue('description'),
       price: getValue('price'),
       billingType: getValue('billingType'),
+      features: Array.from(new Set(Array.isArray(getValue('features')) ? getValue('features') : [])),
       limits: {
         users: getValue('userLimit'),
         owners: getValue('ownerLimit'),
@@ -89,7 +142,7 @@ class TenantSubscriptionService {
       currentPlan &&
       typeof currentPlan === 'object' &&
       typeof currentPlan.slug === 'string' &&
-      VALID_PLAN_SLUGS.has(currentPlan.slug)
+      PLAN_SLUG_PATTERN.test(currentPlan.slug)
     ) {
       return currentPlan;
     }
@@ -156,13 +209,16 @@ class TenantSubscriptionService {
   async applyPlanToTenant(
     tenant,
     planSlug,
-    { trackActivation = true, resetDatesOnFree = true } = {}
+    { trackActivation = true, resetDatesOnFree = true, source = null } = {}
   ) {
     if (!tenant) {
       throw new Error('Tenant is required');
     }
 
     const { normalizedPlanSlug, plan } = await this.resolvePlan(planSlug);
+    if (normalizedPlanSlug !== 'free') {
+      await this.assertPaidPlanActivationAllowed(tenant, plan, source);
+    }
     const previousPlanId = this.getPlanId(tenant.currentPlan);
     const nextPlanId = this.getPlanId(plan);
     const planChanged = previousPlanId !== nextPlanId || tenant.plan !== normalizedPlanSlug;
@@ -193,6 +249,13 @@ class TenantSubscriptionService {
         normalizedPlanSlug,
         plan,
       };
+    }
+
+    // This runs only after assertPaidPlanActivationAllowed has verified commercial state.
+    if (tenant.status === 'pending_payment') {
+      tenant.status = 'active';
+      tenant.requestedPlanSlug = null;
+      changed = true;
     }
 
     const activationDate =
@@ -271,6 +334,16 @@ class TenantSubscriptionService {
         exceeded: state?.exceeded ?? false,
         periodKey: state?.periodKey ?? null,
       };
+      if (Number.isFinite(state?.limit) && state.limit > 0) {
+        const quotaAlertService = require('./quotaAlertService');
+        await quotaAlertService.recordThresholds({
+          tenantId: id,
+          metric: 'requests',
+          usage: state?.usage || 0,
+          limit: state.limit,
+          periodKey: state?.periodKey,
+        });
+      }
     } catch (error) {
       console.error(`[TenantSubscription] Failed to refresh request limit flag (${id}):`, error.message);
     }
@@ -310,4 +383,5 @@ const tenantSubscriptionService = new TenantSubscriptionService();
 
 module.exports = tenantSubscriptionService;
 module.exports.DEFAULT_RECOVERY_CUSTOM_LIMITS = DEFAULT_RECOVERY_CUSTOM_LIMITS;
-module.exports.VALID_PLAN_SLUGS = Array.from(VALID_PLAN_SLUGS);
+// Backward-compatible inventory of built-in plans; custom normalized slugs are also valid.
+module.exports.VALID_PLAN_SLUGS = DEFAULT_SUBSCRIPTION_PLANS.map((plan) => plan.slug);

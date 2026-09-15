@@ -6,6 +6,16 @@ mongoose.plugin(tenantPlugin);
 
 // Model dosyalarını import edelim
 const Tenant = require('./Tenant');
+const Account = require('./Account');
+const BillingAccount = require('./BillingAccount');
+const BillingCheckoutSession = require('./BillingCheckoutSession');
+const BillingSubscription = require('./BillingSubscription');
+const BillingEvent = require('./BillingEvent');
+const BillingInvoice = require('./BillingInvoice');
+const PlanPrice = require('./PlanPrice');
+const QuotaAlert = require('./QuotaAlert');
+const SubscriptionPlan = require('./SubscriptionPlan');
+const ApiUsage = require('./ApiUsage');
 const Domain = require('./Domain');
 const User = require('./User');
 const Membership = require('./Membership');
@@ -47,9 +57,21 @@ const DomainEvent = require('./DomainEvent');
 const DomainEventCounter = require('./DomainEventCounter');
 const DomainEventCursor = require('./DomainEventCursor');
 const DomainEventDeadLetter = require('./DomainEventDeadLetter');
+const ExtensionTenantSetting = require('./ExtensionTenantSetting');
+const ExtensionTenantSecret = require('./ExtensionTenantSecret');
 
 module.exports = {
   Tenant,
+  Account,
+  BillingAccount,
+  BillingCheckoutSession,
+  BillingSubscription,
+  BillingEvent,
+  BillingInvoice,
+  PlanPrice,
+  QuotaAlert,
+  SubscriptionPlan,
+  ApiUsage,
   Domain,
   User,
   Membership,
@@ -91,5 +113,7 @@ module.exports = {
   DomainEventCounter,
   DomainEventCursor,
   DomainEventDeadLetter,
+  ExtensionTenantSetting,
+  ExtensionTenantSecret,
   mongoose
 };

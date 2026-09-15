@@ -3,6 +3,7 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const SubscriptionPlan = require('@contexthub/common/src/models/SubscriptionPlan');
+const { BillingAccount, BillingSubscription } = require('@contexthub/common');
 const tenantSubscriptionService = require('./tenantSubscriptionService');
 
 describe('tenantSubscriptionService', () => {
@@ -32,19 +33,72 @@ describe('tenantSubscriptionService', () => {
     vi.spyOn(SubscriptionPlan, 'getPlanBySlug').mockResolvedValue(planDoc);
 
     const tenant = {
+      _id: 'tenant-1',
+      status: 'pending_payment',
+      requestedPlanSlug: 'pro',
+      accountId: 'account-1',
       plan: 'free',
       currentPlan: null,
       subscriptionStartDate: null,
       billingCycleStart: null,
     };
 
-    const result = await tenantSubscriptionService.applyPlanToTenant(tenant, 'pro');
+    vi.spyOn(BillingAccount, 'findOne').mockReturnValue({
+      select: vi.fn().mockResolvedValue({
+        status: 'active',
+        serviceAgreementAcceptedAt: new Date(),
+        serviceAgreementVersion: 'ctxhub-cloud-terms-v5',
+        billingProfileStatus: 'declared',
+        paymentMethodStatus: 'provider_verified',
+        billingEmail: 'finance@example.test',
+        legalName: 'Example Ltd',
+        profileType: 'business',
+        contactFirstName: 'Ada',
+        contactLastName: 'Lovelace',
+        phone: '+16175550100',
+        country: 'US',
+        address: { line1: '1 Main St', city: 'Boston', postalCode: '02108' },
+        declarationAcceptedAt: new Date(),
+      }),
+    });
+    vi.spyOn(BillingSubscription, 'findOne').mockResolvedValue({
+      tenantId: 'tenant-1',
+      status: 'active',
+      planId: 'plan-pro',
+    });
+
+    const result = await tenantSubscriptionService.applyPlanToTenant(tenant, 'pro', {
+      source: 'provider_webhook',
+    });
 
     expect(result.changed).toBe(true);
     expect(tenant.plan).toBe('pro');
+    expect(tenant.status).toBe('active');
+    expect(tenant.requestedPlanSlug).toBeNull();
     expect(tenant.currentPlan).toBe('plan-pro');
     expect(tenant.subscriptionStartDate).toBeInstanceOf(Date);
     expect(tenant.billingCycleStart).toBeInstanceOf(Date);
+  });
+
+  it('never activates an unpaid tenant by applying Free or trusting the selected plan', async () => {
+    const tenant = { status: 'pending_payment', plan: 'free', requestedPlanSlug: 'pro', currentPlan: null };
+    await tenantSubscriptionService.applyPlanToTenant(tenant, 'free');
+    expect(tenant.status).toBe('pending_payment');
+    vi.spyOn(SubscriptionPlan, 'getPlanBySlug').mockResolvedValue({ _id: 'plan-pro', slug: 'pro' });
+    await expect(tenantSubscriptionService.applyPlanToTenant(tenant, 'pro')).rejects.toMatchObject({ code: 'PaidPlanActivationDenied' });
+    expect(tenant.status).toBe('pending_payment');
+    expect(tenant.plan).toBe('free');
+  });
+
+  it('rejects paid entitlement without a verified commercial source', async () => {
+    vi.spyOn(SubscriptionPlan, 'getPlanBySlug').mockResolvedValue({ _id: 'plan-promax', slug: 'promax' });
+
+    await expect(tenantSubscriptionService.applyPlanToTenant({
+      _id: 'tenant-1',
+      accountId: 'account-1',
+      plan: 'free',
+      currentPlan: null,
+    }, 'promax')).rejects.toMatchObject({ code: 'PaidPlanActivationDenied' });
   });
 
   it('prefers populated currentPlan over stale tenant plan strings', async () => {
@@ -60,6 +114,7 @@ describe('tenantSubscriptionService', () => {
         ownerLimit: 5,
         storageLimit: 5 * 1024 * 1024 * 1024,
         monthlyRequestLimit: 10000,
+        features: ['search.semantic'],
       },
       customLimits: {},
     };
@@ -69,6 +124,7 @@ describe('tenantSubscriptionService', () => {
 
     expect(plan.slug).toBe('pro');
     expect(plan.name).toBe('Pro');
+    expect(plan.features).toEqual(['search.semantic']);
     expect(limits).toEqual({
       userLimit: 10,
       ownerLimit: 5,
@@ -106,6 +162,24 @@ describe('tenantSubscriptionService', () => {
     expect(limits.ownerLimit).toBeNull();
     expect(limits.storageLimit).toBe(10 * 1024 * 1024 * 1024);
     expect(limits.monthlyRequestLimit).toBe(-1);
+  });
+
+  it('resolves data-defined plan slugs outside the original four defaults', async () => {
+    vi.spyOn(SubscriptionPlan, 'getPlanBySlug').mockResolvedValue({
+      _id: 'plan-agency',
+      slug: 'agency-plus',
+      name: 'Agency Plus',
+      features: ['search.semantic'],
+    });
+
+    const plan = await tenantSubscriptionService.getPlanPayloadForTenant({
+      plan: 'agency-plus',
+      currentPlan: null,
+    });
+
+    expect(plan.slug).toBe('agency-plus');
+    expect(plan.name).toBe('Agency Plus');
+    expect(plan.features).toEqual(['search.semantic']);
   });
 
   it('builds recovery custom limits with defaults and overrides', () => {

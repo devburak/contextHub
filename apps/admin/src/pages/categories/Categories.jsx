@@ -3,16 +3,14 @@ import { Dialog, Transition } from '@headlessui/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PlusIcon, PencilSquareIcon, TrashIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
+import { Trans, useTranslation } from 'react-i18next'
 import { categoryAPI } from '../../lib/categoryAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 
-const SORT_FIELD_OPTIONS = [
-  { value: 'createdAt', label: 'Oluşturma Tarihi' },
-  { value: 'updatedAt', label: 'Güncellenme Tarihi' },
-  { value: 'name', label: 'İsim' },
-]
-
 export default function Categories() {
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const queryClient = useQueryClient()
   const toast = useToast()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -36,9 +34,9 @@ export default function Categories() {
     onSuccess: async () => {
       closeModal()
       await invalidateCategoryQueries(queryClient)
-      toast.success('Kategori oluşturuldu')
+      toast.success(t('category.created'))
     },
-    onError: (error) => toast.error(getErrorMessage(error, 'Kategori oluşturulamadı')),
+    onError: (error) => toast.error(describeError(error, 'category.create_failed')),
   })
 
   const updateMutation = useMutation({
@@ -46,18 +44,18 @@ export default function Categories() {
     onSuccess: async () => {
       closeModal()
       await invalidateCategoryQueries(queryClient)
-      toast.success('Kategori güncellendi')
+      toast.success(t('category.updated'))
     },
-    onError: (error) => toast.error(getErrorMessage(error, 'Kategori güncellenemedi')),
+    onError: (error) => toast.error(describeError(error, 'category.update_failed')),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id) => categoryAPI.remove(id, { cascade: true }),
     onSuccess: async () => {
       await invalidateCategoryQueries(queryClient)
-      toast.success('Kategori silindi')
+      toast.success(t('category.deleted'))
     },
-    onError: (error) => toast.error(getErrorMessage(error, 'Kategori silinemedi')),
+    onError: (error) => toast.error(describeError(error, 'category.delete_failed')),
   })
 
   const openCreateModal = useCallback((parentId = null) => {
@@ -115,21 +113,19 @@ export default function Categories() {
   }, [createMutation, editingCategory, formState, modalMode, updateMutation])
 
   const handleDelete = useCallback((category) => {
-    const confirmed = window.confirm(
-      `${category.name} kategorisini ve alt kategorilerini silmek istediğine emin misin?`
-    )
+    const confirmed = window.confirm(t('category.delete_confirm', { name: category.name }))
     if (!confirmed) return
     deleteMutation.mutate(category._id)
-  }, [deleteMutation])
+  }, [deleteMutation, t])
 
   const mergeMutation = useMutation({
     mutationFn: ({ sourceId, targetId }) => categoryAPI.merge(sourceId, targetId),
     onSuccess: async () => {
       await invalidateCategoryQueries(queryClient)
       closeModal()
-      toast.success('Kategoriler birleştirildi')
+      toast.success(t('category.merged'))
     },
-    onError: (error) => toast.error(getErrorMessage(error, 'Kategori birleştirilemedi')),
+    onError: (error) => toast.error(describeError(error, 'category.merge_failed')),
   })
 
   const openMergeModal = useCallback((category) => {
@@ -187,9 +183,9 @@ export default function Categories() {
     <div className="space-y-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Kategoriler</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('category.title')}</h1>
           <p className="mt-2 text-sm text-gray-600">
-            İçerikleri gruplayabileceğin hiyerarşik kategoriler oluştur. Slug değerleri her varlık için benzersizdir.
+            {t('category.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -199,7 +195,7 @@ export default function Categories() {
             className="inline-flex items-center gap-x-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
           >
             <ArrowPathIcon className={clsx('h-4 w-4', treeQuery.isFetching || flatQuery.isFetching ? 'animate-spin' : '')} />
-            Yenile
+            {t('common.refresh')}
           </button>
           <button
             type="button"
@@ -207,20 +203,20 @@ export default function Categories() {
             className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
           >
             <PlusIcon className="h-4 w-4" />
-            Yeni Kategori
+            {t('category.new')}
           </button>
         </div>
       </header>
 
       {treeQuery.isLoading || flatQuery.isLoading ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Kategoriler yükleniyor…</div>
+        <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">{t('category.loading')}</div>
       ) : treeQuery.isError || flatQuery.isError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-600">
-          Kategoriler alınamadı. Lütfen tekrar deneyin.
+          {describeError(treeQuery.error || flatQuery.error, 'category.load_failed')}
         </div>
       ) : categoryTree.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600">
-          Henüz kategori oluşturulmamış. İlk kategorini eklemek için yukarıdaki butonu kullanabilirsin.
+          {t('category.empty')}
         </div>
       ) : (
         <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -268,17 +264,23 @@ export default function Categories() {
 }
 
 function CategoryNode({ category, depth, onCreateChild, onEdit, onDelete, onMerge }) {
+  const { t } = useTranslation()
+
   return (
     <div className={clsx('rounded-lg border border-gray-200 bg-gray-50 p-4', depth > 0 && 'ml-6')}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">{category.name}</h2>
-          <div className="text-xs text-gray-500">Slug: {category.slug}</div>
+          <div className="text-xs text-gray-500">{t('category.slug_value', { slug: category.slug })}</div>
           {category.description && <p className="mt-1 text-sm text-gray-600">{category.description}</p>}
           <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
-            <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5">Sıralama: {category.defaultSortField} ({category.defaultSortOrder})</span>
+            <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5">
+              {t('category.sort_summary', { field: category.defaultSortField, order: category.defaultSortOrder })}
+            </span>
             {typeof category.position === 'number' && (
-              <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5">Pozisyon: {category.position}</span>
+              <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5">
+                {t('category.position', { position: category.position })}
+              </span>
             )}
           </div>
         </div>
@@ -288,28 +290,28 @@ function CategoryNode({ category, depth, onCreateChild, onEdit, onDelete, onMerg
             onClick={() => onCreateChild(category._id)}
             className="inline-flex items-center gap-x-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
           >
-            <PlusIcon className="h-4 w-4" /> Alt kategori
+            <PlusIcon className="h-4 w-4" /> {t('category.add_child')}
           </button>
           <button
             type="button"
             onClick={() => onEdit(category)}
             className="inline-flex items-center gap-x-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
           >
-            <PencilSquareIcon className="h-4 w-4" /> Düzenle
+            <PencilSquareIcon className="h-4 w-4" /> {t('common.edit')}
           </button>
           <button
             type="button"
             onClick={() => onMerge(category)}
             className="inline-flex items-center gap-x-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
           >
-            <ArrowPathIcon className="h-4 w-4" /> Birleştir
+            <ArrowPathIcon className="h-4 w-4" /> {t('category.merge')}
           </button>
           <button
             type="button"
             onClick={() => onDelete(category)}
             className="inline-flex items-center gap-x-1 rounded-md border border-red-400 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
           >
-            <TrashIcon className="h-4 w-4" /> Sil
+            <TrashIcon className="h-4 w-4" /> {t('common.delete')}
           </button>
         </div>
       </div>
@@ -334,6 +336,15 @@ function CategoryNode({ category, depth, onCreateChild, onEdit, onDelete, onMerg
 }
 
 function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, options, loading, error, editingCategory }) {
+  const { t } = useTranslation()
+  const describeError = useApiError()
+
+  const sortFieldOptions = useMemo(() => ([
+    { value: 'createdAt', label: t('common.created_at') },
+    { value: 'updatedAt', label: t('common.updated_at') },
+    { value: 'name', label: t('common.name') },
+  ]), [t])
+
   return (
     <Transition.Root show={open} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
@@ -366,18 +377,18 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
                   className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
                   onClick={onClose}
                 >
-                  <span className="sr-only">Kapat</span>
+                  <span className="sr-only">{t('common.close')}</span>
                   <XMarkIcon className="h-5 w-5" />
                 </button>
 
                 <Dialog.Title className="text-lg font-semibold leading-6 text-gray-900">
-                  {mode === 'create' ? 'Yeni Kategori' : `Kategori Düzenle (${editingCategory?.name || ''})`}
+                  {mode === 'create' ? t('category.new') : t('category.edit_named', { name: editingCategory?.name || '' })}
                 </Dialog.Title>
 
                 <form className="mt-6 space-y-4" onSubmit={onSubmit}>
                   <div>
                     <label htmlFor="category-name" className="block text-sm font-medium text-gray-700">
-                      İsim
+                      {t('common.name')}
                     </label>
                     <input
                       id="category-name"
@@ -391,22 +402,22 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
 
                   <div>
                     <label htmlFor="category-slug" className="block text-sm font-medium text-gray-700">
-                      Slug
+                      {t('common.slug')}
                     </label>
                     <input
                       id="category-slug"
                       name="slug"
                       value={formState.slug}
                       onChange={onChange}
-                      placeholder="Otomatik üretmek için boş bırak"
+                      placeholder={t('category.slug_placeholder')}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                     />
-                    <p className="mt-1 text-xs text-gray-500">Slug her varlık içinde benzersiz olmalıdır.</p>
+                    <p className="mt-1 text-xs text-gray-500">{t('category.slug_hint')}</p>
                   </div>
 
                   <div>
                     <label htmlFor="category-parent" className="block text-sm font-medium text-gray-700">
-                      Üst Kategori
+                      {t('category.parent')}
                     </label>
                     <select
                       id="category-parent"
@@ -415,7 +426,7 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
                       onChange={onChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                     >
-                      <option value="">— Üst kategori yok —</option>
+                      <option value="">{t('category.no_parent')}</option>
                       {options.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
@@ -426,7 +437,7 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
 
                   <div>
                     <label htmlFor="category-description" className="block text-sm font-medium text-gray-700">
-                      Açıklama
+                      {t('common.description')}
                     </label>
                     <textarea
                       id="category-description"
@@ -441,7 +452,7 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label htmlFor="category-sort-field" className="block text-sm font-medium text-gray-700">
-                        Varsayılan Sıralama Alanı
+                        {t('category.default_sort_field')}
                       </label>
                       <select
                         id="category-sort-field"
@@ -450,7 +461,7 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
                         onChange={onChange}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                       >
-                        {SORT_FIELD_OPTIONS.map((option) => (
+                        {sortFieldOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -460,7 +471,7 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
 
                     <div>
                       <label htmlFor="category-sort-order" className="block text-sm font-medium text-gray-700">
-                        Varsayılan Sıralama Yönü
+                        {t('category.default_sort_order')}
                       </label>
                       <select
                         id="category-sort-order"
@@ -469,15 +480,15 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
                         onChange={onChange}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                       >
-                        <option value="desc">Azalan</option>
-                        <option value="asc">Artan</option>
+                        <option value="desc">{t('category.sort_desc')}</option>
+                        <option value="asc">{t('category.sort_asc')}</option>
                       </select>
                     </div>
                   </div>
 
                   {error && (
                     <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-                      {(error instanceof Error ? error.message : 'İşlem sırasında bir hata oluştu')}
+                      {describeError(error, 'category.save_failed')}
                     </div>
                   )}
 
@@ -487,14 +498,14 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
                       onClick={onClose}
                       className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
-                      Vazgeç
+                      {t('common.cancel')}
                     </button>
                     <button
                       type="submit"
                       disabled={loading}
                       className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
                     >
-                      {loading ? 'Kaydediliyor…' : mode === 'create' ? 'Oluştur' : 'Güncelle'}
+                      {loading ? t('common.saving') : mode === 'create' ? t('common.create') : t('common.update')}
                     </button>
                   </div>
                 </form>
@@ -508,6 +519,7 @@ function CategoryModal({ open, mode, formState, onClose, onChange, onSubmit, opt
 }
 
 function MergeCategoryModal({ open, sourceCategory, onClose, onMerge, options, loading }) {
+  const { t } = useTranslation()
   const [targetId, setTargetId] = useState('')
 
   useEffect(() => {
@@ -567,30 +579,37 @@ function MergeCategoryModal({ open, sourceCategory, onClose, onMerge, options, l
                   className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
                   onClick={onClose}
                 >
-                  <span className="sr-only">Kapat</span>
+                  <span className="sr-only">{t('common.close')}</span>
                   <XMarkIcon className="h-5 w-5" />
                 </button>
 
                 <Dialog.Title className="text-lg font-semibold leading-6 text-gray-900">
-                  Kategori Birleştir
+                  {t('category.merge_title')}
                 </Dialog.Title>
 
                 <div className="mt-2">
                   <p className="text-sm text-gray-500">
-                    <span className="font-medium text-gray-900">{sourceCategory?.name}</span> kategorisini başka bir kategori ile birleştirmek üzeresin.
-                    Bu işlem sonucunda:
+                    <Trans
+                      i18nKey="category.merge_intro"
+                      values={{ name: sourceCategory?.name || '' }}
+                      components={{ strong: <span className="font-medium text-gray-900" /> }}
+                    />
                   </p>
                   <ul className="mt-2 list-disc pl-5 text-sm text-gray-500 space-y-1">
-                    <li>Bu kategoriye ait tüm içerikler hedef kategoriye taşınacak.</li>
-                    <li>Bu kategorinin alt kategorileri hedef kategorinin altına taşınacak.</li>
-                    <li><span className="font-medium text-red-600">{sourceCategory?.name} kategorisi kalıcı olarak silinecek.</span></li>
+                    <li>{t('category.merge_note_contents')}</li>
+                    <li>{t('category.merge_note_children')}</li>
+                    <li>
+                      <span className="font-medium text-red-600">
+                        {t('category.merge_note_deleted', { name: sourceCategory?.name || '' })}
+                      </span>
+                    </li>
                   </ul>
                 </div>
 
                 <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
                   <div>
                     <label htmlFor="target-category" className="block text-sm font-medium text-gray-700">
-                      Hedef Kategori
+                      {t('category.merge_target')}
                     </label>
                     <select
                       id="target-category"
@@ -599,7 +618,7 @@ function MergeCategoryModal({ open, sourceCategory, onClose, onMerge, options, l
                       required
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                     >
-                      <option value="">— Kategori seç —</option>
+                      <option value="">{t('category.select_category')}</option>
                       {validOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
@@ -614,14 +633,14 @@ function MergeCategoryModal({ open, sourceCategory, onClose, onMerge, options, l
                       onClick={onClose}
                       className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
-                      Vazgeç
+                      {t('common.cancel')}
                     </button>
                     <button
                       type="submit"
                       disabled={loading || !targetId}
                       className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
                     >
-                      {loading ? 'Birleştiriliyor…' : 'Birleştir ve Sil'}
+                      {loading ? t('category.merging') : t('category.merge_and_delete')}
                     </button>
                   </div>
                 </form>
@@ -655,8 +674,4 @@ function getEmptyForm() {
     defaultSortField: 'createdAt',
     defaultSortOrder: 'desc',
   }
-}
-
-function getErrorMessage(error, fallback) {
-  return error?.response?.data?.message || error?.message || fallback
 }

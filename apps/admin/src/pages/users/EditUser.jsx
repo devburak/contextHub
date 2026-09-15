@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { userAPI } from '../../lib/userAPI.js'
 import { roleAPI } from '../../lib/roleAPI.js'
+import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { PERMISSIONS } from '../../constants/permissions.js'
 
@@ -10,6 +12,8 @@ export default function EditUser() {
   const { id } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const { hasPermission, role: currentUserRole } = useAuth()
   const [formData, setFormData] = useState({
     firstName: '',
@@ -149,12 +153,12 @@ export default function EditUser() {
   if (error) {
     return (
       <div className="text-center py-12">
-        <div className="text-red-600 mb-4">Kullanıcı bilgileri yüklenirken hata oluştu</div>
-        <button 
+        <div className="text-red-600 mb-4">{describeError(error, 'user.load_error')}</div>
+        <button
           onClick={() => navigate('/users')}
           className="text-blue-600 hover:text-blue-500"
         >
-          Kullanıcı listesine dön
+          {t('user.back_to_users')}
         </button>
       </div>
     )
@@ -163,12 +167,12 @@ export default function EditUser() {
   if (!isLoading && !user) {
     return (
       <div className="text-center py-12">
-        <div className="text-gray-600 mb-4">Kullanıcı bulunamadı veya erişim izniniz yok.</div>
+        <div className="text-gray-600 mb-4">{t('user.not_found_or_forbidden')}</div>
         <button
           onClick={() => navigate('/users')}
           className="text-blue-600 hover:text-blue-500"
         >
-          Kullanıcı listesine dön
+          {t('user.back_to_users')}
         </button>
       </div>
     )
@@ -179,11 +183,11 @@ export default function EditUser() {
       <div className="md:flex md:items-center md:justify-between mb-8">
         <div className="flex-1 min-w-0">
           <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-            Kullanıcı Düzenle
+            {t('user.edit_title')}
           </h2>
           {user && (
             <p className="mt-1 text-sm text-gray-500">
-              {user.firstName} {user.lastName} kullanıcısının bilgilerini düzenleyin
+              {t('user.edit_subtitle_named', { name: `${user.firstName || ''} ${user.lastName || ''}`.trim() })}
             </p>
           )}
         </div>
@@ -195,7 +199,7 @@ export default function EditUser() {
             {/* First Name */}
             <div className="col-span-6 sm:col-span-3">
               <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                Ad
+                {t('user.wizard.first_name')}
               </label>
               <input
                 type="text"
@@ -211,7 +215,7 @@ export default function EditUser() {
             {/* Last Name */}
             <div className="col-span-6 sm:col-span-3">
               <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                Soyad
+                {t('user.wizard.last_name')}
               </label>
               <input
                 type="text"
@@ -227,7 +231,7 @@ export default function EditUser() {
             {/* Email */}
             <div className="col-span-6 sm:col-span-4">
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                E-posta Adresi
+                {t('user.email_address')}
               </label>
               <input
                 type="email"
@@ -243,7 +247,7 @@ export default function EditUser() {
             {/* Username */}
             <div className="col-span-6 sm:col-span-3">
               <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                Kullanıcı Adı
+                {t('user.wizard.username')}
               </label>
               <input
                 type="text"
@@ -257,13 +261,13 @@ export default function EditUser() {
             </div>
 
             <div className="col-span-6 rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
-              Kullanıcı bilgileri yalnızca kullanıcının kendisi tarafından değiştirilebilir.
+              {t('user.readonly_fields_notice')}
             </div>
 
             {/* Role */}
             <div className="col-span-6 sm:col-span-3">
               <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                Rol
+                {t('user.role')}
               </label>
               <select
                 id="role"
@@ -281,15 +285,15 @@ export default function EditUser() {
                   ))
                 ) : (
                   <>
-                    <option value="viewer">Görüntüleyici</option>
-                    <option value="editor">Editör</option>
-                    <option value="admin">Yönetici</option>
+                    <option value="viewer">{t('role.viewer')}</option>
+                    <option value="editor">{t('role.editor')}</option>
+                    <option value="admin">{t('role.admin')}</option>
                   </>
                 )}
               </select>
               {rolesError && (
                 <p className="mt-1 text-sm text-red-600">
-                  Roller yüklenemedi. Lütfen sayfayı yenileyin.
+                  {t('user.roles_load_error')}
                 </p>
               )}
             </div>
@@ -297,11 +301,11 @@ export default function EditUser() {
             {/* Status */}
             <div className="col-span-6 sm:col-span-3">
               <label className="block text-sm font-medium text-gray-700">
-                Durum
+                {t('user.status')}
               </label>
               <div className="mt-1 flex items-center gap-3">
                 <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
-                  {currentStatus === 'active' ? 'Aktif' : currentStatus === 'inactive' ? 'Pasif' : currentStatus}
+                  {currentStatus === 'active' ? t('status.active') : currentStatus === 'inactive' ? t('status.inactive') : currentStatus}
                 </span>
                 {canManageUsers && (
                   <button
@@ -310,7 +314,7 @@ export default function EditUser() {
                     disabled={toggleStatusMutation.isPending}
                     className="text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
                   >
-                    {currentStatus === 'active' ? 'Pasif yap' : 'Aktif yap'}
+                    {currentStatus === 'active' ? t('users.deactivate') : t('users.activate')}
                   </button>
                 )}
               </div>
@@ -322,21 +326,21 @@ export default function EditUser() {
         <div className="flex justify-end gap-3">
           {canManageUsers && isOwnerMember && (
             <div className="mr-auto text-xs text-gray-500 self-center">
-              Sahip rolündeki kullanıcılar varlık ilişkisini yalnızca kendi profillerinden kaldırabilir.
+              {t('user.owner_detach_notice')}
             </div>
           )}
           {canDetachUser && (
             <button
               type="button"
               onClick={() => {
-                if (window.confirm('Bu kullanıcının varlıkla ilişkisini kesmek istediğinize emin misiniz?')) {
+                if (window.confirm(t('user.detach_confirm'))) {
                   detachUserMutation.mutate()
                 }
               }}
               disabled={detachUserMutation.isPending}
               className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
             >
-              Varlıkla ilişkisini kes
+              {t('user.detach')}
             </button>
           )}
           <button
@@ -344,21 +348,21 @@ export default function EditUser() {
             onClick={() => navigate('/users')}
             className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            İptal
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
             disabled={updateUserMutation.isPending || !canAssignRole}
             className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            {updateUserMutation.isPending ? 'Güncelleniyor...' : 'Değişiklikleri Kaydet'}
+            {updateUserMutation.isPending ? t('user.updating') : t('common.save_changes')}
           </button>
         </div>
 
         {updateUserMutation.isError && (
           <div className="rounded-md bg-red-50 p-4">
             <div className="text-sm text-red-700">
-              Kullanıcı güncellenirken hata oluştu. Lütfen tekrar deneyin.
+              {describeError(updateUserMutation.error, 'user.update_error')}
             </div>
           </div>
         )}

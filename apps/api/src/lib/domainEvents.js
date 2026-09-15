@@ -94,6 +94,7 @@ async function emitDomainEvent(tenantId, type, payload = {}, metadata = null) {
 }
 
 module.exports = {
+  allocateDomainEventSequence,
   DOMAIN_EVENT_COLLECTION,
   DOMAIN_EVENT_COUNTER_COLLECTION,
   DOMAIN_EVENT_COUNTER_ID,

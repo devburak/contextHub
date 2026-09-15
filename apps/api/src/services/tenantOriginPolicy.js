@@ -173,7 +173,23 @@ async function resolveCorsOptions(request) {
   const origin = normalizeOrigin(request.headers?.origin);
   const common = {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'X-API-Key', 'X-CSRF-Token'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Tenant-ID',
+      'X-API-Key',
+      'X-CSRF-Token',
+      'X-Locale',
+    ],
+    exposedHeaders: [
+      'RateLimit-Policy',
+      'RateLimit',
+      'X-RateLimit-Limit',
+      'X-RateLimit-Remaining',
+      'X-RateLimit-Reset',
+      'X-RateLimit-Period',
+      'Retry-After',
+    ],
     strictPreflight: true,
   };
 

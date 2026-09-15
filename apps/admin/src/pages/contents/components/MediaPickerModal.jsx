@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
+import { useTranslation } from 'react-i18next'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import {
@@ -11,13 +12,18 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { mediaAPI } from '../../../lib/mediaAPI.js'
+import { useApiError } from '../../../lib/useApiError.js'
 
-const MODE_LABELS = {
-  image: 'Görsel',
-  video: 'Video',
-  file: 'Dosya',
-  any: 'Medya',
+// Anahtarlar API'ye giden mod tanımlayıcılarıdır; yalnızca etiketleri çevrilir.
+const MODE_LABEL_KEYS = {
+  image: 'content.media_type_image',
+  video: 'content.media_type_video',
+  file: 'content.media_type_file',
+  any: 'content.media_type_any',
 }
+
+// Kullanıcı hatası mı sunucu hatası mı ayrımı: yalnızca ilkinin metni doğrudan gösterilir.
+const createValidationError = (message) => Object.assign(new Error(message), { isValidationError: true })
 
 function useDebouncedValue(value, delay = 400) {
   const [debounced, setDebounced] = useState(value)
@@ -37,6 +43,8 @@ export default function MediaPickerModal({
   showUpload = true,
   multiple = false,
 }) {
+  const { t } = useTranslation()
+  const describeError = useApiError()
   const queryClient = useQueryClient()
   const searchInputRef = useRef(null)
   const videoUrlInputRef = useRef(null)
@@ -86,6 +94,8 @@ export default function MediaPickerModal({
       setVideoUrl('')
     }
   }, [isOpen, initialSearch])
+
+  const modeLabel = t(MODE_LABEL_KEYS[mode] || MODE_LABEL_KEYS.any)
 
   const filterMimePrefix = mode === 'image' ? 'image/' : mode === 'video' ? 'video/' : undefined
 
@@ -165,10 +175,10 @@ export default function MediaPickerModal({
         const uploadedItems = []
         for (const file of files) {
           if (mode === 'image' && !file.type.startsWith('image/')) {
-            throw new Error('Sadece görsel dosyaları yükleyebilirsin.')
+            throw createValidationError(t('content.media_only_images'))
           }
           if (mode === 'video' && !file.type.startsWith('video/')) {
-            throw new Error('Sadece video dosyaları yükleyebilirsin.')
+            throw createValidationError(t('content.media_only_videos'))
           }
 
           const presign = await mediaAPI.createPresignedUpload({
@@ -204,12 +214,12 @@ export default function MediaPickerModal({
         }
       } catch (error) {
         console.error('Media upload failed', error)
-        setUploadError(error instanceof Error ? error.message : 'Dosya yükleme sırasında hata oluştu.')
+        setUploadError(error?.isValidationError ? error.message : describeError(error, 'media.upload_failed'))
       } finally {
         setIsUploading(false)
       }
     },
-    [mode, multiple, onSelect, queryClient, queryKey]
+    [describeError, mode, multiple, onSelect, queryClient, queryKey, t]
   )
 
   const handleSelect = useCallback(
@@ -279,11 +289,11 @@ export default function MediaPickerModal({
       }
     } catch (error) {
       console.error('Video URL save failed', error)
-      setUploadError('Video eklenirken bir hata oluştu.')
+      setUploadError(describeError(error, 'media.external_add_failed'))
     } finally {
       setIsUploading(false)
     }
-  }, [videoUrl, onSelect, queryClient, queryKey])
+  }, [describeError, videoUrl, onSelect, queryClient, queryKey])
 
   if (!isOpen) {
     return null
@@ -324,10 +334,10 @@ export default function MediaPickerModal({
                 <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                   <div>
                     <Dialog.Title className="text-lg font-semibold text-gray-900">
-                      {MODE_LABELS[mode] || 'Medya'} seç
+                      {t('content.media_picker_title', { type: modeLabel })}
                     </Dialog.Title>
                     <p className="mt-1 text-sm text-gray-500">
-                      Medya kütüphanesinden seçim yapabilir veya yeni dosya yükleyebilirsin.
+                      {t('content.media_picker_subtitle')}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -341,7 +351,7 @@ export default function MediaPickerModal({
                             activeTab === 'library' ? 'bg-white text-gray-900 shadow' : 'text-gray-500 hover:text-gray-700'
                           )}
                         >
-                          Kütüphane
+                          {t('content.media_picker_tab_library')}
                         </button>
                         <button
                           type="button"
@@ -351,7 +361,7 @@ export default function MediaPickerModal({
                             activeTab === 'url' ? 'bg-white text-gray-900 shadow' : 'text-gray-500 hover:text-gray-700'
                           )}
                         >
-                          URL'den Ekle
+                          {t('media.add_from_url')}
                         </button>
                       </div>
                     )}
@@ -361,7 +371,7 @@ export default function MediaPickerModal({
                         onClick={handleConfirmSelection}
                         className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                       >
-                        Seç ({selectedItems.length})
+                        {t('content.media_picker_select_count', { count: selectedItems.length })}
                       </button>
                     )}
                     <button
@@ -369,7 +379,7 @@ export default function MediaPickerModal({
                       onClick={onClose}
                       className="rounded-full p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
                     >
-                      <span className="sr-only">Kapat</span>
+                      <span className="sr-only">{t('common.close')}</span>
                       <XMarkIcon className="h-5 w-5" />
                     </button>
                   </div>
@@ -381,7 +391,7 @@ export default function MediaPickerModal({
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                         <div className="flex-1">
                           <label htmlFor="media-picker-search" className="block text-sm font-medium text-gray-700">
-                            Ara
+                            {t('common.search')}
                           </label>
                           <input
                             ref={searchInputRef}
@@ -389,7 +399,7 @@ export default function MediaPickerModal({
                             type="search"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            placeholder={`${MODE_LABELS[mode] || 'Medya'} ara`}
+                            placeholder={t('content.media_picker_search_placeholder', { type: modeLabel })}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                           />
                         </div>
@@ -405,7 +415,7 @@ export default function MediaPickerModal({
                             ) : (
                               <CloudArrowUpIcon className="h-5 w-5" aria-hidden="true" />
                             )}
-                            <span>{isUploading ? 'Yükleniyor…' : 'Dosya yükle'}</span>
+                            <span>{isUploading ? t('content.media_uploading') : t('media.upload_file')}</span>
                             <input
                               type="file"
                               className="hidden"
@@ -424,7 +434,7 @@ export default function MediaPickerModal({
                           className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                         >
                           <ArrowPathIcon className={clsx('h-5 w-5', mediaQuery.isFetching ? 'animate-spin' : '')} />
-                          Yenile
+                          {t('common.refresh')}
                         </button>
                       </div>
 
@@ -436,9 +446,9 @@ export default function MediaPickerModal({
 
                       <div className="min-h-[260px] max-h-[500px] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
                         {mediaQuery.isLoading ? (
-                          <div className="text-sm text-gray-500">Dosyalar yükleniyor…</div>
+                          <div className="text-sm text-gray-500">{t('media.loading')}</div>
                         ) : items.length === 0 ? (
-                          <div className="text-sm text-gray-500">Sonuç bulunamadı.</div>
+                          <div className="text-sm text-gray-500">{t('common.no_results')}</div>
                         ) : (
                           <>
                             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -487,9 +497,11 @@ export default function MediaPickerModal({
                                       <p className="truncate text-sm font-medium text-gray-900">
                                         {item.originalName || item.fileName}
                                       </p>
-                                      <p className="text-xs text-gray-500">{item.mimeType || 'Bilinmiyor'}</p>
+                                      <p className="text-xs text-gray-500">{item.mimeType || t('media.unknown_type')}</p>
                                       {isVideo && item.duration ? (
-                                        <p className="text-xs text-gray-500">{Math.round(item.duration)} sn</p>
+                                        <p className="text-xs text-gray-500">
+                                          {t('media.duration_seconds', { count: Math.round(item.duration) })}
+                                        </p>
                                       ) : null}
                                     </div>
                                   </button>
@@ -499,11 +511,11 @@ export default function MediaPickerModal({
                             {/* Infinite scroll trigger */}
                             <div ref={loadMoreRef} className="py-4 text-center">
                               {mediaQuery.isFetchingNextPage ? (
-                                <div className="text-sm text-gray-500">Daha fazla medya yükleniyor...</div>
+                                <div className="text-sm text-gray-500">{t('media.loading_more')}</div>
                               ) : mediaQuery.hasNextPage ? (
-                                <div className="text-sm text-gray-400">Aşağı kaydırarak daha fazla yükle</div>
+                                <div className="text-sm text-gray-400">{t('media.scroll_for_more')}</div>
                               ) : (
-                                <div className="text-sm text-gray-400">Tüm medya dosyaları yüklendi</div>
+                                <div className="text-sm text-gray-400">{t('media.all_loaded')}</div>
                               )}
                             </div>
                           </>
@@ -511,13 +523,13 @@ export default function MediaPickerModal({
                       </div>
 
                       <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>{totalCount} kayıt</span>
+                        <span>{t('media.record_count', { count: totalCount })}</span>
                       </div>
 
                       {isUploading && (
                         <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">
                           <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-blue-700 border-r-transparent" />
-                          Dosya yükleniyor, lütfen bekleyin…
+                          {t('content.media_uploading_wait')}
                         </div>
                       )}
                     </>
@@ -525,7 +537,7 @@ export default function MediaPickerModal({
                     <div className="flex flex-col gap-4 py-8">
                       <div>
                         <label htmlFor="video-url" className="block text-sm font-medium text-gray-700">
-                          Video URL
+                          {t('media.external_url_label')}
                         </label>
                         <div className="mt-1 flex rounded-md shadow-sm">
                           <input
@@ -540,7 +552,7 @@ export default function MediaPickerModal({
                           />
                         </div>
                         <p className="mt-2 text-sm text-gray-500">
-                          YouTube veya Vimeo bağlantısı yapıştırın.
+                          {t('content.media_video_url_hint')}
                         </p>
                       </div>
                       <div className="flex justify-end">
@@ -553,7 +565,7 @@ export default function MediaPickerModal({
                           {isUploading && (
                             <span className="h-4 w-4 flex-none animate-spin rounded-full border-2 border-white border-r-transparent" />
                           )}
-                          {isUploading ? 'Ekleniyor...' : 'Ekle'}
+                          {isUploading ? t('media.adding') : t('common.add')}
                         </button>
                       </div>
                     </div>

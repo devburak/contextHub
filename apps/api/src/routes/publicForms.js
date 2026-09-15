@@ -3,6 +3,7 @@ const { checkRequestLimit } = require('../middleware/requestLimitGuard');
 const formService = require('../services/formService');
 const localRedisClient = require('../lib/localRedis');
 const crypto = require('crypto');
+const { extractTrustedClientIp } = require('../services/clientIp');
 
 /**
  * Rate limiting configuration for form submissions
@@ -660,7 +661,7 @@ async function publicFormRoutes(fastify) {
       if (reply.sent) return;
 
       // Extract client identification signals
-      const ip = request.ip || request.headers['x-forwarded-for'] || 'unknown';
+      const ip = extractTrustedClientIp(request);
       const userAgent = request.headers['user-agent'] || '';
       const acceptLanguage = request.headers['accept-language'] || '';
 

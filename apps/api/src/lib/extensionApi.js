@@ -6,6 +6,12 @@ const {
   EXTENSION_API_VERSION
 } = require('./extensionContract');
 const { createExtensionSourceFacade } = require('./extensionSourceFacade');
+const { createExtensionAuthFacade } = require('./extensionAuthFacade');
+const { createExtensionSettingsFacade } = require('./extensionSettingsFacade');
+const { createExtensionEntitlementFacade } = require('./extensionEntitlementFacade');
+const { createExtensionSecretsFacade } = require('./extensionSecretsFacade');
+const { createExtensionRestoreFacade } = require('./extensionRestoreFacade');
+const { createExtensionIndexingFacade } = require('./extensionIndexingFacade');
 
 class ExtensionApiError extends Error {
   constructor(message, code = 'EXTENSION_API_ERROR') {
@@ -62,7 +68,7 @@ function createLoggerFacade(logger) {
   return Object.freeze(facade);
 }
 
-function createSourceFacade(sources) {
+function createSourceFacade(sources, manifest) {
   if (
     !sources ||
     typeof sources.getContentSnapshot !== 'function' ||
@@ -73,10 +79,97 @@ function createSourceFacade(sources) {
       'EXTENSION_SOURCE_FACADE_INVALID'
     );
   }
-  return Object.freeze({
+  const facade = {
     getContentSnapshot: sources.getContentSnapshot.bind(sources),
     getCollectionEntrySnapshot: sources.getCollectionEntrySnapshot.bind(sources)
+  };
+  if (manifest.capabilities.includes('tenant.backup.export')) {
+    for (const method of [
+      'streamTenantBackupRecords',
+      'listTenantBackupFiles',
+      'openTenantBackupFile'
+    ]) {
+      if (typeof sources[method] !== 'function') {
+        throw new ExtensionApiError(
+          `extension backup source facade is missing ${method}`,
+          'EXTENSION_BACKUP_SOURCE_FACADE_INVALID'
+        );
+      }
+      facade[method] = sources[method].bind(sources);
+    }
+  }
+  return Object.freeze(facade);
+}
+
+function createSettingsApi(settings, manifest) {
+  if (!settings || typeof settings.get !== 'function' || typeof settings.set !== 'function') {
+    throw new ExtensionApiError(
+      'extension settings facade is incomplete',
+      'EXTENSION_SETTINGS_FACADE_INVALID'
+    );
+  }
+  const facade = {
+    get: settings.get.bind(settings),
+    set: settings.set.bind(settings)
+  };
+  if (manifest.capabilities.includes('tenant.settings.enumerate')) {
+    if (typeof settings.listTenantIds !== 'function') {
+      throw new ExtensionApiError(
+        'extension settings facade cannot enumerate tenant settings',
+        'EXTENSION_SETTINGS_FACADE_INVALID'
+      );
+    }
+    facade.listTenantIds = settings.listTenantIds.bind(settings);
+  }
+  return Object.freeze(facade);
+}
+
+function createSecretsApi(secrets, manifest) {
+  if (!manifest.capabilities.includes('tenant.secrets.manage')) return undefined;
+  for (const method of ['metadata', 'get', 'set']) {
+    if (typeof secrets?.[method] !== 'function') {
+      throw new ExtensionApiError(
+        `extension secrets facade is missing ${method}`,
+        'EXTENSION_SECRETS_FACADE_INVALID'
+      );
+    }
+  }
+  return Object.freeze({
+    metadata: secrets.metadata.bind(secrets),
+    get: secrets.get.bind(secrets),
+    set: secrets.set.bind(secrets)
   });
+}
+
+function createRestoreApi(restore, manifest) {
+  if (!manifest.capabilities.includes('tenant.backup.restore')) return undefined;
+  for (const method of [
+    'getTenant',
+    'findPopulatedCollections',
+    'checkIdentity',
+    'upsert',
+    'delete',
+    'getMediaTarget',
+    'putFile',
+    'deleteFile'
+  ]) {
+    if (typeof restore?.[method] !== 'function') {
+      throw new ExtensionApiError(
+        `extension restore facade is missing ${method}`,
+        'EXTENSION_RESTORE_FACADE_INVALID'
+      );
+    }
+  }
+  return Object.freeze(Object.fromEntries([
+    'getTenant',
+    'findPopulatedCollections',
+    'checkIdentity',
+    'upsert',
+    'delete',
+    'getMediaTarget',
+    'putFile',
+    'deleteFile'
+  ].map((method) => [method, restore[method].bind(restore)])));
 }
 
 function createExtensionApi(options) {
@@ -84,15 +177,41 @@ function createExtensionApi(options) {
   const eventRegistry = options.eventRegistry || domainEventConsumerRegistry;
   const logger = options.logger || console;
   const sources = options.sources || createExtensionSourceFacade();
+  const auth = options.auth || createExtensionAuthFacade(manifest);
+  const settings = options.settings || createExtensionSettingsFacade({
+    plugin: manifest.name
+  });
+  const entitlements = options.entitlements || createExtensionEntitlementFacade(manifest);
+  const secrets = options.secrets || (
+    manifest.capabilities.includes('tenant.secrets.manage')
+      ? createExtensionSecretsFacade({ plugin: manifest.name })
+      : null
+  );
+  const restore = options.restore || (
+    manifest.capabilities.includes('tenant.backup.restore')
+      ? createExtensionRestoreFacade()
+      : null
+  );
 
-  return Object.freeze({
+  const extension = {
     version: EXTENSION_API_VERSION,
     revision: EXTENSION_API_REVISION,
     plugin: Object.freeze({ name: manifest.name, version: manifest.version }),
     events: createEventFacade(manifest, eventRegistry),
-    sources: createSourceFacade(sources),
+    sources: createSourceFacade(sources, manifest),
+    auth,
+    entitlements,
+    settings: createSettingsApi(settings, manifest),
     log: createLoggerFacade(logger)
-  });
+  };
+  const secretsApi = createSecretsApi(secrets, manifest);
+  if (manifest.capabilities.includes('tenant.sources.index')) {
+    extension.indexing = options.indexing || createExtensionIndexingFacade();
+  }
+  if (secretsApi) extension.secrets = secretsApi;
+  const restoreApi = createRestoreApi(restore, manifest);
+  if (restoreApi) extension.restore = restoreApi;
+  return Object.freeze(extension);
 }
 
 module.exports = {
@@ -101,5 +220,8 @@ module.exports = {
   ExtensionApiError,
   createExtensionApi,
   createLoggerFacade,
+  createRestoreApi,
+  createSecretsApi,
+  createSettingsApi,
   createSourceFacade
 };

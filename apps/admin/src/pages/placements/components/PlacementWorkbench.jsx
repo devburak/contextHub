@@ -160,7 +160,7 @@ export default function PlacementWorkbench({ placement }) {
 
 function WorkflowStrip({ workflow }) {
   return (
-    <div className="mb-4 grid grid-cols-3 gap-2">
+    <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
       {[
         ['Kanal', workflow.channel],
         ['İçerik', workflow.content],
@@ -368,7 +368,7 @@ function DecisionDebugger({ placement }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Path" value={context.path} onChange={(value) => setContext({ ...context, path: value })} />
         <Field label="Locale" value={context.locale} onChange={(value) => setContext({ ...context, locale: value })} />
         <SelectField label="Device" value={context.device} onChange={(value) => setContext({ ...context, device: value })} options={['desktop', 'mobile', 'tablet']} />
@@ -528,7 +528,7 @@ function QueueSummary({ queue, placement }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <Metric label="Domain pending" value={queue.domainEvents?.totalPending || 0} />
         <Metric label="Outbox pending" value={queue.outbox?.totalPending || 0} />
         <Metric label="Failed" value={queue.outbox?.totalFailed || 0} />

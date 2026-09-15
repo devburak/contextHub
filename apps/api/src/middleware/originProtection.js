@@ -2,6 +2,12 @@ const crypto = require("crypto");
 
 const ORIGIN_SECRET_HEADER = "x-ctx-origin-secret";
 const MIN_ORIGIN_SECRET_BYTES = 32;
+const PUBLIC_PROBE_PATHS = new Set(["/health", "/ready"]);
+
+function isPublicProbePath(url) {
+  const pathname = String(url || "").split("?", 1)[0];
+  return PUBLIC_PROBE_PATHS.has(pathname);
+}
 
 function envFlag(value, defaultValue = false) {
   if (value === undefined || value === null || value === "") {
@@ -61,9 +67,18 @@ function createOriginProtectionHook(env = process.env) {
       return;
     }
 
+    const pathname = String(request.url || "").split("?", 1)[0];
+
+    // Load balancers and process supervisors must be able to probe the origin
+    // without receiving the Edge Gateway credential. These routes expose only
+    // process/dependency state and never application data.
+    if (isPublicProbePath(request.url)) {
+      delete request.headers[ORIGIN_SECRET_HEADER];
+      return;
+    }
+
     const provided = request.headers[ORIGIN_SECRET_HEADER];
     if (!timingSafeSecretEqual(provided, config.secret)) {
-      const pathname = String(request.url || "").split("?", 1)[0];
       request.log.warn(
         { pathname, ip: request.ip },
         "Blocked request without a valid origin credential",
@@ -82,7 +97,9 @@ function createOriginProtectionHook(env = process.env) {
 module.exports = {
   MIN_ORIGIN_SECRET_BYTES,
   ORIGIN_SECRET_HEADER,
+  PUBLIC_PROBE_PATHS,
   createOriginProtectionHook,
+  isPublicProbePath,
   resolveOriginProtectionConfig,
   timingSafeSecretEqual,
 };

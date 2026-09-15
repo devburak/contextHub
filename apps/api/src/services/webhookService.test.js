@@ -15,11 +15,17 @@ describe('sendTestWebhook', () => {
   let findOneSpy
   let mockFetch
   let mockSignPayload
+  let mockPrepareSafeWebhookRequest
 
   beforeEach(() => {
     mockFetch = vi.fn()
     mockSignPayload = vi.fn(() => 'mock-signature')
-    setWebhookDeps({ fetch: mockFetch, signPayload: mockSignPayload })
+    mockPrepareSafeWebhookRequest = vi.fn(async (url) => ({ url }))
+    setWebhookDeps({
+      fetch: mockFetch,
+      signPayload: mockSignPayload,
+      prepareSafeWebhookRequest: mockPrepareSafeWebhookRequest
+    })
 
     findOneSpy = vi.spyOn(Webhook, 'findOne').mockReturnValue({
       lean: () =>
@@ -45,6 +51,7 @@ describe('sendTestWebhook', () => {
     const result = await sendTestWebhook('tenant_1', 'hook123')
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockPrepareSafeWebhookRequest).toHaveBeenCalledWith('https://example.com/webhook')
     const [url, options] = mockFetch.mock.calls[0]
     expect(url).toBe('https://example.com/webhook')
     expect(options.headers['X-CTXHUB-EVENT']).toBe('webhook.test')
