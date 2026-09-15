@@ -19,6 +19,9 @@ async function billingRoutes(fastify) {
     try {
       return reply.send(await billingService.getOverview(request.tenantId, {
         actorEmail: request.user.email,
+        previewCountry: request.query?.previewCountry === 'TR' ? 'TR' : request.query?.previewCountry === 'US' ? 'US' : '',
+        previewPlanSlug: ['pro', 'promax'].includes(request.query?.previewPlanSlug) ? request.query.previewPlanSlug : '',
+        previewInterval: request.query?.previewInterval === 'year' ? 'year' : 'month',
       }));
     } catch (error) {
       request.log.error({ err: error }, 'Billing overview failed');

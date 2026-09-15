@@ -152,6 +152,28 @@ describe('owner-visible billing cost summary', () => {
     expect(result.prices[0]).toMatchObject({ id: 'iyzico-id', currency: 'TRY', checkoutReady: true, catalogOnly: false });
   });
 
+  it('previews a Türkiye catalogue price after TR is selected in the unsaved form', () => {
+    const plan = { _id: 'plan-id', slug: 'pro', name: 'Pro', price: 12 };
+    const result = serializeCatalogPlan(plan, [
+      { _id: 'paddle-id', provider: 'paddle', interval: 'month', currency: 'USD', amountMinor: 1200, planId: plan },
+      { _id: 'iyzico-id', provider: 'iyzico', interval: 'month', currency: 'TRY', amountMinor: 49900, planId: plan },
+    ], { displayProvider: 'iyzico' });
+
+    expect(result.prices[0]).toMatchObject({ id: null, currency: 'TRY', amountMinor: 49900, checkoutReady: false, catalogOnly: true });
+    expect(buildChargeSummary({ plan, estimatedPrice: result.prices[0] }).subscription)
+      .toMatchObject({ amountMinor: 49900, currency: 'TRY', interval: 'month', isEstimated: true });
+  });
+
+  it('keeps an existing subscription amount when a catalogue preview is present', () => {
+    const summary = buildChargeSummary({
+      plan: { slug: 'pro', price: 12 },
+      subscription: { amountMinor: 1200, currency: 'USD', interval: 'year' },
+      estimatedPrice: { amountMinor: 49900, currency: 'TRY', interval: 'month' },
+    });
+
+    expect(summary.subscription).toMatchObject({ amountMinor: 1200, currency: 'USD', interval: 'year', isEstimated: false });
+  });
+
   it('omits provider and internal identifiers from owner-visible account and subscription data', () => {
     const billingAccount = serializeBillingAccount({
       provider: 'manual',
