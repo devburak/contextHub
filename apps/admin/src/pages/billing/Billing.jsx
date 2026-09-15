@@ -128,7 +128,8 @@ export default function Billing() {
     retry: 1,
     enabled: canView,
     keepPreviousData: true,
-    refetchInterval: (data) => data?.tenant?.status === 'pending_payment' ? 5000 : false,
+    staleTime: 60_000,
+    refetchInterval: false,
   })
 
   useEffect(() => {
@@ -263,7 +264,7 @@ export default function Billing() {
 
   return (
     <main style={TOKENS} className="min-h-[calc(100vh-4rem)] bg-[var(--billing-canvas)] text-[var(--billing-ink)]">
-      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => setHostedPaymentContent('')} t={t} />
+      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => { setHostedPaymentContent(''); overview.refetch() }} t={t} />
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-[var(--billing-line)] pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -294,6 +295,11 @@ export default function Billing() {
               <div className="p-6 sm:p-8">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--billing-muted)]">{t('billing.active.eyebrow')}</p>
                 <div className="mt-3 flex flex-wrap items-baseline gap-3"><h2 className="text-4xl font-semibold">{overview.data.tenant.status === 'pending_payment' ? t('tenant.payment_pending') : overview.data.tenant.plan.name}</h2><span className="rounded-full bg-[var(--billing-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--billing-accent)]">{overview.data.tenant.status === 'pending_payment' ? overview.data.plans?.find((plan) => plan.slug === overview.data.tenant.requestedPlanSlug)?.name : activePlanStatus(t, overview.data.tenant.plan, overview.data.subscription)}</span></div>
+                {overview.data.tenant.status === 'pending_payment' && (
+                  <button type="button" onClick={() => overview.refetch()} disabled={!online || overview.isFetching} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[var(--billing-line)] px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                    <ArrowPathIcon className="h-4 w-4" /> {t('common.refresh')}
+                  </button>
+                )}
                 <p className="mt-5 text-sm text-[var(--billing-muted)]">{t('billing.active.accountLine', { tenant: overview.data.tenant.name, account: overview.data.account.name })}</p>
               </div>
               <div className="border-t border-[var(--billing-line)] bg-[var(--billing-accent)] p-6 text-white lg:border-l lg:border-t-0 sm:p-8">

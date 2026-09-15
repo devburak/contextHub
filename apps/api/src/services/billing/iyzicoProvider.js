@@ -20,21 +20,29 @@ function generateAuthorizationHeader(pathname, body, options = {}) {
   return { authorization: `IYZWSv2 ${encoded}`, randomKey };
 }
 
-async function iyzicoRequest(pathname, { method = 'GET', body } = {}) {
+async function iyzicoRequest(pathname, { method = 'GET', body, fetchImpl = fetch } = {}) {
   // iyzico's V2 signature payload uses the URI path without its query string.
   // The query remains on the actual request URL.
   const signaturePath = String(pathname).split('?')[0];
   const { authorization, randomKey } = generateAuthorizationHeader(signaturePath, body);
-  const response = await fetch(`${getBaseUrl()}${pathname}`, {
-    method,
-    headers: {
-      Authorization: authorization,
-      'Content-Type': 'application/json',
-      'x-iyzi-rnd': randomKey,
-      'x-iyzi-client-version': 'contexthub-1',
-    },
-    body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetchImpl(`${getBaseUrl()}${pathname}`, {
+      method,
+      headers: {
+        Authorization: authorization,
+        'Content-Type': 'application/json',
+        'x-iyzi-rnd': randomKey,
+        'x-iyzi-client-version': 'contexthub-1',
+      },
+      body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (cause) {
+    const networkError = new Error('Ödeme sağlayıcısıyla bağlantı kurulamadı. Lütfen daha sonra tekrar deneyin.', { cause });
+    networkError.code = 'BillingProviderNetworkUnavailable';
+    networkError.statusCode = 503;
+    throw networkError;
+  }
   const result = await response.json().catch(() => ({}));
   if (!response.ok || String(result.status || '').toLowerCase() !== 'success') {
     const providerError = new Error(result?.errorMessage || `iyzico request failed (${response.status})`);

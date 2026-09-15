@@ -39,12 +39,14 @@ describe('billing checkout intent', () => {
   let container
   let queryData
   let scrollIntoView
+  let refetch
 
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
     window.history.pushState({}, '', '/faturalandirma?plan=pro&interval=month')
     window.matchMedia = vi.fn(() => ({ matches: true }))
     scrollIntoView = vi.fn()
+    refetch = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
     queryData = overview()
     useQuery.mockImplementation(({ queryKey }) => {
@@ -54,7 +56,7 @@ describe('billing checkout intent', () => {
         plans: [{ ...queryData.plans[0], prices: [{ ...queryData.plans[0].prices[0], amountMinor: tr ? 49900 : 1200, currency: tr ? 'TRY' : 'USD' }] }],
         charges: { ...queryData.charges, subscription: { ...queryData.charges.subscription, amountMinor: tr ? 49900 : 1200, currency: tr ? 'TRY' : 'USD' } },
       }
-      return { data, isLoading: false, isError: false, refetch: vi.fn() }
+      return { data, isLoading: false, isError: false, refetch }
     })
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -74,6 +76,7 @@ describe('billing checkout intent', () => {
     await act(async () => root.render(<Billing />))
 
     expect(useQuery.mock.calls.at(-1)[0].queryKey).toContain('')
+    expect(useQuery.mock.calls.at(-1)[0].refetchInterval).toBe(false)
     expect(container.textContent).toContain('$12')
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
 
@@ -84,6 +87,10 @@ describe('billing checkout intent', () => {
     })
     expect(useQuery.mock.calls.at(-1)[0].queryKey).toContain('TR')
     expect(container.textContent).toContain('₺499')
+    expect(container.textContent).toContain('common.refresh')
+    const refreshButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent.includes('common.refresh'))
+    await act(async () => refreshButton.click())
+    expect(refetch).toHaveBeenCalledTimes(1)
 
     const nameInput = container.querySelector('input[autocomplete="organization"]')
     await act(async () => {

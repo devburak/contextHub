@@ -4,7 +4,7 @@ const billingService = require('../services/billing/billingService');
 
 function errorStatus(error) {
   if (error.code === 'AccountMigrationRequired') return 409;
-  if (['CheckoutNotConfigured', 'BillingDisabled', 'BillingProviderUnavailable', 'BillingPiiNotConfigured'].includes(error.code)) return 503;
+  if (['CheckoutNotConfigured', 'BillingDisabled', 'BillingProviderUnavailable', 'BillingProviderNetworkUnavailable', 'BillingPiiNotConfigured'].includes(error.code)) return 503;
   if (['PortalRequired', 'PortalUnavailable', 'BillingJurisdictionLocked'].includes(error.code)) return 409;
   if (['BillingProfileIncomplete', 'CommercialAgreementRequired', 'InvalidBillingProfile', 'PlanPriceUnavailable'].includes(error.code)) return 422;
   return error.statusCode || 400;
