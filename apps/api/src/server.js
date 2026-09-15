@@ -427,6 +427,16 @@ async function start() {
 
   await localRedisClient.initialize();
 
+  // Keep token inventory timestamps close to current without adding a MongoDB
+  // write to API-token requests. Redis/Mongo failures leave observations queued.
+  const { syncApiTokenUsage } = require('./services/apiTokenUsageSyncService');
+  const tokenUsageTimer = setInterval(() => {
+    syncApiTokenUsage().catch((error) => {
+      console.error('[Server] API token usage sync failed:', error.message);
+    });
+  }, 5 * 60 * 1000);
+  tokenUsageTimer.unref();
+
   if (require('./lib/billingConfig').isAccountBillingEnabled()) {
     const billingLifecycleService = require('./services/billing/billingLifecycleService');
     const billingWebhookService = require('./services/billing/billingWebhookService');

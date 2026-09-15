@@ -25,6 +25,8 @@ Dönen token'ı hemen secret manager'a kaydedin. ContextHub SHA-256 hash saklar 
 
 `GET /api/api-tokens`; ad, rol, scope, `expiresAt`, `lastUsedAt`, oluşturma zamanı ve oluşturan kullanıcı bilgisini döndürür; secret veya hash dönmez. Kullanım ve revoke işlemi izlenebilir olsun diye her workload'a ayrı token verin.
 
+`lastUsedAt` kullanım sırasında Redis'te tutulur ve yaklaşık 5 dakikada bir veritabanına aktarılır. Bu nedenle envanterdeki zaman birkaç dakika geriden gelebilir; token iptalinin uygulanması bu alana bağlı değildir.
+
 `expiresInDays: 0` süresiz token oluşturur. Sonlu süre kullanıp sona ermeden alarm üretmeyi tercih edin. Token adı ve scope'ları `PUT /api/api-tokens/:tokenId` ile güncellenebilir; rol ve expiry oluşturma anında sabittir.
 
 ## Kesintisiz rotation
