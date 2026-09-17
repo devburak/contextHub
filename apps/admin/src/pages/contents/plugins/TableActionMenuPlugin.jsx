@@ -21,6 +21,7 @@ import {
   $mergeCells,
   $unmergeCells
 } from '../nodes/TableNode.jsx'
+import { EDITOR_INTERACTION_CHANGE_EVENT } from '../utils/editorInteractionEvents.js'
 
 const SPACE = 6
 const BUTTON_SIZE = 20
@@ -36,6 +37,7 @@ function TableActionMenuPlugin({ anchorElem: _anchorElem = document.body }) {
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
   const [menuSource, setMenuSource] = useState('cell')
   const menuSourceRef = useRef(menuSource)
+  const interactionBlockedRef = useRef(false)
   const [menuAlignment, setMenuAlignment] = useState({
     openLeft: false,
     openUp: false,
@@ -196,6 +198,12 @@ function TableActionMenuPlugin({ anchorElem: _anchorElem = document.body }) {
 
   const updateMenu = useCallback(() => {
     const activeSource = menuSourceRef.current
+
+    if (interactionBlockedRef.current) {
+      setTableCellNode(null)
+      setShowMenu(false)
+      return
+    }
 
     if (document.querySelector('.editor-table.table-selected')) {
       setTableCellNode(null)
@@ -432,11 +440,33 @@ function TableActionMenuPlugin({ anchorElem: _anchorElem = document.body }) {
   }, [resetSubmenus])
 
   useEffect(() => {
+    const handleInteractionChange = (event) => {
+      interactionBlockedRef.current = event?.detail?.active === true
+
+      if (interactionBlockedRef.current) {
+        setTableCellNode(null)
+        setSelectionAnchorRect(null)
+        closeMenu()
+        return
+      }
+
+      updateMenu()
+    }
+
+    window.addEventListener(EDITOR_INTERACTION_CHANGE_EVENT, handleInteractionChange)
+    return () => {
+      window.removeEventListener(EDITOR_INTERACTION_CHANGE_EVENT, handleInteractionChange)
+    }
+  }, [closeMenu, updateMenu])
+
+  useEffect(() => {
     menuSourceRef.current = menuSource
   }, [menuSource])
 
   useEffect(() => {
     const handleMenuToggle = (event) => {
+      if (interactionBlockedRef.current) return
+
       const detail = event?.detail || {}
       const source = detail.source || 'selection'
       const shouldToggle = detail.toggle === true
@@ -801,6 +831,8 @@ function TableActionMenuPlugin({ anchorElem: _anchorElem = document.body }) {
         className="table-cell-action-button chevron-down"
         onClick={handleMenuClick}
         onMouseDown={(e) => e.preventDefault()}
+        aria-label="Hücre işlemlerini aç"
+        title="Hücre işlemleri · Çoklu seçim: ⌘/Ctrl/Alt + sürükle"
       >
         <ChevronDownIcon className="w-4 h-4" />
       </button>

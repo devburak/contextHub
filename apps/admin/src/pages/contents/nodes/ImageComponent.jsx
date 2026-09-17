@@ -1,4 +1,5 @@
 import { memo, useRef, useEffect, useCallback, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection'
 import { mergeRegister } from '@lexical/utils'
@@ -14,6 +15,10 @@ import {
   KEY_BACKSPACE_COMMAND,
 } from 'lexical'
 import { $isImageNode, $createImageNode } from './ImageNode.jsx'
+import {
+  dispatchEditorInteractionChange,
+  requestTableSelectionClear,
+} from '../utils/editorInteractionEvents.js'
 
 const DEFAULT_IMAGE_DIMENSION = 640
 
@@ -73,6 +78,7 @@ function ImageComponent({
         return true
       }
       if (event.target === imageRef.current) {
+        requestTableSelectionClear()
         if (event.shiftKey) {
           setSelected(!isSelected)
         } else {
@@ -88,7 +94,15 @@ function ImageComponent({
 
   // Handle keyboard shortcuts for copy/cut/paste
   const handleKeyboardShortcuts = useCallback((event) => {
-    if (!isSelected) return
+    if (!isSelected || isEditingCaption) return
+
+    const target = event.target
+    if (
+      target instanceof HTMLElement &&
+      (target.matches('input, textarea, select') || target.isContentEditable)
+    ) {
+      return
+    }
 
     const isMeta = event.metaKey || event.ctrlKey
     if (!isMeta) return
@@ -159,7 +173,7 @@ function ImageComponent({
         }
       }
     }
-  }, [isSelected, nodeKey, editor])
+  }, [isEditingCaption, isSelected, nodeKey, editor])
 
   useEffect(() => {
     const unregister = mergeRegister(
@@ -254,6 +268,28 @@ function ImageComponent({
     }
   }, [isEditingCaption])
 
+  useEffect(() => {
+    if (!isEditingCaption) return undefined
+
+    requestTableSelectionClear()
+    dispatchEditorInteractionChange('image-caption-dialog', true)
+    document.body.classList.add('editor-image-dialog-open')
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        handleCancelCaption()
+      }
+    }
+
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape)
+      document.body.classList.remove('editor-image-dialog-open')
+      dispatchEditorInteractionChange('image-caption-dialog', false)
+    }
+  }, [handleCancelCaption, isEditingCaption])
+
   const draggable = isSelected && !isResizing
 
   const getAlignmentStyle = () => {
@@ -302,8 +338,8 @@ function ImageComponent({
         )}
 
         {isSelected && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded">
-            <div className="flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded text-xs font-medium shadow-lg">
+          <div className="editor-image-context-toolbar pointer-events-none absolute inset-x-0 top-2 flex items-start justify-center px-2">
+            <div className="pointer-events-auto flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded text-xs font-medium shadow-lg">
               <span className="hidden sm:inline">Görsel seçildi</span>
             <span className="inline-flex items-center gap-1 ml-2">
               {linkUrl ? (
@@ -403,14 +439,24 @@ function ImageComponent({
       </div>
 
       {/* Caption Edit Modal */}
-      {isEditingCaption && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-96 overflow-y-auto">
-            <h3 className="text-lg font-medium mb-4">Caption Düzenle</h3>
+      {isEditingCaption && createPortal(
+        <div
+          className="editor-image-dialog fixed inset-0 flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`image-caption-dialog-title-${nodeKey}`}
+          onMouseDown={handleCancelCaption}
+        >
+          <div
+            className="editor-image-dialog__panel bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-96 overflow-y-auto"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h3 id={`image-caption-dialog-title-${nodeKey}`} className="text-lg font-medium mb-4">Caption Düzenle</h3>
             
             {/* Formatting Toolbar */}
             <div className="flex gap-1 mb-3 border-b pb-3">
               <button
+                type="button"
                 onClick={() => {
                   const textarea = textareaRef.current
                   if (!textarea) return
@@ -429,6 +475,7 @@ function ImageComponent({
                 B
               </button>
               <button
+                type="button"
                 onClick={() => {
                   const textarea = textareaRef.current
                   if (!textarea) return
@@ -447,6 +494,7 @@ function ImageComponent({
                 I
               </button>
               <button
+                type="button"
                 onClick={() => {
                   const textarea = textareaRef.current
                   if (!textarea) return
@@ -490,12 +538,14 @@ function ImageComponent({
             {/* Buttons */}
             <div className="flex justify-end gap-2 mt-4">
               <button
+                type="button"
                 onClick={handleCancelCaption}
                 className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
               >
                 İptal
               </button>
               <button
+                type="button"
                 onClick={handleSaveCaption}
                 className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
@@ -503,7 +553,8 @@ function ImageComponent({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
@@ -572,7 +623,7 @@ function ImageResizer({ editor, imageRef, nodeKey, onResizeStart, onResizeEnd })
   return (
     <div
       ref={controlRef}
-      className="absolute bottom-0 right-0 w-4 h-4 bg-blue-600 cursor-se-resize border border-white"
+      className="editor-image-resizer absolute bottom-0 right-0 w-4 h-4 bg-blue-600 cursor-se-resize border border-white"
       style={{
         transform: 'translate(50%, 50%)',
       }}

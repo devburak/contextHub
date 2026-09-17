@@ -15,6 +15,7 @@ import {
 } from 'lexical'
 
 import './FloatingTextFormatToolbarPlugin.css'
+import { EDITOR_INTERACTION_CHANGE_EVENT } from '../utils/editorInteractionEvents.js'
 
 const HIDDEN_TRANSFORM = 'translate3d(-10000px, -10000px, 0)'
 
@@ -48,6 +49,7 @@ function hideToolbar(toolbarElem) {
 export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElemProp, onOpenLinkModal } = {}) {
   const [editor] = useLexicalComposerContext()
   const toolbarRef = useRef(null)
+  const interactionBlockedRef = useRef(false)
   const [isBold, setIsBold] = useState(false)
   const [isItalic, setIsItalic] = useState(false)
   const [isUnderline, setIsUnderline] = useState(false)
@@ -63,6 +65,11 @@ export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElem
   }, [anchorElemProp])
 
   const updateToolbar = useCallback(() => {
+    if (interactionBlockedRef.current) {
+      hideToolbar(toolbarRef.current)
+      return
+    }
+
     editor.getEditorState().read(() => {
       const selection = $getSelection()
       const toolbarElem = toolbarRef.current
@@ -168,6 +175,22 @@ export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElem
       })
     )
   }, [editor, updateToolbar])
+
+  useEffect(() => {
+    const handleInteractionChange = (event) => {
+      interactionBlockedRef.current = event?.detail?.active === true
+      if (interactionBlockedRef.current) {
+        hideToolbar(toolbarRef.current)
+        return
+      }
+      updateToolbar()
+    }
+
+    window.addEventListener(EDITOR_INTERACTION_CHANGE_EVENT, handleInteractionChange)
+    return () => {
+      window.removeEventListener(EDITOR_INTERACTION_CHANGE_EVENT, handleInteractionChange)
+    }
+  }, [updateToolbar])
 
   useEffect(() => {
     const handler = () => {
