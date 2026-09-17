@@ -559,7 +559,7 @@ export default function Layout() {
                 ? <Navigate to="/faturalandirma" replace /> : <Outlet />}
             </div>
           </main>
-          <Footer authenticated />
+          {!isContentEditorRoute && <Footer authenticated />}
         </div>
       </div>
     </div>

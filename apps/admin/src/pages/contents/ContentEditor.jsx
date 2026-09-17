@@ -1488,7 +1488,7 @@ export default function ContentEditor() {
   return (
     <>
       <div className={clsx(
-        'grid grid-cols-1 gap-6 lg:h-full lg:min-h-0 lg:overflow-hidden',
+        'content-editor-workspace grid min-w-0 grid-cols-1 gap-6 lg:h-full lg:min-h-0 lg:overflow-hidden',
         sidebarOpen && 'lg:grid-cols-[minmax(0,1fr)_300px]'
       )}>
         <div className="min-w-0 space-y-6 lg:min-h-0 lg:overflow-y-auto lg:pr-4">
@@ -1598,7 +1598,7 @@ export default function ContentEditor() {
             </div>
           </section>
 
-          <section className={`${cardClass} flex min-h-[60dvh] flex-col space-y-4 p-4 sm:p-6 lg:h-full lg:min-h-0`}>
+          <section className={`${cardClass} content-editor-panel flex min-h-[60dvh] flex-col space-y-4 p-4 sm:p-6 lg:h-full lg:min-h-0`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-3">
                 <div>
@@ -1613,9 +1613,9 @@ export default function ContentEditor() {
                         ? 'bg-blue-100 text-blue-700'
                         : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                         }`}
-                      title={renderMode === 'json' ? t('content.source_json_current') : t('content.source_json_switch')}
+                      title={renderMode === 'json' ? t('content.source_block_current') : t('content.source_block_switch')}
                     >
-                      JSON
+                      {t('content.source_block_label')}
                     </button>
                     <button
                       onClick={handleSwitchToHtml}
@@ -1646,7 +1646,7 @@ export default function ContentEditor() {
                 )}
               </button>
             </div>
-            <div className="flex-1 rounded-lg border border-gray-200 bg-white flex flex-col overflow-hidden">
+            <div className="content-editor-frame flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
               {renderMode === 'json' || !canUseHtmlMode ? (
                 <LexicalComposer initialConfig={initialConfig}>
                   <Toolbar
@@ -1667,9 +1667,9 @@ export default function ContentEditor() {
                   <EmbedPlugin />
                   <GalleryPlugin />
                   <FormPlugin />
-                  <div className="relative flex-1 flex overflow-hidden flex-col" ref={editorContainerRef}>
+                  <div className="content-editor-viewport relative flex min-h-0 flex-1 flex-col overflow-auto overscroll-contain" ref={editorContainerRef}>
                     <RichTextPlugin
-                      contentEditable={<ContentEditable className="content-editor-input prose prose-sm prose-headings:my-1 prose-p:my-2 max-w-none flex-1 overflow-x-auto overflow-y-visible px-4 py-3 outline-none scroll-smooth sm:pl-10" />}
+                      contentEditable={<ContentEditable className="content-editor-input prose prose-sm prose-headings:my-1 prose-p:my-2 min-h-full min-w-full max-w-none flex-none px-4 py-3 outline-none sm:pl-10" />}
                       placeholder={<Placeholder />}
                       ErrorBoundary={LexicalErrorBoundary}
                     />
@@ -3930,7 +3930,9 @@ function TablePastePlugin() {
           tables.forEach(table => {
             const lexicalTable = convertHTMLTableToLexicalTable(table, editor)
             if (lexicalTable) {
-              $insertNodes([lexicalTable])
+              // A trailing paragraph gives the caret a stable escape point after
+              // a pasted table, matching document editors such as Google Docs.
+              $insertNodes([lexicalTable, $createParagraphNode()])
             }
           })
         })

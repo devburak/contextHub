@@ -1,10 +1,9 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { $createParagraphNode } from 'lexical'
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { PlusIcon } from '@heroicons/react/20/solid'
 import {
-  $isTableCellNode,
   $isTableRowNode,
   $isTableNode,
   $createTableRowNode,
@@ -34,12 +33,12 @@ function TableHoverActionsPlugin({ anchorElem = document.body }) {
     const anchorRect = anchorElem.getBoundingClientRect()
 
     // Position row button (bottom center of table, closer)
-    const rowButtonTop = tableRect.bottom - anchorRect.top - 12
-    const rowButtonLeft = tableRect.left - anchorRect.left + (tableRect.width / 2) - 12
+    const rowButtonTop = tableRect.bottom - anchorRect.top + anchorElem.scrollTop - 12
+    const rowButtonLeft = tableRect.left - anchorRect.left + anchorElem.scrollLeft + (tableRect.width / 2) - 12
 
     // Position column button (right center of table, closer)
-    const columnButtonTop = tableRect.top - anchorRect.top + (tableRect.height / 2) - 12
-    const columnButtonLeft = tableRect.right - anchorRect.left - 12
+    const columnButtonTop = tableRect.top - anchorRect.top + anchorElem.scrollTop + (tableRect.height / 2) - 12
+    const columnButtonLeft = tableRect.right - anchorRect.left + anchorElem.scrollLeft - 12
 
     setButtonPositions({
       row: { top: rowButtonTop, left: rowButtonLeft },
