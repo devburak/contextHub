@@ -1613,9 +1613,9 @@ export default function ContentEditor() {
                         ? 'bg-blue-100 text-blue-700'
                         : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                         }`}
-                      title={renderMode === 'json' ? t('content.source_json_current') : t('content.source_json_switch')}
+                      title={renderMode === 'json' ? t('content.source_block_current') : t('content.source_block_switch')}
                     >
-                      JSON
+                      {t('content.source_block_label')}
                     </button>
                     <button
                       onClick={handleSwitchToHtml}
