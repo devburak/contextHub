@@ -67,8 +67,8 @@ function TableCellResizerPlugin({ anchorElem = document.body }) {
     const anchorRect = anchorElem.getBoundingClientRect()
 
     // Position resizer at right edge of cell
-    const left = tableCellRect.right - anchorRect.left - 4
-    const top = tableCellRect.top - anchorRect.top
+    const left = tableCellRect.right - anchorRect.left + anchorElem.scrollLeft - 4
+    const top = tableCellRect.top - anchorRect.top + anchorElem.scrollTop
     const height = tableCellRect.height
 
     setResizerPosition({
