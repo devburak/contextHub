@@ -57,6 +57,20 @@ async function billingRoutes(fastify) {
     }
   });
 
+  fastify.get('/billing/checkout/:sessionId', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.BILLING_MANAGE)],
+    schema: { params: {
+      type: 'object', required: ['sessionId'],
+      properties: { sessionId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } },
+    } },
+  }, async (request, reply) => {
+    try {
+      return reply.send(await billingService.getCheckoutStatus(request.tenantId, request.params.sessionId));
+    } catch (error) {
+      return reply.code(errorStatus(error)).send({ error: error.code || 'BillingError', message: error.message });
+    }
+  });
+
   fastify.put('/billing/profile', {
     preHandler: [authenticate, requirePermission(PERMISSIONS.BILLING_MANAGE)],
     schema: {

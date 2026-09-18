@@ -47,7 +47,12 @@ async function billingWebhookRoutes(fastify) {
       }
       return reply.code(202).send({ accepted: true, duplicate: accepted.duplicate });
     } catch (error) {
-      request.log.warn({ err: error }, 'Rejected iyzico webhook');
+      request.log.warn({
+        err: error,
+        eventType: String(request.body?.iyziEventType || '').slice(0, 100),
+        hasV3Signature: Boolean(request.headers['x-iyz-signature-v3']),
+        hasSubscriptionReference: Boolean(request.body?.subscriptionReferenceCode),
+      }, 'Rejected iyzico webhook');
       return reply.code(401).send({ error: 'InvalidWebhook', message: 'Webhook signature or envelope is invalid' });
     }
   });

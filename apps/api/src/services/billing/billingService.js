@@ -21,6 +21,7 @@ const {
 } = require('../../lib/billingConfig');
 const paddleProvider = require('./paddleProvider');
 const iyzicoProvider = require('./iyzicoProvider');
+const billingWebhookService = require('./billingWebhookService');
 const { decryptBillingPii, encryptBillingPii } = require('./billingPiiCrypto');
 const {
   DECLARATION_VERSION,
@@ -484,9 +485,10 @@ async function createCheckout(tenantId, priceReference, {
     customerIp,
   });
 
+  let checkoutSessionId = null;
   if (selectedProvider === 'iyzico') {
     const ttlSeconds = Math.max(60, Math.min(3600, Number(result.expiresInSeconds || 1800)));
-    await BillingCheckoutSession.findOneAndUpdate(
+    const checkoutSession = await BillingCheckoutSession.findOneAndUpdate(
       { provider: 'iyzico', tokenHash: checkoutTokenHash(result.checkoutToken) },
       { $set: {
         checkoutMode: result.checkoutMode || 'subscription',
@@ -502,12 +504,31 @@ async function createCheckout(tenantId, priceReference, {
       } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+    checkoutSessionId = String(checkoutSession._id);
   }
 
   return {
     checkoutUrl: result.checkoutUrl || null,
     checkoutContent: result.checkoutContent || null,
     expiresInSeconds: result.expiresInSeconds || null,
+    checkoutSessionId,
+  };
+}
+
+async function getCheckoutStatus(tenantId, sessionId) {
+  const { tenant, account } = await getAccountForTenant(tenantId);
+  const session = await BillingCheckoutSession.findOne({
+    _id: sessionId, tenantId: tenant._id, accountId: account._id,
+  }).select('status checkoutMode expiresAt').lean();
+  if (!session) {
+    const error = new Error('Checkout session was not found for this tenant');
+    error.code = 'CheckoutSessionNotFound';
+    error.statusCode = 404;
+    throw error;
+  }
+  return {
+    status: session.status === 'initialized' && session.expiresAt <= new Date() ? 'expired' : session.status,
+    reviewCheckout: session.checkoutMode === 'review_checkout',
   };
 }
 
@@ -806,7 +827,15 @@ async function completeIyzicoCheckout(checkoutToken) {
     session.externalSubscriptionId = subscription.externalSubscriptionId;
     session.externalCustomerId = billingAccount.externalCustomerId;
     session.lastError = '';
+    // Persist a retryable reconciliation task before reporting completion. Mail
+    // delivery must never make a verified payment appear to have failed.
+    const reconciliation = status === 'active'
+      ? await billingWebhookService.queueIyzicoCheckoutReconciliation(subscription)
+      : null;
     await session.save();
+    if (reconciliation) setImmediate(() => billingWebhookService.processEvent(reconciliation._id).catch(() => {
+      console.error('[Billing] Initial payment notification reconciliation queued for retry');
+    }));
     return { completed: true, duplicate: false };
   } catch (error) {
     session.status = 'failed';
@@ -825,6 +854,7 @@ module.exports = {
   createPortalSession,
   getInvoiceDocument,
   getAccountForTenant,
+  getCheckoutStatus,
   getOverview,
   serializeBillingAccount,
   serializeCatalogPlan,

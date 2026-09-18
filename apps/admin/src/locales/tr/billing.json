@@ -7,6 +7,7 @@
   "billing.toast.checkoutSuccess": "Abonelik ödemesi tamamlandı.",
   "billing.toast.reviewCheckoutSuccess": "iyzico sandbox ödemesi doğrulandı. Bu deneme abonelik başlatmadı veya planınızı değiştirmedi.",
   "billing.toast.checkoutFailed": "Ödeme sonucu doğrulanamadı. Kartınızdan tahsilat olduysa destekle iletişime geçin.",
+  "billing.toast.checkoutExpired": "Ödeme sonucu bekleme süresi doldu. Tekrar ödeme yapmadan önce abonelik durumunuzu kontrol edin; tahsilat olduysa destekle iletişime geçin.",
   "billing.toast.paymentMethodUpdated": "Ödeme yöntemi güncelleme işlemi tamamlandı.",
   "billing.error.checkoutLink": "Hosted checkout bağlantısı oluşturulamadı.",
   "billing.error.checkoutStart": "Checkout başlatılamadı.",

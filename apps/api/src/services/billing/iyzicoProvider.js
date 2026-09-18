@@ -233,6 +233,10 @@ async function retrieveCheckout(checkoutToken) {
   return iyzicoRequest(`/v2/subscription/checkoutform/${encodeURIComponent(checkoutToken)}`);
 }
 
+async function retrieveSubscription(externalSubscriptionId) {
+  return iyzicoRequest(`/v2/subscription/subscriptions/${encodeURIComponent(externalSubscriptionId)}`);
+}
+
 async function createPortalSession({ externalSubscriptionId }) {
   if (!externalSubscriptionId) throw new Error('iyzico subscription is not available yet');
   const callbackUrl = process.env.IYZICO_CARD_UPDATE_CALLBACK_URL;
@@ -306,6 +310,7 @@ module.exports = {
   iyzicoRequest,
   reviewCheckoutRequestBody,
   retrieveCheckout,
+  retrieveSubscription,
   retrieveReviewCheckout,
   verifyReviewCheckoutResponse,
   verifySubscriptionWebhook,

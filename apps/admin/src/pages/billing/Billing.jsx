@@ -18,6 +18,7 @@ import CountryCombobox from '../../components/CountryCombobox.jsx'
 import { activePlanStatus, checkoutButtonLabel, statusLabel } from './billingPresentation.js'
 import { errorsFromBillingResponse, localizeBillingProfileErrors, validateBillingProfileForm } from './billingProfileValidation.js'
 import { readCheckoutIntent } from '../../lib/returnTo.js'
+import { useHostedCheckoutStatus } from './useHostedCheckoutStatus.js'
 
 const TOKENS = {
   '--billing-canvas': '#f4f1ea',
@@ -118,6 +119,7 @@ export default function Billing() {
   const [profile, setProfile] = useState(EMPTY_PROFILE)
   const [fieldErrors, setFieldErrors] = useState({})
   const [hostedPaymentContent, setHostedPaymentContent] = useState('')
+  const [hostedCheckoutSession, setHostedCheckoutSession] = useState(null)
   const profileInitializedForTenant = useRef('')
   const scrolledToPlanForTenant = useRef('')
   const locale = i18n.resolvedLanguage === 'en' ? 'en-US' : 'tr-TR'
@@ -130,6 +132,19 @@ export default function Billing() {
     keepPreviousData: true,
     staleTime: 60_000,
     refetchInterval: false,
+  })
+
+  useHostedCheckoutStatus(hostedCheckoutSession, activeTenantId, (result) => {
+    setHostedPaymentContent('')
+    setHostedCheckoutSession(null)
+    if (result.status === 'tenant_changed') return
+    overview.refetch()
+    if (result.status === 'completed') {
+      toast.success(t(result.reviewCheckout ? 'billing.toast.reviewCheckoutSuccess' : 'billing.toast.checkoutSuccess'))
+      refreshSession?.().catch(() => {})
+    } else {
+      toast.error(t(result.status === 'expired' ? 'billing.toast.checkoutExpired' : 'billing.toast.checkoutFailed'))
+    }
   })
 
   useEffect(() => {
@@ -192,7 +207,14 @@ export default function Billing() {
     mutationFn: createBillingCheckout,
     onSuccess: (result) => {
       if (result.checkoutUrl) window.location.assign(result.checkoutUrl)
-      else if (result.checkoutContent) setHostedPaymentContent(result.checkoutContent)
+      else if (result.checkoutContent) {
+        setHostedPaymentContent(result.checkoutContent)
+        if (result.checkoutSessionId) setHostedCheckoutSession({
+          id: result.checkoutSessionId,
+          tenantId: activeTenantId,
+          expiresAt: Date.now() + Math.max(60, Math.min(3600, Number(result.expiresInSeconds) || 1800)) * 1000,
+        })
+      }
       else toast.error(t('billing.error.checkoutLink'))
     },
     onError: (error) => toast.error(error.response?.data?.message || t('billing.error.checkoutStart')),
@@ -264,7 +286,7 @@ export default function Billing() {
 
   return (
     <main style={TOKENS} className="min-h-[calc(100vh-4rem)] bg-[var(--billing-canvas)] text-[var(--billing-ink)]">
-      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => { setHostedPaymentContent(''); overview.refetch() }} t={t} />
+      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => { setHostedPaymentContent(''); setHostedCheckoutSession(null); overview.refetch(); refreshSession?.().catch(() => {}) }} t={t} />
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-[var(--billing-line)] pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>

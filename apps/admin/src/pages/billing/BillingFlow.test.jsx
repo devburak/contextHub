@@ -1,24 +1,31 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { createBillingCheckout, fetchBillingCheckoutStatus } from '../../lib/api/billing.js'
 import Billing from './Billing.jsx'
+
+const sessionRefresh = vi.hoisted(() => vi.fn(async () => {}))
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn(),
-  useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useMutation: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }))
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key) => key, i18n: { resolvedLanguage: 'tr' } }),
 }))
 vi.mock('../../contexts/AuthContext.jsx', () => ({
-  useAuth: () => ({ hasPermission: () => true, activeTenantId: 'tenant-1', activeMembership: null }),
+  useAuth: () => ({ hasPermission: () => true, activeTenantId: 'tenant-1', activeMembership: null, refreshSession: sessionRefresh }),
 }))
 vi.mock('../../contexts/ToastContext.jsx', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn() }),
 }))
 vi.mock('../../components/CountryCombobox.jsx', () => ({
   default: ({ value, onChange }) => <select aria-label="Country" value={value} onChange={(event) => onChange(event.target.value)}><option value="" /><option value="TR">TR</option></select>,
+}))
+vi.mock('../../lib/api/billing.js', () => ({
+  createBillingCheckout: vi.fn(), fetchBillingCheckoutStatus: vi.fn(),
+  createBillingPortal: vi.fn(), fetchBillingOverview: vi.fn(), updateBillingProfile: vi.fn(), billingInvoiceDocumentUrl: vi.fn(),
 }))
 
 function overview() {
@@ -70,6 +77,7 @@ describe('billing checkout intent', () => {
     delete Element.prototype.scrollIntoView
     delete globalThis.IS_REACT_ACT_ENVIRONMENT
     vi.clearAllMocks()
+    vi.useRealTimers()
   })
 
   it('shows USD until TR is selected and keeps the form usable through overview refreshes', async () => {
@@ -104,5 +112,19 @@ describe('billing checkout intent', () => {
 
     expect(nameInput.value).toBe('Canary Ltd')
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
+  it('automatically closes the hosted payment modal and refreshes billing and entitlements', async () => {
+    vi.useFakeTimers()
+    fetchBillingCheckoutStatus.mockResolvedValue({ status: 'completed', reviewCheckout: false })
+    await act(async () => root.render(<Billing />))
+    const checkout = useMutation.mock.calls.find(([options]) => options.mutationFn === createBillingCheckout)[0]
+    await act(async () => checkout.onSuccess({ checkoutContent: '<p>Secure payment</p>', checkoutSessionId: 'session-1', expiresInSeconds: 1800 }))
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(container.querySelector('iframe').getAttribute('sandbox')).not.toContain('allow-same-origin')
+    await act(async () => vi.advanceTimersByTimeAsync(1500))
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(refetch).toHaveBeenCalledOnce()
+    expect(sessionRefresh).toHaveBeenCalledOnce()
   })
 })

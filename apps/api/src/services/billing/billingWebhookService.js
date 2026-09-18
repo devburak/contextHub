@@ -90,6 +90,92 @@ async function notifySuccessfulPayment({
   });
 }
 
+// Internal jobs share the existing durable event queue, but are never accepted
+// from the public webhook endpoint. Provider order IDs deduplicate delivery
+// between checkout reconciliation and the signed webhook (including retries).
+async function queueInternalIyzicoEvent({ eventId, eventType, subscription, payload, occurredAt = new Date() }) {
+  try {
+    return await BillingEvent.create({
+      provider: 'iyzico', eventId, eventType, occurredAt,
+      tenantId: subscription.tenantId, accountId: subscription.accountId,
+      externalSubscriptionId: subscription.externalSubscriptionId,
+      payload, payloadHash: crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex'),
+      payloadExpiresAt: payloadExpiresAt(),
+    });
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    return BillingEvent.findOne({ provider: 'iyzico', eventId });
+  }
+}
+
+async function queueIyzicoCheckoutReconciliation(subscription) {
+  return queueInternalIyzicoEvent({
+    eventId: `checkout-reconciliation:${subscription.externalSubscriptionId}`,
+    eventType: 'internal.iyzico.checkout.reconcile',
+    subscription,
+    payload: { source: 'verified_checkout' },
+  });
+}
+
+async function queueIyzicoPaymentNotification(subscription, orderReferenceCode, { amountMinor, currency, occurredAt }) {
+  if (!orderReferenceCode) throw new Error('iyzico payment order reference is missing');
+  const notification = await queueInternalIyzicoEvent({
+    eventId: `payment-notification:${orderReferenceCode}`,
+    eventType: 'internal.iyzico.payment.notify',
+    subscription, occurredAt,
+    payload: { orderReferenceCode, amountMinor, currency },
+  });
+  await processEvent(notification._id);
+}
+
+async function processInternalIyzicoEvent(event) {
+  const subscription = await BillingSubscription.findOne({
+    provider: 'iyzico', externalSubscriptionId: event.externalSubscriptionId,
+    tenantId: event.tenantId,
+  });
+  if (!subscription) throw new Error('iyzico subscription is not ready for reconciliation');
+  if (event.eventType === 'internal.iyzico.checkout.reconcile') {
+    const result = await iyzicoProvider.retrieveSubscription(subscription.externalSubscriptionId);
+    const data = result.data;
+    const price = await PlanPrice.findById(subscription.planPriceId);
+    if (data?.referenceCode !== subscription.externalSubscriptionId
+        || !price?.externalPriceId || data.pricingPlanReferenceCode !== price.externalPriceId) {
+      throw new Error('iyzico reconciliation subscription or plan mismatch');
+    }
+    const orders = (data.orders || []).filter((order) => order.orderStatus === 'SUCCESS');
+    if (orders.length === 0) throw new Error('iyzico successful payment is not available yet');
+    for (const order of orders) {
+      const amountMinor = Math.round(Number(order.price) * 100);
+      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || order.currencyCode !== subscription.currency) {
+        throw new Error('iyzico reconciliation payment amount or currency is invalid');
+      }
+      const paidAttempt = order.paymentAttempts?.find((attempt) => attempt.paymentStatus === 'SUCCESS');
+      const occurredAt = asDate(paidAttempt?.createdDate) || asDate(order.startPeriod);
+      if (!occurredAt) throw new Error('iyzico reconciliation payment date is invalid');
+      await queueIyzicoPaymentNotification(subscription, order.referenceCode, {
+        amountMinor, currency: order.currencyCode, occurredAt,
+      });
+    }
+  } else {
+    const tenant = await Tenant.findById(subscription.tenantId);
+    if (!tenant) throw new Error('iyzico notification tenant was not found');
+    const delivery = await notifySuccessfulPayment({
+      tenant, subscription,
+      amountMinor: event.payload.amountMinor, currency: event.payload.currency, occurredAt: event.occurredAt,
+    });
+    if (delivery?.sent) {
+      event.payload = { ...event.payload, notificationSentAt: new Date().toISOString(), messageId: delivery.messageId };
+      // Persist delivery before other reconciliation work so later failures do
+      // not send the same notification again on a normal retry.
+    }
+  }
+  event.status = 'processed';
+  event.processedAt = new Date();
+  event.lastError = '';
+  await event.save();
+  return event;
+}
+
 function minimizePaddlePayload(payload) {
   const data = payload?.data || {};
   return compactObject({
@@ -181,6 +267,9 @@ async function acceptPaddleEvent(rawBody, signatureHeader) {
 
 async function acceptIyzicoEvent(payload, signatureHeader) {
   iyzicoProvider.verifySubscriptionWebhook(payload, signatureHeader);
+  if (!['subscription.order.success', 'subscription.order.failure'].includes(payload?.iyziEventType)) {
+    throw new Error('Unsupported iyzico subscription webhook event type');
+  }
   if (!payload?.iyziReferenceCode || !payload?.iyziEventType || !payload?.iyziEventTime) {
     const error = new Error('iyzico event envelope is incomplete');
     error.code = 'InvalidWebhookEnvelope';
@@ -215,15 +304,18 @@ async function processIyzicoEvent(event) {
     externalSubscriptionId: event.externalSubscriptionId,
   });
   if (!subscription) {
-    event.status = 'ignored';
-    event.lastError = 'No matching iyzico subscription';
-    event.processedAt = new Date();
-    await event.save();
-    return event;
+    // The first webhook may beat the checkout callback which creates the local
+    // subscription. Keep it retryable instead of permanently dropping payment.
+    throw new Error('No matching iyzico subscription yet');
   }
   const tenant = await Tenant.findById(subscription.tenantId);
   if (!tenant) throw new Error('iyzico subscription tenant was not found');
   if (subscription.lastProviderEventAt && event.occurredAt < subscription.lastProviderEventAt) {
+    if (event.eventType === 'subscription.order.success') {
+      await queueIyzicoPaymentNotification(subscription, event.payload?.orderReferenceCode, {
+        amountMinor: subscription.amountMinor, currency: subscription.currency, occurredAt: event.occurredAt,
+      });
+    }
     event.status = 'ignored';
     event.lastError = 'Out-of-order iyzico event';
     event.processedAt = new Date();
@@ -262,9 +354,7 @@ async function processIyzicoEvent(event) {
     }
   }
   if (success) {
-    await notifySuccessfulPayment({
-      tenant,
-      subscription,
+    await queueIyzicoPaymentNotification(subscription, event.payload?.orderReferenceCode, {
       amountMinor: subscription.amountMinor,
       currency: subscription.currency,
       occurredAt: event.occurredAt,
@@ -456,6 +546,9 @@ async function processEvent(eventId) {
   if (!event) return BillingEvent.findById(eventId);
 
   try {
+    if (event.provider === 'iyzico' && ['internal.iyzico.checkout.reconcile', 'internal.iyzico.payment.notify'].includes(event.eventType)) {
+      return await processInternalIyzicoEvent(event);
+    }
     if (event.provider === 'iyzico') return await processIyzicoEvent(event);
     const target = await resolveTarget(event);
     if (!target) {
@@ -566,6 +659,7 @@ module.exports = {
   payloadExpiresAt,
   processEvent,
   processIyzicoEvent,
+  queueIyzicoCheckoutReconciliation,
   redactExpiredPayloads,
   reprocessPending,
 };

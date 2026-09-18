@@ -12,6 +12,11 @@ export async function createBillingCheckout(priceId) {
   return response.data
 }
 
+export async function fetchBillingCheckoutStatus(sessionId) {
+  const response = await apiClient.get(`/billing/checkout/${encodeURIComponent(sessionId)}`)
+  return response.data
+}
+
 export async function createBillingPortal() {
   const response = await apiClient.post('/billing/portal', {})
   return response.data
