@@ -20,7 +20,6 @@ import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
 import LexicalErrorBoundary from '@lexical/react/LexicalErrorBoundary'
-import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import {
   $createParagraphNode,
@@ -72,6 +71,7 @@ import TableHoverActionsPlugin from './plugins/TableHoverActionsPlugin.jsx'
 import TableCellResizerPlugin from './plugins/TableCellResizerPlugin.jsx'
 import TableSelectionPlugin from './plugins/TableSelectionPlugin.jsx'
 import TableCellFocusPlugin from './plugins/TableCellFocusPlugin.jsx'
+import EditorHistoryPlugin from './plugins/EditorHistoryPlugin.jsx'
 import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
 import ImageHandlersPlugin from './plugins/ImageHandlersPlugin.jsx'
 import VideoPlugin, { INSERT_VIDEO_COMMAND } from './plugins/VideoPlugin.jsx'
@@ -1876,7 +1876,7 @@ export default function ContentEditor() {
                       placeholder={<Placeholder />}
                       ErrorBoundary={LexicalErrorBoundary}
                     />
-                    <HistoryPlugin />
+                    <EditorHistoryPlugin />
                     <ListPlugin />
                     <ListMaxIndentLevelPlugin maxDepth={4} />
                     <LinkPlugin />
@@ -3712,12 +3712,14 @@ function Toolbar({
   return (
     <div className="editor-toolbar mb-4">
       <ToolbarButton
-        title="Geri al"
+        title="Geri al (Ctrl/⌘ + Z)"
+        ariaKeyShortcuts="Control+Z Meta+Z"
         onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
         disabled={!canUndo}
       />
       <ToolbarButton
-        title="İleri al"
+        title="İleri al (Ctrl + Y / Ctrl/⌘ + Shift + Z)"
+        ariaKeyShortcuts="Control+Y Control+Shift+Z Meta+Shift+Z"
         onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}
         disabled={!canRedo}
       />
@@ -3873,7 +3875,7 @@ function Toolbar({
   )
 }
 
-function ToolbarButton({ children, onClick, active = false, disabled = false, title }) {
+function ToolbarButton({ children, onClick, active = false, disabled = false, title, ariaKeyShortcuts }) {
   return (
     <button
       type="button"
@@ -3881,6 +3883,7 @@ function ToolbarButton({ children, onClick, active = false, disabled = false, ti
       disabled={disabled}
       title={title}
       aria-label={title}
+      aria-keyshortcuts={ariaKeyShortcuts}
       aria-pressed={active}
       className={clsx('editor-toolbar__button', active && 'is-active', disabled && 'is-disabled')}
     >
