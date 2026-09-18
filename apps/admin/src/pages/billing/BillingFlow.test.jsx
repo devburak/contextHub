@@ -2,10 +2,13 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { createBillingCheckout, createBillingPortal, fetchBillingCheckoutStatus } from '../../lib/api/billing.js'
+import { confirmPlanChange, createBillingCheckout, createBillingPortal, fetchBillingCheckoutStatus, fetchPlanChangeStatus } from '../../lib/api/billing.js'
+import { redirectToIyzicoCheckout } from './iyzicoHostedCheckout.js'
 import Billing from './Billing.jsx'
 
 const sessionRefresh = vi.hoisted(() => vi.fn(async () => {}))
+
+vi.mock('./iyzicoHostedCheckout.js', () => ({ redirectToIyzicoCheckout: vi.fn() }))
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn(),
@@ -165,5 +168,67 @@ describe('billing checkout intent', () => {
     expect(scrollIntoView).toHaveBeenCalled()
     expect(buttons.some((button) => button.textContent.includes('billing.manage.card'))).toBe(true)
     expect(buttons.some((button) => button.textContent.includes('billing.change.enterpriseTitle'))).toBe(true)
+  })
+
+  function pendingChange() {
+    queryData.tenant.status = 'active'
+    queryData.tenant.plan = { slug: 'pro', name: 'Pro' }
+    queryData.subscription = { status: 'active', interval: 'month' }
+    queryData.planChange = { id: 'change-1', tenantId: 'tenant-1', status: 'awaiting_payment' }
+    return {
+      change: queryData.planChange,
+      checkoutUrl: 'https://cpp.iyzipay.com/?token=existing-session&lang=tr',
+      checkoutContent: '<script>window.providerUsesStorage = true</script>',
+      expiresInSeconds: 900,
+    }
+  }
+
+  async function resumeChange() {
+    await act(async () => root.render(<Billing />))
+    const resume = [...container.querySelectorAll('button')].find((button) => button.textContent === 'billing.change.resume')
+    await act(async () => resume.click())
+  }
+
+  it('resumes the same plan-change payment on the provider page even when HTML is also returned', async () => {
+    const result = pendingChange()
+    confirmPlanChange.mockResolvedValue(result)
+    await resumeChange()
+    expect(confirmPlanChange).toHaveBeenCalledTimes(1)
+    expect(confirmPlanChange).toHaveBeenCalledWith('change-1')
+    expect(redirectToIyzicoCheckout).toHaveBeenCalledWith(result.checkoutUrl)
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(fetchPlanChangeStatus).not.toHaveBeenCalled()
+    expect(createBillingCheckout).not.toHaveBeenCalled()
+    expect(sessionRefresh).not.toHaveBeenCalled()
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the error and existing-payment retry visible if the hosted URL is rejected', async () => {
+    confirmPlanChange.mockResolvedValue(pendingChange())
+    redirectToIyzicoCheckout.mockImplementationOnce(() => { throw new Error('Invalid hosted checkout URL') })
+    await resumeChange()
+    expect(container.querySelector('[role="alert"]').textContent).toContain('billing.change.error')
+    expect(container.textContent).toContain('billing.change.resume')
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(createBillingCheckout).not.toHaveBeenCalled()
+  })
+
+  it('does not navigate to a plan-change payment returned for another tenant', async () => {
+    const result = pendingChange()
+    confirmPlanChange.mockResolvedValue({ ...result, change: { ...result.change, tenantId: 'tenant-2' } })
+    await resumeChange()
+    expect(redirectToIyzicoCheckout).not.toHaveBeenCalled()
+    expect(container.querySelector('iframe')).toBeNull()
+  })
+
+  it('retains sandbox isolation for legacy HTML-only plan-change responses', async () => {
+    vi.useFakeTimers()
+    const result = pendingChange()
+    confirmPlanChange.mockResolvedValue({ ...result, checkoutUrl: null })
+    await resumeChange()
+    expect(redirectToIyzicoCheckout).not.toHaveBeenCalled()
+    const frame = container.querySelector('iframe')
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-same-origin')
+    expect(frame.getAttribute('srcdoc')).toContain('iyzipay-checkout-form')
   })
 })

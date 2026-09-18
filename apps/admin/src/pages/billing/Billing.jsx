@@ -20,6 +20,7 @@ import { errorsFromBillingResponse, localizeBillingProfileErrors, validateBillin
 import { readCheckoutIntent } from '../../lib/returnTo.js'
 import { useHostedCheckoutStatus } from './useHostedCheckoutStatus.js'
 import { hostedPaymentDocument } from './hostedPaymentDocument.js'
+import { redirectToIyzicoCheckout } from './iyzicoHostedCheckout.js'
 import PlanChangeDialog from './PlanChangeDialog.jsx'
 
 const TOKENS = {
@@ -160,12 +161,23 @@ export default function Billing() {
     if (result.change?.tenantId !== currentTenantId.current) return
     setPlanSelection(null)
     setChangeError('')
-    if (result.checkoutContent) {
+    // iyzico scripts read cookies/storage and cannot run in an opaque srcDoc
+    // sandbox on every browser. Prefer its isolated, provider-hosted page;
+    // never grant provider scripts same-origin access to the admin session.
+    if (result.checkoutUrl) {
+      setHostedPaymentContent('')
+      setHostedCheckoutSession(null)
+      try { redirectToIyzicoCheckout(result.checkoutUrl) }
+      catch {
+        const message = t('billing.change.error')
+        setChangeError(message)
+        toast.error(message)
+      }
+    } else if (result.checkoutContent) {
       setHostedPaymentContent(result.checkoutContent)
       setHostedCheckoutSession({ id: result.change.id, kind: 'plan_change', tenantId: activeTenantId,
         expiresAt: Date.now() + Math.max(1, Number(result.expiresInSeconds) || 1800) * 1000 })
-    } else if (result.checkoutUrl) window.location.assign(result.checkoutUrl)
-    else toast.error(t('billing.change.pending'))
+    } else toast.error(t('billing.change.pending'))
     overview.refetch()
   }
 
