@@ -9,6 +9,7 @@ const Tenant = require('./Tenant');
 const Account = require('./Account');
 const BillingAccount = require('./BillingAccount');
 const BillingCheckoutSession = require('./BillingCheckoutSession');
+const BillingPlanChange = require('./BillingPlanChange');
 const BillingSubscription = require('./BillingSubscription');
 const BillingEvent = require('./BillingEvent');
 const BillingInvoice = require('./BillingInvoice');
@@ -65,6 +66,7 @@ module.exports = {
   Account,
   BillingAccount,
   BillingCheckoutSession,
+  BillingPlanChange,
   BillingSubscription,
   BillingEvent,
   BillingInvoice,

@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { BillingSubscription } = require('@contexthub/common');
+const { BillingSubscription, BillingPlanChange } = require('@contexthub/common');
 const { isBillingProviderEnabled } = require('../../lib/billingConfig');
 const paddleProvider = require('./paddleProvider');
 const iyzicoProvider = require('./iyzicoProvider');
@@ -30,6 +30,14 @@ async function requestTenantCancellation(tenantId, options = {}) {
   subscription.cancellationLastError = '';
   await subscription.save();
 
+  // Do not cancel the old reference while a NEXT_PERIOD replacement is being
+  // created. The existing cancellation retry loop will cancel the new one.
+  const pendingChange = await BillingPlanChange.exists({ tenantId, active: true,
+    status: { $in: ['payment_confirmed', 'upgrade_requested', 'scheduled', 'needs_review'] },
+    paidAt: { $ne: null },
+  });
+  if (pendingChange) return { status: 'pending', requested: true, retryable: true, cancellationRequestId, error: 'Plan change reconciliation required before cancellation' };
+
   if (subscription.provider === 'manual' || !subscription.externalSubscriptionId) {
     subscription.status = 'canceled';
     subscription.cancelAtPeriodEnd = false;
@@ -52,6 +60,25 @@ async function requestTenantCancellation(tenantId, options = {}) {
   }
 
   try {
+    if (subscription.provider === 'iyzico' && subscription.planChangeId) {
+      // NEXT_PERIOD can temporarily have an old parent and a pending child.
+      // Check/cancel BOTH references. On retry, read terminal state instead of
+      // blindly replaying a successful cancellation against either agreement.
+      const references = [...new Set([subscription.externalSubscriptionId, subscription.previousExternalSubscriptionId].filter(Boolean))];
+      for (const reference of references) {
+        const detail = await provider.retrieveSubscription(reference);
+        if (detail.data?.referenceCode !== reference) throw new Error('Cancellation subscription reference mismatch');
+        if (['CANCELED', 'EXPIRED', 'UPGRADED'].includes(detail.data.subscriptionStatus)) continue;
+        if (!['ACTIVE', 'PENDING', 'UNPAID'].includes(detail.data.subscriptionStatus)) throw new Error('Cancellation provider status needs reconciliation');
+        await provider.cancelSubscription({ externalSubscriptionId: reference });
+      }
+      subscription.status = 'canceled';
+      subscription.cancelAtPeriodEnd = false;
+      subscription.canceledAt = new Date();
+      subscription.cancellationLastError = '';
+      await subscription.save();
+      return { status: 'canceled', requested: true, cancellationRequestId };
+    }
     const result = await provider.cancelSubscription({
       externalSubscriptionId: subscription.externalSubscriptionId,
       effectiveFrom,

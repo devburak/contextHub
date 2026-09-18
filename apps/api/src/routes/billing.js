@@ -1,6 +1,7 @@
 const { tenantContext, authenticate, requirePermission } = require('../middleware/auth');
 const { PERMISSIONS } = require('@contexthub/common/src/rbac/permissions');
 const billingService = require('../services/billing/billingService');
+const planChangeService = require('../services/billing/planChangeService');
 
 function errorStatus(error) {
   if (error.code === 'AccountMigrationRequired') return 409;
@@ -12,6 +13,44 @@ function errorStatus(error) {
 
 async function billingRoutes(fastify) {
   fastify.addHook('preHandler', tenantContext);
+
+  fastify.post('/billing/plan-changes/quote', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.BILLING_MANAGE)],
+    schema: { body: { type: 'object', additionalProperties: false, required: ['priceId'], properties: {
+      priceId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' },
+    } } },
+  }, async (request, reply) => {
+    try {
+      reply.header('Cache-Control', 'private, no-store');
+      return reply.send(await planChangeService.createQuote(request.tenantId, request.body.priceId, request.user._id));
+    } catch (error) {
+      return reply.code(errorStatus(error)).send({ error: error.code || 'BillingError', message: error.message });
+    }
+  });
+
+  const changeParams = { type: 'object', required: ['changeId'], properties: { changeId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } } };
+  fastify.post('/billing/plan-changes/:changeId/confirm', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.BILLING_MANAGE)],
+    schema: { params: changeParams, body: { type: 'object', additionalProperties: false, required: ['accepted'], properties: { accepted: { type: 'boolean', const: true } } } },
+  }, async (request, reply) => {
+    try {
+      reply.header('Cache-Control', 'private, no-store');
+      return reply.send(await planChangeService.confirm(request.tenantId, request.params.changeId, { actorUserId: request.user._id, customerIp: request.ip }));
+    } catch (error) {
+      return reply.code(errorStatus(error)).send({ error: error.code || 'BillingError', message: error.message });
+    }
+  });
+
+  fastify.get('/billing/plan-changes/:changeId', {
+    preHandler: [authenticate, requirePermission(PERMISSIONS.BILLING_MANAGE)], schema: { params: changeParams },
+  }, async (request, reply) => {
+    try {
+      reply.header('Cache-Control', 'private, no-store');
+      return reply.send(await planChangeService.getStatus(request.tenantId, request.params.changeId));
+    } catch (error) {
+      return reply.code(errorStatus(error)).send({ error: error.code || 'BillingError', message: error.message });
+    }
+  });
 
   fastify.get('/billing/overview', {
     preHandler: [authenticate, requirePermission(PERMISSIONS.BILLING_VIEW)],

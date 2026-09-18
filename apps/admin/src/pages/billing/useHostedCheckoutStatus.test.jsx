@@ -1,10 +1,10 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchBillingCheckoutStatus } from '../../lib/api/billing.js'
+import { fetchBillingCheckoutStatus, fetchPlanChangeStatus } from '../../lib/api/billing.js'
 import { useHostedCheckoutStatus } from './useHostedCheckoutStatus.js'
 
-vi.mock('../../lib/api/billing.js', () => ({ fetchBillingCheckoutStatus: vi.fn() }))
+vi.mock('../../lib/api/billing.js', () => ({ fetchBillingCheckoutStatus: vi.fn(), fetchPlanChangeStatus: vi.fn() }))
 
 function Watcher({ session, tenantId = 'tenant-1', onResult }) {
   useHostedCheckoutStatus(session, tenantId, onResult)
@@ -76,5 +76,15 @@ describe('hosted checkout server-result watcher', () => {
     await act(async () => root.render(<Watcher session={session} tenantId="tenant-2" onResult={onResult} />))
     expect(onResult).toHaveBeenCalledWith({ status: 'tenant_changed' })
     expect(fetchBillingCheckoutStatus).not.toHaveBeenCalled()
+  })
+
+  it.each(['completed', 'needs_review'])('routes an upgrade to its own status endpoint: %s', async (status) => {
+    fetchPlanChangeStatus.mockResolvedValue({ status, paid: true })
+    await act(async () => root.render(<Watcher session={{ ...session, kind: 'plan_change' }} onResult={onResult} />))
+    await act(async () => vi.advanceTimersByTimeAsync(1500))
+    expect(fetchBillingCheckoutStatus).not.toHaveBeenCalled()
+    expect(onResult).toHaveBeenCalledWith({ status, paid: true, planChange: true })
+    await act(async () => vi.advanceTimersByTimeAsync(5000))
+    expect(fetchPlanChangeStatus).toHaveBeenCalledOnce()
   })
 })

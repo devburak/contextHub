@@ -440,6 +440,12 @@ async function start() {
   if (require('./lib/billingConfig').isAccountBillingEnabled()) {
     const billingLifecycleService = require('./services/billing/billingLifecycleService');
     const billingWebhookService = require('./services/billing/billingWebhookService');
+    const planChangeService = require('./services/billing/planChangeService');
+    planChangeService.recover().catch(() => console.error('[Server] Plan change recovery failed'));
+    const planChangeTimer = setInterval(() => {
+      planChangeService.recover().catch(() => console.error('[Server] Plan change recovery failed'));
+    }, 60_000);
+    planChangeTimer.unref();
     billingLifecycleService.reconcile().catch((error) => console.error('[Server] Billing lifecycle reconcile failed:', error.message));
     billingWebhookService.reprocessPending().catch((error) => console.error('[Server] Billing webhook recovery failed:', error.message));
     billingWebhookService.redactExpiredPayloads().catch((error) => console.error('[Server] Billing payload retention failed:', error.message));

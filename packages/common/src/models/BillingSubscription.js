@@ -8,6 +8,8 @@ const billingSubscriptionSchema = new Schema({
   billingAccountId: { type: Schema.Types.ObjectId, ref: 'BillingAccount', required: true },
   provider: { type: String, enum: ['manual', 'paddle', 'iyzico'], required: true },
   externalSubscriptionId: { type: String, default: null, trim: true },
+  previousExternalSubscriptionId: { type: String, default: null },
+  planChangeId: { type: Schema.Types.ObjectId, ref: 'BillingPlanChange', default: null },
   planId: { type: Schema.Types.ObjectId, ref: 'SubscriptionPlan', default: null },
   planPriceId: { type: Schema.Types.ObjectId, ref: 'PlanPrice', default: null },
   status: {

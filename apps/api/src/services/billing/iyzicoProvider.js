@@ -20,7 +20,7 @@ function generateAuthorizationHeader(pathname, body, options = {}) {
   return { authorization: `IYZWSv2 ${encoded}`, randomKey };
 }
 
-async function iyzicoRequest(pathname, { method = 'GET', body, fetchImpl = fetch } = {}) {
+async function iyzicoRequest(pathname, { method = 'GET', body, fetchImpl = fetch, timeoutMs } = {}) {
   // iyzico's V2 signature payload uses the URI path without its query string.
   // The query remains on the actual request URL.
   const signaturePath = String(pathname).split('?')[0];
@@ -36,6 +36,7 @@ async function iyzicoRequest(pathname, { method = 'GET', body, fetchImpl = fetch
         'x-iyzi-client-version': 'contexthub-1',
       },
       body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body),
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     });
   } catch (cause) {
     const networkError = new Error('Ödeme sağlayıcısıyla bağlantı kurulamadı. Lütfen daha sonra tekrar deneyin.', { cause });
@@ -121,6 +122,7 @@ async function createReviewCheckout({ billingAccount, tenant, planPrice, custome
 async function retrieveReviewCheckout(checkoutToken, conversationId) {
   return iyzicoRequest('/payment/iyzipos/checkoutform/auth/ecom/detail', {
     method: 'POST',
+    timeoutMs: 20_000,
     body: {
       locale: 'tr',
       conversationId,
@@ -234,7 +236,37 @@ async function retrieveCheckout(checkoutToken) {
 }
 
 async function retrieveSubscription(externalSubscriptionId) {
-  return iyzicoRequest(`/v2/subscription/subscriptions/${encodeURIComponent(externalSubscriptionId)}`);
+  return iyzicoRequest(`/v2/subscription/subscriptions/${encodeURIComponent(externalSubscriptionId)}`, { timeoutMs: 20_000 });
+}
+
+async function retrievePricingPlan(externalPriceId) {
+  return iyzicoRequest(`/v2/subscription/pricing-plans/${encodeURIComponent(externalPriceId)}`, { timeoutMs: 20_000 });
+}
+
+async function createPlanChangeCheckout({ billingAccount, tenant, change, customerIp }) {
+  if (!process.env.IYZICO_CALLBACK_URL) throw new Error('IYZICO_CALLBACK_URL is not configured');
+  const body = reviewCheckoutRequestBody({ billingAccount, tenant, customerIp, planPrice: {
+    amountMinor: change.amountMinor, currency: change.currency, key: String(change._id),
+  } });
+  body.conversationId = change.conversationId;
+  body.basketId = change.conversationId;
+  body.paymentGroup = 'PRODUCT';
+  body.basketItems[0].name = `${change.fromPlanName} → ${change.toPlanName} / Tek seferlik dönem farkı`;
+  const result = await iyzicoRequest('/payment/iyzipos/checkoutform/initialize/auth/ecom', { method: 'POST', body, timeoutMs: 20_000 });
+  if (!result.token || (!result.checkoutFormContent && !result.paymentPageUrl)) throw new Error('Incomplete plan change checkout response');
+  return {
+    checkoutToken: result.token, checkoutContent: result.checkoutFormContent,
+    checkoutUrl: result.paymentPageUrl, expiresInSeconds: Number(result.tokenExpireTime || 1800),
+  };
+}
+
+async function schedulePlanChange({ externalSubscriptionId, externalPriceId }) {
+  // NEVER NOW: the remaining-period difference was collected by the one-off CF.
+  // NEXT_PERIOD changes the existing recurring agreement, not a second checkout.
+  return iyzicoRequest(`/v2/subscription/subscriptions/${encodeURIComponent(externalSubscriptionId)}/upgrade`, {
+    timeoutMs: 20_000,
+    method: 'POST', body: { newPricingPlanReferenceCode: externalPriceId, upgradePeriod: 'NEXT_PERIOD', useTrial: false, resetRecurrenceCount: false },
+  });
 }
 
 async function createPortalSession({ externalSubscriptionId }) {
@@ -299,6 +331,8 @@ function verifySubscriptionWebhook(payload, signatureHeader, options = {}) {
 }
 
 module.exports = {
+  createPlanChangeCheckout,
+  schedulePlanChange,
   cancelSubscription,
   createCheckout,
   createReviewCheckout,
@@ -311,6 +345,7 @@ module.exports = {
   reviewCheckoutRequestBody,
   retrieveCheckout,
   retrieveSubscription,
+  retrievePricingPlan,
   retrieveReviewCheckout,
   verifyReviewCheckoutResponse,
   verifySubscriptionWebhook,

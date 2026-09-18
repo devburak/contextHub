@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { Account, Tenant, BillingAccount, BillingCheckoutSession, BillingEvent, BillingSubscription, PlanPrice, SubscriptionPlan } = require('@contexthub/common');
+const { Account, Tenant, BillingAccount, BillingCheckoutSession, BillingEvent, BillingSubscription, BillingPlanChange, PlanPrice, SubscriptionPlan } = require('@contexthub/common');
 const billing = require('./billingService');
 const webhook = require('./billingWebhookService');
 const provider = require('./iyzicoProvider');
@@ -102,9 +102,19 @@ describe('iyzico verified payment completion', () => {
   });
 
   it('retries a webhook which arrives before the callback creates its subscription', async () => {
-    BillingSubscription.findOne.mockResolvedValueOnce(null);
+    BillingSubscription.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     await expect(webhook.processIyzicoEvent(signedEvent())).rejects.toThrow('No matching iyzico subscription yet');
     expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it('ignores a late event for the predecessor subscription after a plan upgrade', async () => {
+    vi.spyOn(entitlements, 'applyPlanToTenant');
+    BillingSubscription.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ previousExternalSubscriptionId: 'sub-ref' });
+    const event = signedEvent();
+    await webhook.processIyzicoEvent(event);
+    expect(event.status).toBe('ignored');
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(entitlements.applyPlanToTenant).not.toHaveBeenCalled();
   });
 
   it('never accepts an internal notification job through the public webhook verifier', async () => {
@@ -112,6 +122,43 @@ describe('iyzico verified payment completion', () => {
     await expect(webhook.acceptIyzicoEvent({ iyziEventType: 'internal.iyzico.payment.notify' }, 'signature'))
       .rejects.toThrow('Unsupported');
     expect(BillingEvent.create).not.toHaveBeenCalled();
+  });
+
+  function upgradedOrder({ oldPeriod = false, status = 'SUCCESS', price = 1499 } = {}) {
+    subscription.planChangeId = 'change-1';
+    subscription.amountMinor = 149900;
+    subscription.currentPeriodStart = new Date('2026-09-01Z');
+    subscription.currentPeriodEnd = new Date('2026-10-01Z');
+    vi.spyOn(BillingPlanChange, 'findById').mockResolvedValue({ paidAt: new Date('2026-09-16Z'), currentAmountMinor: 49900, currency: 'TRY',
+      periodStart: new Date('2026-09-01Z'), periodEnd: new Date('2026-10-01Z') });
+    provider.retrieveSubscription.mockResolvedValue({ data: {
+      referenceCode: 'sub-ref', pricingPlanReferenceCode: 'plan-ref', orders: [{
+        referenceCode: 'renewal-order', orderStatus: status, currencyCode: 'TRY', price,
+        startPeriod: +new Date(oldPeriod ? '2026-09-01Z' : '2026-10-01Z'), endPeriod: +new Date(oldPeriod ? '2026-10-01Z' : '2026-11-01Z'),
+      }],
+    } });
+    return { ...signedEvent(), occurredAt: new Date('2026-10-01Z'), payload: { orderReferenceCode: 'renewal-order' } };
+  }
+  it('verifies a new-plan renewal and advances to its actual provider period', async () => {
+    const event = upgradedOrder();
+    await webhook.processIyzicoEvent(event);
+    expect(subscription.currentPeriodStart).toEqual(new Date('2026-10-01Z'));
+    expect(subscription.currentPeriodEnd).toEqual(new Date('2026-11-01Z'));
+    expect(event.status).toBe('processed');
+    expect(events.get('payment-notification:renewal-order').payload.amountMinor).toBe(149900);
+  });
+  it('ignores old-period history even when the provider returns the same reference', async () => {
+    const event = upgradedOrder({ oldPeriod: true, price: 499 });
+    await webhook.processIyzicoEvent(event);
+    expect(event.status).toBe('ignored');
+    expect(subscription.save).not.toHaveBeenCalled();
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+  it('does not treat a pending child or waiting order as a successful renewal', async () => {
+    const event = upgradedOrder({ status: 'WAITING' });
+    await expect(webhook.processIyzicoEvent(event)).rejects.toThrow('could not be verified');
+    expect(subscription.save).not.toHaveBeenCalled();
+    expect(sendMail).not.toHaveBeenCalled();
   });
 
   it('does not drop a payment notification just because a newer subscription event exists', async () => {

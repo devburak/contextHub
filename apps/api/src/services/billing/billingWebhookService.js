@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const {
   Account,
   BillingAccount,
+  BillingPlanChange,
   BillingEvent,
   BillingInvoice,
   BillingSubscription,
@@ -129,10 +130,23 @@ async function queueIyzicoPaymentNotification(subscription, orderReferenceCode, 
 }
 
 async function processInternalIyzicoEvent(event) {
-  const subscription = await BillingSubscription.findOne({
+  let subscription = await BillingSubscription.findOne({
     provider: 'iyzico', externalSubscriptionId: event.externalSubscriptionId,
     tenantId: event.tenantId,
   });
+  if (!subscription) {
+    const replacement = await BillingSubscription.findOne({
+      provider: 'iyzico', previousExternalSubscriptionId: event.externalSubscriptionId, tenantId: event.tenantId,
+    });
+    const change = replacement?.planChangeId ? await BillingPlanChange.findById(replacement.planChangeId) : null;
+    if (change?.externalSubscriptionId === event.externalSubscriptionId) {
+      const oldPrice = await PlanPrice.findById(change.fromPriceId);
+      if (oldPrice) subscription = {
+        ...replacement.toObject(), externalSubscriptionId: event.externalSubscriptionId,
+        planId: oldPrice.planId, planPriceId: oldPrice._id, amountMinor: change.currentAmountMinor,
+      };
+    }
+  }
   if (!subscription) throw new Error('iyzico subscription is not ready for reconciliation');
   if (event.eventType === 'internal.iyzico.checkout.reconcile') {
     const result = await iyzicoProvider.retrieveSubscription(subscription.externalSubscriptionId);
@@ -304,12 +318,55 @@ async function processIyzicoEvent(event) {
     externalSubscriptionId: event.externalSubscriptionId,
   });
   if (!subscription) {
+    // NEXT_PERIOD returns a new subscription reference. A late event for its
+    // predecessor must not reopen/cancel the replacement or report its price.
+    const predecessor = await BillingSubscription.findOne({ provider: 'iyzico', previousExternalSubscriptionId: event.externalSubscriptionId });
+    if (predecessor) {
+      event.status = 'ignored';
+      event.lastError = 'Superseded subscription reference';
+      event.processedAt = new Date();
+      await event.save();
+      return event;
+    }
     // The first webhook may beat the checkout callback which creates the local
     // subscription. Keep it retryable instead of permanently dropping payment.
     throw new Error('No matching iyzico subscription yet');
   }
   const tenant = await Tenant.findById(subscription.tenantId);
   if (!tenant) throw new Error('iyzico subscription tenant was not found');
+  if (subscription.planChangeId) {
+    // For upgraded subscriptions reconcile actual order dates and amount;
+    // NEXT_PERIOD's new reference may initially be PENDING.
+    const detail = await iyzicoProvider.retrieveSubscription(subscription.externalSubscriptionId);
+    const price = await PlanPrice.findById(subscription.planPriceId);
+    const order = detail.data?.orders?.find((item) => item.referenceCode === event.payload?.orderReferenceCode);
+    const change = await BillingPlanChange.findById(subscription.planChangeId);
+    if (change?.paidAt && detail.data?.referenceCode === subscription.externalSubscriptionId
+        && order && ['SUCCESS', 'FAILED'].includes(order.orderStatus)
+        && Number(order.endPeriod) <= Number(change.periodEnd)
+        && Number(order.startPeriod) >= Number(change.periodStart)
+        && order.currencyCode === change.currency
+        && Math.round(Number(order.price) * 100) === change.currentAmountMinor) {
+      event.status = 'ignored';
+      event.lastError = 'Pre-upgrade period order';
+      event.processedAt = new Date();
+      await event.save();
+      return event;
+    }
+    if (detail.data?.referenceCode !== subscription.externalSubscriptionId
+        || detail.data?.pricingPlanReferenceCode !== price?.externalPriceId
+        || !order || order.currencyCode !== subscription.currency
+        || Math.round(Number(order.price) * 100) !== subscription.amountMinor
+        || (event.eventType === 'subscription.order.success' && order.orderStatus !== 'SUCCESS')
+        || (event.eventType === 'subscription.order.failure' && order.orderStatus !== 'FAILED')) {
+      throw new Error('Upgraded subscription order could not be verified');
+    }
+    if (event.eventType === 'subscription.order.success' && Number(order.startPeriod) >= Number(subscription.currentPeriodStart)
+        && Number(order.endPeriod) > Number(order.startPeriod)) {
+      subscription.currentPeriodStart = new Date(Number(order.startPeriod));
+      subscription.currentPeriodEnd = new Date(Number(order.endPeriod));
+    }
+  }
   if (subscription.lastProviderEventAt && event.occurredAt < subscription.lastProviderEventAt) {
     if (event.eventType === 'subscription.order.success') {
       await queueIyzicoPaymentNotification(subscription, event.payload?.orderReferenceCode, {
@@ -660,6 +717,11 @@ module.exports = {
   processEvent,
   processIyzicoEvent,
   queueIyzicoCheckoutReconciliation,
+  queuePlanChangePaymentNotification: (subscription, change) => queueInternalIyzicoEvent({
+    eventId: `payment-notification:plan-change:${change.externalPaymentId}`,
+    eventType: 'internal.iyzico.payment.notify', subscription, occurredAt: change.paidAt,
+    payload: { orderReferenceCode: `plan-change:${change.externalPaymentId}`, amountMinor: change.amountMinor, currency: change.currency },
+  }),
   redactExpiredPayloads,
   reprocessPending,
 };

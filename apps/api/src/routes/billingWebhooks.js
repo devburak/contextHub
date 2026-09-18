@@ -66,7 +66,9 @@ async function billingWebhookRoutes(fastify) {
       const token = request.body?.token || request.body?.checkoutFormToken;
       if (!token) throw new Error('iyzico checkout token is missing');
       const result = await billingService.completeIyzicoCheckout(token);
-      redirectUrl.searchParams.set('checkout', result.reviewCheckout ? 'review_success' : 'success');
+      redirectUrl.searchParams.set('checkout', result.planChange
+        ? (result.pending ? 'plan_change_pending' : 'plan_change_success')
+        : result.reviewCheckout ? 'review_success' : 'success');
       return reply.redirect(303, redirectUrl.toString());
     } catch (error) {
       request.log.warn({ err: error }, 'iyzico checkout callback failed');

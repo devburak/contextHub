@@ -2,6 +2,7 @@ const {
   Account,
   BillingAccount,
   BillingCheckoutSession,
+  BillingPlanChange,
   BillingInvoice,
   BillingSubscription,
   Media,
@@ -349,7 +350,13 @@ async function getOverview(tenantId, { actorEmail = '', previewCountry = '', pre
   const estimatedPlanSlug = tenant.status === 'pending_payment' ? tenant.requestedPlanSlug : previewPlanSlug;
   const estimatedPrice = plans.find((plan) => plan.slug === estimatedPlanSlug)?.prices
     ?.find((price) => price.interval === previewInterval) || null;
+  const planChangeService = require('./planChangeService');
+  const planChangeEnabled = planChangeService.enabled(tenant._id);
+  const pendingChange = planChangeEnabled || subscription?.provider === 'iyzico'
+    ? await BillingPlanChange.findOne({ tenantId: tenant._id, accountId: account._id, active: true, status: { $ne: 'quoted' } }).lean()
+    : null;
   return {
+    planChange: planChangeService.serialize(pendingChange),
     tenant: {
       id: String(tenant._id),
       name: tenant.name,
@@ -368,6 +375,7 @@ async function getOverview(tenantId, { actorEmail = '', previewCountry = '', pre
     },
     billingAccount: serializeBillingAccount(billingAccount),
     paymentRouting: {
+      planChangeAvailable: planChangeEnabled && selectedProvider === 'iyzico',
       profileComplete: profileValidation.complete,
       agreementAccepted,
       requiredServiceAgreementVersion: SERVICE_AGREEMENT_VERSION,
@@ -745,6 +753,10 @@ async function completeIyzicoReviewCheckout(session, checkoutToken) {
 }
 
 async function completeIyzicoCheckout(checkoutToken) {
+  // Plan-change intents are durable and have a separate one-time-payment
+  // verifier. Never interpret their token as a new recurring subscription.
+  const planChange = await require('./planChangeService').completeByToken(checkoutToken);
+  if (planChange) return planChange;
   const tokenHash = checkoutTokenHash(checkoutToken);
   const session = await BillingCheckoutSession.findOne({ provider: 'iyzico', tokenHash })
     .select('+tokenHash')

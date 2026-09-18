@@ -109,7 +109,7 @@ describe('additive index management', () => {
     expect(model.collection.createIndex).not.toHaveBeenCalled();
   });
 
-  it('limits deployment indexes to declared content/gallery query indexes', async () => {
+  it('ensures declared query indexes and required financial idempotency indexes', async () => {
     const fixtures = {};
     for (const modelName of Object.keys(deploymentIndexes)) {
       const fixture = modelWithIndexes();
@@ -118,6 +118,10 @@ describe('additive index management', () => {
     await ensureDeploymentIndexes(fixtures);
     expect(fixtures.Content.collection.createIndex).toHaveBeenCalledTimes(2);
     expect(fixtures.Gallery.collection.createIndex).toHaveBeenCalledOnce();
+    expect(fixtures.BillingPlanChange.collection.createIndex).toHaveBeenCalledWith(
+      { tenantId: 1 }, expect.objectContaining({ unique: true, partialFilterExpression: { active: true } })
+    );
+    expect(fixtures.BillingPlanChange.collection.createIndex).toHaveBeenCalledTimes(4);
     expect(models.Content.schema.indexes()).toContainEqual([
       { tenantId: 1, slug: 1 }, { unique: true, background: true },
     ]);

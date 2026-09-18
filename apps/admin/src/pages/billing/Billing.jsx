@@ -13,12 +13,13 @@ import {
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { PERMISSIONS } from '../../constants/permissions.js'
-import { billingInvoiceDocumentUrl, createBillingCheckout, createBillingPortal, fetchBillingOverview, updateBillingProfile } from '../../lib/api/billing.js'
+import { billingInvoiceDocumentUrl, createBillingCheckout, createBillingPortal, fetchBillingOverview, updateBillingProfile, confirmPlanChange } from '../../lib/api/billing.js'
 import CountryCombobox from '../../components/CountryCombobox.jsx'
 import { activePlanStatus, checkoutButtonLabel, statusLabel } from './billingPresentation.js'
 import { errorsFromBillingResponse, localizeBillingProfileErrors, validateBillingProfileForm } from './billingProfileValidation.js'
 import { readCheckoutIntent } from '../../lib/returnTo.js'
 import { useHostedCheckoutStatus } from './useHostedCheckoutStatus.js'
+import PlanChangeDialog from './PlanChangeDialog.jsx'
 
 const TOKENS = {
   '--billing-canvas': '#f4f1ea',
@@ -120,6 +121,11 @@ export default function Billing() {
   const [fieldErrors, setFieldErrors] = useState({})
   const [hostedPaymentContent, setHostedPaymentContent] = useState('')
   const [hostedCheckoutSession, setHostedCheckoutSession] = useState(null)
+  const [planSelection, setPlanSelection] = useState(null)
+  const [changeError, setChangeError] = useState('')
+  const [resumingChange, setResumingChange] = useState(false)
+  const currentTenantId = useRef(activeTenantId)
+  currentTenantId.current = activeTenantId
   const profileInitializedForTenant = useRef('')
   const scrolledToPlanForTenant = useRef('')
   const locale = i18n.resolvedLanguage === 'en' ? 'en-US' : 'tr-TR'
@@ -140,12 +146,41 @@ export default function Billing() {
     if (result.status === 'tenant_changed') return
     overview.refetch()
     if (result.status === 'completed') {
-      toast.success(t(result.reviewCheckout ? 'billing.toast.reviewCheckoutSuccess' : 'billing.toast.checkoutSuccess'))
+      toast.success(t(result.planChange ? 'billing.change.success' : result.reviewCheckout ? 'billing.toast.reviewCheckoutSuccess' : 'billing.toast.checkoutSuccess'))
       refreshSession?.().catch(() => {})
     } else {
-      toast.error(t(result.status === 'expired' ? 'billing.toast.checkoutExpired' : 'billing.toast.checkoutFailed'))
+      toast.error(t(result.planChange ? 'billing.change.pending' : result.status === 'expired' ? 'billing.toast.checkoutExpired' : 'billing.toast.checkoutFailed'))
     }
   })
+
+  useEffect(() => { setPlanSelection(null); setChangeError('') }, [activeTenantId])
+
+  const showChangeCheckout = (result) => {
+    if (result.change?.tenantId !== currentTenantId.current) return
+    setPlanSelection(null)
+    setChangeError('')
+    if (result.checkoutContent) {
+      setHostedPaymentContent(result.checkoutContent)
+      setHostedCheckoutSession({ id: result.change.id, kind: 'plan_change', tenantId: activeTenantId,
+        expiresAt: Date.now() + Math.max(1, Number(result.expiresInSeconds) || 1800) * 1000 })
+    } else if (result.checkoutUrl) window.location.assign(result.checkoutUrl)
+    else toast.error(t('billing.change.pending'))
+    overview.refetch()
+  }
+
+  const resumeChange = async () => {
+    if (resumingChange || !canManage || !online) return
+    setResumingChange(true)
+    try { showChangeCheckout(await confirmPlanChange(overview.data.planChange.id)) }
+    catch (error) { const message = error.response?.data?.message || t('billing.change.error'); setChangeError(message); toast.error(message) }
+    finally { setResumingChange(false) }
+  }
+
+  const scrollTo = (id) => {
+    const element = document.getElementById(id)
+    element?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+    element?.focus({ preventScroll: true })
+  }
 
   useEffect(() => {
     if (overview.data?.tenant?.status === 'active' && activeMembership?.tenant?.status === 'pending_payment') {
@@ -169,6 +204,8 @@ export default function Billing() {
     const paymentMethodStatus = params.get('payment_method')
     if (checkoutStatus === 'success') toast.success(t('billing.toast.checkoutSuccess'))
     if (checkoutStatus === 'review_success') toast.success(t('billing.toast.reviewCheckoutSuccess'))
+    if (checkoutStatus === 'plan_change_success') toast.success(t('billing.change.success'))
+    if (checkoutStatus === 'plan_change_pending') toast.error(t('billing.change.pending'))
     if (checkoutStatus === 'failed') toast.error(t('billing.toast.checkoutFailed'))
     if (paymentMethodStatus === 'updated') toast.success(t('billing.toast.paymentMethodUpdated'))
     if (checkoutStatus || paymentMethodStatus) {
@@ -287,6 +324,7 @@ export default function Billing() {
   return (
     <main style={TOKENS} className="min-h-[calc(100vh-4rem)] bg-[var(--billing-canvas)] text-[var(--billing-ink)]">
       <HostedPaymentFrame content={hostedPaymentContent} onClose={() => { setHostedPaymentContent(''); setHostedCheckoutSession(null); overview.refetch(); refreshSession?.().catch(() => {}) }} t={t} />
+      {planSelection && <PlanChangeDialog key={`${activeTenantId}:${planSelection.priceId || 'enterprise'}`} selection={planSelection} tenantId={activeTenantId} canManage={canManage} online={online} t={t} locale={locale} onClose={() => setPlanSelection(null)} onCheckout={showChangeCheckout} onError={(message) => toast.error(message)} />}
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-[var(--billing-line)] pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -294,9 +332,9 @@ export default function Billing() {
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{t('billing.header.title')}</h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--billing-muted)]">{t('billing.header.description')}</p>
           </div>
-          {overview.data?.billingAccount?.hasProviderCustomer && canManage && (
-            <button type="button" onClick={() => portal.mutate()} disabled={!online || portal.isPending} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--billing-ink)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
-              <CreditCardIcon className="h-5 w-5" /> {portal.isPending ? t('billing.portal.opening') : t('billing.portal.manage')}
+          {overview.data?.billingAccount?.hasProviderCustomer && overview.data?.subscription && canManage && (
+            <button type="button" onClick={() => scrollTo('billing-management')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--billing-ink)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+              <CreditCardIcon className="h-5 w-5" /> {t('billing.portal.manage')}
             </button>
           )}
         </header>
@@ -313,6 +351,22 @@ export default function Billing() {
           </section>
         ) : (
           <>
+            {overview.data.subscription && canManage && <section id="billing-management" tabIndex={-1} className="scroll-mt-24 rounded-2xl border border-[var(--billing-line)] bg-[var(--billing-surface)] p-6 focus:outline-none sm:p-8" aria-labelledby="billing-management-title">
+              <h2 id="billing-management-title" className="text-xl font-semibold">{t('billing.manage.title')}</h2>
+              <p className="mt-2 text-sm text-[var(--billing-muted)]">{t('billing.manage.description')}</p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button type="button" onClick={() => { setInterval(overview.data.subscription.interval); scrollTo('billing-plans') }} className="rounded-xl bg-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-white">{t('billing.manage.plans')}</button>
+                <button type="button" onClick={() => portal.mutate()} disabled={!online || portal.isLoading || portal.isPending} className="rounded-xl border border-[var(--billing-line)] px-4 py-3 text-sm font-semibold disabled:opacity-50">{t(portal.isLoading || portal.isPending ? 'billing.portal.opening' : 'billing.manage.card')}</button>
+                <button type="button" onClick={() => setPlanSelection({ enterprise: true, tenantName: overview.data.tenant.name })} className="rounded-xl border border-[var(--billing-line)] px-4 py-3 text-sm font-semibold">{t('billing.change.enterpriseTitle')}</button>
+              </div>
+              <p className="mt-4 text-xs leading-5 text-[var(--billing-muted)]">{t('billing.manage.scope')}</p>
+              {overview.data.planChange && <div role="status" className="mt-5 rounded-xl bg-[var(--billing-accent-soft)] p-4 text-sm">
+                <p>{t(overview.data.planChange.paid ? 'billing.change.paidPending' : 'billing.change.pending')}</p>
+                {overview.data.planChange.status === 'awaiting_payment' && <button type="button" disabled={!online || resumingChange} onClick={resumeChange} className="mt-3 rounded-lg border border-[var(--billing-line)] px-3 py-2 font-semibold disabled:opacity-50">{t('billing.change.resume')}</button>}
+                <button type="button" disabled={!online || overview.isFetching} onClick={() => overview.refetch()} className="ml-3 mt-3 rounded-lg border border-[var(--billing-line)] px-3 py-2 font-semibold disabled:opacity-50">{t('common.refresh')}</button>
+              </div>}
+              {changeError && <p role="alert" className="mt-3 text-sm text-[var(--billing-warn)]">{changeError}</p>}
+            </section>}
             <section className="grid overflow-hidden rounded-2xl border border-[var(--billing-line)] bg-[var(--billing-surface)] lg:grid-cols-[1.4fr_1fr]">
               <div className="p-6 sm:p-8">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--billing-muted)]">{t('billing.active.eyebrow')}</p>
@@ -391,7 +445,7 @@ export default function Billing() {
               </section>
             )}
 
-            <section>
+            <section id="billing-plans" tabIndex={-1} className="scroll-mt-24 focus:outline-none">
               <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--billing-muted)]">{t('billing.usage.eyebrow')}</p><h2 className="mt-1 text-2xl font-semibold">{t('billing.usage.title')}</h2></div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {Object.entries(overview.data.usage || {}).map(([key, item]) => {
@@ -508,7 +562,10 @@ export default function Billing() {
                     const checkoutAvailable = Boolean(overview.data.paymentRouting?.checkoutAvailable && profile.country === overview.data.billingAccount?.country)
                     const canCheckout = !enterprise && !current && !hasSubscription && canManage && online && checkoutAvailable && price?.checkoutReady && price?.id
                     const canOpenProfile = !enterprise && !current && !hasSubscription && canManage && online && !overview.data.paymentRouting?.profileComplete
-                    const buttonLabel = checkoutButtonLabel(t, { current, enterprise, checkoutAvailable, checkoutReady: price?.checkoutReady, hasProfile: overview.data.paymentRouting?.profileComplete, hasSubscription })
+                    const upgrade = hasSubscription && overview.data.tenant.plan.slug === 'pro' && plan.slug === 'promax'
+                    const sameInterval = price?.interval === overview.data.subscription?.interval
+                    const canUpgrade = upgrade && sameInterval && canManage && online && checkoutAvailable && price?.checkoutReady && price?.id && overview.data.paymentRouting?.planChangeAvailable && !overview.data.planChange
+                    const buttonLabel = upgrade ? t(!sameInterval ? 'billing.change.sameInterval' : overview.data.paymentRouting?.planChangeAvailable ? 'billing.change.preview' : 'billing.change.unavailable') : checkoutButtonLabel(t, { current, enterprise, checkoutAvailable, checkoutReady: price?.checkoutReady, hasProfile: overview.data.paymentRouting?.profileComplete, hasSubscription })
                     return <article id={`billing-plan-${plan.slug}`} key={plan.id} className={`flex flex-col scroll-mt-24 rounded-2xl border bg-[var(--billing-surface)] p-6 shadow-sm ${current || requested || highlighted ? 'border-[var(--billing-accent)] ring-2 ring-[var(--billing-accent-soft)]' : 'border-[var(--billing-line)]'}`}>
                       <div className="flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--billing-accent)]">{t(`billing.plan.${plan.slug}.badge`, { defaultValue: plan.marketing?.badge || plan.name })}</p>{current && <span className="rounded-full bg-[var(--billing-accent-soft)] px-2.5 py-1 text-[11px] font-bold text-[var(--billing-accent)]">{t('billing.plans.active')}</span>}</div>
                       <h3 className="mt-2 text-2xl font-semibold">{plan.name}</h3>
@@ -516,7 +573,7 @@ export default function Billing() {
                       <p className="mt-1 min-h-10 text-sm text-[var(--billing-muted)]">{t(`billing.plan.${plan.slug}.tagline`, { defaultValue: plan.marketing?.tagline || plan.description })}</p>
                       {enterprise ? <div className="mt-5"><p className="text-3xl font-semibold">{t('billing.plans.contractPrice')}</p><p className="mt-1 text-xs text-[var(--billing-muted)]">{t('billing.plans.contractNote')}</p></div> : price ? <div className="mt-5"><p className="text-3xl font-semibold">{money(price.amountMinor, price.currency, locale)} <span className="text-sm font-normal text-[var(--billing-muted)]">{t('billing.plans.priceUnit', { interval: intervalLabel(t, interval) })}</span></p>{price.catalogOnly && <p className="mt-1 text-xs text-[var(--billing-muted)]">{t('billing.plans.catalogOnly')}</p>}</div> : <div className="mt-5"><p className="text-2xl font-semibold">{t('billing.plans.pricePending')}</p><p className="mt-1 text-xs text-[var(--billing-muted)]">{t('billing.plans.pricePendingNote')}</p></div>}
                       <ul className="mt-5 flex-1 space-y-2 text-sm">{(plan.capabilities || []).slice(0, 4).map((capability) => <li key={capability.key} className="flex gap-2"><CheckIcon className="h-5 w-5 shrink-0 text-[var(--billing-accent)]" /> {t(`billing.capability.${capability.key}${['capacity', 'support'].includes(capability.key) ? `.${plan.slug}` : ''}`, { defaultValue: capability.label })}</li>)}</ul>
-                      {current ? <button type="button" disabled className="mt-6 inline-flex items-center justify-center rounded-xl bg-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-white opacity-50">{buttonLabel}</button> : enterprise ? <a href="mailto:support@ctxhub.net?subject=ContextHub%20Enterprise%20teklifi" className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-[var(--billing-accent)]">{buttonLabel} <ArrowTopRightOnSquareIcon className="h-4 w-4" /></a> : <button type="button" disabled={(!canCheckout && !canOpenProfile) || checkout.isPending} onClick={() => canCheckout ? checkout.mutate(price.id) : document.getElementById('billing-profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{buttonLabel} {canCheckout && <ArrowTopRightOnSquareIcon className="h-4 w-4" />}</button>}
+                      {current ? <button type="button" disabled className="mt-6 inline-flex items-center justify-center rounded-xl bg-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-white opacity-50">{buttonLabel}</button> : enterprise ? <button type="button" disabled={!canManage} onClick={() => setPlanSelection({ enterprise: true, tenantName: overview.data.tenant.name })} className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-[var(--billing-accent)] disabled:opacity-50">{buttonLabel} <ArrowTopRightOnSquareIcon className="h-4 w-4" /></button> : <button type="button" disabled={(!canCheckout && !canOpenProfile && !canUpgrade) || checkout.isLoading || checkout.isPending} onClick={() => canUpgrade ? setPlanSelection({ priceId: price.id }) : canCheckout ? checkout.mutate(price.id) : scrollTo('billing-profile')} className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--billing-accent)] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{buttonLabel} {canCheckout && <ArrowTopRightOnSquareIcon className="h-4 w-4" />}</button>}
                     </article>
                   })}
                 </div>

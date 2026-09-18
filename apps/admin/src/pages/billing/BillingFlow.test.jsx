@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { createBillingCheckout, fetchBillingCheckoutStatus } from '../../lib/api/billing.js'
+import { createBillingCheckout, createBillingPortal, fetchBillingCheckoutStatus } from '../../lib/api/billing.js'
 import Billing from './Billing.jsx'
 
 const sessionRefresh = vi.hoisted(() => vi.fn(async () => {}))
@@ -26,6 +26,7 @@ vi.mock('../../components/CountryCombobox.jsx', () => ({
 vi.mock('../../lib/api/billing.js', () => ({
   createBillingCheckout: vi.fn(), fetchBillingCheckoutStatus: vi.fn(),
   createBillingPortal: vi.fn(), fetchBillingOverview: vi.fn(), updateBillingProfile: vi.fn(), billingInvoiceDocumentUrl: vi.fn(),
+  createPlanChangeQuote: vi.fn(), confirmPlanChange: vi.fn(), fetchPlanChangeStatus: vi.fn(),
 }))
 
 function overview() {
@@ -126,5 +127,21 @@ describe('billing checkout intent', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(refetch).toHaveBeenCalledOnce()
     expect(sessionRefresh).toHaveBeenCalledOnce()
+  })
+
+  it('opens management choices without opening the card form', async () => {
+    queryData.tenant.status = 'active'; queryData.tenant.plan = { slug: 'pro', name: 'Pro' }
+    queryData.billingAccount.hasProviderCustomer = true
+    queryData.subscription = { status: 'active', interval: 'month' }
+    await act(async () => root.render(<Billing />))
+    const buttons = [...container.querySelectorAll('button')]
+    const index = useMutation.mock.calls.findIndex(([options]) => options.mutationFn === createBillingPortal)
+    const mutate = useMutation.mock.results[index].value.mutate
+    await act(async () => buttons.find((button) => button.textContent.includes('billing.portal.manage')).click())
+    expect(container.querySelector('#billing-management')).not.toBeNull()
+    expect(mutate).not.toHaveBeenCalled()
+    expect(scrollIntoView).toHaveBeenCalled()
+    expect(buttons.some((button) => button.textContent.includes('billing.manage.card'))).toBe(true)
+    expect(buttons.some((button) => button.textContent.includes('billing.change.enterpriseTitle'))).toBe(true)
   })
 })

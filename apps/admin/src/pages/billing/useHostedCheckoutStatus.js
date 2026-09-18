@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { fetchBillingCheckoutStatus } from '../../lib/api/billing.js'
+import { fetchBillingCheckoutStatus, fetchPlanChangeStatus } from '../../lib/api/billing.js'
 
 // The sandboxed payment frame cannot access the admin session. Read the
 // tenant-scoped server result instead of trusting frame messages or navigation.
@@ -18,17 +18,17 @@ export function useHostedCheckoutStatus(session, activeTenantId, onResult) {
     const check = async () => {
       let result
       try {
-        result = await fetchBillingCheckoutStatus(session.id)
+        result = session.kind === 'plan_change' ? await fetchPlanChangeStatus(session.id) : await fetchBillingCheckoutStatus(session.id)
       } catch (error) {
         if (error.response?.status === 404) result = { status: 'expired' }
       }
       if (stopped) return
-      if (['completed', 'failed', 'expired'].includes(result?.status)) {
-        onResultRef.current(result)
+      if (['completed', 'failed', 'expired', 'needs_review'].includes(result?.status)) {
+        onResultRef.current(session.kind === 'plan_change' ? { ...result, planChange: true } : result)
         return
       }
       if (Date.now() >= session.expiresAt) {
-        onResultRef.current({ status: 'expired' })
+        onResultRef.current({ status: 'expired', ...(session.kind === 'plan_change' ? { planChange: true } : {}) })
         return
       }
       timer = window.setTimeout(check, 2000)

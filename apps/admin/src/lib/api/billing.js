@@ -22,6 +22,21 @@ export async function createBillingPortal() {
   return response.data
 }
 
+export async function createPlanChangeQuote(priceId) {
+  const response = await apiClient.post('/billing/plan-changes/quote', { priceId })
+  return response.data
+}
+
+export async function confirmPlanChange(changeId) {
+  const response = await apiClient.post(`/billing/plan-changes/${encodeURIComponent(changeId)}/confirm`, { accepted: true })
+  return response.data
+}
+
+export async function fetchPlanChangeStatus(changeId) {
+  const response = await apiClient.get(`/billing/plan-changes/${encodeURIComponent(changeId)}`)
+  return response.data
+}
+
 export async function updateBillingProfile(profile) {
   const response = await apiClient.put('/billing/profile', profile)
   return response.data
