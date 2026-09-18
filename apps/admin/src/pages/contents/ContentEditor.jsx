@@ -28,6 +28,7 @@ import {
   $getRoot,
   $getSelection,
   $getNodeByKey,
+  $isElementNode,
   $isRangeSelection,
   $isNodeSelection,
   $isTextNode,
@@ -36,7 +37,6 @@ import {
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_LOW,
-  FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
   REDO_COMMAND,
   SELECTION_CHANGE_COMMAND,
@@ -90,7 +90,9 @@ import {
   $createTableWithDimensions,
   $createTableNode,
   $createTableRowNode,
-  $createTableCellNode
+  $createTableCellNode,
+  $isTableCellNode,
+  $setTableCellTextAlignment,
 } from './nodes/TableNode.jsx'
 import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import MediaPickerModal from './components/MediaPickerModal.jsx'
@@ -3196,6 +3198,23 @@ const BLOCK_OPTIONS = [
   { value: 'code', label: 'Kod Bloğu' },
 ]
 
+function getNearestEditableBlock(node) {
+  if (!node) return null
+
+  let current = $isElementNode(node) ? node : node.getParent()
+  while (current) {
+    if ($isTableCellNode(current)) {
+      return current
+    }
+    if ($isElementNode(current) && !current.isInline()) {
+      return current
+    }
+    current = current.getParent()
+  }
+
+  return null
+}
+
 function Toolbar({
   openMediaPicker = null,
   isTableSelectorOpen = false,
@@ -3428,6 +3447,35 @@ function Toolbar({
     [editor, blockType]
   )
 
+  const applyBlockAlignment = useCallback((alignment) => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if (!$isRangeSelection(selection)) return
+
+      const targets = new Map()
+      selection.getNodes().forEach((node) => {
+        const target = getNearestEditableBlock(node)
+        if (target) {
+          targets.set(target.getKey(), target)
+        }
+      })
+
+      // A collapsed caret in an empty block may not yield a node list.
+      if (targets.size === 0) {
+        const target = getNearestEditableBlock(selection.anchor.getNode())
+        if (target) targets.set(target.getKey(), target)
+      }
+
+      targets.forEach((target) => {
+        if ($isTableCellNode(target)) {
+          $setTableCellTextAlignment(target, alignment)
+        } else {
+          target.setFormat(alignment)
+        }
+      })
+    })
+  }, [editor])
+
   const updateToolbar = useCallback(() => {
     editor.getEditorState().read(() => {
       const selection = $getSelection()
@@ -3444,17 +3492,9 @@ function Toolbar({
       })
 
       const anchorNode = selection.anchor.getNode()
-      let element = null
-
-      if (anchorNode.getType() === 'root') {
-        element = anchorNode.getLastChild()
-        if (!element) {
-          setBlockType('paragraph')
-          setBlockFormat('left')
-        }
-      } else {
-        element = anchorNode.getTopLevelElementOrThrow()
-      }
+      let element = anchorNode.getType() === 'root'
+        ? anchorNode.getLastChild()
+        : getNearestEditableBlock(anchorNode)
 
       if (!element || element.getType() === 'root') {
         element = element?.getLastChild() || null
@@ -3813,19 +3853,19 @@ function Toolbar({
       <Divider />
       <ToolbarButton
         title="Sola hizala"
-        onClick={() => editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'left')}
+        onClick={() => applyBlockAlignment('left')}
         active={blockFormat === 'left'}
       >
       </ToolbarButton>
       <ToolbarButton
         title="Ortala"
-        onClick={() => editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'center')}
+        onClick={() => applyBlockAlignment('center')}
         active={blockFormat === 'center'}
       >
       </ToolbarButton>
       <ToolbarButton
         title="Sağa hizala"
-        onClick={() => editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'right')}
+        onClick={() => applyBlockAlignment('right')}
         active={blockFormat === 'right'}
       >
       </ToolbarButton>

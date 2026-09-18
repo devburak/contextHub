@@ -53,6 +53,15 @@ export class ImageNode extends DecoratorNode {
 
   static importDOM() {
     return {
+      figure: (domNode) => {
+        if (!(domNode instanceof HTMLElement) || !domNode.querySelector('img')) {
+          return null
+        }
+        return {
+          conversion: convertImageFigureElement,
+          priority: 3,
+        }
+      },
       img: (domNode) => {
         if (domNode instanceof HTMLImageElement) {
           return {
@@ -279,6 +288,25 @@ export function $isImageNode(node) {
 }
 
 export { DEFAULT_IMAGE_DIMENSION }
+
+function convertImageFigureElement(domNode) {
+  const image = domNode.querySelector('img')
+  if (!(image instanceof HTMLImageElement)) {
+    return null
+  }
+
+  const conversion = convertImageElement(image)
+  if (!conversion) {
+    return null
+  }
+
+  return {
+    ...conversion,
+    // The caption is already stored on ImageNode. Consuming the figure's
+    // descendants prevents figcaption from becoming a second text block.
+    forChild: () => null,
+  }
+}
 
 function convertImageElement(domNode) {
   if (!(domNode instanceof HTMLImageElement)) {

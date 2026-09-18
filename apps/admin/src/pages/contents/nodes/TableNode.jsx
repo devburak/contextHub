@@ -1,4 +1,33 @@
-import { ElementNode } from 'lexical'
+import { $isElementNode, ElementNode } from 'lexical'
+
+const TABLE_TEXT_ALIGNMENTS = new Set(['left', 'center', 'right', 'justify', 'start', 'end'])
+
+function normalizeTextAlignment(value) {
+  return TABLE_TEXT_ALIGNMENTS.has(value) ? value : ''
+}
+
+function restoreElementMetadata(node, serializedNode) {
+  node.setFormat(normalizeTextAlignment(serializedNode.format))
+  node.setIndent(Number.isFinite(serializedNode.indent) ? serializedNode.indent : 0)
+  node.setDirection(
+    serializedNode.direction === 'rtl' || serializedNode.direction === 'ltr'
+      ? serializedNode.direction
+      : null
+  )
+  return node
+}
+
+function applyElementMetadataToDOM(node, element) {
+  const alignment = normalizeTextAlignment(node.getFormatType())
+  if (alignment) {
+    element.style.textAlign = alignment
+  }
+  const direction = node.getDirection()
+  if (direction) {
+    element.dir = direction
+  }
+  return element
+}
 
 export class TableNode extends ElementNode {
   __columnWidths
@@ -33,7 +62,10 @@ export class TableNode extends ElementNode {
 
   static importJSON(serializedNode) {
     const { columnWidths, borderWidth, borderColor, borderStyle } = serializedNode
-    return $createTableNode(columnWidths, borderWidth, borderColor, borderStyle)
+    return restoreElementMetadata(
+      $createTableNode(columnWidths, borderWidth, borderColor, borderStyle),
+      serializedNode
+    )
   }
 
   exportJSON() {
@@ -153,7 +185,7 @@ export class TableRowNode extends ElementNode {
 
   static importJSON(serializedNode) {
     const { height } = serializedNode
-    return $createTableRowNode(height)
+    return restoreElementMetadata($createTableRowNode(height), serializedNode)
   }
 
   exportJSON() {
@@ -241,7 +273,10 @@ export class TableCellNode extends ElementNode {
 
   static importJSON(serializedNode) {
     const { headerState, width, backgroundColor, colSpan, rowSpan, borderWidth, borderColor, borderStyle } = serializedNode
-    return $createTableCellNode(headerState, width, backgroundColor, colSpan, rowSpan, borderWidth, borderColor, borderStyle)
+    return restoreElementMetadata(
+      $createTableCellNode(headerState, width, backgroundColor, colSpan, rowSpan, borderWidth, borderColor, borderStyle),
+      serializedNode
+    )
   }
 
   exportJSON() {
@@ -285,6 +320,14 @@ export class TableCellNode extends ElementNode {
     }
 
     return cell
+  }
+
+  exportDOM(editor) {
+    const { element } = super.exportDOM(editor)
+    if (element instanceof HTMLElement) {
+      applyElementMetadataToDOM(this, element)
+    }
+    return { element }
   }
 
   updateDOM(prevNode, dom) {
@@ -471,18 +514,24 @@ function convertTableCellElement(domNode) {
   const colSpan = Number.isNaN(colSpanAttr) ? 1 : colSpanAttr
   const rowSpan = Number.isNaN(rowSpanAttr) ? 1 : rowSpanAttr
 
-  return {
-    node: $createTableCellNode(
-      headerState,
-      width,
-      backgroundColor || null,
-      colSpan,
-      rowSpan,
-      parsedBorder.width,
-      parsedBorder.color,
-      parsedBorder.style
-    ),
+  const node = $createTableCellNode(
+    headerState,
+    width,
+    backgroundColor || null,
+    colSpan,
+    rowSpan,
+    parsedBorder.width,
+    parsedBorder.color,
+    parsedBorder.style
+  )
+  const alignment = normalizeTextAlignment(
+    domNode.style.textAlign || domNode.getAttribute('align') || ''
+  )
+  if (alignment) {
+    node.setFormat(alignment)
   }
+
+  return { node }
 }
 
 function parseCssBorder(borderValue) {
@@ -536,6 +585,30 @@ export function $isTableRowNode(node) {
 
 export function $isTableCellNode(node) {
   return node instanceof TableCellNode
+}
+
+export function $getTableCellTextAlignment(cell) {
+  if (!$isTableCellNode(cell)) return 'left'
+  const firstFormattedChild = cell.getChildren().find((child) => (
+    $isElementNode(child) && !child.isInline() && normalizeTextAlignment(child.getFormatType())
+  ))
+  return normalizeTextAlignment(firstFormattedChild?.getFormatType())
+    || normalizeTextAlignment(cell.getFormatType())
+    || 'left'
+}
+
+export function $setTableCellTextAlignment(cell, alignment) {
+  if (!$isTableCellNode(cell)) return
+  const normalizedAlignment = normalizeTextAlignment(alignment) || 'left'
+
+  // Keep the cell format as a durable fallback for empty cells and apply the
+  // same value to every editable block so mixed-content cells remain coherent.
+  cell.setFormat(normalizedAlignment)
+  cell.getChildren().forEach((child) => {
+    if ($isElementNode(child) && !child.isInline()) {
+      child.setFormat(normalizedAlignment)
+    }
+  })
 }
 
 // Table utility functions
