@@ -8,7 +8,6 @@ import {
   CreditCardIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
-  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useToast } from '../../contexts/ToastContext.jsx'
@@ -19,8 +18,8 @@ import { activePlanStatus, checkoutButtonLabel, statusLabel } from './billingPre
 import { errorsFromBillingResponse, localizeBillingProfileErrors, validateBillingProfileForm } from './billingProfileValidation.js'
 import { readCheckoutIntent } from '../../lib/returnTo.js'
 import { useHostedCheckoutStatus } from './useHostedCheckoutStatus.js'
-import { hostedPaymentDocument } from './hostedPaymentDocument.js'
-import { redirectToIyzicoCheckout } from './iyzicoHostedCheckout.js'
+import HostedPaymentFrame from './HostedPaymentFrame.jsx'
+import { iyzicoHostedCheckout } from './iyzicoHostedCheckout.js'
 import PlanChangeDialog from './PlanChangeDialog.jsx'
 
 const TOKENS = {
@@ -95,21 +94,6 @@ const EMPTY_PROFILE = {
   serviceAgreementAccepted: false,
 }
 
-function HostedPaymentFrame({ content, onClose, t, language }) {
-  if (!content) return null
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={t('billing.securePayment.title')}>
-      <div className="flex h-[min(760px,92vh)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-          <div><p className="font-semibold">{t('billing.securePayment.title')}</p><p className="text-xs text-gray-500">{t('billing.securePayment.description')}</p></div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" aria-label={t('billing.securePayment.close')}><XMarkIcon className="h-5 w-5" /></button>
-        </div>
-        <iframe title={t('billing.securePayment.frameTitle')} srcDoc={hostedPaymentDocument(content, language)} sandbox="allow-forms allow-scripts allow-popups allow-top-navigation-by-user-activation" className="min-h-0 flex-1 border-0" />
-      </div>
-    </div>
-  )
-}
-
 export default function Billing() {
   const checkoutIntent = readCheckoutIntent(window.location.search)
   const { t, i18n } = useTranslation()
@@ -122,6 +106,7 @@ export default function Billing() {
   const [profile, setProfile] = useState(EMPTY_PROFILE)
   const [fieldErrors, setFieldErrors] = useState({})
   const [hostedPaymentContent, setHostedPaymentContent] = useState('')
+  const [hostedPaymentPage, setHostedPaymentPage] = useState(null)
   const [hostedCheckoutSession, setHostedCheckoutSession] = useState(null)
   const [planSelection, setPlanSelection] = useState(null)
   const [changeError, setChangeError] = useState('')
@@ -144,6 +129,7 @@ export default function Billing() {
 
   useHostedCheckoutStatus(hostedCheckoutSession, activeTenantId, (result) => {
     setHostedPaymentContent('')
+    setHostedPaymentPage(null)
     setHostedCheckoutSession(null)
     if (result.status === 'tenant_changed') return
     overview.refetch()
@@ -155,28 +141,33 @@ export default function Billing() {
     }
   })
 
-  useEffect(() => { setPlanSelection(null); setChangeError('') }, [activeTenantId])
+  useEffect(() => {
+    setPlanSelection(null); setChangeError('')
+    setHostedPaymentContent(''); setHostedPaymentPage(null); setHostedCheckoutSession(null)
+  }, [activeTenantId])
 
   const showChangeCheckout = (result) => {
     if (result.change?.tenantId !== currentTenantId.current) return
     setPlanSelection(null)
     setChangeError('')
-    // iyzico scripts read cookies/storage and cannot run in an opaque srcDoc
-    // sandbox on every browser. Prefer its isolated, provider-hosted page;
-    // never grant provider scripts same-origin access to the admin session.
+    const session = { id: result.change.id, kind: 'plan_change', tenantId: activeTenantId,
+      expiresAt: Date.now() + Math.max(1, Number(result.expiresInSeconds) || 1800) * 1000 }
     if (result.checkoutUrl) {
       setHostedPaymentContent('')
-      setHostedCheckoutSession(null)
-      try { redirectToIyzicoCheckout(result.checkoutUrl) }
+      try {
+        setHostedPaymentPage(iyzicoHostedCheckout(result.checkoutUrl))
+        setHostedCheckoutSession(session)
+      }
       catch {
+        setHostedPaymentPage(null); setHostedCheckoutSession(null)
         const message = t('billing.change.error')
         setChangeError(message)
         toast.error(message)
       }
     } else if (result.checkoutContent) {
+      setHostedPaymentPage(null)
       setHostedPaymentContent(result.checkoutContent)
-      setHostedCheckoutSession({ id: result.change.id, kind: 'plan_change', tenantId: activeTenantId,
-        expiresAt: Date.now() + Math.max(1, Number(result.expiresInSeconds) || 1800) * 1000 })
+      setHostedCheckoutSession(session)
     } else toast.error(t('billing.change.pending'))
     overview.refetch()
   }
@@ -258,6 +249,7 @@ export default function Billing() {
     onSuccess: (result) => {
       if (result.checkoutUrl) window.location.assign(result.checkoutUrl)
       else if (result.checkoutContent) {
+        setHostedPaymentPage(null)
         setHostedPaymentContent(result.checkoutContent)
         if (result.checkoutSessionId) setHostedCheckoutSession({
           id: result.checkoutSessionId,
@@ -274,7 +266,7 @@ export default function Billing() {
     onSuccess: (result) => {
       if (result.portalUrl) window.location.assign(result.portalUrl)
       else if (result.paymentMethodUrl) window.location.assign(result.paymentMethodUrl)
-      else if (result.paymentMethodContent) setHostedPaymentContent(result.paymentMethodContent)
+      else if (result.paymentMethodContent) { setHostedPaymentPage(null); setHostedPaymentContent(result.paymentMethodContent) }
       else toast.error(t('billing.error.portalLink'))
     },
     onError: (error) => toast.error(error.response?.data?.message || t('billing.error.portalOpen')),
@@ -336,7 +328,7 @@ export default function Billing() {
 
   return (
     <main style={TOKENS} className="min-h-[calc(100vh-4rem)] bg-[var(--billing-canvas)] text-[var(--billing-ink)]">
-      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => { setHostedPaymentContent(''); setHostedCheckoutSession(null); overview.refetch(); refreshSession?.().catch(() => {}) }} t={t} language={i18n.resolvedLanguage} />
+      <HostedPaymentFrame content={hostedPaymentContent} page={hostedPaymentPage} onClose={() => { setHostedPaymentContent(''); setHostedPaymentPage(null); setHostedCheckoutSession(null); overview.refetch(); refreshSession?.().catch(() => {}) }} onError={(message) => toast.error(message)} t={t} language={i18n.resolvedLanguage} />
       {planSelection && <PlanChangeDialog key={`${activeTenantId}:${planSelection.priceId || 'enterprise'}`} selection={planSelection} tenantId={activeTenantId} canManage={canManage} online={online} t={t} locale={locale} onClose={() => setPlanSelection(null)} onCheckout={showChangeCheckout} onError={(message) => toast.error(message)} />}
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-[var(--billing-line)] pb-6 sm:flex-row sm:items-end sm:justify-between">

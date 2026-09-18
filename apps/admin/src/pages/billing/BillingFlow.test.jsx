@@ -3,12 +3,11 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { confirmPlanChange, createBillingCheckout, createBillingPortal, fetchBillingCheckoutStatus, fetchPlanChangeStatus } from '../../lib/api/billing.js'
-import { redirectToIyzicoCheckout } from './iyzicoHostedCheckout.js'
 import Billing from './Billing.jsx'
 
 const sessionRefresh = vi.hoisted(() => vi.fn(async () => {}))
 
-vi.mock('./iyzicoHostedCheckout.js', () => ({ redirectToIyzicoCheckout: vi.fn() }))
+const authState = vi.hoisted(() => ({ activeTenantId: 'tenant-1' }))
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn(),
@@ -18,7 +17,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key) => key, i18n: { resolvedLanguage: 'tr' } }),
 }))
 vi.mock('../../contexts/AuthContext.jsx', () => ({
-  useAuth: () => ({ hasPermission: () => true, activeTenantId: 'tenant-1', activeMembership: null, refreshSession: sessionRefresh }),
+  useAuth: () => ({ hasPermission: () => true, activeTenantId: authState.activeTenantId, activeMembership: null, refreshSession: sessionRefresh }),
 }))
 vi.mock('../../contexts/ToastContext.jsx', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn() }),
@@ -53,6 +52,7 @@ describe('billing checkout intent', () => {
   let refetch
 
   beforeEach(() => {
+    authState.activeTenantId = 'tenant-1'
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
     window.history.pushState({}, '', '/faturalandirma?plan=pro&interval=month')
     window.matchMedia = vi.fn(() => ({ matches: true }))
@@ -189,14 +189,19 @@ describe('billing checkout intent', () => {
     await act(async () => resume.click())
   }
 
-  it('resumes the same plan-change payment on the provider page even when HTML is also returned', async () => {
+  it('embeds the same plan-change payment without navigating or granting srcDoc storage access', async () => {
+    vi.useFakeTimers()
     const result = pendingChange()
     confirmPlanChange.mockResolvedValue(result)
     await resumeChange()
     expect(confirmPlanChange).toHaveBeenCalledTimes(1)
     expect(confirmPlanChange).toHaveBeenCalledWith('change-1')
-    expect(redirectToIyzicoCheckout).toHaveBeenCalledWith(result.checkoutUrl)
-    expect(container.querySelector('iframe')).toBeNull()
+    const frame = container.querySelector('iframe')
+    expect(frame.getAttribute('src')).toBe(`${result.checkoutUrl}&iframe=true`)
+    expect(frame.hasAttribute('srcdoc')).toBe(false)
+    expect(frame.getAttribute('sandbox')).toContain('allow-same-origin')
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-top-navigation')
+    expect(window.location.pathname).toBe('/faturalandirma')
     expect(fetchPlanChangeStatus).not.toHaveBeenCalled()
     expect(createBillingCheckout).not.toHaveBeenCalled()
     expect(sessionRefresh).not.toHaveBeenCalled()
@@ -204,8 +209,7 @@ describe('billing checkout intent', () => {
   })
 
   it('keeps the error and existing-payment retry visible if the hosted URL is rejected', async () => {
-    confirmPlanChange.mockResolvedValue(pendingChange())
-    redirectToIyzicoCheckout.mockImplementationOnce(() => { throw new Error('Invalid hosted checkout URL') })
+    confirmPlanChange.mockResolvedValue({ ...pendingChange(), checkoutUrl: 'https://evil.test/pay' })
     await resumeChange()
     expect(container.querySelector('[role="alert"]').textContent).toContain('billing.change.error')
     expect(container.textContent).toContain('billing.change.resume')
@@ -217,7 +221,6 @@ describe('billing checkout intent', () => {
     const result = pendingChange()
     confirmPlanChange.mockResolvedValue({ ...result, change: { ...result.change, tenantId: 'tenant-2' } })
     await resumeChange()
-    expect(redirectToIyzicoCheckout).not.toHaveBeenCalled()
     expect(container.querySelector('iframe')).toBeNull()
   })
 
@@ -226,9 +229,51 @@ describe('billing checkout intent', () => {
     const result = pendingChange()
     confirmPlanChange.mockResolvedValue({ ...result, checkoutUrl: null })
     await resumeChange()
-    expect(redirectToIyzicoCheckout).not.toHaveBeenCalled()
     const frame = container.querySelector('iframe')
     expect(frame.getAttribute('sandbox')).not.toContain('allow-same-origin')
     expect(frame.getAttribute('srcdoc')).toContain('iyzipay-checkout-form')
+  })
+
+  it('closes the provider iframe only after the server verifies completion, not on frame load or messages', async () => {
+    vi.useFakeTimers()
+    confirmPlanChange.mockResolvedValue(pendingChange())
+    fetchPlanChangeStatus.mockResolvedValueOnce({ status: 'awaiting_payment' }).mockResolvedValueOnce({ status: 'completed' })
+    await resumeChange()
+    await act(async () => {
+      container.querySelector('iframe').dispatchEvent(new Event('load'))
+      window.dispatchEvent(new MessageEvent('message', { origin: 'https://cpp.iyzipay.com', data: { status: 'completed' } }))
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(container.querySelector('iframe')).not.toBeNull()
+    expect(sessionRefresh).not.toHaveBeenCalled()
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+    expect(fetchPlanChangeStatus).toHaveBeenCalledWith('change-1')
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(sessionRefresh).toHaveBeenCalledOnce()
+    expect(createBillingCheckout).not.toHaveBeenCalled()
+  })
+
+  it('closes the hosted iframe and stops checking payment status when the user switches tenants', async () => {
+    vi.useFakeTimers()
+    confirmPlanChange.mockResolvedValue(pendingChange())
+    await resumeChange()
+    expect(container.querySelector('iframe')).not.toBeNull()
+    authState.activeTenantId = 'tenant-2'
+    await act(async () => root.render(<Billing />))
+    expect(container.querySelector('iframe')).toBeNull()
+    await act(async () => vi.advanceTimersByTimeAsync(4000))
+    expect(fetchPlanChangeStatus).not.toHaveBeenCalled()
+  })
+
+  it('closing the modal stops polling without canceling or creating a payment', async () => {
+    vi.useFakeTimers()
+    confirmPlanChange.mockResolvedValue(pendingChange())
+    await resumeChange()
+    await act(async () => container.querySelector('[aria-label="billing.securePayment.close"]').click())
+    expect(container.querySelector('iframe')).toBeNull()
+    await act(async () => vi.advanceTimersByTimeAsync(4000))
+    expect(fetchPlanChangeStatus).not.toHaveBeenCalled()
+    expect(confirmPlanChange).toHaveBeenCalledTimes(1)
+    expect(createBillingCheckout).not.toHaveBeenCalled()
   })
 })
