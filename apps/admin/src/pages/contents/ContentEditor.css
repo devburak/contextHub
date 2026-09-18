@@ -214,6 +214,14 @@
   background-image: url('./assets/icons/redo.svg');
 }
 
+.editor-toolbar__button[data-toolbar-icon='find']::before {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3e%3ccircle cx='11' cy='11' r='7' stroke-width='2'/%3e%3cpath stroke-linecap='round' stroke-width='2' d='m20 20-4-4'/%3e%3c/svg%3e");
+}
+
+.editor-toolbar__button[data-toolbar-icon='toc']::before {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3e%3cpath stroke-linecap='round' stroke-width='2' d='M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01'/%3e%3c/svg%3e");
+}
+
 .editor-toolbar__button[title='Madde işaretli liste']::before {
   background-image: url('./assets/icons/list-ul.svg');
 }
@@ -2584,14 +2592,19 @@ body.editor-image-dialog-open .editor-image-context-toolbar {
 .content-editor-workspace {
   --editor-surface: #ffffff;
   --editor-surface-muted: #f8fafc;
+  --editor-elevated: #ffffff;
   --editor-ink: #111827;
   --editor-ink-muted: #64748b;
+  --editor-ink-subtle: #475569;
   --editor-accent: #2563eb;
   --editor-accent-soft: #dbeafe;
+  --editor-accent-surface: #eff6ff;
+  --editor-accent-border: #93c5fd;
   --editor-border: #d7dce5;
   --editor-radius-sm: 4px;
   --editor-radius-md: 8px;
   --editor-shadow-focus: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  --editor-shadow-soft: 0 4px 10px rgba(15, 23, 42, 0.05);
 }
 
 .content-editor-frame {
@@ -2602,6 +2615,143 @@ body.editor-image-dialog-open .editor-image-context-toolbar {
 .content-editor-frame:focus-within {
   border-color: var(--editor-accent);
   box-shadow: var(--editor-shadow-focus);
+}
+
+.content-editor-workbench {
+  background: var(--editor-surface);
+}
+
+.editor-find-panel {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--editor-border);
+  background: var(--editor-surface-muted);
+  box-shadow: var(--editor-shadow-soft);
+  z-index: 9;
+}
+
+.editor-find-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-find-panel input {
+  min-width: 120px;
+  flex: 1 1 220px;
+  height: 30px;
+  border: 1px solid var(--editor-border);
+  border-radius: 6px;
+  background: var(--editor-elevated);
+  padding: 0 9px;
+  font-size: 12px;
+  color: var(--editor-ink);
+}
+
+.editor-find-panel input:focus-visible {
+  border-color: var(--editor-accent);
+  outline: 2px solid rgba(37, 99, 235, 0.16);
+}
+
+.editor-find-panel button,
+.editor-document-outline button {
+  min-height: 30px;
+  border: 1px solid var(--editor-border);
+  border-radius: 6px;
+  background: var(--editor-elevated);
+  padding: 0 9px;
+  color: var(--editor-ink-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.editor-find-panel button:hover:not(:disabled),
+.editor-document-outline button:hover:not(:disabled) {
+  border-color: var(--editor-accent-border);
+  background: var(--editor-accent-surface);
+  color: var(--editor-accent);
+}
+
+.editor-find-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.editor-find-panel__count {
+  min-width: 58px;
+  color: var(--editor-ink-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.editor-document-outline {
+  width: 240px;
+  flex: 0 0 240px;
+  overflow: auto;
+  border-right: 1px solid var(--editor-border);
+  background: var(--editor-surface-muted);
+  padding: 10px;
+}
+
+.editor-document-outline__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--editor-ink-subtle);
+  font-size: 12px;
+}
+
+.editor-document-outline__header button {
+  min-height: 26px;
+  padding: 0 8px;
+}
+
+.editor-document-outline nav {
+  display: grid;
+  gap: 2px;
+}
+
+.editor-document-outline__item {
+  display: block;
+  width: 100%;
+  min-height: 28px !important;
+  overflow: hidden;
+  border-color: transparent !important;
+  background: transparent !important;
+  padding: 4px 6px !important;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-document-outline__item--h2 { padding-left: 16px !important; }
+.editor-document-outline__item--h3 { padding-left: 26px !important; }
+.editor-document-outline__item--h4,
+.editor-document-outline__item--h5,
+.editor-document-outline__item--h6 { padding-left: 36px !important; }
+
+.editor-document-outline__empty {
+  margin: 0;
+  color: var(--editor-ink-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.editor-document-stats {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--editor-border);
+  background: var(--editor-surface-muted);
+  padding: 0 10px;
+  color: var(--editor-ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .content-editor-viewport {
@@ -2723,5 +2873,23 @@ body.editor-image-dialog-open .editor-image-context-toolbar {
   .table-add-row-button,
   .table-add-column-button {
     transition: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .content-editor-workbench {
+    flex-direction: column;
+  }
+
+  .editor-document-outline {
+    width: 100%;
+    max-height: 180px;
+    flex-basis: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--editor-border);
+  }
+
+  .editor-find-panel__row {
+    flex-wrap: wrap;
   }
 }
