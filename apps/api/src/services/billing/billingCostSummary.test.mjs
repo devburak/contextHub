@@ -91,6 +91,14 @@ describe('owner-visible billing cost summary', () => {
     expect(path.options.select).toBe(false);
   });
 
+  it('preserves an unset contract amount instead of substituting the catalogue price', () => {
+    const summary = buildChargeSummary({
+      plan: enterprise,
+      subscription: { provider: 'manual', amountMinor: null, currency: 'TRY' },
+    });
+    expect(summary.subscription).toMatchObject({ amountMinor: null, isEstimated: false, currentPeriodEnd: null });
+  });
+
   it('does not expose provider details in selectable prices', () => {
     const result = serializePrice({
       _id: 'price-id',

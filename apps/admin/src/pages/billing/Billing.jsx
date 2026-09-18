@@ -14,7 +14,7 @@ import { useToast } from '../../contexts/ToastContext.jsx'
 import { PERMISSIONS } from '../../constants/permissions.js'
 import { billingInvoiceDocumentUrl, createBillingCheckout, createBillingPortal, fetchBillingOverview, updateBillingProfile, confirmPlanChange } from '../../lib/api/billing.js'
 import CountryCombobox from '../../components/CountryCombobox.jsx'
-import { activePlanStatus, checkoutButtonLabel, statusLabel } from './billingPresentation.js'
+import { activePlanStatus, checkoutButtonLabel, contractPresentation, statusLabel } from './billingPresentation.js'
 import { errorsFromBillingResponse, localizeBillingProfileErrors, validateBillingProfileForm } from './billingProfileValidation.js'
 import { readCheckoutIntent } from '../../lib/returnTo.js'
 import { useHostedCheckoutStatus } from './useHostedCheckoutStatus.js'
@@ -126,6 +126,7 @@ export default function Billing() {
     staleTime: 60_000,
     refetchInterval: false,
   })
+  const contract = contractPresentation(overview.data)
 
   useHostedCheckoutStatus(hostedCheckoutSession, activeTenantId, (result) => {
     setHostedPaymentContent('')
@@ -337,7 +338,7 @@ export default function Billing() {
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{t('billing.header.title')}</h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--billing-muted)]">{t('billing.header.description')}</p>
           </div>
-          {overview.data?.billingAccount?.hasProviderCustomer && overview.data?.subscription && canManage && (
+          {!contract.managed && overview.data?.billingAccount?.hasProviderCustomer && overview.data?.subscription && canManage && (
             <button type="button" onClick={() => scrollTo('billing-management')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--billing-ink)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
               <CreditCardIcon className="h-5 w-5" /> {t('billing.portal.manage')}
             </button>
@@ -356,7 +357,7 @@ export default function Billing() {
           </section>
         ) : (
           <>
-            {overview.data.subscription && canManage && <section id="billing-management" tabIndex={-1} className="scroll-mt-24 rounded-2xl border border-[var(--billing-line)] bg-[var(--billing-surface)] p-6 focus:outline-none sm:p-8" aria-labelledby="billing-management-title">
+            {!contract.managed && overview.data.subscription && canManage && <section id="billing-management" tabIndex={-1} className="scroll-mt-24 rounded-2xl border border-[var(--billing-line)] bg-[var(--billing-surface)] p-6 focus:outline-none sm:p-8" aria-labelledby="billing-management-title">
               <h2 id="billing-management-title" className="text-xl font-semibold">{t('billing.manage.title')}</h2>
               <p className="mt-2 text-sm text-[var(--billing-muted)]">{t('billing.manage.description')}</p>
               <div className="mt-5 flex flex-wrap gap-3">
@@ -384,9 +385,9 @@ export default function Billing() {
                 <p className="mt-5 text-sm text-[var(--billing-muted)]">{t('billing.active.accountLine', { tenant: overview.data.tenant.name, account: overview.data.account.name })}</p>
               </div>
               <div className="border-t border-[var(--billing-line)] bg-[var(--billing-accent)] p-6 text-white lg:border-l lg:border-t-0 sm:p-8">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/70">{t(overview.data.tenant.plan.slug === 'enterprise' && !overview.data.subscription ? 'billing.period.contract' : 'billing.period.next')}</p>
-                <p className="mt-3 text-2xl font-semibold">{overview.data.tenant.plan.slug === 'enterprise' && !overview.data.subscription ? t('billing.period.byContract') : date(overview.data.subscription?.currentPeriodEnd, locale)}</p>
-                <p className="mt-2 text-sm text-white/75">{t(overview.data.tenant.plan.slug === 'enterprise' && !overview.data.subscription ? 'billing.period.contractDescription' : overview.data.subscription?.cancelAtPeriodEnd ? 'billing.period.canceling' : 'billing.period.renewal')}</p>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/70">{t(contract.managed ? 'billing.period.contract' : 'billing.period.next')}</p>
+                <p className="mt-3 text-2xl font-semibold">{contract.managed ? t('billing.period.byContract') : date(overview.data.subscription?.currentPeriodEnd, locale)}</p>
+                <p className="mt-2 text-sm text-white/75">{t(contract.managed ? 'billing.period.contractDescription' : overview.data.subscription?.cancelAtPeriodEnd ? 'billing.period.canceling' : 'billing.period.renewal')}</p>
               </div>
             </section>
 
@@ -402,9 +403,9 @@ export default function Billing() {
               <div className="mt-6 grid gap-4 lg:grid-cols-3">
                 <article className="rounded-xl border border-[var(--billing-line)] bg-white p-5">
                   <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--billing-muted)]">{t(overview.data.charges.subscription.isEstimated ? 'billing.charges.listPrice' : 'billing.charges.activePrice')}</p>
-                  <p className="mt-3 text-3xl font-semibold">{money(overview.data.charges.subscription.amountMinor, overview.data.charges.subscription.currency, locale)}</p>
-                  <p className="mt-1 text-sm text-[var(--billing-muted)]">{t('billing.charges.perTenant', { interval: intervalLabel(t, overview.data.charges.subscription.interval) })}</p>
-                  <p className="mt-4 text-xs leading-5 text-[var(--billing-muted)]">{overview.data.charges.subscription.isEstimated ? t('billing.charges.catalogNote') : dateRange(overview.data.charges.subscription.currentPeriodStart, overview.data.charges.subscription.currentPeriodEnd, locale)}</p>
+                  <p className="mt-3 text-3xl font-semibold">{contract.pricePending ? t('billing.plans.contractPrice') : money(overview.data.charges.subscription.amountMinor, overview.data.charges.subscription.currency, locale)}</p>
+                  <p className="mt-1 text-sm text-[var(--billing-muted)]">{contract.managed ? t('billing.period.byContract') : t('billing.charges.perTenant', { interval: intervalLabel(t, overview.data.charges.subscription.interval) })}</p>
+                  <p className="mt-4 text-xs leading-5 text-[var(--billing-muted)]">{contract.pricePending ? t('billing.plans.contractNote') : overview.data.charges.subscription.isEstimated ? t('billing.charges.catalogNote') : dateRange(overview.data.charges.subscription.currentPeriodStart, overview.data.charges.subscription.currentPeriodEnd, locale)}</p>
                 </article>
 
                 <article className="rounded-xl border border-[var(--billing-line)] bg-white p-5">

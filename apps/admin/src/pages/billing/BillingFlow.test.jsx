@@ -132,6 +132,24 @@ describe('billing checkout intent', () => {
     expect(sessionRefresh).toHaveBeenCalledOnce()
   })
 
+  it('shows a manually managed Enterprise contract without a fictitious price or card actions', async () => {
+    const data = overview()
+    data.tenant = { ...data.tenant, status: 'active', plan: { slug: 'enterprise', name: 'Enterprise' } }
+    data.subscription = { status: 'active', interval: 'month', amountMinor: null, currentPeriodEnd: null }
+    data.billingAccount.hasProviderCustomer = false
+    data.charges.subscription = { amountMinor: null, currency: 'TRY', isEstimated: false }
+    useQuery.mockReturnValue({ data, isLoading: false, isError: false, refetch })
+    await act(async () => root.render(<Billing />))
+    expect(container.textContent).toContain('billing.status.contract')
+    expect(container.textContent).toContain('billing.period.byContract')
+    expect(container.textContent).toContain('billing.plans.contractPrice')
+    expect(container.textContent).not.toContain('billing.period.renewal')
+    expect(container.textContent).not.toContain('billing.manage.card')
+    expect(container.querySelector('#billing-management')).toBeNull()
+    expect(container.querySelector('#billing-charge-summary').parentElement.parentElement.parentElement.textContent).not.toContain('₺0')
+    expect(createBillingPortal).not.toHaveBeenCalled()
+  })
+
   it.each(['checkout', 'card-update'])('provides the responsive mount before the %s provider script', async (flow) => {
     await act(async () => root.render(<Billing />))
     // iyzico returns only initialization scripts, not the form container.
