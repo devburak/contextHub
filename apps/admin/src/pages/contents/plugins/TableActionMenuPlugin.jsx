@@ -18,7 +18,9 @@ import {
   $isTableNode,
   $createTableRowNode,
   $createTableCellNode,
+  $getTableCellTextAlignment,
   $mergeCells,
+  $setTableCellTextAlignment,
   $unmergeCells
 } from '../nodes/TableNode.jsx'
 import { EDITOR_INTERACTION_CHANGE_EVENT } from '../utils/editorInteractionEvents.js'
@@ -48,6 +50,7 @@ function TableActionMenuPlugin({ anchorElem: _anchorElem = document.body }) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showRowHeightPicker, setShowRowHeightPicker] = useState(false)
   const [showBorderPicker, setShowBorderPicker] = useState(false)
+  const [textAlignment, setTextAlignment] = useState('left')
 
   // Predefined row heights
   const rowHeights = [
@@ -709,6 +712,27 @@ function TableActionMenuPlugin({ anchorElem: _anchorElem = document.body }) {
     setShowColorPicker(false)
   }, [editor, selectedCells, tableCellNode])
 
+  const setCellTextAlignment = useCallback((alignment) => {
+    if (!tableCellNode) return
+
+    editor.update(() => {
+      const cells = selectedCells.length > 0 ? selectedCells : [tableCellNode]
+      cells.forEach((cell) => {
+        if ($isTableCellNode(cell)) {
+          $setTableCellTextAlignment(cell, alignment)
+        }
+      })
+    })
+    setTextAlignment(alignment)
+  }, [editor, selectedCells, tableCellNode])
+
+  useEffect(() => {
+    if (!tableCellNode) return
+    editor.getEditorState().read(() => {
+      setTextAlignment($getTableCellTextAlignment(tableCellNode))
+    })
+  }, [editor, tableCellNode, showMenu])
+
   const setRowHeight = useCallback((height) => {
     if (!tableCellNode) return
 
@@ -864,6 +888,35 @@ function TableActionMenuPlugin({ anchorElem: _anchorElem = document.body }) {
               <hr className="table-action-divider" />
             </>
           )}
+
+          <div className="table-text-alignment" role="group" aria-label="Hücre metin hizası">
+            <span className="table-text-alignment__label">Metin hizası</span>
+            <div className="table-text-alignment__controls">
+              {[
+                { value: 'left', label: 'Sola hizala' },
+                { value: 'center', label: 'Ortala' },
+                { value: 'right', label: 'Sağa hizala' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`table-text-alignment__button${textAlignment === option.value ? ' is-active' : ''}`}
+                  aria-label={option.label}
+                  aria-pressed={textAlignment === option.value}
+                  title={option.label}
+                  onClick={() => setCellTextAlignment(option.value)}
+                >
+                  <span className={`table-text-alignment__icon table-text-alignment__icon--${option.value}`} aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <hr className="table-action-divider" />
 
           <div className="table-action-item-with-submenu">
             <button

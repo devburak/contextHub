@@ -1,4 +1,5 @@
 import { $getRoot, createEditor } from 'lexical'
+import { $generateNodesFromDOM } from '@lexical/html'
 import { describe, expect, it } from 'vitest'
 import { $createImageNode, ImageNode } from './ImageNode.jsx'
 import {
@@ -117,6 +118,35 @@ describe('ImageNode editable attributes', () => {
     }, { discrete: true })
 
     expect(attributes).toEqual(['center', '', '_blank'])
+  })
+
+  it('imports a figure caption only as image metadata', () => {
+    const editor = createEditor({ nodes: [ImageNode], onError: (error) => { throw error } })
+    const document = new DOMParser().parseFromString(`
+      <figure class="editor-image-container" data-alignment="center">
+        <div><img src="/team.jpg" alt="Ekip"><figcaption>Yıllık ekip buluşması</figcaption></div>
+      </figure>
+    `, 'text/html')
+    let result
+
+    editor.update(() => {
+      const nodes = $generateNodesFromDOM(editor, document)
+      $getRoot().append(...nodes)
+      const children = $getRoot().getChildren()
+      result = {
+        nodeCount: children.length,
+        nodeType: children[0]?.getType(),
+        caption: children[0]?.getCaption(),
+        trailingText: children.slice(1).map((node) => node.getTextContent()).join(''),
+      }
+    }, { discrete: true })
+
+    expect(result).toEqual({
+      nodeCount: 1,
+      nodeType: 'image',
+      caption: 'Yıllık ekip buluşması',
+      trailingText: '',
+    })
   })
 
 })

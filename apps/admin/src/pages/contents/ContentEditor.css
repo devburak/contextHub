@@ -206,11 +206,11 @@
   cursor: pointer;
 }
 
-.editor-toolbar__button[title='Geri al']::before {
+.editor-toolbar__button[data-toolbar-icon='undo']::before {
   background-image: url('./assets/icons/undo.svg');
 }
 
-.editor-toolbar__button[title='İleri al']::before {
+.editor-toolbar__button[data-toolbar-icon='redo']::before {
   background-image: url('./assets/icons/redo.svg');
 }
 
@@ -1789,6 +1789,87 @@ body.editor-image-dialog-open .editor-image-context-toolbar {
   background: #e5e7eb;
   margin: 4px 0;
   border: none;
+}
+
+.table-text-alignment {
+  --table-align-surface: #ffffff;
+  --table-align-surface-active: #dbeafe;
+  --table-align-ink: #64748b;
+  --table-align-ink-active: #1d4ed8;
+  --table-align-border: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.table-text-alignment__label {
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.table-text-alignment__controls {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 32px);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--table-align-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.table-text-alignment__button {
+  display: inline-flex;
+  width: 32px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--table-align-ink);
+  background: transparent;
+}
+
+.table-text-alignment__button:hover,
+.table-text-alignment__button:focus-visible {
+  color: var(--table-align-ink-active);
+  background: var(--table-align-surface);
+  outline: none;
+  box-shadow: 0 0 0 2px #bfdbfe;
+}
+
+.table-text-alignment__button.is-active {
+  color: var(--table-align-ink-active);
+  background: var(--table-align-surface-active);
+}
+
+.table-text-alignment__icon {
+  display: flex;
+  width: 14px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.table-text-alignment__icon i {
+  display: block;
+  width: 14px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.table-text-alignment__icon i:nth-child(2) {
+  width: 9px;
+}
+
+.table-text-alignment__icon--center i:nth-child(2) {
+  align-self: center;
+}
+
+.table-text-alignment__icon--right i:nth-child(2) {
+  align-self: flex-end;
 }
 
 /* Color Picker Styles */
