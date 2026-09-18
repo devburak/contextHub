@@ -101,6 +101,8 @@
   "content.refreshing": "Yenileniyor",
   "content.replace": "Değiştir",
   "content.save_failed": "Kaydetme işlemi başarısız oldu. Lütfen tekrar deneyin.",
+  "content.save_panel_drag": "Kayıt panelini sürükle. Ok tuşlarıyla taşıyın; başlangıç konumuna dönmek için Home veya Escape tuşuna basın.",
+  "content.save_panel_label": "İçerik kayıt paneli",
   "content.scheduled_publish_date": "Planlanan Yayın Tarihi",
   "content.scheduling_disabled": "Bu varlık için içerik zamanlama özelliği kapalı.",
   "content.scheduling_disabled_existing": "Zamanlama bu varlık için kapalı; mevcut içerik zamanlanmış durumda. Durumu değiştirdiğinizde yeniden zamanlayamazsınız.",
