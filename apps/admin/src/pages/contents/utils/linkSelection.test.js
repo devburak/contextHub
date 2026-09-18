@@ -5,12 +5,19 @@ import {
   $getSelection,
   createEditor,
 } from 'lexical'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  $applyTextLinkToSelection,
   $restoreSerializedRangeSelection,
   createTextLinkEditorState,
   serializeRangeSelection,
 } from './linkSelection.js'
+
+const { toggleLinkMock } = vi.hoisted(() => ({ toggleLinkMock: vi.fn() }))
+
+vi.mock('@lexical/link', () => ({
+  $toggleLink: toggleLinkMock,
+}))
 
 describe('link selection persistence', () => {
   it('restores the selected text after focus leaves the editor', () => {
@@ -47,6 +54,68 @@ describe('link selection persistence', () => {
     }, { discrete: true })
 
     expect(result).toBeNull()
+  })
+})
+
+describe('$applyTextLinkToSelection', () => {
+  beforeEach(() => {
+    toggleLinkMock.mockClear()
+  })
+
+  it('preserves selected text while wrapping it with a link', () => {
+    const editor = createEditor({ onError: (error) => { throw error } })
+
+    editor.update(() => {
+      const paragraph = $createParagraphNode()
+      const text = $createTextNode('Seçili metin kaybolmamalı')
+      paragraph.append(text)
+      $getRoot().append(paragraph)
+      text.select(0, 12)
+
+      const applied = $applyTextLinkToSelection($getSelection(), {
+        url: 'https://example.com',
+        text: 'Seçili metin',
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      })
+
+      expect(applied).toBe(true)
+    }, { discrete: true })
+
+    editor.getEditorState().read(() => {
+      expect($getRoot().getTextContent()).toBe('Seçili metin kaybolmamalı')
+    })
+    expect(toggleLinkMock).toHaveBeenCalledWith('https://example.com', {
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    })
+  })
+
+  it('keeps the link when the modal text is edited', () => {
+    const editor = createEditor({ onError: (error) => { throw error } })
+
+    editor.update(() => {
+      const paragraph = $createParagraphNode()
+      const text = $createTextNode('Eski metin')
+      paragraph.append(text, $createTextNode(' devamı'))
+      $getRoot().append(paragraph)
+      text.select(0, 10)
+
+      $applyTextLinkToSelection($getSelection(), {
+        url: 'https://example.com',
+        text: 'Yeni metin',
+        target: '_self',
+        rel: 'noopener noreferrer',
+      })
+    }, { discrete: true })
+
+    editor.getEditorState().read(() => {
+      expect($getRoot().getTextContent()).toBe('Yeni metin devamı')
+    })
+    expect(toggleLinkMock).toHaveBeenCalledWith('https://example.com', {
+      target: '_self',
+      rel: 'noopener noreferrer',
+    })
   })
 })
 

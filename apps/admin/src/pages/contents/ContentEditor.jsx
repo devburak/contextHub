@@ -104,7 +104,11 @@ import { mediaToImagePayload } from './utils/mediaHelpers.js'
 import { buildEmbedPayloadFromIframe, buildEmbedPayloadFromUrl } from './utils/embedHelpers.js'
 import { normalizeLexicalStateString } from './utils/lexicalStateNormalizer.js'
 import { editorHtmlImport, sanitizeEditorHtml } from './utils/htmlImport.js'
-import { $restoreSerializedRangeSelection, serializeRangeSelection } from './utils/linkSelection.js'
+import {
+  $applyTextLinkToSelection,
+  $restoreSerializedRangeSelection,
+  serializeRangeSelection,
+} from './utils/linkSelection.js'
 import { createBeforeUnloadHandler } from './utils/unsavedChangesGuard.js'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
 import { adminPluginContentEditorPanels } from '../../plugins/registry.jsx'
@@ -1566,14 +1570,22 @@ export default function ContentEditor() {
         return
       }
 
+      const selection = $restoreSerializedRangeSelection(savedSelection) || $getSelection()
+      const linkedSelection = $applyTextLinkToSelection(selection, {
+        url: trimmedUrl,
+        text: displayText,
+        target: targetValue,
+        rel: relValue,
+      })
+      if (linkedSelection) return
+
       const link = $createLinkNode(trimmedUrl)
       if (link.setRel) link.setRel(relValue)
       if (link.setTarget) link.setTarget(targetValue)
       link.append($createTextNode(displayText))
-      const selection = $restoreSerializedRangeSelection(savedSelection) || $getSelection()
-      if ($isRangeSelection(selection)) {
-        selection.insertNodes([link])
-      } else {
+
+      if ($isRangeSelection(selection)) selection.insertNodes([link])
+      else {
         const paragraph = $createParagraphNode()
         paragraph.append(link)
         $insertNodes([paragraph])

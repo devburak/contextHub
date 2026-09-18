@@ -2,8 +2,10 @@ import {
   $createRangeSelection,
   $getNodeByKey,
   $isRangeSelection,
+  $isTextNode,
   $setSelection,
 } from 'lexical'
+import { $toggleLink } from '@lexical/link'
 
 function isLinkNodeLike(node) {
   const type = node?.getType?.()
@@ -65,4 +67,23 @@ export function createTextLinkEditorState(selection) {
     type: 'link',
     selection: serializeRangeSelection(selection),
   }
+}
+
+export function $applyTextLinkToSelection(selection, { url, text, target, rel }) {
+  if (!$isRangeSelection(selection) || selection.isCollapsed()) return false
+
+  const selectedText = selection.getTextContent()
+  $toggleLink(url, { target, rel })
+
+  if (text !== selectedText) {
+    const selectedTextNodes = selection.getNodes().filter($isTextNode)
+    const [firstTextNode, ...remainingTextNodes] = selectedTextNodes
+
+    if (firstTextNode) {
+      firstTextNode.setTextContent(text)
+      remainingTextNodes.forEach((node) => node.remove())
+    }
+  }
+
+  return true
 }
