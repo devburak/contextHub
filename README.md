@@ -105,6 +105,32 @@ release. It compares each running API process with the local `.env` and reports 
 drifting variable names. After changing `.env`, use `pnpm api:pm2:reload` to reload
 with the file's values, verify all instances, and save the corrected PM2 state.
 
+## Customer payment confirmations (iyzico)
+
+With `BILLING_CUSTOMER_NOTIFICATIONS_ENABLED=true`, verified subscription payments
+(initial and renewal) and successful prorated plan changes enqueue a separate
+`internal.iyzico.payment.customer.notify` billing job. Enable the flag only after
+all API workers have been updated to recognize this new internal job type.
+The recipient is the billing profile's `billingEmail`, not the tenant creator or
+the operations mailbox. Customer confirmations use global SMTP, independently of
+`HOSTED_OPERATIONS_NOTIFICATIONS_ENABLED`. HTML and plain-text versions describe
+the actual captured amount; upgrade confirmations distinguish the one-time
+difference from the next recurring payment. These messages are not invoices.
+
+The verified order/payment ID deduplicates customer jobs across callback,
+webhook, and recovery. Recipient snapshots are encrypted with the existing
+`BILLING_PII_ENCRYPTION_KEY`; only minimal receipt details are retained under
+`BILLING_EVENT_PAYLOAD_RETENTION_DAYS`. SMTP failure retries only the failed
+recipient. A recorded SMTP acknowledgement prevents ordinary retries from
+resending mail, but SMTP cannot guarantee exactly-once delivery across a crash
+between provider acceptance and persisting that acknowledgement.
+
+Already-processed historical payments are not automatically replayed. An
+authorized one-off backfill must verify the exact payment/account and call
+`queueCustomerPaymentNotification` with its persisted internal payment event,
+then `processEvent` with the returned customer job ID. Never reset the operations
+event or replay a refunded payment to send a customer confirmation.
+
 ## Versioning and releases
 
 The deployable core is released as a **single version**: the root `package.json`, `apps/*` and `packages/common` always carry the same number, and an annotated git tag points at it.  `@contexthub/promo-sdk` is excluded — it is published separately and keeps its own version.

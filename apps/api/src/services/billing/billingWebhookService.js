@@ -15,6 +15,8 @@ const tenantSubscriptionService = require('../tenantSubscriptionService');
 const billingCancellationService = require('./billingCancellationService');
 const paddleProvider = require('./paddleProvider');
 const iyzicoProvider = require('./iyzicoProvider');
+const { encryptBillingPii, decryptBillingPii } = require('./billingPiiCrypto');
+const { recipientAddress, sendCustomerPaymentNotification } = require('./customerPaymentNotificationService');
 const {
   hostedOperationsNotificationService,
   isEnabled: hostedOperationsNotificationsEnabled,
@@ -129,6 +131,63 @@ async function queueIyzicoPaymentNotification(subscription, orderReferenceCode, 
   await processEvent(notification._id);
 }
 
+async function queueCustomerPaymentNotification(event, subscription, tenant) {
+  if (process.env.BILLING_CUSTOMER_NOTIFICATIONS_ENABLED !== 'true') {
+    throw new Error('Customer payment notifications are disabled');
+  }
+  if (event.provider !== 'iyzico' || event.eventType !== 'internal.iyzico.payment.notify'
+      || !['processing', 'processed', 'failed'].includes(event.status)
+      || !event.payload?.orderReferenceCode
+      || String(event.tenantId) !== String(tenant._id)
+      || String(event.accountId) !== String(tenant.accountId)
+      || String(subscription.accountId) !== String(event.accountId)
+      || String(subscription.tenantId) !== String(event.tenantId)
+      || subscription.externalSubscriptionId !== event.externalSubscriptionId) {
+    throw new Error('Customer notification requires a verified, scoped payment event');
+  }
+  const eventId = `customer-payment-notification:${event.payload.orderReferenceCode}`;
+  const existing = await BillingEvent.findOne({ provider: 'iyzico', eventId });
+  if (existing) return existing;
+  const [account, plan] = await Promise.all([
+    BillingAccount.findOne({ accountId: event.accountId }).select('billingEmail').lean(),
+    subscription.planId ? SubscriptionPlan.findById(subscription.planId).select('slug name').lean() : null,
+  ]);
+  const billingEmail = recipientAddress(account?.billingEmail);
+  const names = { pro: 'Pro', promax: 'Pro Max', enterprise: 'Enterprise' };
+  return queueInternalIyzicoEvent({
+    eventId, eventType: 'internal.iyzico.payment.customer.notify', subscription, occurredAt: event.occurredAt,
+    payload: compactObject({
+      // Snapshot the intended recipient so a later billing-profile edit cannot
+      // redirect a queued receipt. Plaintext email is never stored in the event.
+      recipientEncrypted: encryptBillingPii(billingEmail),
+      tenantName: tenant.name,
+      planName: event.payload.planName || plan?.name || names[plan?.slug] || plan?.slug || tenant.plan,
+      interval: event.payload.interval || subscription.interval,
+      paymentKind: event.payload.paymentKind || 'subscription',
+      amountMinor: event.payload.amountMinor, currency: event.payload.currency,
+      recurringAmountMinor: event.payload.recurringAmountMinor,
+      nextBillingAt: asDate(event.payload.nextBillingAt)?.toISOString(),
+    }),
+  });
+}
+
+async function processCustomerPaymentNotification(event) {
+  // This internal job can only be created from a verified payment; neither an
+  // untrusted webhook nor the browser can select recipients or claim payment.
+  if (!event.payload?.notificationSentAt) {
+    const delivery = await sendCustomerPaymentNotification({
+      ...event.payload, occurredAt: event.occurredAt,
+      billingEmail: decryptBillingPii(event.payload?.recipientEncrypted),
+    });
+    event.payload = { ...event.payload, notificationSentAt: new Date().toISOString(), messageId: delivery.messageId };
+  }
+  event.status = 'processed';
+  event.processedAt = new Date();
+  event.lastError = '';
+  await event.save();
+  return event;
+}
+
 async function processInternalIyzicoEvent(event) {
   let subscription = await BillingSubscription.findOne({
     provider: 'iyzico', externalSubscriptionId: event.externalSubscriptionId,
@@ -173,14 +232,34 @@ async function processInternalIyzicoEvent(event) {
   } else {
     const tenant = await Tenant.findById(subscription.tenantId);
     if (!tenant) throw new Error('iyzico notification tenant was not found');
-    const delivery = await notifySuccessfulPayment({
-      tenant, subscription,
-      amountMinor: event.payload.amountMinor, currency: event.payload.currency, occurredAt: event.occurredAt,
-    });
+    let customerJobCreated = false;
+    const [operations, customer] = await Promise.allSettled([
+      event.payload.notificationSentAt ? { sent: false } : notifySuccessfulPayment({
+        tenant, subscription,
+        amountMinor: event.payload.amountMinor, currency: event.payload.currency, occurredAt: event.occurredAt,
+      }),
+      (async () => {
+        if (process.env.BILLING_CUSTOMER_NOTIFICATIONS_ENABLED !== 'true') return;
+        const customerJob = await queueCustomerPaymentNotification(event, subscription, tenant);
+        customerJobCreated = true;
+        return processEvent(customerJob._id);
+      })(),
+    ]);
+    // Each recipient has its own durable state. A customer SMTP failure never
+    // resends the operations email or makes a verified payment appear failed.
+    if (customer.status === 'rejected') console.error('[Billing] Customer payment notification queued for retry');
+    if (operations.status === 'rejected') throw operations.reason;
+    const delivery = operations.value;
     if (delivery?.sent) {
       event.payload = { ...event.payload, notificationSentAt: new Date().toISOString(), messageId: delivery.messageId };
       // Persist delivery before other reconciliation work so later failures do
       // not send the same notification again on a normal retry.
+    }
+    if (customer.status === 'rejected' && !customerJobCreated) {
+      // Retain the operations acknowledgement before retrying a queue/profile
+      // failure; retry must not resend the already-accepted operations email.
+      await event.save();
+      throw new Error('Customer payment notification could not be queued');
     }
   }
   event.status = 'processed';
@@ -603,6 +682,9 @@ async function processEvent(eventId) {
   if (!event) return BillingEvent.findById(eventId);
 
   try {
+    if (event.provider === 'iyzico' && event.eventType === 'internal.iyzico.payment.customer.notify') {
+      return await processCustomerPaymentNotification(event);
+    }
     if (event.provider === 'iyzico' && ['internal.iyzico.checkout.reconcile', 'internal.iyzico.payment.notify'].includes(event.eventType)) {
       return await processInternalIyzicoEvent(event);
     }
@@ -717,10 +799,15 @@ module.exports = {
   processEvent,
   processIyzicoEvent,
   queueIyzicoCheckoutReconciliation,
+  queueCustomerPaymentNotification,
   queuePlanChangePaymentNotification: (subscription, change) => queueInternalIyzicoEvent({
     eventId: `payment-notification:plan-change:${change.externalPaymentId}`,
     eventType: 'internal.iyzico.payment.notify', subscription, occurredAt: change.paidAt,
-    payload: { orderReferenceCode: `plan-change:${change.externalPaymentId}`, amountMinor: change.amountMinor, currency: change.currency },
+    payload: {
+      orderReferenceCode: `plan-change:${change.externalPaymentId}`, amountMinor: change.amountMinor, currency: change.currency,
+      paymentKind: 'plan_change', planName: change.toPlanName, interval: change.interval,
+      recurringAmountMinor: change.recurringAmountMinor, nextBillingAt: change.periodEnd,
+    },
   }),
   redactExpiredPayloads,
   reprocessPending,
