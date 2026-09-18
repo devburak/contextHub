@@ -107,6 +107,7 @@ import { editorHtmlImport, sanitizeEditorHtml } from './utils/htmlImport.js'
 import {
   $applyTextLinkToSelection,
   $restoreSerializedRangeSelection,
+  $updateLinkNodeText,
   serializeRangeSelection,
 } from './utils/linkSelection.js'
 import { createBeforeUnloadHandler } from './utils/unsavedChangesGuard.js'
@@ -1511,8 +1512,7 @@ export default function ContentEditor() {
           node.setURL(trimmedUrl)
           if (node.setRel) node.setRel(relValue)
           if (node.setTarget) node.setTarget('_blank')
-          node.clear()
-          node.append($createTextNode(displayName || trimmedUrl))
+          $updateLinkNodeText(node, displayName || trimmedUrl)
         }
       } else {
         const link = $createLinkNode(trimmedUrl)
@@ -1564,8 +1564,7 @@ export default function ContentEditor() {
           node.setURL(trimmedUrl)
           if (node.setRel) node.setRel(relValue)
           if (node.setTarget) node.setTarget(targetValue)
-          node.clear()
-          node.append($createTextNode(displayText))
+          $updateLinkNodeText(node, displayText)
         }
         return
       }

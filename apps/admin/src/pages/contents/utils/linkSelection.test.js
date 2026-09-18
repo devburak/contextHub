@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   $applyTextLinkToSelection,
   $restoreSerializedRangeSelection,
+  $updateLinkNodeText,
   createTextLinkEditorState,
   serializeRangeSelection,
 } from './linkSelection.js'
@@ -115,6 +116,54 @@ describe('$applyTextLinkToSelection', () => {
     expect(toggleLinkMock).toHaveBeenCalledWith('https://example.com', {
       target: '_self',
       rel: 'noopener noreferrer',
+    })
+  })
+})
+
+describe('$updateLinkNodeText', () => {
+  it('does not touch children when only the URL is updated', () => {
+    const editor = createEditor({ onError: (error) => { throw error } })
+    let originalTextNodeKey
+
+    editor.update(() => {
+      const container = $createParagraphNode()
+      const text = $createTextNode('Bağlantı metni')
+      text.toggleFormat('bold')
+      container.append(text)
+      $getRoot().append(container)
+      originalTextNodeKey = text.getKey()
+
+      $updateLinkNodeText(container, 'Bağlantı metni')
+    }, { discrete: true })
+
+    editor.getEditorState().read(() => {
+      const text = $getRoot().getFirstDescendant()
+      expect(text?.getKey()).toBe(originalTextNodeKey)
+      expect(text?.hasFormat('bold')).toBe(true)
+      expect(text?.getTextContent()).toBe('Bağlantı metni')
+    })
+  })
+
+  it('updates text without leaving the link node empty', () => {
+    const editor = createEditor({ onError: (error) => { throw error } })
+
+    editor.update(() => {
+      const container = $createParagraphNode()
+      const first = $createTextNode('Eski')
+      const second = $createTextNode(' metin')
+      first.toggleFormat('bold')
+      second.toggleFormat('italic')
+      container.append(first, second)
+      $getRoot().append(container)
+
+      $updateLinkNodeText(container, 'Yeni metin')
+    }, { discrete: true })
+
+    editor.getEditorState().read(() => {
+      const container = $getRoot().getFirstChild()
+      expect(container?.getTextContent()).toBe('Yeni metin')
+      expect(container?.getChildrenSize()).toBe(1)
+      expect(container?.getFirstChild()?.hasFormat('bold')).toBe(true)
     })
   })
 })

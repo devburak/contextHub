@@ -1,5 +1,6 @@
 import {
   $createRangeSelection,
+  $createTextNode,
   $getNodeByKey,
   $isRangeSelection,
   $isTextNode,
@@ -86,4 +87,23 @@ export function $applyTextLinkToSelection(selection, { url, text, target, rel })
   }
 
   return true
+}
+
+export function $updateLinkNodeText(linkNode, text) {
+  if (!linkNode || linkNode.getTextContent() === text) return
+
+  const children = linkNode.getChildren()
+  const firstTextNode = children.find($isTextNode)
+
+  if (firstTextNode) {
+    firstTextNode.setTextContent(text)
+    children.forEach((child) => {
+      if (child !== firstTextNode) child.remove()
+    })
+    return
+  }
+
+  const replacement = $createTextNode(text)
+  linkNode.append(replacement)
+  children.forEach((child) => child.remove())
 }
