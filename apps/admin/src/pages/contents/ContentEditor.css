@@ -206,11 +206,11 @@
   cursor: pointer;
 }
 
-.editor-toolbar__button[title='Geri al']::before {
+.editor-toolbar__button[data-toolbar-icon='undo']::before {
   background-image: url('./assets/icons/undo.svg');
 }
 
-.editor-toolbar__button[title='İleri al']::before {
+.editor-toolbar__button[data-toolbar-icon='redo']::before {
   background-image: url('./assets/icons/redo.svg');
 }
 

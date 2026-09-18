@@ -3712,12 +3712,14 @@ function Toolbar({
   return (
     <div className="editor-toolbar mb-4">
       <ToolbarButton
+        icon="undo"
         title="Geri al (Ctrl/⌘ + Z)"
         ariaKeyShortcuts="Control+Z Meta+Z"
         onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
         disabled={!canUndo}
       />
       <ToolbarButton
+        icon="redo"
         title="İleri al (Ctrl + Y / Ctrl/⌘ + Shift + Z)"
         ariaKeyShortcuts="Control+Y Control+Shift+Z Meta+Shift+Z"
         onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}
@@ -3875,7 +3877,7 @@ function Toolbar({
   )
 }
 
-function ToolbarButton({ children, onClick, active = false, disabled = false, title, ariaKeyShortcuts }) {
+function ToolbarButton({ children, onClick, active = false, disabled = false, title, ariaKeyShortcuts, icon }) {
   return (
     <button
       type="button"
@@ -3884,6 +3886,7 @@ function ToolbarButton({ children, onClick, active = false, disabled = false, ti
       title={title}
       aria-label={title}
       aria-keyshortcuts={ariaKeyShortcuts}
+      data-toolbar-icon={icon}
       aria-pressed={active}
       className={clsx('editor-toolbar__button', active && 'is-active', disabled && 'is-disabled')}
     >
