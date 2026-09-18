@@ -72,6 +72,9 @@ import TableCellResizerPlugin from './plugins/TableCellResizerPlugin.jsx'
 import TableSelectionPlugin from './plugins/TableSelectionPlugin.jsx'
 import TableCellFocusPlugin from './plugins/TableCellFocusPlugin.jsx'
 import EditorHistoryPlugin from './plugins/EditorHistoryPlugin.jsx'
+import FindReplacePlugin from './plugins/FindReplacePlugin.jsx'
+import DocumentStatsPlugin from './plugins/DocumentStatsPlugin.jsx'
+import DocumentOutlinePlugin from './plugins/DocumentOutlinePlugin.jsx'
 import ImagePlugin, { INSERT_IMAGE_COMMAND } from './plugins/ImagePlugin.jsx'
 import ImageHandlersPlugin from './plugins/ImageHandlersPlugin.jsx'
 import VideoPlugin, { INSERT_VIDEO_COMMAND } from './plugins/VideoPlugin.jsx'
@@ -100,6 +103,7 @@ import RefFieldAutocomplete from '../collections/components/RefFieldAutocomplete
 import { mediaToImagePayload } from './utils/mediaHelpers.js'
 import { buildEmbedPayloadFromIframe, buildEmbedPayloadFromUrl } from './utils/embedHelpers.js'
 import { normalizeLexicalStateString } from './utils/lexicalStateNormalizer.js'
+import { editorHtmlImport, sanitizeEditorHtml } from './utils/htmlImport.js'
 import TableDimensionSelector from './components/TableDimensionSelector.jsx'
 import { adminPluginContentEditorPanels } from '../../plugins/registry.jsx'
 
@@ -153,15 +157,6 @@ const styleObjectToString = (styles) =>
   Object.entries(styles)
     .map(([key, value]) => `${key}: ${value}`)
     .join('; ')
-
-const unwrapElement = (element) => {
-  if (!element || !element.parentNode) return
-  const parent = element.parentNode
-  while (element.firstChild) {
-    parent.insertBefore(element.firstChild, element)
-  }
-  parent.removeChild(element)
-}
 
 const parseHtmlDocument = (htmlString) => {
   if (typeof DOMParser === 'undefined') {
@@ -217,49 +212,6 @@ const toHexColor = (color) => {
     return `#${rgbMatch.slice(1, 4).map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`
   }
   return color
-}
-
-const sanitizeHtmlString = (rawHtml) => {
-  if (!rawHtml || typeof rawHtml !== 'string') return ''
-  const spanRemovedHtml = rawHtml
-    .replace(/<span[^>]*style="[^"]*white-space:\s*pre-wrap;?[^"]*"[^>]*>/gi, '')
-    .replace(/<span[^>]*>/gi, (match) => (match.includes('white-space') ? '' : match))
-    .replace(/<\/span>/gi, '')
-  const doc = parseHtmlDocument(spanRemovedHtml)
-
-  doc.querySelectorAll('script').forEach((el) => el.remove())
-  doc.body?.querySelectorAll('*').forEach((el) => {
-    Array.from(el.attributes).forEach((attr) => {
-      const attrName = attr.name.toLowerCase()
-      if (attrName.startsWith('on')) {
-        el.removeAttribute(attr.name)
-        return
-      }
-      if ((attrName === 'src' || attrName === 'href') && /^\s*javascript:/i.test(attr.value)) {
-        el.removeAttribute(attr.name)
-        return
-      }
-      if (attrName === 'style') {
-        const styles = parseStyleString(attr.value)
-        if (styles['white-space']) {
-          delete styles['white-space']
-        }
-        const cleanedStyle = styleObjectToString(styles)
-        if (cleanedStyle) {
-          el.setAttribute('style', cleanedStyle)
-        } else {
-          el.removeAttribute('style')
-        }
-      }
-    })
-  })
-
-  doc.body?.querySelectorAll('span').forEach((span) => {
-    unwrapElement(span)
-  })
-
-  const sanitized = doc.body?.innerHTML?.trim() || ''
-  return sanitized
 }
 
 const resolveI18nText = (value, preferredLocales = ['tr', 'en']) => {
@@ -412,6 +364,7 @@ const theme = {
 const initialConfig = {
   namespace: 'content-editor',
   theme,
+  html: { import: editorHtmlImport },
   nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode, LinkNode, AutoLinkNode, ImageNode, VideoNode, EmbedNode, GalleryNode, FormNode, TableNode, TableRowNode, TableCellNode, ParagraphNode, TextNode, HorizontalRuleNode],
   onError(error) {
     console.error(error)
@@ -419,12 +372,13 @@ const initialConfig = {
 }
 
 const convertHtmlToLexicalContent = async (rawHtml) => {
-  const sanitizedHtml = sanitizeHtmlString(rawHtml || '<p></p>')
+  const sanitizedHtml = sanitizeEditorHtml(rawHtml || '<p></p>')
   const htmlDocument = parseHtmlDocument(sanitizedHtml || '<p></p>')
   const conversionEditor = createEditor({
     namespace: `${initialConfig.namespace}-html-import`,
     nodes: initialConfig.nodes,
     theme: initialConfig.theme,
+    html: initialConfig.html,
     editable: false,
   })
 
@@ -524,6 +478,8 @@ export default function ContentEditor() {
   const [mediaPickerState, setMediaPickerState] = useState({ open: false, mode: 'image', onSelect: null, multiple: false })
   const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false)
   const [includeTableHeaders, setIncludeTableHeaders] = useState(false)
+  const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false)
+  const [isDocumentOutlineOpen, setIsDocumentOutlineOpen] = useState(false)
   const [editorAnchorElem, setEditorAnchorElem] = useState(null)
   const [attachedGalleries, setAttachedGalleries] = useState([])
   const [selectedGalleryIds, setSelectedGalleryIds] = useState([])
@@ -1863,42 +1819,53 @@ export default function ContentEditor() {
                     setLinkEditor={setLinkEditor}
                     onRequestEmbed={openEmbedDialog}
                     onRequestForm={openFormDialog}
+                    findReplaceOpen={isFindReplaceOpen}
+                    onToggleFindReplace={() => setIsFindReplaceOpen((open) => !open)}
+                    documentOutlineOpen={isDocumentOutlineOpen}
+                    onToggleDocumentOutline={() => setIsDocumentOutlineOpen((open) => !open)}
                   />
+                  <FindReplacePlugin open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />
                   <ImagePlugin />
                   <ImageHandlersPlugin openMediaPicker={openMediaPicker} />
                   <VideoPlugin />
                   <EmbedPlugin />
                   <GalleryPlugin />
                   <FormPlugin />
-                  <div className="content-editor-viewport relative flex min-h-0 flex-1 flex-col overflow-auto overscroll-contain" ref={editorContainerRef}>
-                    <RichTextPlugin
-                      contentEditable={<ContentEditable className="content-editor-input prose prose-sm prose-headings:my-1 prose-p:my-2 min-h-full min-w-full max-w-none flex-none px-4 py-3 outline-none sm:pl-10" />}
-                      placeholder={<Placeholder />}
-                      ErrorBoundary={LexicalErrorBoundary}
-                    />
-                    <EditorHistoryPlugin />
-                    <ListPlugin />
-                    <ListMaxIndentLevelPlugin maxDepth={4} />
-                    <LinkPlugin />
-                    <AutoLinkPlugin matchers={urlMatchers} />
-                    <CodeHighlightingPlugin />
-                    <EditorRefPlugin onReady={(editor) => {
-                      editorRef.current = editor
-                      syncPendingHtmlToEditor()
-                    }} />
-                    <EditorStateHydrator stateJSON={initialEditorState} skipNextOnChangeRef={skipNextOnChangeRef} />
-                    <OnChangePlugin onChange={onLexicalChange} />
-                    <TablePastePlugin />
-                    <TableCellFocusPlugin />
-                    {editorAnchorElem && <DraggableBlockPlugin anchorElem={editorAnchorElem} />}
-                    {editorAnchorElem && <TableActionMenuPlugin anchorElem={editorAnchorElem} />}
-                    {editorAnchorElem && <TableHoverActionsPlugin anchorElem={editorAnchorElem} />}
-                    {editorAnchorElem && <TableCellResizerPlugin anchorElem={editorAnchorElem} />}
-                    {editorAnchorElem && <TableSelectionPlugin anchorElem={editorAnchorElem} />}
-                    <FloatingTextFormatToolbarPlugin
-                      onOpenLinkModal={(payload) => setLinkEditor(payload)}
-                    />
+                  <div className="content-editor-workbench flex min-h-0 flex-1">
+                    {isDocumentOutlineOpen && (
+                      <DocumentOutlinePlugin onClose={() => setIsDocumentOutlineOpen(false)} />
+                    )}
+                    <div className="content-editor-viewport relative flex min-h-0 flex-1 flex-col overflow-auto overscroll-contain" ref={editorContainerRef}>
+                      <RichTextPlugin
+                        contentEditable={<ContentEditable className="content-editor-input prose prose-sm prose-headings:my-1 prose-p:my-2 min-h-full min-w-full max-w-none flex-none px-4 py-3 outline-none sm:pl-10" />}
+                        placeholder={<Placeholder />}
+                        ErrorBoundary={LexicalErrorBoundary}
+                      />
+                      <EditorHistoryPlugin />
+                      <ListPlugin />
+                      <ListMaxIndentLevelPlugin maxDepth={4} />
+                      <LinkPlugin />
+                      <AutoLinkPlugin matchers={urlMatchers} />
+                      <CodeHighlightingPlugin />
+                      <EditorRefPlugin onReady={(editor) => {
+                        editorRef.current = editor
+                        syncPendingHtmlToEditor()
+                      }} />
+                      <EditorStateHydrator stateJSON={initialEditorState} skipNextOnChangeRef={skipNextOnChangeRef} />
+                      <OnChangePlugin onChange={onLexicalChange} />
+                      <TablePastePlugin />
+                      <TableCellFocusPlugin />
+                      {editorAnchorElem && <DraggableBlockPlugin anchorElem={editorAnchorElem} />}
+                      {editorAnchorElem && <TableActionMenuPlugin anchorElem={editorAnchorElem} />}
+                      {editorAnchorElem && <TableHoverActionsPlugin anchorElem={editorAnchorElem} />}
+                      {editorAnchorElem && <TableCellResizerPlugin anchorElem={editorAnchorElem} />}
+                      {editorAnchorElem && <TableSelectionPlugin anchorElem={editorAnchorElem} />}
+                      <FloatingTextFormatToolbarPlugin
+                        onOpenLinkModal={(payload) => setLinkEditor(payload)}
+                      />
+                    </div>
                   </div>
+                  <DocumentStatsPlugin />
                 </LexicalComposer>
               ) : (
                 <textarea
@@ -3226,8 +3193,13 @@ function Toolbar({
   setLinkEditor,
   onRequestEmbed = null,
   onRequestForm = null,
+  findReplaceOpen = false,
+  onToggleFindReplace = null,
+  documentOutlineOpen = false,
+  onToggleDocumentOutline = null,
 }) {
   const [editor] = useLexicalComposerContext()
+  const { t } = useTranslation()
   const [formatState, setFormatState] = useState({
     bold: false,
     italic: false,
@@ -3724,6 +3696,20 @@ function Toolbar({
         ariaKeyShortcuts="Control+Y Control+Shift+Z Meta+Shift+Z"
         onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}
         disabled={!canRedo}
+      />
+      <Divider />
+      <ToolbarButton
+        icon="find"
+        title={t('content.find_replace_shortcut')}
+        ariaKeyShortcuts="Control+F Meta+F"
+        onClick={onToggleFindReplace}
+        active={findReplaceOpen}
+      />
+      <ToolbarButton
+        icon="toc"
+        title={t('content.toc_title')}
+        onClick={onToggleDocumentOutline}
+        active={documentOutlineOpen}
       />
       <Divider />
       <select
