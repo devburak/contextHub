@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
+import { useTranslation } from 'react-i18next'
 import { $isCodeHighlightNode } from '@lexical/code'
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
@@ -16,6 +17,7 @@ import {
 
 import './FloatingTextFormatToolbarPlugin.css'
 import { EDITOR_INTERACTION_CHANGE_EVENT } from '../utils/editorInteractionEvents.js'
+import { createTextLinkEditorState } from '../utils/linkSelection.js'
 
 const HIDDEN_TRANSFORM = 'translate3d(-10000px, -10000px, 0)'
 
@@ -46,8 +48,9 @@ function hideToolbar(toolbarElem) {
   toolbarElem.style.transform = HIDDEN_TRANSFORM
 }
 
-export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElemProp, onOpenLinkModal } = {}) {
+export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElemProp, disabled = false, onOpenLinkModal } = {}) {
   const [editor] = useLexicalComposerContext()
+  const { t } = useTranslation()
   const toolbarRef = useRef(null)
   const interactionBlockedRef = useRef(false)
   const [isBold, setIsBold] = useState(false)
@@ -65,7 +68,7 @@ export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElem
   }, [anchorElemProp])
 
   const updateToolbar = useCallback(() => {
-    if (interactionBlockedRef.current) {
+    if (disabled || interactionBlockedRef.current) {
       hideToolbar(toolbarRef.current)
       return
     }
@@ -158,7 +161,7 @@ export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElem
 
       positionToolbar(toolbarElem, rangeRect)
     })
-  }, [editor])
+  }, [disabled, editor])
 
   useEffect(() => {
     return mergeRegister(
@@ -208,10 +211,12 @@ export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElem
 
   useEffect(() => {
     hideToolbar(toolbarRef.current)
+    if (disabled) return undefined
     setTimeout(() => {
       updateToolbar()
     }, 0)
-  }, [updateToolbar])
+    return undefined
+  }, [disabled, updateToolbar])
 
   const applyFormat = (format) => {
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)
@@ -219,51 +224,19 @@ export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElem
   }
 
   const toggleLink = () => {
-    if (isLink) {
-      editor.dispatchCommand(TOGGLE_LINK_COMMAND, null)
-      setTimeout(updateToolbar, 0)
+    if (typeof onOpenLinkModal === 'function') {
+      hideToolbar(toolbarRef.current)
+      editor.getEditorState().read(() => {
+        const selection = $getSelection()
+        const nextLinkEditorState = createTextLinkEditorState(selection)
+        if (nextLinkEditorState) onOpenLinkModal(nextLinkEditorState)
+      })
       return
     }
 
-    if (typeof onOpenLinkModal === 'function') {
-      editor.getEditorState().read(() => {
-        const selection = $getSelection()
-        let existingLink = null
-        let selectionText = ''
-        if ($isRangeSelection(selection)) {
-          selectionText = selection.getTextContent()
-          const linkNode = selection
-            .getNodes()
-            .map((node) => {
-              if ($isLinkNode(node)) return node
-              const parent = node.getParent()
-              if (parent && $isLinkNode(parent)) return parent
-              return null
-            })
-            .find(Boolean)
-          existingLink = linkNode || null
-        }
-
-        if (existingLink) {
-          onOpenLinkModal({
-            open: true,
-            url: existingLink.getURL?.() || '',
-            text: existingLink.getTextContent() || '',
-            newTab: (existingLink.getTarget?.() || '_blank') === '_blank',
-            linkKey: existingLink.getKey ? existingLink.getKey() : null,
-            error: '',
-          })
-        } else {
-          onOpenLinkModal({
-            open: true,
-            url: '',
-            text: selectionText || '',
-            newTab: true,
-            linkKey: null,
-            error: '',
-          })
-        }
-      })
+    if (isLink) {
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, null)
+      setTimeout(updateToolbar, 0)
       return
     }
 
@@ -329,7 +302,8 @@ export default function FloatingTextFormatToolbarPlugin({ anchorElem: anchorElem
         type="button"
         className={clsx('floating-text-format-toolbar__button', isLink && 'is-active')}
         onClick={toggleLink}
-        aria-label={isLink ? 'Bağlantıyı kaldır' : 'Bağlantı ekle'}
+        aria-label={isLink ? t('content.link_edit') : t('content.link_add')}
+        data-toolbar-icon="link"
       >
         🔗
       </button>
