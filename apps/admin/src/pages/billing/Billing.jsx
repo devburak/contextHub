@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -118,8 +118,19 @@ export default function Billing() {
   const [profile, setProfile] = useState(EMPTY_PROFILE)
   const [fieldErrors, setFieldErrors] = useState({})
   const [hostedPaymentContent, setHostedPaymentContent] = useState('')
+  const profileInitializedForTenant = useRef('')
+  const scrolledToPlanForTenant = useRef('')
   const locale = i18n.resolvedLanguage === 'en' ? 'en-US' : 'tr-TR'
-  const overview = useQuery({ queryKey: ['billing', 'overview', activeTenantId], queryFn: fetchBillingOverview, retry: 1, enabled: canView, refetchInterval: (data) => data?.tenant?.status === 'pending_payment' ? 5000 : false })
+  const previewCountry = profile.country
+  const overview = useQuery({
+    queryKey: ['billing', 'overview', activeTenantId, previewCountry, checkoutIntent.planSlug, interval],
+    queryFn: () => fetchBillingOverview({ previewCountry, previewPlanSlug: checkoutIntent.planSlug, previewInterval: interval }),
+    retry: 1,
+    enabled: canView,
+    keepPreviousData: true,
+    staleTime: 60_000,
+    refetchInterval: false,
+  })
 
   useEffect(() => {
     if (overview.data?.tenant?.status === 'active' && activeMembership?.tenant?.status === 'pending_payment') {
@@ -151,25 +162,31 @@ export default function Billing() {
   }, [t, toast])
 
   useEffect(() => {
+    if (!activeTenantId || overview.data?.tenant?.id !== activeTenantId || profileInitializedForTenant.current === activeTenantId) return
+    profileInitializedForTenant.current = activeTenantId
     const saved = overview.data?.billingAccount
-    if (!saved) return
     setProfile({
       ...EMPTY_PROFILE,
-      ...saved,
+      ...(saved || {}),
       taxId: '',
-      address: { ...EMPTY_PROFILE.address, ...(saved.address || {}) },
+      address: { ...EMPTY_PROFILE.address, ...(saved?.address || {}) },
       declarationAccepted: false,
       serviceAgreementAccepted: false,
     })
-  }, [overview.data?.billingAccount])
+  }, [activeTenantId, overview.data?.tenant?.id, overview.data?.billingAccount])
 
   useEffect(() => {
-    if (!overview.data || !checkoutIntent.planSlug) return
-    document.getElementById(`billing-plan-${checkoutIntent.planSlug}`)?.scrollIntoView({
+    if (!overview.data?.plans?.length || !checkoutIntent.planSlug || !activeTenantId) return
+    const scrollKey = `${activeTenantId}:${checkoutIntent.planSlug}`
+    if (scrolledToPlanForTenant.current === scrollKey) return
+    const planElement = document.getElementById(`billing-plan-${checkoutIntent.planSlug}`)
+    if (!planElement) return
+    scrolledToPlanForTenant.current = scrollKey
+    planElement.scrollIntoView({
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       block: 'center',
     })
-  }, [checkoutIntent.planSlug, overview.data])
+  }, [activeTenantId, checkoutIntent.planSlug, overview.data?.plans])
 
   const checkout = useMutation({
     mutationFn: createBillingCheckout,
@@ -247,7 +264,7 @@ export default function Billing() {
 
   return (
     <main style={TOKENS} className="min-h-[calc(100vh-4rem)] bg-[var(--billing-canvas)] text-[var(--billing-ink)]">
-      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => setHostedPaymentContent('')} t={t} />
+      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => { setHostedPaymentContent(''); overview.refetch() }} t={t} />
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-[var(--billing-line)] pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -278,6 +295,11 @@ export default function Billing() {
               <div className="p-6 sm:p-8">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--billing-muted)]">{t('billing.active.eyebrow')}</p>
                 <div className="mt-3 flex flex-wrap items-baseline gap-3"><h2 className="text-4xl font-semibold">{overview.data.tenant.status === 'pending_payment' ? t('tenant.payment_pending') : overview.data.tenant.plan.name}</h2><span className="rounded-full bg-[var(--billing-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--billing-accent)]">{overview.data.tenant.status === 'pending_payment' ? overview.data.plans?.find((plan) => plan.slug === overview.data.tenant.requestedPlanSlug)?.name : activePlanStatus(t, overview.data.tenant.plan, overview.data.subscription)}</span></div>
+                {overview.data.tenant.status === 'pending_payment' && (
+                  <button type="button" onClick={() => overview.refetch()} disabled={!online || overview.isFetching} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[var(--billing-line)] px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                    <ArrowPathIcon className="h-4 w-4" /> {t('common.refresh')}
+                  </button>
+                )}
                 <p className="mt-5 text-sm text-[var(--billing-muted)]">{t('billing.active.accountLine', { tenant: overview.data.tenant.name, account: overview.data.account.name })}</p>
               </div>
               <div className="border-t border-[var(--billing-line)] bg-[var(--billing-accent)] p-6 text-white lg:border-l lg:border-t-0 sm:p-8">
@@ -448,7 +470,7 @@ export default function Billing() {
                 </div>
               </div>
               <p className="mt-3 max-w-3xl text-xs leading-5 text-[var(--billing-muted)]">
-                {t(overview.data.billingAccount?.country === 'TR'
+                {t((previewCountry || overview.data.billingAccount?.country) === 'TR'
                   ? 'billing.plans.tryCatalogNote'
                   : 'billing.plans.usdCatalogNote')}
               </p>
@@ -461,7 +483,7 @@ export default function Billing() {
                     const requested = overview.data.tenant.status === 'pending_payment' && overview.data.tenant.requestedPlanSlug === plan.slug
                     const highlighted = checkoutIntent.planSlug === plan.slug
                     const hasSubscription = Boolean(overview.data.subscription && ['active', 'trialing', 'past_due', 'paused'].includes(overview.data.subscription.status))
-                    const checkoutAvailable = Boolean(overview.data.paymentRouting?.checkoutAvailable)
+                    const checkoutAvailable = Boolean(overview.data.paymentRouting?.checkoutAvailable && profile.country === overview.data.billingAccount?.country)
                     const canCheckout = !enterprise && !current && !hasSubscription && canManage && online && checkoutAvailable && price?.checkoutReady && price?.id
                     const canOpenProfile = !enterprise && !current && !hasSubscription && canManage && online && !overview.data.paymentRouting?.profileComplete
                     const buttonLabel = checkoutButtonLabel(t, { current, enterprise, checkoutAvailable, checkoutReady: price?.checkoutReady, hasProfile: overview.data.paymentRouting?.profileComplete, hasSubscription })

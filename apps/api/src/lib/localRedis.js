@@ -4,6 +4,7 @@ const Redis = require('redis');
 
 const DEFAULT_USAGE_KEY_TTL_SECONDS = 45 * 24 * 60 * 60;
 const DEFAULT_LIMIT_KEY_TTL_SECONDS = 40 * 24 * 60 * 60;
+const API_TOKEN_USAGE_KEY = 'usage:api-tokens:last-used';
 
 function getCurrentMonthKey(date = new Date()) {
   return date.toISOString().slice(0, 7);
@@ -101,6 +102,10 @@ class LocalRedisClient extends EventEmitter {
 
   getUsageCounterKey(tenantId, periodKey) {
     return `usage:requests:${tenantId}:${periodKey}`;
+  }
+
+  getApiTokenUsageKey() {
+    return API_TOKEN_USAGE_KEY;
   }
 
   async cacheTenantLimits(tenantId, limits, ttl = 86400) {
@@ -304,7 +309,7 @@ class LocalRedisClient extends EventEmitter {
     }
   }
 
-  async incrementUsageCounter(tenantId, periodKey, ttl = DEFAULT_USAGE_KEY_TTL_SECONDS) {
+  async incrementUsageCounter(tenantId, periodKey, ttl = DEFAULT_USAGE_KEY_TTL_SECONDS, tokenId = null) {
     if (!this.isEnabled()) {
       return null;
     }
@@ -312,14 +317,17 @@ class LocalRedisClient extends EventEmitter {
     try {
       const key = this.getUsageCounterKey(tenantId, periodKey);
       const now = String(Date.now());
-      const replies = await this.client.multi()
+      const transaction = this.client.multi()
         .hIncrBy(key, 'count', 1)
         .hSet(key, {
           periodKey,
           updatedAt: now,
         })
-        .expire(key, ttl)
-        .exec();
+        .expire(key, ttl);
+      if (tokenId) {
+        transaction.zAdd(API_TOKEN_USAGE_KEY, { score: Number(now), value: String(tokenId) }, { comparison: 'GT' });
+      }
+      const replies = await transaction.exec();
 
       return parseInteger(Array.isArray(replies) ? replies[0] : 0);
     } catch (error) {

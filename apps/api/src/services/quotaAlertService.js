@@ -1,5 +1,25 @@
-const { Membership, QuotaAlert, User } = require('@contexthub/common');
+const { Membership, QuotaAlert, Tenant, User } = require('@contexthub/common');
 const { sendNotificationEmail } = require('../utils/mailUtils');
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function normalizeTenantText(value) {
+  return String(value ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeSubjectText(value) {
+  return normalizeTenantText(value).replace(/[<>]/g, '');
+}
 
 const COPY = {
   tr: {
@@ -9,7 +29,8 @@ const COPY = {
       storage: 'depolama',
       requests: 'aylık API isteği',
     },
-    subject: (threshold) => `ContextHub kota uyarısı: %${threshold}`,
+    subject: ({ tenantLabel, threshold }) => `ContextHub kota uyarısı: ${tenantLabel} · %${threshold}`,
+    tenant: ({ name, slug }) => `<p><strong>Tenant:</strong> ${name}<br><strong>Slug:</strong> ${slug}</p>`,
     message: ({ label, usage, limit }) => `<p><strong>${label}</strong> kullanımınız ${usage}/${limit} seviyesine ulaştı.</p><p>Kesinti yaşamamak için faturalandırma ekranından paket ve limitlerinizi inceleyin.</p>`,
   },
   en: {
@@ -19,7 +40,8 @@ const COPY = {
       storage: 'storage',
       requests: 'monthly API request',
     },
-    subject: (threshold) => `ContextHub quota alert: ${threshold}%`,
+    subject: ({ tenantLabel, threshold }) => `ContextHub quota alert: ${tenantLabel} · ${threshold}%`,
+    tenant: ({ name, slug }) => `<p><strong>Tenant:</strong> ${name}<br><strong>Slug:</strong> ${slug}</p>`,
     message: ({ label, usage, limit }) => `<p>Your <strong>${label}</strong> usage has reached ${usage}/${limit}.</p><p>Review your plan and limits on the billing page to avoid an interruption.</p>`,
   },
 };
@@ -28,12 +50,17 @@ function normalizeLocale(value) {
   return String(value || '').toLowerCase().startsWith('en') ? 'en' : 'tr';
 }
 
-function buildQuotaEmail(alert, locale = 'tr') {
+function buildQuotaEmail(alert, locale = 'tr', tenant) {
   const copy = COPY[normalizeLocale(locale)];
   const label = copy.labels[alert.metric] || alert.metric;
+  const tenantName = normalizeTenantText(tenant?.name);
+  const tenantSlug = normalizeTenantText(tenant?.slug);
+  if (!tenantName || !tenantSlug) throw new Error('Tenant name and slug are required for quota notifications');
+  const tenantLabel = `${normalizeSubjectText(tenantName)} (${normalizeSubjectText(tenantSlug)})`;
   return {
-    subject: copy.subject(alert.threshold),
-    message: copy.message({ label, usage: alert.usage, limit: alert.limit }),
+    subject: copy.subject({ tenantLabel, threshold: alert.threshold }),
+    message: copy.tenant({ name: escapeHtml(tenantName), slug: escapeHtml(tenantSlug) })
+      + copy.message({ label, usage: alert.usage, limit: alert.limit }),
   };
 }
 
@@ -59,13 +86,17 @@ function currentMonthKey(date = new Date()) {
 }
 
 async function notifyOwners(tenantId, alert) {
-  const memberships = await Membership.find({ tenantId, role: 'owner', status: 'active' }).select('userId').lean();
+  const [tenant, memberships] = await Promise.all([
+    Tenant.findById(tenantId).select('name slug').lean(),
+    Membership.find({ tenantId, role: 'owner', status: 'active' }).select('userId').lean(),
+  ]);
+  if (!tenant) throw new Error(`Tenant not found for quota notification: ${tenantId}`);
   const recipients = await User.find({ _id: { $in: memberships.map((item) => item.userId) } })
     .select('email language')
     .lean();
   const deliverable = recipients.filter((item) => item.email);
   const results = await Promise.allSettled(deliverable.map((item) => {
-    const { subject, message } = buildQuotaEmail(alert, item.language);
+    const { subject, message } = buildQuotaEmail(alert, item.language, tenant);
     return sendNotificationEmail(item.email, subject, message, tenantId);
   }));
   return summarizeNotificationResults(results);

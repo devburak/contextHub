@@ -1,21 +1,117 @@
-import { memo, useRef, useEffect, useCallback, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection'
 import { mergeRegister } from '@lexical/utils'
 import {
-  $getSelection,
-  $isNodeSelection,
   $getNodeByKey,
-  $createParagraphNode,
   CLICK_COMMAND,
   COMMAND_PRIORITY_LOW,
   DRAGSTART_COMMAND,
-  KEY_DELETE_COMMAND,
   KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
 } from 'lexical'
-import { $isImageNode, $createImageNode } from './ImageNode.jsx'
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Captions,
+  Eye,
+  EyeOff,
+  ImagePlus,
+  Link2,
+  Lock,
+  Settings2,
+  Trash2,
+  Unlock,
+  X,
+} from 'lucide-react'
+import { $createImageNode, $isImageNode } from './ImageNode.jsx'
+import {
+  dispatchEditorInteractionChange,
+  requestTableSelectionClear,
+} from '../utils/editorInteractionEvents.js'
+import {
+  MAX_IMAGE_DIMENSION,
+  MIN_IMAGE_DIMENSION,
+  clampImageDimension,
+  getDisplayDimensions,
+  normalizeImageLink,
+} from './imageSettings.js'
 
-const DEFAULT_IMAGE_DIMENSION = 640
+const ALIGNMENTS = [
+  { value: 'left', label: 'Sola yasla', Icon: AlignLeft },
+  { value: 'center', label: 'Ortala', Icon: AlignCenter },
+  { value: 'right', label: 'Sağa yasla', Icon: AlignRight },
+]
+
+function preventToolbarMouseDown(event) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function stopToolbarPropagation(event) {
+  event.stopPropagation()
+}
+
+function ImageToolbarButton({
+  label,
+  active = false,
+  danger = false,
+  showLabel = false,
+  disabled = false,
+  onClick,
+  children,
+}) {
+  const classNames = [
+    'editor-image-toolbar-button',
+    'editor-image-tooltip',
+    active ? 'is-active' : '',
+    danger ? 'editor-image-toolbar-button--danger' : '',
+    showLabel ? 'editor-image-toolbar-button--label' : '',
+  ].filter(Boolean).join(' ')
+
+  return (
+    <button
+      type="button"
+      className={classNames}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onClick?.(event)
+      }}
+      data-tooltip={label}
+      aria-label={label}
+      aria-pressed={active || undefined}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  )
+}
+
+function getInitialSettings({
+  width,
+  height,
+  altText,
+  alignment,
+  caption,
+  showCaption,
+  linkUrl,
+  linkTarget,
+}) {
+  return {
+    width: width ?? '',
+    height: height ?? '',
+    altText,
+    alignment,
+    caption,
+    showCaption,
+    linkUrl,
+    openInNewTab: linkTarget === '_blank',
+    lockRatio: true,
+  }
+}
 
 function ImageComponent({
   src,
@@ -29,558 +125,456 @@ function ImageComponent({
   linkTarget = '_blank',
   nodeKey,
   resizable = true,
-  onReplaceImage = null
+  onReplaceImage = null,
 }) {
   const imageRef = useRef(null)
-  const textareaRef = useRef(null)
+  const settingsTitleRef = useRef(null)
   const [editor] = useLexicalComposerContext()
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
   const [isResizing, setIsResizing] = useState(false)
-  const [isEditingCaption, setIsEditingCaption] = useState(false)
-  const [editCaption, setEditCaption] = useState(caption)
-  const [boldParts, setBoldParts] = useState([])
-  const [italicParts, setItalicParts] = useState([])
-  const [underlineParts, setUnderlineParts] = useState([])
+  const [isEditing, setIsEditing] = useState(false)
+  const [linkError, setLinkError] = useState('')
+  const [settings, setSettings] = useState(() => getInitialSettings({
+    width,
+    height,
+    altText,
+    alignment,
+    caption,
+    showCaption,
+    linkUrl,
+    linkTarget,
+  }))
 
-  // Try to get onReplaceImage callback from editor if not provided
   const replaceImageCallback = onReplaceImage || editor?._editorCallbacks?.onReplaceImage
+  const displayDimensions = getDisplayDimensions(width, height)
+  const displayWidth = displayDimensions.width
+  const displayHeight = displayDimensions.height
 
-  const clampedWidth = typeof width === 'number' ? Math.min(width, DEFAULT_IMAGE_DIMENSION) : undefined
-  const clampedHeight = typeof height === 'number' ? Math.min(height, DEFAULT_IMAGE_DIMENSION) : undefined
+  const onDelete = useCallback((event) => {
+    if (!isSelected || isEditing) return false
+    event.preventDefault()
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey)
+      node?.remove()
+    })
+    return true
+  }, [editor, isEditing, isSelected, nodeKey])
 
-  const onDelete = useCallback(
-    (payload) => {
-      if (isSelected) {
-        const event = payload
-        event.preventDefault()
-        editor.update(() => {
-          const node = $getNodeByKey(nodeKey)
-          if (node) {
-            node.remove()
-          }
-        })
-        return true
-      }
-      return false
-    },
-    [isSelected, nodeKey, editor]
-  )
+  const onClick = useCallback((event) => {
+    if (isResizing) return true
+    if (event.target !== imageRef.current) return false
 
-  const onClick = useCallback(
-    (payload) => {
-      const event = payload
-      if (isResizing) {
-        return true
-      }
-      if (event.target === imageRef.current) {
-        if (event.shiftKey) {
-          setSelected(!isSelected)
-        } else {
-          clearSelection()
-          setSelected(true)
-        }
-        return true
-      }
-      return false
-    },
-    [isResizing, isSelected, setSelected, clearSelection]
-  )
+    requestTableSelectionClear()
+    if (event.shiftKey) {
+      setSelected(!isSelected)
+    } else {
+      clearSelection()
+      setSelected(true)
+    }
+    return true
+  }, [clearSelection, isResizing, isSelected, setSelected])
 
-  // Handle keyboard shortcuts for copy/cut/paste
   const handleKeyboardShortcuts = useCallback((event) => {
-    if (!isSelected) return
+    if (!isSelected || isEditing) return
+
+    const target = event.target
+    if (target instanceof HTMLElement && (target.matches('input, textarea, select, button') || target.isContentEditable)) {
+      return
+    }
 
     const isMeta = event.metaKey || event.ctrlKey
     if (!isMeta) return
 
-    if (event.key === 'c' || event.key === 'C') {
-      // Copy
+    if (event.key === 'c' || event.key === 'C' || event.key === 'x' || event.key === 'X') {
+      event.preventDefault()
+      const shouldRemove = event.key === 'x' || event.key === 'X'
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if (!$isImageNode(node)) return
+        window.__lexicalClipboard = [{
+          type: 'image',
+          src: node.getSrc(),
+          altText: node.getAltText(),
+          width: node.getWidth(),
+          height: node.getHeight(),
+          alignment: node.getAlignment(),
+          caption: node.getCaption(),
+          showCaption: node.getShowCaption(),
+          linkUrl: node.getLinkUrl(),
+          linkTarget: node.getLinkTarget(),
+        }]
+        if (shouldRemove) node.remove()
+      })
+      return
+    }
+
+    if ((event.key === 'v' || event.key === 'V') && window.__lexicalClipboard?.length > 0) {
+      const clipboardData = window.__lexicalClipboard[0]
+      if (clipboardData.type !== 'image') return
       event.preventDefault()
       editor.update(() => {
         const node = $getNodeByKey(nodeKey)
-        if ($isImageNode(node)) {
-          const nodeData = {
-            type: 'image',
-            src: node.getSrc(),
-            altText: node.getAltText(),
-            width: node.getWidth(),
-            height: node.getHeight(),
-            alignment: node.getAlignment(),
-            caption: node.getCaption(),
-            showCaption: node.getShowCaption(),
-          }
-          if (!window.__lexicalClipboard) window.__lexicalClipboard = []
-          window.__lexicalClipboard = [nodeData]
-        }
+        if (!$isImageNode(node)) return
+        node.insertAfter($createImageNode(clipboardData))
       })
-    } else if (event.key === 'x' || event.key === 'X') {
-      // Cut
-      event.preventDefault()
-      editor.update(() => {
-        const node = $getNodeByKey(nodeKey)
-        if ($isImageNode(node)) {
-          const nodeData = {
-            type: 'image',
-            src: node.getSrc(),
-            altText: node.getAltText(),
-            width: node.getWidth(),
-            height: node.getHeight(),
-            alignment: node.getAlignment(),
-            caption: node.getCaption(),
-            showCaption: node.getShowCaption(),
-          }
-          if (!window.__lexicalClipboard) window.__lexicalClipboard = []
-          window.__lexicalClipboard = [nodeData]
-          // Delete the node
-          node.remove()
-        }
-      })
-    } else if (event.key === 'v' || event.key === 'V') {
-      // Paste
-      event.preventDefault()
-      if (window.__lexicalClipboard && window.__lexicalClipboard.length > 0) {
-        const clipboardData = window.__lexicalClipboard[0]
-        if (clipboardData.type === 'image') {
-          editor.update(() => {
-            const newNode = $createImageNode({
-              src: clipboardData.src,
-              altText: clipboardData.altText,
-              width: clipboardData.width,
-              height: clipboardData.height,
-              alignment: clipboardData.alignment,
-              caption: clipboardData.caption,
-              showCaption: clipboardData.showCaption,
-            })
-            const node = $getNodeByKey(nodeKey)
-            if ($isImageNode(node)) {
-              node.insertAfter(newNode)
-            }
-          })
-        }
-      }
     }
-  }, [isSelected, nodeKey, editor])
+  }, [editor, isEditing, isSelected, nodeKey])
+
+  useEffect(() => mergeRegister(
+    editor.registerCommand(CLICK_COMMAND, onClick, COMMAND_PRIORITY_LOW),
+    editor.registerCommand(DRAGSTART_COMMAND, (event) => {
+      if (event.target !== imageRef.current) return false
+      event.preventDefault()
+      return true
+    }, COMMAND_PRIORITY_LOW),
+    editor.registerCommand(KEY_DELETE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
+    editor.registerCommand(KEY_BACKSPACE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
+  ), [editor, onClick, onDelete])
 
   useEffect(() => {
-    const unregister = mergeRegister(
-      editor.registerCommand(CLICK_COMMAND, onClick, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(
-        DRAGSTART_COMMAND,
-        (event) => {
-          if (event.target === imageRef.current) {
-            event.preventDefault()
-            return true
-          }
-          return false
-        },
-        COMMAND_PRIORITY_LOW
-      ),
-      editor.registerCommand(
-        KEY_DELETE_COMMAND,
-        onDelete,
-        COMMAND_PRIORITY_LOW
-      ),
-      editor.registerCommand(
-        KEY_BACKSPACE_COMMAND,
-        onDelete,
-        COMMAND_PRIORITY_LOW
-      )
-    )
-    return () => {
-      unregister()
-    }
-  }, [editor, onDelete, onClick])
-
-  // Keyboard shortcuts listener
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      handleKeyboardShortcuts(event)
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-    }
+    document.addEventListener('keydown', handleKeyboardShortcuts)
+    return () => document.removeEventListener('keydown', handleKeyboardShortcuts)
   }, [handleKeyboardShortcuts])
 
-  const handleAlignmentChange = useCallback((newAlignment) => {
+  const handleAlignmentChange = useCallback((nextAlignment) => {
     editor.update(() => {
       const node = $getNodeByKey(nodeKey)
-      if ($isImageNode(node)) {
-        node.setAlignment(newAlignment)
-      }
-    })
-  }, [editor, nodeKey])
-
-  const handleCaptionChange = useCallback((newCaption) => {
-    editor.update(() => {
-      const node = $getNodeByKey(nodeKey)
-      if ($isImageNode(node)) {
-        node.setCaption(newCaption)
-      }
+      if ($isImageNode(node)) node.setAlignment(nextAlignment)
     })
   }, [editor, nodeKey])
 
   const handleToggleCaption = useCallback(() => {
     editor.update(() => {
       const node = $getNodeByKey(nodeKey)
-      if ($isImageNode(node)) {
-        node.setShowCaption(!showCaption)
-      }
+      if ($isImageNode(node)) node.setShowCaption(!showCaption)
     })
   }, [editor, nodeKey, showCaption])
 
-  const handleSaveCaption = useCallback(() => {
-    handleCaptionChange(editCaption)
-    setIsEditingCaption(false)
-  }, [handleCaptionChange, editCaption])
+  const openSettings = useCallback(() => {
+    setSettings(getInitialSettings({
+      width,
+      height,
+      altText,
+      alignment,
+      caption,
+      showCaption,
+      linkUrl,
+      linkTarget,
+    }))
+    setLinkError('')
+    setIsEditing(true)
+  }, [alignment, altText, caption, height, linkTarget, linkUrl, showCaption, width])
 
-  const handleCancelCaption = useCallback(() => {
-    setEditCaption(caption)
-    setIsEditingCaption(false)
-  }, [caption])
+  const closeSettings = useCallback(() => {
+    setIsEditing(false)
+    setLinkError('')
+  }, [])
 
-  // Sync edit caption with prop changes
   useEffect(() => {
-    setEditCaption(caption)
-  }, [caption])
+    if (!isEditing) return undefined
+    requestTableSelectionClear()
+    dispatchEditorInteractionChange('image-settings-dialog', true)
+    document.body.classList.add('editor-image-dialog-open')
 
-  // Focus textarea and select text when modal opens
-  useEffect(() => {
-    if (isEditingCaption && textareaRef.current) {
-      setTimeout(() => {
-        textareaRef.current?.focus()
-        textareaRef.current?.select()
-      }, 0)
+    const focusTimer = window.setTimeout(() => settingsTitleRef.current?.focus(), 0)
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') closeSettings()
     }
-  }, [isEditingCaption])
+    document.addEventListener('keydown', handleEscape)
 
+    return () => {
+      window.clearTimeout(focusTimer)
+      document.removeEventListener('keydown', handleEscape)
+      document.body.classList.remove('editor-image-dialog-open')
+      dispatchEditorInteractionChange('image-settings-dialog', false)
+    }
+  }, [closeSettings, isEditing])
+
+  const updateDimension = useCallback((field, rawValue) => {
+    if (rawValue === '') {
+      setSettings((current) => ({ ...current, [field]: '' }))
+      return
+    }
+
+    const value = Number.parseInt(rawValue, 10)
+    if (!Number.isFinite(value) || value < 0) return
+    setSettings((current) => {
+      const next = { ...current, [field]: value }
+      if (!current.lockRatio) return next
+      const storedWidth = Number(current.width)
+      const storedHeight = Number(current.height)
+      const image = imageRef.current
+      const ratio = storedWidth > 0 && storedHeight > 0
+        ? storedWidth / storedHeight
+        : image?.naturalWidth && image?.naturalHeight
+          ? image.naturalWidth / image.naturalHeight
+          : 1
+      if (field === 'width') next.height = Math.round(value / ratio)
+      if (field === 'height') next.width = Math.round(value * ratio)
+      return next
+    })
+  }, [])
+
+  const useOriginalDimensions = useCallback(() => {
+    const image = imageRef.current
+    if (!image?.naturalWidth || !image?.naturalHeight) return
+    const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight))
+    setSettings((current) => ({
+      ...current,
+      width: Math.round(image.naturalWidth * scale),
+      height: Math.round(image.naturalHeight * scale),
+    }))
+  }, [])
+
+  const saveSettings = useCallback(() => {
+    const normalizedLink = normalizeImageLink(settings.linkUrl)
+    if (normalizedLink === null) {
+      setLinkError('http(s), e-posta, telefon veya site içi bir bağlantı girin.')
+      return
+    }
+
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey)
+      if (!$isImageNode(node)) return
+      node.setDimensions({
+        width: settings.width === '' ? undefined : clampImageDimension(settings.width),
+        height: settings.height === '' ? undefined : clampImageDimension(settings.height),
+      })
+      node.setAltText(settings.altText.trim())
+      node.setAlignment(settings.alignment)
+      node.setCaption(settings.caption.trim())
+      node.setShowCaption(settings.showCaption)
+      node.setLink({
+        url: normalizedLink,
+        target: settings.openInNewTab ? '_blank' : '_self',
+      })
+    })
+    closeSettings()
+  }, [closeSettings, editor, nodeKey, settings])
+
+  const alignmentClassName = alignment === 'left'
+    ? 'justify-start'
+    : alignment === 'right'
+      ? 'justify-end'
+      : 'justify-center'
   const draggable = isSelected && !isResizing
 
-  const getAlignmentStyle = () => {
-    switch (alignment) {
-      case 'left':
-        return 'justify-start'
-      case 'right':
-        return 'justify-end'
-      case 'center':
-      default:
-        return 'justify-center'
-    }
-  }
-
   return (
-    <div className={`editor-image-container flex ${getAlignmentStyle()}`}>
-      <div
-        className={`relative inline-block max-w-full ${
-          isSelected ? 'selected' : ''
-        }`}
-      >
-        <img
-          className={`editor-image ${
-            isSelected ? 'focused' : ''
-          } ${draggable ? 'draggable' : ''}`}
-          src={src}
-          alt={altText}
-          ref={imageRef}
-          style={{
-            maxWidth: `${DEFAULT_IMAGE_DIMENSION}px`,
-            maxHeight: `${DEFAULT_IMAGE_DIMENSION}px`,
-            width: clampedWidth ? `${clampedWidth}px` : 'auto',
-            height: clampedHeight ? `${clampedHeight}px` : 'auto',
-          }}
-          draggable={draggable}
-        />
-
-        {isSelected && resizable && (
-          <ImageResizer
-            editor={editor}
-            imageRef={imageRef}
-            nodeKey={nodeKey}
-            onResizeStart={() => setIsResizing(true)}
-            onResizeEnd={() => setIsResizing(false)}
+    <div className={`editor-image-container flex ${alignmentClassName}`}>
+      <figure className={`relative inline-block max-w-full ${isSelected ? 'selected' : ''}`}>
+        {linkUrl ? (
+          <a href={linkUrl} target={linkTarget} rel={linkTarget === '_blank' ? 'noopener noreferrer' : undefined} tabIndex={-1} onClick={(event) => event.preventDefault()}>
+            <img
+              className={`editor-image ${isSelected ? 'focused' : ''} ${draggable ? 'draggable' : ''}`}
+              src={src}
+              alt={altText}
+              ref={imageRef}
+              width={displayWidth}
+              height={displayHeight}
+              style={{ width: displayWidth ? `${displayWidth}px` : 'auto', height: displayHeight ? `${displayHeight}px` : 'auto' }}
+              draggable={draggable}
+            />
+          </a>
+        ) : (
+          <img
+            className={`editor-image ${isSelected ? 'focused' : ''} ${draggable ? 'draggable' : ''}`}
+            src={src}
+            alt={altText}
+            ref={imageRef}
+            width={displayWidth}
+            height={displayHeight}
+            style={{ width: displayWidth ? `${displayWidth}px` : 'auto', height: displayHeight ? `${displayHeight}px` : 'auto' }}
+            draggable={draggable}
           />
         )}
 
-        {isSelected && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded">
-            <div className="flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded text-xs font-medium shadow-lg">
-              <span className="hidden sm:inline">Görsel seçildi</span>
-            <span className="inline-flex items-center gap-1 ml-2">
-              {linkUrl ? (
-                <img src={new URL('../assets/icons/link.svg', import.meta.url)} alt="link" className="h-3 w-3" />
-              ) : null}
-            </span>
-            <div className="flex items-center gap-1 ml-2">
-              <button
-                className={`w-6 h-6 flex items-center justify-center rounded ${alignment === 'left' ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
-                onClick={() => handleAlignmentChange('left')}
-                title="Sola yasla"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 6h16M4 12h8M4 18h16"/>
-                </svg>
-              </button>
-              <button
-                className={`w-6 h-6 flex items-center justify-center rounded ${alignment === 'center' ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
-                onClick={() => handleAlignmentChange('center')}
-                title="Ortala"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 6h16M8 12h8M4 18h16"/>
-                </svg>
-              </button>
-              <button
-                className={`w-6 h-6 flex items-center justify-center rounded ${alignment === 'right' ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
-                onClick={() => handleAlignmentChange('right')}
-                title="Sağa yasla"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 6h16M12 12h8M4 18h16"/>
-                </svg>
-              </button>
-            </div>
-            <div className="w-px h-4 bg-blue-400 mx-1"></div>
-            <button
-              className="w-6 h-6 flex items-center justify-center rounded bg-amber-600 hover:bg-amber-500"
-              onClick={() => {
-                if (typeof replaceImageCallback === 'function') {
-                  replaceImageCallback(nodeKey, caption)
-                }
-              }}
-              title="Resmi değiştir"
+        {isSelected && resizable ? (
+          <ImageResizer editor={editor} imageRef={imageRef} nodeKey={nodeKey} onResizeStart={() => setIsResizing(true)} onResizeEnd={() => setIsResizing(false)} />
+        ) : null}
+
+        {isSelected ? (
+          <div className="editor-image-context-toolbar pointer-events-none absolute inset-x-0 top-2 flex items-start justify-center px-2">
+            <div
+              className="editor-image-context-toolbar__surface pointer-events-auto flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-700 shadow-xl"
+              onPointerDown={stopToolbarPropagation}
+              onMouseDown={preventToolbarMouseDown}
+              onClick={stopToolbarPropagation}
+              onDoubleClick={stopToolbarPropagation}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 7v6h6"/>
-                <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
-              </svg>
-            </button>
-            <div className="flex items-center gap-1">
-              <button
-                className={`w-6 h-6 flex items-center justify-center rounded ${showCaption ? 'bg-blue-400' : 'bg-blue-700'} hover:bg-blue-500`}
-                onClick={handleToggleCaption}
-                title="Caption görünürlüğü"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 10h18M3 14h18M3 6h18M3 18h18"/>
-                </svg>
-              </button>
-              {showCaption && (
-                <button
-                  className="w-6 h-6 flex items-center justify-center rounded bg-blue-700 hover:bg-blue-500"
-                  onClick={() => setIsEditingCaption(true)}
-                  title="Caption düzenle"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-              )}
-            </div>
-            <button
-              className="text-white hover:text-red-200 ml-2"
-              onClick={() => {
-                editor.update(() => {
-                  const node = $getNodeByKey(nodeKey)
-                  if (node) {
-                    node.remove()
-                  }
-                })
-              }}
-              title="Görseli sil"
-            >
-              ×
-            </button>
-          </div>
-            </div>
-        )}
-
-        {showCaption && caption && (
-          <div className="mt-2 text-sm text-gray-600 text-center italic">
-            {caption}
-          </div>
-        )}
-      </div>
-
-      {/* Caption Edit Modal */}
-      {isEditingCaption && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-96 overflow-y-auto">
-            <h3 className="text-lg font-medium mb-4">Caption Düzenle</h3>
-            
-            {/* Formatting Toolbar */}
-            <div className="flex gap-1 mb-3 border-b pb-3">
-              <button
-                onClick={() => {
-                  const textarea = textareaRef.current
-                  if (!textarea) return
-                  const start = textarea.selectionStart
-                  const end = textarea.selectionEnd
-                  const selected = editCaption.substring(start, end)
-                  if (selected) {
-                    const before = editCaption.substring(0, start)
-                    const after = editCaption.substring(end)
-                    setEditCaption(`${before}<b>${selected}</b>${after}`)
-                  }
-                }}
-                className="px-3 py-1 text-sm font-bold bg-gray-200 rounded hover:bg-gray-300"
-                title="Kalın (Bold)"
-              >
-                B
-              </button>
-              <button
-                onClick={() => {
-                  const textarea = textareaRef.current
-                  if (!textarea) return
-                  const start = textarea.selectionStart
-                  const end = textarea.selectionEnd
-                  const selected = editCaption.substring(start, end)
-                  if (selected) {
-                    const before = editCaption.substring(0, start)
-                    const after = editCaption.substring(end)
-                    setEditCaption(`${before}<i>${selected}</i>${after}`)
-                  }
-                }}
-                className="px-3 py-1 text-sm italic bg-gray-200 rounded hover:bg-gray-300"
-                title="İtalik (Italic)"
-              >
-                I
-              </button>
-              <button
-                onClick={() => {
-                  const textarea = textareaRef.current
-                  if (!textarea) return
-                  const start = textarea.selectionStart
-                  const end = textarea.selectionEnd
-                  const selected = editCaption.substring(start, end)
-                  if (selected) {
-                    const before = editCaption.substring(0, start)
-                    const after = editCaption.substring(end)
-                    setEditCaption(`${before}<u>${selected}</u>${after}`)
-                  }
-                }}
-                className="px-3 py-1 text-sm underline bg-gray-200 rounded hover:bg-gray-300"
-                title="Altı Çizili (Underline)"
-              >
-                U
-              </button>
-            </div>
-
-            {/* Caption Textarea */}
-            <textarea
-              ref={textareaRef}
-              value={editCaption}
-              onChange={(e) => setEditCaption(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg resize-none"
-              rows="3"
-              placeholder="Görsel açıklaması..."
-            />
-            
-            {/* Preview */}
-            {editCaption && (
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <p className="text-xs text-gray-500 mb-1">Önizleme:</p>
-                <div 
-                  className="text-sm text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: editCaption }}
-                />
+              <div className="flex items-center" role="group" aria-label="Görsel hizalama">
+                {ALIGNMENTS.map(({ value, label, Icon }) => (
+                  <ImageToolbarButton key={value} label={label} active={alignment === value} onClick={() => handleAlignmentChange(value)}>
+                    <Icon size={16} strokeWidth={1.8} />
+                  </ImageToolbarButton>
+                ))}
               </div>
-            )}
-            
-            {/* Buttons */}
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={handleCancelCaption}
-                className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+              <span className="editor-image-toolbar-divider" aria-hidden="true" />
+              <ImageToolbarButton label="Görsel seçeneklerini düzenle" showLabel onClick={openSettings}>
+                <Settings2 size={16} strokeWidth={1.8} />
+                <span>Düzenle</span>
+              </ImageToolbarButton>
+              <ImageToolbarButton
+                label="Görseli değiştir"
+                onClick={(event) => {
+                  event.currentTarget.blur()
+                  replaceImageCallback?.(nodeKey)
+                }}
+                disabled={typeof replaceImageCallback !== 'function'}
               >
-                İptal
-              </button>
-              <button
-                onClick={handleSaveCaption}
-                className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-              >
-                Kaydet
-              </button>
+                <ImagePlus size={16} strokeWidth={1.8} />
+              </ImageToolbarButton>
+              <ImageToolbarButton label={showCaption ? 'Caption’ı gizle' : 'Caption’ı göster'} active={showCaption} onClick={handleToggleCaption}>
+                <Captions size={16} strokeWidth={1.8} />
+              </ImageToolbarButton>
+              <span className="editor-image-toolbar-divider" aria-hidden="true" />
+              <ImageToolbarButton label="Görseli sil" danger onClick={onDelete}>
+                <Trash2 size={16} strokeWidth={1.8} />
+              </ImageToolbarButton>
             </div>
           </div>
-        </div>
-      )}
+        ) : null}
+
+        {showCaption && caption ? <figcaption className="editor-image-caption mt-2 whitespace-pre-line text-center text-sm italic text-gray-600">{caption}</figcaption> : null}
+      </figure>
+
+      {isEditing ? createPortal(
+        <div className="editor-image-dialog" onMouseDown={closeSettings}>
+          <section className="editor-image-dialog__panel" role="dialog" aria-modal="true" aria-labelledby={`image-settings-title-${nodeKey}`} onMouseDown={(event) => event.stopPropagation()}>
+            <header className="editor-image-dialog__header">
+              <div>
+                <p className="editor-image-dialog__eyebrow">GÖRSEL</p>
+                <h2 id={`image-settings-title-${nodeKey}`} ref={settingsTitleRef} className="editor-image-dialog__title" tabIndex={-1}>Görsel seçenekleri</h2>
+              </div>
+              <button type="button" className="editor-image-dialog__close" onClick={closeSettings} aria-label="Kapat"><X size={20} /></button>
+            </header>
+
+            <div className="editor-image-dialog__body">
+              <fieldset className="editor-image-settings-section">
+                <legend>Yerleşim</legend>
+                <div className="editor-image-segmented" role="group" aria-label="Görsel hizalama">
+                  {ALIGNMENTS.map(({ value, label, Icon }) => (
+                    <button key={value} type="button" className={settings.alignment === value ? 'is-active' : ''} onClick={() => setSettings((current) => ({ ...current, alignment: value }))} aria-pressed={settings.alignment === value}>
+                      <Icon size={17} />
+                      <span>{label.replace(' yasla', '')}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <section className="editor-image-settings-section">
+                <div className="editor-image-settings-heading">
+                  <h3>Boyut</h3>
+                  <span>{MIN_IMAGE_DIMENSION}–{MAX_IMAGE_DIMENSION} px</span>
+                </div>
+                <div className="editor-image-dimension-grid">
+                  <label>
+                    <span>Genişlik</span>
+                    <div className="editor-image-input-suffix">
+                      <input type="number" min={MIN_IMAGE_DIMENSION} max={MAX_IMAGE_DIMENSION} value={settings.width} onChange={(event) => updateDimension('width', event.target.value)} placeholder="Otomatik" />
+                      <span>px</span>
+                    </div>
+                  </label>
+                  <button type="button" className={`editor-image-ratio-button ${settings.lockRatio ? 'is-active' : ''}`} onClick={() => setSettings((current) => ({ ...current, lockRatio: !current.lockRatio }))} aria-pressed={settings.lockRatio} title={settings.lockRatio ? 'En-boy oranı kilitli' : 'En-boy oranı serbest'}>
+                    {settings.lockRatio ? <Lock size={16} /> : <Unlock size={16} />}
+                  </button>
+                  <label>
+                    <span>Yükseklik</span>
+                    <div className="editor-image-input-suffix">
+                      <input type="number" min={MIN_IMAGE_DIMENSION} max={MAX_IMAGE_DIMENSION} value={settings.height} onChange={(event) => updateDimension('height', event.target.value)} placeholder="Otomatik" />
+                      <span>px</span>
+                    </div>
+                  </label>
+                </div>
+                <div className="editor-image-inline-actions">
+                  <button type="button" onClick={useOriginalDimensions}>Özgün boyut</button>
+                  <button type="button" onClick={() => setSettings((current) => ({ ...current, width: '', height: '' }))}>Otomatik boyut</button>
+                </div>
+              </section>
+
+              <fieldset className="editor-image-settings-section">
+                <legend>Alternatif metin</legend>
+                <label className="editor-image-field">
+                  <span className="sr-only">Alternatif metin</span>
+                  <textarea value={settings.altText} onChange={(event) => setSettings((current) => ({ ...current, altText: event.target.value }))} maxLength={500} rows={3} placeholder="Görseli, göremeyen birine kısaca anlatın" />
+                </label>
+                <p className="editor-image-help">Dekoratif görsellerde boş bırakılabilir. Dosya adını tekrar etmeyin.</p>
+              </fieldset>
+
+              <section className="editor-image-settings-section">
+                <div className="editor-image-settings-heading">
+                  <h3>Caption</h3>
+                  <label className="editor-image-switch">
+                    <input type="checkbox" checked={settings.showCaption} onChange={(event) => setSettings((current) => ({ ...current, showCaption: event.target.checked }))} />
+                    <span>{settings.showCaption ? <Eye size={15} /> : <EyeOff size={15} />} Göster</span>
+                  </label>
+                </div>
+                <label className="editor-image-field">
+                  <span className="sr-only">Caption</span>
+                  <textarea value={settings.caption} onChange={(event) => setSettings((current) => ({ ...current, caption: event.target.value }))} maxLength={1000} rows={3} placeholder="Okuyucuya gösterilecek kısa açıklama" />
+                </label>
+                <p className="editor-image-help">Güvenli HTML çıktısı için caption düz metin olarak saklanır.</p>
+              </section>
+
+              <fieldset className="editor-image-settings-section">
+                <legend>Bağlantı</legend>
+                <label className="editor-image-field">
+                  <span className="editor-image-field__label"><Link2 size={15} /> URL</span>
+                  <input type="text" value={settings.linkUrl} onChange={(event) => { setSettings((current) => ({ ...current, linkUrl: event.target.value })); setLinkError('') }} placeholder="https:// veya /site-ici-sayfa" aria-invalid={Boolean(linkError)} aria-describedby={linkError ? `image-link-error-${nodeKey}` : undefined} />
+                </label>
+                {linkError ? <p id={`image-link-error-${nodeKey}`} className="editor-image-error">{linkError}</p> : null}
+                <label className="editor-image-checkbox">
+                  <input type="checkbox" checked={settings.openInNewTab} disabled={!settings.linkUrl.trim()} onChange={(event) => setSettings((current) => ({ ...current, openInNewTab: event.target.checked }))} />
+                  Yeni sekmede aç
+                </label>
+              </fieldset>
+            </div>
+
+            <footer className="editor-image-dialog__footer">
+              <button type="button" className="editor-image-button editor-image-button--secondary" onClick={closeSettings}>İptal</button>
+              <button type="button" className="editor-image-button editor-image-button--primary" onClick={saveSettings}>Uygula</button>
+            </footer>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   )
 }
 
 function ImageResizer({ editor, imageRef, nodeKey, onResizeStart, onResizeEnd }) {
-  const controlRef = useRef(null)
+  const handleMouseDown = useCallback((event) => {
+    event.preventDefault()
+    onResizeStart()
 
-  const handleMouseDown = useCallback(
-    (event) => {
-      event.preventDefault()
-      onResizeStart()
+    const startX = event.clientX
+    const image = imageRef.current
+    if (!image) return
+    const startWidth = Number.parseInt(document.defaultView.getComputedStyle(image).width, 10)
+    const startHeight = Number.parseInt(document.defaultView.getComputedStyle(image).height, 10)
+    const ratio = startWidth / startHeight
 
-      const startX = event.clientX
-      const startY = event.clientY
-      const image = imageRef.current
-      if (!image) return
+    function handleMouseMove(moveEvent) {
+      const nextWidth = clampImageDimension(startWidth + (moveEvent.clientX - startX))
+      if (!nextWidth) return
+      image.style.width = `${nextWidth}px`
+      image.style.height = `${Math.round(nextWidth / ratio)}px`
+    }
 
-      const startWidth = parseInt(document.defaultView.getComputedStyle(image).width, 10)
-      const startHeight = parseInt(document.defaultView.getComputedStyle(image).height, 10)
-      const ratio = startWidth / startHeight
+    function handleMouseUp() {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      onResizeEnd()
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isImageNode(node)) node.setDimensions({ width: clampImageDimension(image.style.width), height: clampImageDimension(image.style.height) })
+      })
+    }
 
-      function handleMouseMove(moveEvent) {
-        const currentX = moveEvent.clientX
-        const currentY = moveEvent.clientY
-        const diffX = currentX - startX
-        const diffY = currentY - startY
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [editor, imageRef, nodeKey, onResizeEnd, onResizeStart])
 
-        const newWidth = startWidth + diffX
-        const newHeight = startHeight + diffY
-
-        const constrainedWidth = Math.max(100, Math.min(newWidth, DEFAULT_IMAGE_DIMENSION))
-        const constrainedHeight = constrainedWidth / ratio
-
-        if (image) {
-          image.style.width = `${constrainedWidth}px`
-          image.style.height = `${constrainedHeight}px`
-        }
-      }
-
-      function handleMouseUp() {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-        onResizeEnd()
-
-        const image = imageRef.current
-        if (!image) return
-
-        const newWidth = parseInt(image.style.width, 10)
-        const newHeight = parseInt(image.style.height, 10)
-
-        editor.update(() => {
-          const node = $getNodeByKey(nodeKey)
-          if ($isImageNode(node)) {
-            node.setDimensions({ width: newWidth, height: newHeight })
-          }
-        })
-      }
-
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    },
-    [editor, imageRef, nodeKey, onResizeEnd, onResizeStart]
-  )
-
-  return (
-    <div
-      ref={controlRef}
-      className="absolute bottom-0 right-0 w-4 h-4 bg-blue-600 cursor-se-resize border border-white"
-      style={{
-        transform: 'translate(50%, 50%)',
-      }}
-      onMouseDown={handleMouseDown}
-      title="Yeniden boyutlandır"
-    />
-  )
+  return <button type="button" className="editor-image-resizer absolute bottom-0 right-0" onMouseDown={handleMouseDown} title="Oranı koruyarak yeniden boyutlandır" aria-label="Görseli yeniden boyutlandır" />
 }
 
 export default memo(ImageComponent)
-export { DEFAULT_IMAGE_DIMENSION }

@@ -17,21 +17,21 @@ import {
 } from '@heroicons/react/20/solid'
 import {
   $isTableCellNode,
-  $isTableRowNode,
   $isTableNode,
-  $mergeCells,
-  $getCellPosition
+  $mergeCells
 } from '../nodes/TableNode.jsx'
+import {
+  EDITOR_INTERACTION_CHANGE_EVENT,
+  TABLE_SELECTION_CLEAR_EVENT,
+} from '../utils/editorInteractionEvents.js'
+import { isCellSelectionGesture } from './tableSelectionGesture.js'
 
 function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
   const [editor] = useLexicalComposerContext()
   const [selectedCells, setSelectedCells] = useState(new Set())
   const [isSelecting, setIsSelecting] = useState(false)
   const [selectionStart, setSelectionStart] = useState(null)
-  const [dragCurrent, setDragCurrent] = useState(null)
   const [currentTable, setCurrentTable] = useState(null)
-  const [lastClickTime, setLastClickTime] = useState(0)
-  const [lastClickedCell, setLastClickedCell] = useState(null)
   const [selectionRect, setSelectionRect] = useState(null)
   const [selectionToolbarPosition, setSelectionToolbarPosition] = useState(null)
   const [selectedTableKey, setSelectedTableKey] = useState(null)
@@ -57,7 +57,6 @@ function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
     setSelectionToolbarPosition(null)
     setIsSelecting(false)
     setSelectionStart(null)
-    setDragCurrent(null)
     setCurrentTable(null)
     notifySelectionChange()
   }, [currentTable, notifySelectionChange])
@@ -196,7 +195,7 @@ function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
     const cellsInRange = getCellsInRange(startCoords, endCoords, tableElement)
     const cellKeys = new Set()
 
-    cellsInRange.forEach((cellElement, index) => {
+    cellsInRange.forEach((cellElement) => {
       cellElement.classList.add('selected-cell')
 
       // Add position classes
@@ -232,6 +231,8 @@ function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
 
   // Mouse event handlers
   const handleMouseDown = useCallback((event) => {
+    if (event.button !== 0) return
+
     const cellElement = event.target.closest('.editor-table-cell')
     const tableElement = event.target.closest('.editor-table')
 
@@ -249,15 +250,9 @@ function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
 
     clearTableSelection()
 
-    // Double-click detection
-    const now = Date.now()
-    const isDoubleClick = lastClickedCell === cellElement && (now - lastClickTime) < 300
-    
-    setLastClickTime(now)
-    setLastClickedCell(cellElement)
-
-    // Eğer double-click ise, seçimi temizle ve edit moduna geç
-    if (isDoubleClick) {
+    // A regular click must remain available to Lexical so the caret can be
+    // placed immediately. Cell range selection is an explicit modifier gesture.
+    if (!isCellSelectionGesture(event)) {
       clearCellSelection()
       return
     }
@@ -268,13 +263,12 @@ function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
     setCurrentTable(tableElement)
     setIsSelecting(true)
     setSelectionStart(coords)
-    setDragCurrent(coords)
 
     // Start with single cell selection
     updateSelection(coords, coords, tableElement)
 
     event.preventDefault()
-  }, [getCellCoordinates, updateSelection, clearCellSelection, clearTableSelection, clearAllSelections, selectTable, lastClickTime, lastClickedCell])
+  }, [getCellCoordinates, updateSelection, clearCellSelection, clearTableSelection, clearAllSelections, selectTable])
 
   const handleMouseEnter = useCallback((event) => {
     if (!isSelecting || !selectionStart || !currentTable) return
@@ -289,7 +283,6 @@ function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
     const coords = getCellCoordinates(cellElement)
     if (!coords) return
 
-    setDragCurrent(coords)
     updateSelection(selectionStart, coords, currentTable)
   }, [isSelecting, selectionStart, getCellCoordinates, updateSelection, currentTable])
 
@@ -328,6 +321,22 @@ function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [editor, handleMouseDown, handleMouseEnter, handleMouseUp, clearAllSelections])
+
+  useEffect(() => {
+    const handleInteractionChange = (event) => {
+      if (event?.detail?.active) {
+        clearAllSelections()
+      }
+    }
+
+    window.addEventListener(EDITOR_INTERACTION_CHANGE_EVENT, handleInteractionChange)
+    window.addEventListener(TABLE_SELECTION_CLEAR_EVENT, clearAllSelections)
+
+    return () => {
+      window.removeEventListener(EDITOR_INTERACTION_CHANGE_EVENT, handleInteractionChange)
+      window.removeEventListener(TABLE_SELECTION_CLEAR_EVENT, clearAllSelections)
+    }
+  }, [clearAllSelections])
 
   useEffect(() => {
     if (!selectedTableKey) return
@@ -526,7 +535,10 @@ function TableSelectionPlugin({ anchorElem: _anchorElem = document.body }) {
             visibility: selectionToolbarPosition ? 'visible' : 'hidden',
           }}
         >
-          <div className="selection-count">
+          <div
+            className="selection-count"
+            title="Çoklu hücre seçimi için ⌘/Ctrl/Alt tuşuyla sürükleyin"
+          >
             {selectedCells.size} hücre seçili
           </div>
           <div className="selection-actions">

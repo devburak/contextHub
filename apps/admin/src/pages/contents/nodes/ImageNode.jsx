@@ -1,5 +1,6 @@
 import { DecoratorNode } from 'lexical'
-import ImageComponent, { DEFAULT_IMAGE_DIMENSION } from './ImageComponent.jsx'
+import ImageComponent from './ImageComponent.jsx'
+import { DEFAULT_IMAGE_DIMENSION, normalizeImageLink } from './imageSettings.js'
 
 export class ImageNode extends DecoratorNode {
   __src
@@ -19,12 +20,12 @@ export class ImageNode extends DecoratorNode {
     this.__altText = altText
     this.__width = width
     this.__height = height
-    this.__alignment = alignment
+    this.__alignment = ['left', 'center', 'right'].includes(alignment) ? alignment : 'center'
     // Alt text is accessibility metadata; captions are optional editorial copy.
     this.__caption = caption || ''
     this.__showCaption = showCaption
-    this.__linkUrl = linkUrl || ''
-    this.__linkTarget = linkTarget || '_blank'
+    this.__linkUrl = normalizeImageLink(linkUrl || '') || ''
+    this.__linkTarget = linkTarget === '_self' ? '_self' : '_blank'
     this.__mediaId = mediaId || ''
   }
 
@@ -96,8 +97,9 @@ export class ImageNode extends DecoratorNode {
   }
 
   exportDOM() {
-    const element = document.createElement('div')
+    const element = document.createElement('figure')
     element.className = `editor-image-container flex ${this.getAlignmentClassName()}`
+    element.dataset.alignment = this.__alignment
 
     const wrapper = document.createElement('div')
     wrapper.className = 'relative inline-block max-w-full'
@@ -106,12 +108,19 @@ export class ImageNode extends DecoratorNode {
     img.src = this.__src
     img.alt = this.__altText
     img.className = 'editor-image'
+    img.loading = 'lazy'
+    img.decoding = 'async'
 
     if (this.__width) {
+      img.width = this.__width
       img.style.width = `${this.__width}px`
     }
     if (this.__height) {
+      img.height = this.__height
       img.style.height = `${this.__height}px`
+    }
+    if (this.__mediaId) {
+      img.dataset.contexthubMediaId = this.__mediaId
     }
 
     let content = img
@@ -128,8 +137,8 @@ export class ImageNode extends DecoratorNode {
     wrapper.appendChild(content)
 
     if (this.__showCaption && this.__caption) {
-      const caption = document.createElement('div')
-      caption.className = 'mt-2 text-sm text-gray-600 text-center italic'
+      const caption = document.createElement('figcaption')
+      caption.className = 'editor-image-caption mt-2 whitespace-pre-line text-sm text-gray-600 text-center italic'
       caption.textContent = this.__caption
       wrapper.appendChild(caption)
     }
@@ -176,8 +185,8 @@ export class ImageNode extends DecoratorNode {
 
   setDimensions({ width, height }) {
     const writable = this.getWritable()
-    writable.__width = typeof width === 'number' ? width : writable.__width
-    writable.__height = typeof height === 'number' ? height : writable.__height
+    writable.__width = typeof width === 'number' ? width : undefined
+    writable.__height = typeof height === 'number' ? height : undefined
   }
 
   setSrc(src) {
@@ -192,7 +201,7 @@ export class ImageNode extends DecoratorNode {
 
   setAlignment(alignment) {
     const writable = this.getWritable()
-    writable.__alignment = alignment
+    writable.__alignment = ['left', 'center', 'right'].includes(alignment) ? alignment : 'center'
   }
 
   setCaption(caption) {
@@ -207,8 +216,8 @@ export class ImageNode extends DecoratorNode {
 
   setLink({ url = '', target = '_blank' } = {}) {
     const writable = this.getWritable()
-    writable.__linkUrl = url || ''
-    writable.__linkTarget = target || '_blank'
+    writable.__linkUrl = normalizeImageLink(url || '') || ''
+    writable.__linkTarget = target === '_self' ? '_self' : '_blank'
   }
 
   getLinkUrl() {
@@ -225,6 +234,14 @@ export class ImageNode extends DecoratorNode {
 
   getAltText() {
     return this.__altText
+  }
+
+  getWidth() {
+    return this.__width
+  }
+
+  getHeight() {
+    return this.__height
   }
 
   getAlignment() {
@@ -278,18 +295,33 @@ function convertImageElement(domNode) {
   const height = heightAttr ? parseInt(heightAttr, 10) || undefined : undefined
 
   let alignment = 'center'
-  const container = domNode.closest('.editor-image-container')
-  if (container?.classList.contains('justify-start')) {
+  const container = domNode.closest('figure, .editor-image-container')
+  if (container?.dataset.alignment === 'left' || container?.classList.contains('justify-start')) {
     alignment = 'left'
-  } else if (container?.classList.contains('justify-end')) {
+  } else if (container?.dataset.alignment === 'right' || container?.classList.contains('justify-end')) {
     alignment = 'right'
   }
 
-  const captionElement = domNode.parentElement?.querySelector('.mt-2, figcaption')
+  const captionElement = container?.querySelector('figcaption, .editor-image-caption')
   const caption = captionElement?.textContent?.trim() || ''
   const showCaption = Boolean(caption)
+  const anchor = domNode.closest('a')
+  const linkUrl = anchor?.getAttribute('href') || ''
+  const linkTarget = anchor?.getAttribute('target') || '_self'
+  const mediaId = domNode.dataset.contexthubMediaId || ''
 
   return {
-    node: $createImageNode({ src, altText, width, height, alignment, caption, showCaption }),
+    node: $createImageNode({
+      src,
+      altText,
+      width,
+      height,
+      alignment,
+      caption,
+      showCaption,
+      linkUrl,
+      linkTarget,
+      mediaId,
+    }),
   }
 }

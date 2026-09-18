@@ -354,7 +354,7 @@ async function validateApiKey(request, reply) {
 
   // Find API token in database
   const { ApiToken } = require('@contexthub/common');
-  const apiToken = await ApiToken.findOne({ hash });
+  const apiToken = await ApiToken.findOne({ hash, revokedAt: null });
 
   if (!apiToken) {
     return reply.code(401).send({
@@ -383,10 +383,6 @@ async function validateApiKey(request, reply) {
     });
   }
 
-  // Update last used timestamp
-  apiToken.lastUsedAt = new Date();
-  await apiToken.save();
-
   // Set tenant ID from API token
   request.tenantId = apiToken.tenantId.toString();
   request.apiToken = apiToken;
@@ -394,6 +390,7 @@ async function validateApiKey(request, reply) {
   if (await checkRequestLimit(request, reply)) {
     return;
   }
+  request.apiTokenUsageAuthorized = true;
 }
 
 /**

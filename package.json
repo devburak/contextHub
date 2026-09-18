@@ -1,6 +1,6 @@
 {
   "name": "contexthub",
-  "version": "0.1.15",
+  "version": "0.1.19",
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "description": "Multi‑tenant headless CMS and content services platform.",
@@ -19,6 +19,8 @@
     "deploy": "pnpm build:admin:hosted && pnpm hosted:entitlements:verify && node scripts/deploy-admin.mjs",
     "deploy:admin": "pnpm hosted:entitlements:verify && node scripts/deploy-admin.mjs",
     "rollback:admin": "node scripts/rollback-admin.mjs",
+    "api:pm2:env:check": "node scripts/reload-api-pm2-with-env.cjs --check",
+    "api:pm2:reload": "node scripts/reload-api-pm2-with-env.cjs --reload",
     "test": "turbo test",
     "test:watch": "turbo test:watch",
     "lint": "turbo lint",

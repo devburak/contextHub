@@ -4,7 +4,7 @@ const billingService = require('../services/billing/billingService');
 
 function errorStatus(error) {
   if (error.code === 'AccountMigrationRequired') return 409;
-  if (['CheckoutNotConfigured', 'BillingDisabled', 'BillingProviderUnavailable', 'BillingPiiNotConfigured'].includes(error.code)) return 503;
+  if (['CheckoutNotConfigured', 'BillingDisabled', 'BillingProviderUnavailable', 'BillingProviderNetworkUnavailable', 'BillingPiiNotConfigured'].includes(error.code)) return 503;
   if (['PortalRequired', 'PortalUnavailable', 'BillingJurisdictionLocked'].includes(error.code)) return 409;
   if (['BillingProfileIncomplete', 'CommercialAgreementRequired', 'InvalidBillingProfile', 'PlanPriceUnavailable'].includes(error.code)) return 422;
   return error.statusCode || 400;
@@ -19,6 +19,9 @@ async function billingRoutes(fastify) {
     try {
       return reply.send(await billingService.getOverview(request.tenantId, {
         actorEmail: request.user.email,
+        previewCountry: request.query?.previewCountry === 'TR' ? 'TR' : request.query?.previewCountry === 'US' ? 'US' : '',
+        previewPlanSlug: ['pro', 'promax'].includes(request.query?.previewPlanSlug) ? request.query.previewPlanSlug : '',
+        previewInterval: request.query?.previewInterval === 'year' ? 'year' : 'month',
       }));
     } catch (error) {
       request.log.error({ err: error }, 'Billing overview failed');

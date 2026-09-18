@@ -39,7 +39,7 @@ export default function ImageHandlersPlugin({ openMediaPicker }) {
     })
   }, [editor, openMediaPicker])
 
-  const handleReplaceImage = useCallback((nodeKey, currentCaption) => {
+  const handleReplaceImage = useCallback((nodeKey) => {
     if (typeof openMediaPicker !== 'function') {
       return
     }
@@ -92,7 +92,7 @@ export default function ImageHandlersPlugin({ openMediaPicker }) {
         editor._editorCallbacks.openMediaPicker = null
       }
     }
-  }, [editor, handleInsertImage, handleReplaceImage])
+  }, [editor, handleInsertImage, handleReplaceImage, openMediaPicker])
 
   return null
 }

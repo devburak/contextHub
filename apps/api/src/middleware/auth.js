@@ -177,16 +177,12 @@ async function authenticateApiToken(request, reply) {
       });
     }
 
-    // Last used at'i güncelle. Audit kaydını yüksek trafikte şişirmemek için aynı
-    // tokenın kullanımını en fazla 15 dakikada bir güvenlik günlüğüne yaz.
+    // Usage timestamps are recorded after the response and flushed from Redis
+    // in batches. Claim audit intervals independently so concurrent requests
+    // cannot all create the same security event.
     const now = new Date();
     const shouldAuditUsage = !apiToken.lastAuditAt
       || now.getTime() - new Date(apiToken.lastAuditAt).getTime() >= 15 * 60 * 1000;
-    apiToken.lastUsedAt = now;
-    if (shouldAuditUsage) {
-      apiToken.lastAuditAt = now;
-    }
-    await apiToken.save();
 
     // Request'e tenant ve token bilgilerini ekle
     request.tenantId = apiToken.tenantId.toString();
@@ -253,21 +249,36 @@ async function authenticateApiToken(request, reply) {
 
     if (!await enforceBillingWriteAccess(request, reply)) return;
 
+    request.apiTokenUsageAuthorized = true;
     if (shouldAuditUsage) {
-      await logSecurityEvent({
-        action: 'api_token.used',
-        description: `API token kullanıldı: ${apiToken.name}`,
-        userId: apiToken.createdBy || null,
-        tenantId: apiToken.tenantId,
-        metadata: {
-          tokenId: apiToken._id.toString(),
-          name: apiToken.name,
-          scopes: effectiveScopes,
-          role: tokenRole,
-          method: request.method,
-          path: request.url,
-        },
-        request,
+      setImmediate(() => {
+        ApiToken.updateOne({
+          _id: apiToken._id,
+          revokedAt: null,
+          $or: [
+            { lastAuditAt: null },
+            { lastAuditAt: { $lte: new Date(now.getTime() - 15 * 60 * 1000) } },
+          ],
+        }, { $set: { lastAuditAt: now } }).then((result) => {
+          if (!result.modifiedCount) return;
+          return logSecurityEvent({
+            action: 'api_token.used',
+            description: `API token kullanıldı: ${apiToken.name}`,
+            userId: apiToken.createdBy || null,
+            tenantId: apiToken.tenantId,
+            metadata: {
+              tokenId: apiToken._id.toString(),
+              name: apiToken.name,
+              scopes: effectiveScopes,
+              role: tokenRole,
+              method: request.method,
+              path: request.url,
+            },
+            request,
+          });
+        }).catch((error) => {
+          request.log?.error?.({ err: error }, 'Failed to audit API token use');
+        });
       });
     }
 

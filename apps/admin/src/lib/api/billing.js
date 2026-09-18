@@ -1,7 +1,9 @@
 import { apiClient } from '../api.js'
 
-export async function fetchBillingOverview() {
-  const response = await apiClient.get('/billing/overview')
+export async function fetchBillingOverview({ previewCountry = '', previewPlanSlug = '', previewInterval = 'month' } = {}) {
+  const response = await apiClient.get('/billing/overview', {
+    params: { previewCountry, previewPlanSlug, previewInterval },
+  })
   return response.data
 }
 
