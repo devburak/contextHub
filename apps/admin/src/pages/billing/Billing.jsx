@@ -19,6 +19,7 @@ import { activePlanStatus, checkoutButtonLabel, statusLabel } from './billingPre
 import { errorsFromBillingResponse, localizeBillingProfileErrors, validateBillingProfileForm } from './billingProfileValidation.js'
 import { readCheckoutIntent } from '../../lib/returnTo.js'
 import { useHostedCheckoutStatus } from './useHostedCheckoutStatus.js'
+import { hostedPaymentDocument } from './hostedPaymentDocument.js'
 import PlanChangeDialog from './PlanChangeDialog.jsx'
 
 const TOKENS = {
@@ -93,7 +94,7 @@ const EMPTY_PROFILE = {
   serviceAgreementAccepted: false,
 }
 
-function HostedPaymentFrame({ content, onClose, t }) {
+function HostedPaymentFrame({ content, onClose, t, language }) {
   if (!content) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={t('billing.securePayment.title')}>
@@ -102,7 +103,7 @@ function HostedPaymentFrame({ content, onClose, t }) {
           <div><p className="font-semibold">{t('billing.securePayment.title')}</p><p className="text-xs text-gray-500">{t('billing.securePayment.description')}</p></div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" aria-label={t('billing.securePayment.close')}><XMarkIcon className="h-5 w-5" /></button>
         </div>
-        <iframe title={t('billing.securePayment.frameTitle')} srcDoc={content} sandbox="allow-forms allow-scripts allow-popups allow-top-navigation-by-user-activation" className="min-h-0 flex-1 border-0" />
+        <iframe title={t('billing.securePayment.frameTitle')} srcDoc={hostedPaymentDocument(content, language)} sandbox="allow-forms allow-scripts allow-popups allow-top-navigation-by-user-activation" className="min-h-0 flex-1 border-0" />
       </div>
     </div>
   )
@@ -323,7 +324,7 @@ export default function Billing() {
 
   return (
     <main style={TOKENS} className="min-h-[calc(100vh-4rem)] bg-[var(--billing-canvas)] text-[var(--billing-ink)]">
-      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => { setHostedPaymentContent(''); setHostedCheckoutSession(null); overview.refetch(); refreshSession?.().catch(() => {}) }} t={t} />
+      <HostedPaymentFrame content={hostedPaymentContent} onClose={() => { setHostedPaymentContent(''); setHostedCheckoutSession(null); overview.refetch(); refreshSession?.().catch(() => {}) }} t={t} language={i18n.resolvedLanguage} />
       {planSelection && <PlanChangeDialog key={`${activeTenantId}:${planSelection.priceId || 'enterprise'}`} selection={planSelection} tenantId={activeTenantId} canManage={canManage} online={online} t={t} locale={locale} onClose={() => setPlanSelection(null)} onCheckout={showChangeCheckout} onError={(message) => toast.error(message)} />}
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-[var(--billing-line)] pb-6 sm:flex-row sm:items-end sm:justify-between">

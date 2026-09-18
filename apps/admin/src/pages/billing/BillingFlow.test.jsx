@@ -129,6 +129,28 @@ describe('billing checkout intent', () => {
     expect(sessionRefresh).toHaveBeenCalledOnce()
   })
 
+  it.each(['checkout', 'card-update'])('provides the responsive mount before the %s provider script', async (flow) => {
+    await act(async () => root.render(<Billing />))
+    // iyzico returns only initialization scripts, not the form container.
+    const content = '<script>window.testProviderMount = document.getElementById("iyzipay-checkout-form")</script>'
+    const mutationFn = flow === 'checkout' ? createBillingCheckout : createBillingPortal
+    const mutation = useMutation.mock.calls.find(([options]) => options.mutationFn === mutationFn)[0]
+    await act(async () => mutation.onSuccess(flow === 'checkout'
+      ? { checkoutContent: content }
+      : { paymentMethodContent: content }))
+    const frame = container.querySelector('iframe')
+    const source = frame.getAttribute('srcdoc')
+    const document = new DOMParser().parseFromString(source, 'text/html')
+    const mount = document.getElementById('iyzipay-checkout-form')
+    expect(mount).not.toBeNull()
+    expect(mount.className).toBe('responsive')
+    expect(source.indexOf('<div')).toBeLessThan(source.indexOf('<script>'))
+    expect(document.querySelector('meta[name="viewport"]').content).toContain('width=device-width')
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-same-origin')
+    expect(frame.getAttribute('sandbox')).toContain('allow-scripts')
+    expect(container.querySelector('script')).toBeNull()
+  })
+
   it('opens management choices without opening the card form', async () => {
     queryData.tenant.status = 'active'; queryData.tenant.plan = { slug: 'pro', name: 'Pro' }
     queryData.billingAccount.hasProviderCustomer = true
