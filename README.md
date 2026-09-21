@@ -1,6 +1,74 @@
-# contextHub
+# ContextHub
 
-contextHub is a multi‑tenant headless CMS and content‑services platform built with the MERN stack.  The goal of this project is to provide a scalable, cloud‑native alternative to WordPress: a system that stores and renders web‑site content, exposes that content as an API, and offers a modern React‑based administration interface.
+**ContextHub is an open-source, multi-tenant headless CMS for agencies and multi-brand organizations.**
+
+Run content, media, forms, menus, custom data and digital experiences for multiple
+tenant-scoped sites from one API and administration stack. ContextHub is built for
+teams that want an API-first alternative to duplicating WordPress or CMS installations
+for every client, brand or project.
+
+[ContextHub Cloud](https://ctxhub.net) · [Cloud documentation](https://ctxhub.net/docs) ·
+[Developer documentation](https://ctxhub.net/developer-docs/) ·
+[Integration guide](./docs/CONTEXTHUB_INTEGRATION.md) ·
+[Comparisons](./docs/comparisons/README.md)
+
+## Why ContextHub?
+
+* **Agency and multi-brand operations** – manage many customers, brands and sites from
+  one deployment without mixing their users, roles, content or configuration.
+* **Tenant isolation as a platform concern** – tenant context, `tenantId` data
+  partitioning, tenant-scoped RBAC and scoped API tokens are part of the core model.
+* **API-first delivery** – use structured content across websites, mobile applications,
+  portals and other channels without coupling presentation to the CMS.
+* **More than content storage** – forms, webhooks, placements, personalization, feature
+  flags, A/B tests, funnels and realtime reporting share the same tenant boundary.
+* **Open core and extensible** – deploy the MIT-licensed core yourself and add trusted
+  integrations through the versioned Plugin API.
+
+## Start in five minutes
+
+You need Node.js 24.13.1 or newer, pnpm 10.13.1 and a running MongoDB instance.
+Redis is recommended for shared rate-limit and usage state, but local development
+fails open when it is unavailable.
+
+```bash
+git clone https://github.com/devburak/contextHub.git
+cd contextHub
+corepack enable
+pnpm install
+MONGODB_URI=mongodb://127.0.0.1:27017/contextHub pnpm dev
+```
+
+The API starts on [http://localhost:3000](http://localhost:3000), its health endpoint
+is `/health`, and interactive OpenAPI documentation is available at `/api/docs`.
+The Vite development server prints the local Admin URL when it starts. Copy
+`.env.example` to `.env` when you need to configure storage, trusted origins, email,
+the edge gateway or production security settings.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[Admin and editors] --> UI[React Admin]
+    C[Web, mobile and other channels] --> SDK[REST API and SDKs]
+    UI --> API[Fastify API]
+    SDK --> API
+    API --> TENANT[Tenant context, RBAC and scoped tokens]
+    TENANT --> DB[(MongoDB)]
+    TENANT --> MEDIA[(Cloudflare R2)]
+    TENANT --> CACHE[(Redis)]
+    TENANT --> EVENTS[Webhooks and domain events]
+```
+
+One deployment serves multiple tenants. Requests resolve a tenant context before
+tenant-owned resources are accessed; content, media, collections, forms, roles,
+settings, placements and integration tokens remain tenant-scoped.
+
+## Compare ContextHub
+
+* [ContextHub vs WordPress Multisite](./docs/comparisons/wordpress-multisite.md)
+* [ContextHub vs Strapi](./docs/comparisons/strapi.md)
+* [ContextHub vs Payload](./docs/comparisons/payload.md)
 
 ## Features
 
@@ -43,8 +111,10 @@ Tooling that every package uses (ESLint, Prettier, Vitest, etc.) now lives only 
 
 Prerequisites:
 
-* Node.js 18 or newer (the project targets Node 22 for production; development works with Node ≥18).
-* [pnpm](https://pnpm.io/) (`npm install -g pnpm`).  pnpm is required to manage workspaces.
+* Node.js 24.13.1 or newer, below Node.js 25.
+* [pnpm](https://pnpm.io/) 10.13.1. pnpm is required to manage workspaces.
+* MongoDB for persistent application data.
+* Redis is recommended for shared rate-limit and usage state.
 
 To bootstrap the repository:
 

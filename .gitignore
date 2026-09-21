@@ -143,3 +143,5 @@ apps/edge-gateway/
 !/docs/PRICING_AND_QUOTA_PLAN.md
 !/docs/saas/
 !/docs/saas/**
+!/docs/comparisons/
+!/docs/comparisons/**
