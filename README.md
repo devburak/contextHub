@@ -168,7 +168,9 @@ API releases that compose private plugins are owned by the `ctxhub-commercial`
 release manifest, preflight, frozen lockfile, and entitlement verification flow; the
 core deploy command must not copy private plugin sources into this repository.
 
-For more details, see [DEPLOY.md](./DEPLOY.md) or [DEPLOY-QUICK.md](./DEPLOY-QUICK.md).
+Keep production hostnames, credentials, release procedures, and operational
+runbooks outside the public repository. The commands above document only the
+community-compatible deployment interface.
 
 For an API managed by PM2, run `pnpm api:pm2:env:check` on the server before a
 release. It compares each running API process with the local `.env` and reports only

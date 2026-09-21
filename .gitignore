@@ -138,9 +138,16 @@ apps/edge-gateway/
 
 # Architecture, release and internal decision documents remain local. The public
 # extension contract is intentionally published.
+/CODEX_NOTES.md
+/CTXHUB_SOCIAL_FEATURE.md
+/F0-issues.md
+/TABLE_IMPROVEMENTS.md
+/DEPLOY.md
+/DEPLOY-QUICK.md
+/TENANT_DELETION_RUNBOOK.md
+/apps/api/src/services/billing/README.md
 /docs/*
 !/docs/PLUGIN_API.md
-!/docs/PRICING_AND_QUOTA_PLAN.md
 !/docs/saas/
 !/docs/saas/**
 !/docs/comparisons/

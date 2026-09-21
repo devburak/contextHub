@@ -282,7 +282,9 @@ docker build -t contexthub-api .
 docker run -p 3000:3000 contexthub-api
 ```
 
-Detaylı deployment bilgisi için: [DEPLOY.md](./DEPLOY.md)
+Production hostname, credential, release procedure ve operasyon runbook'larını
+public repository dışında tutun. Community deployment arayüzü için kök
+README'deki deployment bölümünü kullanın.
 
 ---
 
