@@ -1,4 +1,4 @@
-import { readFile, mkdir, rm, writeFile } from 'node:fs/promises'
+import { copyFile, readFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { marked } from 'marked'
@@ -119,6 +119,8 @@ function buildRobots(siteUrl) {
   return [
     'User-agent: *',
     'Disallow: /',
+    'Allow: /llms.txt',
+    'Allow: /llms-full.txt',
     'Allow: /docs',
     'Allow: /pay',
     'Allow: /developer-docs/',
@@ -156,6 +158,8 @@ export async function prerenderPublicDocs({
       rm(join(distDirectory, 'docs'), { recursive: true, force: true }),
       rm(join(distDirectory, 'pay'), { recursive: true, force: true }),
       rm(join(distDirectory, 'developer-docs'), { recursive: true, force: true }),
+      rm(join(distDirectory, 'llms.txt'), { force: true }),
+      rm(join(distDirectory, 'llms-full.txt'), { force: true }),
       rm(join(distDirectory, 'robots.txt'), { force: true }),
       rm(join(distDirectory, 'sitemap.xml'), { force: true }),
     ])
@@ -190,6 +194,16 @@ export async function prerenderPublicDocs({
   await mkdir(paymentDirectory, { recursive: true })
   await writeFile(join(paymentDirectory, 'index.html'), buildPaymentLinkPage(template, siteUrl), 'utf8')
 
+  await Promise.all([
+    copyFile(
+      join(distDirectory, 'developer-docs', 'llms.txt'),
+      join(distDirectory, 'llms.txt'),
+    ),
+    copyFile(
+      join(distDirectory, 'developer-docs', 'llms-full.txt'),
+      join(distDirectory, 'llms-full.txt'),
+    ),
+  ])
   await writeFile(join(distDirectory, 'robots.txt'), buildRobots(siteUrl), 'utf8')
   await writeFile(join(distDirectory, 'sitemap.xml'), buildSitemap(manifest, siteUrl), 'utf8')
 

@@ -78,6 +78,13 @@ describe('public documentation build', () => {
       '<!doctype html><html lang="tr"><head><title>Admin</title></head><body><div id="root"></div><script src="/assets/app.js"></script></body></html>',
       'utf8',
     )
+    await mkdir(join(distDirectory, 'developer-docs'), { recursive: true })
+    await writeFile(join(distDirectory, 'developer-docs', 'llms.txt'), '# LLM index\n', 'utf8')
+    await writeFile(
+      join(distDirectory, 'developer-docs', 'llms-full.txt'),
+      '# Full LLM corpus\n',
+      'utf8',
+    )
 
     try {
       const result = await prerenderPublicDocs({
@@ -89,6 +96,8 @@ describe('public documentation build', () => {
       const contentPage = await readFile(join(distDirectory, 'docs', 'content', 'index.html'), 'utf8')
       const robots = await readFile(join(distDirectory, 'robots.txt'), 'utf8')
       const sitemap = await readFile(join(distDirectory, 'sitemap.xml'), 'utf8')
+      const rootLlms = await readFile(join(distDirectory, 'llms.txt'), 'utf8')
+      const rootLlmsFull = await readFile(join(distDirectory, 'llms-full.txt'), 'utf8')
 
       expect(result.pages).toBeGreaterThan(14)
       expect(contentPage).toContain('<h1 id="content">Content</h1>')
@@ -97,7 +106,11 @@ describe('public documentation build', () => {
       expect(contentPage).toContain('/assets/app.js')
       expect(robots).toContain('Allow: /docs')
       expect(robots).toContain('Allow: /pay')
+      expect(robots).toContain('Allow: /llms.txt')
+      expect(robots).toContain('Allow: /llms-full.txt')
       expect(robots).toContain('Sitemap: https://ctxhub.test/sitemap.xml')
+      expect(rootLlms).toBe('# LLM index\n')
+      expect(rootLlmsFull).toBe('# Full LLM corpus\n')
       expect(sitemap).toContain('<loc>https://ctxhub.test/docs/content</loc>')
       expect(sitemap).toContain('<loc>https://ctxhub.test/docs</loc>')
       expect(sitemap).toContain('<loc>https://ctxhub.test/docs/about</loc>')
@@ -120,6 +133,8 @@ describe('public documentation build', () => {
     await writeFile(join(distDirectory, 'docs', 'index.html'), 'hosted', 'utf8')
     await writeFile(join(distDirectory, 'pay', 'index.html'), 'hosted', 'utf8')
     await writeFile(join(distDirectory, 'developer-docs', 'catalog.json'), '{}', 'utf8')
+    await writeFile(join(distDirectory, 'llms.txt'), 'hosted', 'utf8')
+    await writeFile(join(distDirectory, 'llms-full.txt'), 'hosted', 'utf8')
 
     try {
       const result = await prerenderPublicDocs({ distDirectory, hosted: false })
@@ -127,6 +142,8 @@ describe('public documentation build', () => {
       await expect(readFile(join(distDirectory, 'docs', 'index.html'), 'utf8')).rejects.toThrow()
       await expect(readFile(join(distDirectory, 'pay', 'index.html'), 'utf8')).rejects.toThrow()
       await expect(readFile(join(distDirectory, 'developer-docs', 'catalog.json'), 'utf8')).rejects.toThrow()
+      await expect(readFile(join(distDirectory, 'llms.txt'), 'utf8')).rejects.toThrow()
+      await expect(readFile(join(distDirectory, 'llms-full.txt'), 'utf8')).rejects.toThrow()
     } finally {
       await rm(distDirectory, { recursive: true, force: true })
     }
