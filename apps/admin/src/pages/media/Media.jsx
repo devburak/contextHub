@@ -469,8 +469,8 @@ export default function MediaLibrary() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="sm:col-span-1">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,1fr)_max-content_max-content]">
+        <div className="min-w-0 sm:col-span-1">
           <label htmlFor="media-search" className="block text-sm font-medium text-gray-700">
             {t('media.file_name')}
           </label>
@@ -483,7 +483,7 @@ export default function MediaLibrary() {
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
           />
         </div>
-        <div className="sm:col-span-1">
+        <div className="min-w-0 sm:col-span-1">
           <label htmlFor="media-tags" className="block text-sm font-medium text-gray-700">
             {t('media.tags')}
           </label>
