@@ -30,7 +30,7 @@ describe('additive index management', () => {
     const definitions = deploymentIndexes.Content.map((key) => [key, {}]);
     await ensureModelIndexes(model, definitions);
     await ensureModelIndexes(model, definitions);
-    expect(model.collection.createIndex).toHaveBeenCalledTimes(2);
+    expect(model.collection.createIndex).toHaveBeenCalledTimes(deploymentIndexes.Content.length);
     expect(await model.collection.listIndexes().toArray()).toContainEqual(legacy);
     expect(model.collection.dropIndex).not.toHaveBeenCalled();
     expect(model.collection.dropIndexes).not.toHaveBeenCalled();
@@ -116,8 +116,10 @@ describe('additive index management', () => {
       fixtures[modelName] = { ...fixture, modelName, schema: models[modelName].schema };
     }
     await ensureDeploymentIndexes(fixtures);
-    expect(fixtures.Content.collection.createIndex).toHaveBeenCalledTimes(2);
+    expect(fixtures.Content.collection.createIndex).toHaveBeenCalledTimes(deploymentIndexes.Content.length);
+    expect(fixtures.CollectionEntry.collection.createIndex).toHaveBeenCalledOnce();
     expect(fixtures.Gallery.collection.createIndex).toHaveBeenCalledOnce();
+    expect(fixtures.Media.collection.createIndex).toHaveBeenCalledOnce();
     expect(fixtures.BillingPlanChange.collection.createIndex).toHaveBeenCalledWith(
       { tenantId: 1 }, expect.objectContaining({ unique: true, partialFilterExpression: { active: true } })
     );

@@ -10,8 +10,16 @@ module.exports = {
   Content: [
     { tenantId: 1, status: 1, publishedAt: -1, _id: -1 },
     { tenantId: 1, publishedAt: -1, _id: -1 },
+    { tenantId: 1, updatedAt: -1 },
+    { status: 1, publishAt: 1 },
+  ],
+  CollectionEntry: [
+    { tenantId: 1, collectionKey: 1, status: 1, createdAt: -1, _id: 1 },
   ],
   Gallery: [
     { tenantId: 1, linkedContentIds: 1, updatedAt: -1 },
+  ],
+  Media: [
+    { tenantId: 1, updatedAt: -1 },
   ],
 };

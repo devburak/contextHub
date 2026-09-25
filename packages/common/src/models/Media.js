@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const deploymentIndexes = require('../deploymentIndexes');
 const { Schema } = mongoose;
 
 const mediaVariantSchema = new Schema({
@@ -82,6 +83,7 @@ mediaSchema.index({ tenantId: 1, key: 1 }, { unique: true });
 mediaSchema.index({ tenantId: 1, tags: 1 });
 mediaSchema.index({ tenantId: 1, status: 1, createdAt: -1 });
 mediaSchema.index({ tenantId: 1, mimeType: 1 });
+deploymentIndexes.Media.forEach((key) => mediaSchema.index(key));
 
 const Media = mongoose.model('Media', mediaSchema);
 

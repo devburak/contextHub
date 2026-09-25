@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const deploymentIndexes = require('../deploymentIndexes');
 
 const { Schema } = mongoose;
 const { ObjectId } = Schema.Types;
@@ -66,6 +67,7 @@ collectionEntrySchema.index({ tenantId: 1, collectionKey: 1, 'indexed.title': 1 
 collectionEntrySchema.index({ tenantId: 1, 'indexed.date': -1 });
 collectionEntrySchema.index({ tenantId: 1, 'indexed.tags': 1 });
 collectionEntrySchema.index({ 'indexed.geo': '2dsphere', tenantId: 1 });
+deploymentIndexes.CollectionEntry.forEach((key) => collectionEntrySchema.index(key));
 
 const CollectionEntry = mongoose.model('CollectionEntry', collectionEntrySchema);
 

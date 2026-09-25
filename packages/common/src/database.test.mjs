@@ -46,7 +46,7 @@ describe('database index startup policy', () => {
     }
   });
 
-  it('ensures the three deployment indexes with the existing false flag, idempotently', async () => {
+  it('ensures required deployment indexes with the existing false flag, idempotently', async () => {
     vi.stubEnv('MONGODB_AUTO_CREATE_INDEXES', 'false');
     const operations = stubModelCollections();
     await database.initializeIndexes();
