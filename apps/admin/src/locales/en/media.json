@@ -105,6 +105,7 @@
   "media.load_failed": "Media files could not be loaded. Please try again.",
   "media.loading": "Loading media files...",
   "media.loading_more": "Loading more media...",
+  "media.loaded_count": "{{count}} media loaded",
   "media.open": "Open",
   "media.platform": "Platform",
   "media.record_count": "{{count}} records",

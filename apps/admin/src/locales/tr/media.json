@@ -105,6 +105,7 @@
   "media.load_failed": "Medya dosyaları alınamadı. Lütfen tekrar deneyin.",
   "media.loading": "Medya dosyaları yükleniyor...",
   "media.loading_more": "Daha fazla medya yükleniyor...",
+  "media.loaded_count": "{{count}} medya yüklendi",
   "media.open": "Aç",
   "media.platform": "Platform",
   "media.record_count": "{{count}} kayıt",

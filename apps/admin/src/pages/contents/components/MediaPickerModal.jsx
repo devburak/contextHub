@@ -12,6 +12,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { mediaAPI } from '../../../lib/mediaAPI.js'
+import { getNextMediaPageParam } from '../../../lib/mediaPagination.js'
 import { useApiError } from '../../../lib/useApiError.js'
 
 // Anahtarlar API'ye giden mod tanımlayıcılarıdır; yalnızca etiketleri çevrilir.
@@ -119,11 +120,7 @@ export default function MediaPickerModal({
         search: debouncedSearch || undefined,
         mimeType: filterMimePrefix,
       }),
-    getNextPageParam: (lastPage, pages) => {
-      const currentPage = pages.length
-      const totalPages = lastPage?.pagination?.pages || 1
-      return currentPage < totalPages ? currentPage + 1 : undefined
-    },
+    getNextPageParam: getNextMediaPageParam,
     enabled: isOpen,
     keepPreviousData: true,
   })
@@ -139,7 +136,7 @@ export default function MediaPickerModal({
     return flat
   }, [mediaQuery.data, mode])
 
-  const totalCount = mediaQuery.data?.pages?.[0]?.pagination?.total ?? 0
+  const loadedCount = items.length
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -523,7 +520,7 @@ export default function MediaPickerModal({
                       </div>
 
                       <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>{t('media.record_count', { count: totalCount })}</span>
+                        <span>{t('media.loaded_count', { count: loadedCount })}</span>
                       </div>
 
                       {isUploading && (

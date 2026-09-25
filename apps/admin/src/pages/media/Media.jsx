@@ -16,11 +16,12 @@ import {
 import clsx from 'clsx'
 import { Trans, useTranslation } from 'react-i18next'
 import { mediaAPI } from '../../lib/mediaAPI.js'
+import { getNextMediaPageParam } from '../../lib/mediaPagination.js'
 import { useApiError } from '../../lib/useApiError.js'
 import { buildExternalEmbed } from '../../utils/externalMedia.js'
 
 export default function MediaLibrary() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const describeError = useApiError()
   const [search, setSearch] = useState('')
   const [mimeFilter, setMimeFilter] = useState('')
@@ -117,11 +118,7 @@ export default function MediaLibrary() {
   const mediaQuery = useInfiniteQuery({
     queryKey: ['media', queryParams],
     queryFn: async ({ pageParam = 1 }) => mediaAPI.list({ ...queryParams, page: pageParam }),
-    getNextPageParam: (lastPage, pages) => {
-      const currentPage = pages.length
-      const totalPages = lastPage?.pagination?.pages || 1
-      return currentPage < totalPages ? currentPage + 1 : undefined
-    },
+    getNextPageParam: getNextMediaPageParam,
     keepPreviousData: true,
   })
 
@@ -341,10 +338,10 @@ export default function MediaLibrary() {
 
   const selectedCount = selectedIds.length
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
-  const totalCount = mediaQuery.data?.pages?.[0]?.pagination?.total ?? 0
+  const loadedCount = items.length
   const totalLabel = !mediaQuery.data && mediaQuery.isLoading
     ? t('common.loading')
-    : t('media.total_count', { total: totalCount.toLocaleString(i18n.language) })
+    : t('media.loaded_count', { count: loadedCount })
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -657,7 +654,7 @@ export default function MediaLibrary() {
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">{t('media.files')}</h2>
           <span className="text-sm text-gray-500">
-            {t('media.record_count', { count: totalCount })}
+            {t('media.loaded_count', { count: loadedCount })}
           </span>
         </div>
         <div className="p-6">

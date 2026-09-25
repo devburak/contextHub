@@ -601,18 +601,21 @@ function escapeRegex(value) {
 }
 
 const ACCENT_VARIANTS = {
-  'ç': ['ç', 'c'],
-  'ğ': ['ğ', 'g'],
-  'ı': ['ı', 'i'],
-  'i': ['i', 'ı'],
-  'ö': ['ö', 'o'],
-  'ş': ['ş', 's'],
-  'ü': ['ü', 'u'],
+  'c': ['c', 'ç'],
+  'g': ['g', 'ğ'],
+  'i': ['i', 'ı', 'İ'],
+  'o': ['o', 'ö'],
+  's': ['s', 'ş'],
+  'u': ['u', 'ü'],
 };
 
 function buildAccentInsensitivePattern(term) {
   if (!term) return ''
   return term
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/ı/g, 'i')
+    .toLowerCase()
     .split('')
     .map((char) => {
       const lower = char.toLowerCase()
@@ -1210,22 +1213,19 @@ async function listMedia({ tenantId, filters = {}, pagination = {} }) {
     }
   }
 
-  const [items, total] = await Promise.all([
-    Media.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    Media.countDocuments(query),
-  ])
+  const rows = await Media.find(query)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit + 1)
+    .lean()
+  const hasMore = rows.length > limit
 
   return {
-    items,
+    items: rows.slice(0, limit),
     pagination: {
       page,
       limit,
-      total,
-      pages: Math.ceil(total / limit) || 1,
+      hasMore,
     },
   }
 }
