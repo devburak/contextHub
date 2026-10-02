@@ -274,8 +274,8 @@ export default function FieldInspector({ field, selectedLanguage = 'tr', onField
                 </label>
                 <input
                   type="number"
-                  value={field.validation?.minLength || ''}
-                  onChange={(e) => handleChange('validation.minLength', parseInt(e.target.value) || undefined)}
+                  value={field.validation?.minLength ?? ''}
+                  onChange={(e) => handleChange('validation.minLength', e.target.value === '' ? undefined : Number(e.target.value))}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
                 />
               </div>
@@ -289,15 +289,15 @@ export default function FieldInspector({ field, selectedLanguage = 'tr', onField
                 </label>
                 <input
                   type="number"
-                  value={field.validation?.maxLength || ''}
-                  onChange={(e) => handleChange('validation.maxLength', parseInt(e.target.value) || undefined)}
+                  value={field.validation?.maxLength ?? ''}
+                  onChange={(e) => handleChange('validation.maxLength', e.target.value === '' ? undefined : Number(e.target.value))}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
                 />
               </div>
             )}
 
             {/* Min/Max Value (for number) */}
-            {field.type === 'number' && (
+            {['number', 'rating', 'checkbox'].includes(field.type) && (
               <>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -305,8 +305,8 @@ export default function FieldInspector({ field, selectedLanguage = 'tr', onField
                   </label>
                   <input
                     type="number"
-                    value={field.validation?.min || ''}
-                    onChange={(e) => handleChange('validation.min', parseFloat(e.target.value) || undefined)}
+                    value={field.validation?.min ?? ''}
+                    onChange={(e) => handleChange('validation.min', e.target.value === '' ? undefined : Number(e.target.value))}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
                   />
                 </div>
@@ -316,8 +316,8 @@ export default function FieldInspector({ field, selectedLanguage = 'tr', onField
                   </label>
                   <input
                     type="number"
-                    value={field.validation?.max || ''}
-                    onChange={(e) => handleChange('validation.max', parseFloat(e.target.value) || undefined)}
+                    value={field.validation?.max ?? ''}
+                    onChange={(e) => handleChange('validation.max', e.target.value === '' ? undefined : Number(e.target.value))}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
                   />
                 </div>
@@ -325,7 +325,7 @@ export default function FieldInspector({ field, selectedLanguage = 'tr', onField
             )}
 
             {/* Pattern */}
-            {['text', 'email', 'phone'].includes(field.type) && (
+            {['text', 'textarea', 'email', 'phone'].includes(field.type) && (
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   Regex Deseni
@@ -367,7 +367,7 @@ export default function FieldInspector({ field, selectedLanguage = 'tr', onField
               </label>
               <input
                 type="text"
-                value={field.defaultValue || ''}
+                value={field.defaultValue ?? ''}
                 onChange={(e) => handleChange('defaultValue', e.target.value)}
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
               />

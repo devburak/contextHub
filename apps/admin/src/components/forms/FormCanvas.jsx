@@ -146,6 +146,12 @@ function SortableField({ field, isSelected, onSelect, onDelete, onDuplicate, onT
           )}
         </div>
 
+        {(typeof field.helpText === 'string' ? field.helpText : field.helpText?.tr || field.helpText?.en) && (
+          <p className="mt-2 text-sm text-gray-500">
+            {typeof field.helpText === 'string' ? field.helpText : field.helpText.tr || field.helpText.en}
+          </p>
+        )}
+
         {/* Field Type Badge */}
         <div className="mt-2">
           <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
@@ -163,14 +169,14 @@ function SortableField({ field, isSelected, onSelect, onDelete, onDuplicate, onT
         {/* Validation Info */}
         {field.validation && Object.keys(field.validation).length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
-            {field.validation.minLength && (
+            {(field.validation.minLength ?? field.validation.min) !== undefined && (
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">
-                Min: {field.validation.minLength}
+                Min: {field.validation.minLength ?? field.validation.min}
               </span>
             )}
-            {field.validation.maxLength && (
+            {(field.validation.maxLength ?? field.validation.max) !== undefined && (
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">
-                Max: {field.validation.maxLength}
+                Max: {field.validation.maxLength ?? field.validation.max}
               </span>
             )}
             {field.validation.pattern && (

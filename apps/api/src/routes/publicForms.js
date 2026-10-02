@@ -807,10 +807,11 @@ async function publicFormRoutes(fastify) {
         });
       }
 
-      if (error.message.includes('required')) {
+      if (error.code === 'ValidationFailed' || error.message.includes('required')) {
         return reply.code(400).send({
           error: 'ValidationFailed',
-          message: error.message
+          message: error.details?.[0]?.message || error.message,
+          details: error.details
         });
       }
 

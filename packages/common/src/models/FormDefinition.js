@@ -21,6 +21,9 @@ const conditionalLogicSchema = new Schema({
 const fieldValidationSchema = new Schema({
   min: { type: Number },
   max: { type: Number },
+  minLength: { type: Number },
+  maxLength: { type: Number },
+  errorMessage: { type: Schema.Types.Mixed }, // i18n error messages
   pattern: { type: String }, // regex pattern
   fileTypes: [{ type: String }], // allowed file MIME types
   maxFileSize: { type: Number }, // in MB

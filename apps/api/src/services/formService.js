@@ -1,5 +1,6 @@
 const { FormDefinition, FormResponse, FormVersion } = require('@contexthub/common');
 const { v4: uuidv4 } = require('uuid');
+const { buildFormSubmissionSchema } = require('./formValidation');
 const { emitDomainEvent } = require('../lib/domainEvents');
 const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 const { mailService } = require('./mailService');
@@ -1063,6 +1064,23 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
     if (!data[field.name] && data[field.name] !== 0 && data[field.name] !== false) {
       throw new Error(`Field "${field.name}" is required`);
     }
+  }
+
+  const validatedFields = form.fields.filter(field =>
+    !field.disabled && ['text', 'textarea', 'hidden', 'email', 'phone', 'number', 'rating', 'select', 'radio', 'checkbox'].includes(field.type)
+  );
+  const validation = buildFormSubmissionSchema(validatedFields, 'name').safeParse(data);
+  if (!validation.success) {
+    const error = new Error('Form field validation failed');
+    error.code = 'ValidationFailed';
+    error.details = validation.error.issues.map(issue => {
+      const field = validatedFields.find(field => field.name === issue.path[0]);
+      return {
+        field: issue.path[0],
+        message: getI18nValue(field?.validation?.errorMessage || field?.validation?.customMessage, metadata.locale || 'en') || issue.message
+      };
+    });
+    throw error;
   }
 
   await assertUniqueSubmission({ tenantId, form, data });

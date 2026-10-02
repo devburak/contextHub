@@ -56,9 +56,12 @@ const fieldValidationSchema = z.object({
   max: z.number().optional(),
   minLength: z.number().optional(),
   maxLength: z.number().optional(),
-  pattern: z.string().optional(),
+  pattern: z.string().refine(value => {
+    try { new RegExp(value); return true; } catch { return false; }
+  }, 'Geçersiz regex deseni').optional(),
   fileTypes: z.array(z.string()).optional(),
   maxFileSize: z.number().optional(),
+  customMessage: i18nTextSchema.optional(),
   errorMessage: i18nTextSchema.optional()
 }).optional();
 
@@ -265,7 +268,7 @@ const updateFormSchema = z.object({
  * Build dynamic validation schema from form fields
  * This is used to validate form submissions
  */
-function buildFormSubmissionSchema(fields) {
+function buildFormSubmissionSchema(fields, keyBy = 'id') {
   const schema = {};
   
   fields.forEach(field => {
@@ -279,15 +282,6 @@ function buildFormSubmissionSchema(fields) {
       case 'textarea':
       case 'hidden':
         fieldSchema = z.string();
-        if (field.validation?.min) {
-          fieldSchema = fieldSchema.min(field.validation.min);
-        }
-        if (field.validation?.max) {
-          fieldSchema = fieldSchema.max(field.validation.max);
-        }
-        if (field.validation?.pattern) {
-          fieldSchema = fieldSchema.regex(new RegExp(field.validation.pattern));
-        }
         break;
         
       case 'email':
@@ -325,10 +319,10 @@ function buildFormSubmissionSchema(fields) {
         
       case 'checkbox':
         fieldSchema = z.array(z.string());
-        if (field.validation?.min) {
+        if (field.validation?.min !== undefined) {
           fieldSchema = fieldSchema.min(field.validation.min);
         }
-        if (field.validation?.max) {
+        if (field.validation?.max !== undefined) {
           fieldSchema = fieldSchema.max(field.validation.max);
         }
         break;
@@ -351,11 +345,20 @@ function buildFormSubmissionSchema(fields) {
         fieldSchema = z.any();
     }
     
+    if (['text', 'textarea', 'hidden', 'email', 'phone'].includes(field.type)) {
+      const minLength = field.validation?.minLength ?? field.validation?.min;
+      const maxLength = field.validation?.maxLength ?? field.validation?.max;
+      if (minLength !== undefined) fieldSchema = fieldSchema.min(minLength);
+      if (maxLength !== undefined) fieldSchema = fieldSchema.max(maxLength);
+      if (field.validation?.pattern) fieldSchema = fieldSchema.regex(new RegExp(field.validation.pattern));
+      if (field.required) fieldSchema = fieldSchema.min(1);
+    }
+
     // Make field required or optional
     if (field.required) {
-      schema[field.id] = fieldSchema;
+      schema[field[keyBy] || field.id] = fieldSchema;
     } else {
-      schema[field.id] = fieldSchema.optional();
+      schema[field[keyBy] || field.id] = z.preprocess(value => value === '' || value === null ? undefined : value, fieldSchema.optional());
     }
   });
   
