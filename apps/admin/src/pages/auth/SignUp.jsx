@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import Footer from '../../components/Footer';
+import GoogleSignInButton from '../../components/GoogleSignInButton.jsx';
 import { authAPI } from '../../lib/api';
 import { useApiError } from '../../lib/useApiError.js';
 import { loginPathFor, safeReturnTo } from '../../lib/returnTo.js';
@@ -275,6 +276,7 @@ function SignUp() {
                 {isLoading ? t('signup.submitting') : t('signup.submit')}
               </button>
             </div>
+            <GoogleSignInButton />
           </form>
         </div>
       </div>
