@@ -16,7 +16,7 @@ function config(prefix) {
   if (!clientId || !clientSecret || !redirectUri) throw new Error('GOOGLE_NOT_CONFIGURED');
   return { clientId, clientSecret, redirectUri };
 }
-async function begin({ request, reply, prefix, scope, data = {}, offline = false }) {
+async function begin({ reply, prefix, scope, data = {}, offline = false }) {
   const cfg = config(prefix);
   const state = crypto.randomBytes(32).toString('base64url');
   const browser = crypto.randomBytes(32).toString('base64url');
