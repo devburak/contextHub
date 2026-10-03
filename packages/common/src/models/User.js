@@ -6,6 +6,7 @@ const userSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
   email: { type: String, required: true, unique: true, trim: true, lowercase: true },
   googleSubject: { type: String },
+  googleLinkVersion: { type: Number, default: 0 },
   password: { type: String, required: true },
   firstName: { type: String },
   lastName: { type: String },

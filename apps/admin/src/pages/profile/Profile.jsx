@@ -11,6 +11,9 @@ import { useAuth } from '../../contexts/AuthContext.jsx'
 import { PERMISSION_LABELS } from '../../constants/permissionLabels.js'
 import DeleteAccountModal from '../../components/DeleteAccountModal.jsx'
 import LanguageSwitcher from '../../components/LanguageSwitcher.jsx'
+import GoogleIcon from '../../components/GoogleIcon.jsx'
+import { Dialog } from '@headlessui/react'
+import { InformationCircleIcon } from '@heroicons/react/24/outline'
 
 export default function Profile() {
   const toast = useToast()
@@ -21,7 +24,31 @@ export default function Profile() {
   const { user, updateUserProfile, roleMeta, permissions, logout, logoutAll, memberships } = useAuth()
   const location = useLocation()
   const [googleEnabled, setGoogleEnabled] = useState(false)
-  useEffect(() => { apiClient.get('/auth/google/config').then(({ data }) => setGoogleEnabled(data.enabled)).catch(() => {}) }, [])
+  const [googleLinked, setGoogleLinked] = useState(null)
+  const [showGoogleUnlink, setShowGoogleUnlink] = useState(false)
+  const [googlePassword, setGooglePassword] = useState('')
+  const [googleUnlinkBusy, setGoogleUnlinkBusy] = useState(false)
+  useEffect(() => {
+    let active = true
+    Promise.all([apiClient.get('/auth/google/config'), apiClient.get('/auth/google/status')])
+      .then(([config, status]) => { if (active) { setGoogleEnabled(config.data.enabled); setGoogleLinked(status.data.linked) } })
+      .catch(() => {})
+    return () => { active = false }
+  }, [location.search])
+  async function unlinkGoogle(event) {
+    event.preventDefault()
+    setGoogleUnlinkBusy(true)
+    try {
+      await apiClient.post('/auth/google/unlink', { currentPassword: googlePassword })
+      setGoogleLinked(false)
+      setShowGoogleUnlink(false)
+      setGooglePassword('')
+      toast.success(t('auth.google_unlinked'))
+      navigate('/profile', { replace: true })
+    } catch (error) {
+      toast.error(error.response?.data?.error === 'GoogleUnlinkPasswordRequired' ? t('auth.google_unlink_password_error') : t('auth.google_unlink_failed'))
+    } finally { setGoogleUnlinkBusy(false) }
+  }
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deletionPreflight, setDeletionPreflight] = useState(null)
@@ -298,15 +325,51 @@ export default function Profile() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
-      {googleEnabled && <div className="rounded-md border border-gray-200 bg-white p-4 mb-4">
-        <a className="text-blue-700 font-medium focus:underline" href={`${apiClient.defaults.baseURL}/auth/google/start?mode=link`}>{t('auth.google_link')}</a>
-        {new URLSearchParams(location.search).get('google') === 'linked' && <p role="status">{t('auth.google_linked')}</p>}
-        {new URLSearchParams(location.search).get('googleError') && <p role="alert" className="text-red-700">{t('auth.google_failed')}</p>}
-      </div>}
+      <Dialog open={showGoogleUnlink} onClose={() => { if (!googleUnlinkBusy) { setShowGoogleUnlink(false); setGooglePassword('') } }} className="relative z-50">
+        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <Dialog.Title className="text-lg font-semibold text-gray-900">{t('auth.google_unlink')}</Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm text-gray-600">{t('auth.google_unlink_description')}</Dialog.Description>
+            <form onSubmit={unlinkGoogle} className="mt-4 space-y-4">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="google-unlink-password">{t('profile.current_password')}</label>
+              <input id="google-unlink-password" type="password" autoComplete="current-password" required value={googlePassword} onChange={event => setGooglePassword(event.target.value)}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-blue-500" />
+              <div className="flex justify-end gap-3">
+                <button type="button" disabled={googleUnlinkBusy} onClick={() => { setShowGoogleUnlink(false); setGooglePassword('') }} className="rounded-md border border-gray-300 px-3 py-2 text-sm">{t('common.cancel')}</button>
+                <button type="submit" disabled={googleUnlinkBusy} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{t('auth.google_unlink')}</button>
+              </div>
+            </form>
+          </Dialog.Panel>
+        </div>
+      </Dialog>
       <div className="max-w-4xl">
         <div className="border-b border-gray-200 pb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">{t('profile.title')}</h1>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h1 className="text-2xl font-semibold text-gray-900">{t('profile.title')}</h1>
+            {googleEnabled && <div className="flex items-center gap-2">
+              {googleLinked ? <button type="button" onClick={() => { setGooglePassword(''); setShowGoogleUnlink(true) }}
+                className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                <GoogleIcon />{t('auth.google_unlink')}
+              </button> : <a className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                href={`${apiClient.defaults.baseURL}/auth/google/start?mode=link`}>
+                <GoogleIcon />
+                {t('auth.google_link')}
+              </a>}
+              <span className="group relative inline-flex">
+                <button type="button" aria-label={t('auth.google_link_info')} aria-describedby="google-link-info"
+                  className="rounded-full p-1 text-gray-500 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <InformationCircleIcon aria-hidden="true" className="h-5 w-5" />
+                </button>
+                <span id="google-link-info" role="tooltip" className="invisible absolute right-0 top-full z-10 mt-2 w-64 rounded-md bg-gray-900 px-3 py-2 text-sm text-white shadow-lg group-hover:visible group-focus-within:visible">
+                  {t('auth.google_link_info')}
+                </span>
+              </span>
+            </div>}
+          </div>
           <p className="mt-1 text-sm text-gray-500">{t('profile.description')}</p>
+          {new URLSearchParams(location.search).get('google') === 'linked' && <p role="status" className="mt-3 text-sm text-green-700">{t('auth.google_linked')}</p>}
+          {new URLSearchParams(location.search).get('googleError') && <p role="alert" className="mt-3 text-sm text-red-700">{t('auth.google_failed')}</p>}
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
