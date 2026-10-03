@@ -29,3 +29,50 @@
     @apply bg-white shadow rounded-lg p-6;
   }
 }
+
+/* Shared field borders remain visible even when a page supplies utility classes. */
+:root {
+  --ctxhub-field-border: #93c5fd;
+  --ctxhub-field-focus: #2563eb;
+  --ctxhub-field-ring: rgb(37 99 235 / 18%);
+}
+
+:root input:where(:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='file'], [type='button'], [type='submit'], [type='reset'], [aria-invalid='true'], [class*='border-red-'])),
+:root textarea:where(:not([aria-invalid='true'], [class*='border-red-'])),
+:root select:where(:not([aria-invalid='true'], [class*='border-red-'])) {
+  border: 1px solid var(--ctxhub-field-border);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+:root input:where(:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='file'], [type='button'], [type='submit'], [type='reset'], [aria-invalid='true'], [class*='border-red-'])):focus,
+:root textarea:where(:not([aria-invalid='true'], [class*='border-red-'])):focus,
+:root select:where(:not([aria-invalid='true'], [class*='border-red-'])):focus {
+  border-color: var(--ctxhub-field-focus);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ctxhub-field-ring);
+}
+
+:root input[aria-invalid='true'],
+:root textarea[aria-invalid='true'],
+:root select[aria-invalid='true'] {
+  border: 1px solid #f87171;
+}
+
+:root input[aria-invalid='true']:focus,
+:root textarea[aria-invalid='true']:focus,
+:root select[aria-invalid='true']:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgb(239 68 68 / 18%);
+}
+
+:root input:disabled,
+:root textarea:disabled,
+:root select:disabled {
+  border-color: #cbd5e1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root input, :root textarea, :root select {
+    transition: none;
+  }
+}
