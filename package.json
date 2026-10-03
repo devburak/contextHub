@@ -1,6 +1,6 @@
 {
   "name": "contexthub",
-  "version": "0.1.34",
+  "version": "0.1.35",
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "description": "Multi‑tenant headless CMS and content services platform.",
