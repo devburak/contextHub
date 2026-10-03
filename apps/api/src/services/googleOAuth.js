@@ -96,3 +96,15 @@ async function validateBackupInitiator(flow) {
   return flow.data;
 }
 module.exports.validateBackupInitiator=validateBackupInitiator;
+
+// Database initialization belongs to connected server startup, not route registration.
+async function initializeIndexes() {
+  await User.db.collection('google_oauth_flows').createIndex(
+    { expiresAt: 1 }, { expireAfterSeconds: 0 }
+  );
+  await User.collection.createIndex(
+    { googleSubject: 1 },
+    { unique: true, partialFilterExpression: { googleSubject: { $type: 'string' } } }
+  );
+}
+module.exports.initializeIndexes = initializeIndexes;

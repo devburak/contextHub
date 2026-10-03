@@ -5,6 +5,16 @@ const crypto=require('node:crypto'), jwt=require('jsonwebtoken'), prefix='CTXHUB
 describe('Google OAuth security',()=>{
  afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();vi.unstubAllEnvs();});
  function configure(){for(const [key,value] of Object.entries({CLIENT_ID:'client',CLIENT_SECRET:'secret',REDIRECT_URI:'https://api.ctxhub.net/api/auth/google/callback'}))vi.stubEnv(prefix+'_'+key,value);}
+ it('initializes OAuth expiry and unique identity indexes explicitly and propagates failures',async()=>{
+  const flowIndex=vi.fn().mockResolvedValue('expiresAt_1');
+  const identityIndex=vi.spyOn(User.collection,'createIndex').mockResolvedValue('googleSubject_1');
+  vi.spyOn(User.db,'collection').mockReturnValue({createIndex:flowIndex});
+  await google.initializeIndexes();
+  expect(flowIndex).toHaveBeenCalledWith({expiresAt:1},{expireAfterSeconds:0});
+  expect(identityIndex).toHaveBeenCalledWith({googleSubject:1},{unique:true,partialFilterExpression:{googleSubject:{$type:'string'}}});
+  flowIndex.mockRejectedValue(new Error('database unavailable'));
+  await expect(google.initializeIndexes()).rejects.toThrow('database unavailable');
+ });
  it('uses current connect permissions for owners and rejects removed access',async()=>{
   const {Tenant,Membership,Role}=require('@contexthub/common');
   const blacklist=require('./tokenBlacklist');

@@ -386,6 +386,7 @@ async function start() {
   // Connect to MongoDB before starting the server
   await database.connectDB();
   await database.initializeIndexes();
+  await require('./services/googleOAuth').initializeIndexes();
   await roleService.ensureSystemRoles();
 
   let usageStateRefreshPromise = null;

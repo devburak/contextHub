@@ -7,8 +7,6 @@ const { setSessionCookie } = require('../services/sessionSecurity');
 const google = require('../services/googleOAuth');
 const PREFIX = 'CTXHUB_AUTH_GOOGLE';
 module.exports = async function googleAuth(app) {
-  await User.db.collection('google_oauth_flows').createIndex({expiresAt:1},{expireAfterSeconds:0});
-  await User.collection.createIndex({googleSubject:1},{unique:true,partialFilterExpression:{googleSubject:{$type:'string'}}});
   const service = new AuthService(app);
   const admin = new URL(process.env.ADMIN_URL || 'https://ctxhub.net').origin;
   app.get('/auth/google/config', async () => {

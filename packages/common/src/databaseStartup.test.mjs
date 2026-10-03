@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const serverSource = readFileSync(new URL('../../../apps/api/src/server.js', import.meta.url), 'utf8');
 
-function runStartup(initializeIndexes) {
+function runStartup(initializeIndexes, initializeOAuthIndexes = vi.fn(async () => {})) {
   const module = { exports: {} };
   let finish;
   const completed = new Promise((resolve) => { finish = resolve; });
@@ -23,6 +23,7 @@ function runStartup(initializeIndexes) {
     path,
     '@contexthub/common': { database },
     './services/roleService': roleService,
+    './services/googleOAuth': { initializeIndexes: initializeOAuthIndexes },
   };
   const require = (id) => dependencies[id] || {};
   require.main = module;
@@ -32,7 +33,7 @@ function runStartup(initializeIndexes) {
     process: { env: {}, exit },
     console: { error: vi.fn() },
   });
-  return { database, roleService, createServer, exit, completed };
+  return { database, roleService, createServer, exit, completed, initializeOAuthIndexes };
 }
 
 describe('API deployment index prerequisite', () => {
@@ -45,10 +46,12 @@ describe('API deployment index prerequisite', () => {
     const startup = runStartup(initializeIndexes);
     await indexStarted;
     expect(startup.database.connectDB).toHaveBeenCalledOnce();
+    expect(startup.initializeOAuthIndexes).not.toHaveBeenCalled();
     expect(startup.roleService.ensureSystemRoles).not.toHaveBeenCalled();
     expect(startup.createServer).not.toHaveBeenCalled();
     release();
     await startup.completed;
+    expect(startup.initializeOAuthIndexes).toHaveBeenCalledOnce();
     expect(startup.roleService.ensureSystemRoles).toHaveBeenCalledOnce();
   });
 
@@ -59,4 +62,14 @@ describe('API deployment index prerequisite', () => {
     expect(startup.roleService.ensureSystemRoles).not.toHaveBeenCalled();
     expect(startup.createServer).not.toHaveBeenCalled();
   });
+  it('fails startup before serving when OAuth index setup fails', async () => {
+    const initializeOAuthIndexes = vi.fn(async () => { throw new Error('OAuth index creation failed'); });
+    const startup = runStartup(vi.fn(async () => {}), initializeOAuthIndexes);
+    await startup.completed;
+    expect(initializeOAuthIndexes).toHaveBeenCalledOnce();
+    expect(startup.exit).toHaveBeenCalledWith(1);
+    expect(startup.roleService.ensureSystemRoles).not.toHaveBeenCalled();
+    expect(startup.createServer).not.toHaveBeenCalled();
+  });
+
 });
