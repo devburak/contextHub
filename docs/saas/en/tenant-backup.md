@@ -69,7 +69,9 @@ Restore is done from **Import from backup** on the Tenant backup page.
 Restore rules:
 
 - The target is always the tenant selected in your session. It cannot be set by a request body.
-- Restore does not overwrite existing data. If the selected scope already contains records in the target tenant, the operation is refused.
+- **Complete missing records** is the default: existing records and files are preserved, and only missing ones are added from the final state of the selected checkpoint. It does not apply backup deletions. You do not need to delete a whole collection to recover individual records.
+- **Restore to empty collections** requires the selected collections to be empty. Neither method overwrites existing records.
+- Scope selection warns about related data groups. Verification checks that referenced records exist in the target or will arrive in the selected scope. Missing references block approval and show the affected collection, field, and identifier. For media, include files if they are missing from storage. Arbitrary links embedded in HTML or external URLs are not validated as database relations.
 - Restorable data is CMS data: content and versions, content types, custom field definitions, collections and entries, media and galleries, categories, tags and taxonomies, menus, form definitions, and placement definitions. Form responses are optional and are not selected by default.
 - If you select form responses, their answers and saved statuses are restored together. Restore does not resubmit forms or send submission notifications and webhooks.
 - The confirmation applies to the verified scope. Changing the selected collections or media files requires a new dry run.

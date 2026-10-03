@@ -69,7 +69,9 @@ Geri yükleme, Tenant yedekleme sayfasındaki **Yedekten içe aktar** ile yapıl
 Geri yükleme kuralları:
 
 - Hedef her zaman oturumunuzda seçili olan tenant'tır. Request body ile belirlenemez.
-- Geri yükleme mevcut verinin üstüne yazmaz. Seçilen kapsamda hedef tenant'ta kayıt varsa işlem reddedilir.
+- **Yalnız eksik kayıtları tamamla** varsayılan yöntemdir: mevcut kayıt ve dosyalar korunur; yalnız eksikler seçilen yedek noktasının son halinden eklenir. Yedekteki silmeler uygulanmaz. Tekil kayıtları kurtarmak için koleksiyonu komple silmeniz gerekmez.
+- **Boş koleksiyonlara geri yükle** yönteminde seçilen koleksiyonların boş olması gerekir. İki yöntem de mevcut kayıtların üzerine yazmaz.
+- Kapsam seçimi bağlı veri grupları için uyarı gösterir. Doğrulama, referans verilen kayıtların hedefte bulunmasını veya seçilen kapsamla gelmesini kontrol eder. Eksik ilişkiler onayı engeller; ilgili koleksiyon, alan ve kimlik gösterilir. Medya dosyaları depolamada eksikse dosyaları da seçin. HTML içine yazılmış serbest bağlantılar ve harici URL’ler veritabanı ilişkisi olarak doğrulanmaz.
 - Geri yüklenebilen veri CMS verisidir: içerikler ve sürümleri, içerik tipleri, özel alan tanımları, collection'lar ve kayıtları, medya ve galeriler, kategori, etiket ve taksonomiler, menüler, form tanımları ve placement tanımları. Form cevapları isteğe bağlıdır ve varsayılan olarak seçili değildir.
 - Form cevaplarını seçerseniz cevaplar ve kayıtlı durumları birlikte geri yüklenir. Formlar yeniden gönderilmez; gönderim bildirimleri ve webhook işlemleri tetiklenmez.
 - Onay, doğrulanan kapsam için geçerlidir. Koleksiyon veya medya dosyası seçimini değiştirmek yeniden dry-run gerektirir.

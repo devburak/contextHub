@@ -90,10 +90,20 @@ function createExtensionRestoreFacade(options = {}) {
       return Object.freeze(populated);
     },
 
-    async checkIdentity({ collection, id, tenantId } = {}) {
+    async checkIdentity({ collection, id, tenantId, keyField } = {}) {
       const name = normalizeCollection(collection);
-      const documentId = normalizeObjectId(id, 'id');
       const normalizedTenantId = normalizeTenantId(tenantId);
+      if (keyField !== undefined) {
+        if (!['collectiontypes', 'customfielddefinitions'].includes(name) || keyField !== 'key' || typeof id !== 'string' || !id || id.length > 200) {
+          throw new ExtensionRestoreFacadeError('restore reference lookup is invalid');
+        }
+        const existing = await database().collection(name).findOne(
+          { key: id, tenantId: new mongoose.Types.ObjectId(normalizedTenantId) },
+          { projection: { _id: 1, key: 1, fields: 1, type: 1, referenceCollectionKey: 1 } }
+        );
+        return Object.freeze({ conflict: false, exists: Boolean(existing), definition: existing ? mongoose.mongo.BSON.EJSON.serialize(existing, { relaxed: false }) : null });
+      }
+      const documentId = normalizeObjectId(id, 'id');
       const existing = await database().collection(name).findOne(
         { _id: documentId },
         { projection: { tenantId: 1 } }
@@ -104,10 +114,10 @@ function createExtensionRestoreFacade(options = {}) {
           'EXTENSION_RESTORE_ID_CONFLICT'
         );
       }
-      return Object.freeze({ conflict: false });
+      return Object.freeze({ conflict: false, exists: Boolean(existing) });
     },
 
-    async upsert({ collection, id, tenantId, document } = {}) {
+    async upsert({ collection, id, tenantId, document, onlyMissing = false } = {}) {
       const name = normalizeCollection(collection);
       const documentId = normalizeObjectId(id, 'id');
       const normalizedTenantId = normalizeTenantId(tenantId);
@@ -133,6 +143,14 @@ function createExtensionRestoreFacade(options = {}) {
         );
       }
       decoded.tenantId = targetTenantId;
+      if (onlyMissing) {
+        const result = await database().collection(name).updateOne(
+          { _id: documentId, tenantId: targetTenantId },
+          { $setOnInsert: decoded },
+          { upsert: true }
+        );
+        return Object.freeze({ upserted: result.upsertedCount || 0, skipped: result.upsertedCount ? 0 : 1 });
+      }
       await database().collection(name).replaceOne({ _id: documentId }, decoded, { upsert: true });
       return Object.freeze({ upserted: 1 });
     },
@@ -152,13 +170,14 @@ function createExtensionRestoreFacade(options = {}) {
       return Object.freeze({ ...target, tenantSlug: tenant.slug });
     },
 
-    async putFile({ tenantId, key, body, contentType, contentLength } = {}) {
+    async putFile({ tenantId, key, body, contentType, contentLength, onlyMissing = false } = {}) {
       return media().putTenantRestoreFile({
         tenantId: normalizeTenantId(tenantId),
         key,
         body,
         contentType,
-        contentLength
+        contentLength,
+        onlyMissing
       });
     },
 

@@ -66,3 +66,15 @@ describe('media search', () => {
     expect(query.$or[0].originalName.test('AFİŞ Özelleştirme.pdf')).toBe(true)
   })
 })
+
+describe('missing-only media restore', () => {
+  it('uses a conditional write and preserves an existing object', async () => {
+    const { Tenant } = require('@contexthub/common')
+    const { S3Client } = require('@aws-sdk/client-s3')
+    vi.spyOn(Tenant, 'findById').mockReturnValue({ select: () => ({ lean: async () => ({ slug: 'tenant-a' }) }) })
+    const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(Object.assign(new Error('exists'), { name: 'PreconditionFailed', $metadata: { httpStatusCode: 412 } }))
+    const result = await mediaService.putTenantRestoreFile({ tenantId: '6a1702eddffc9f11747a4205', key: 'tenant-a/file.jpg', body: Buffer.from('backup'), contentLength: 6, onlyMissing: true })
+    expect(send.mock.calls[0][0].input.IfNoneMatch).toBe('*')
+    expect(result).toEqual({ key: 'tenant-a/file.jpg', bytes: 0, skipped: true })
+  })
+})

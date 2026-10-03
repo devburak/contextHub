@@ -38,6 +38,16 @@ describe('extension restore facade', () => {
     )
   })
 
+  it('inserts only missing records atomically without replacing existing data', async () => {
+    const collection = { findOne: vi.fn().mockResolvedValue({ tenantId: new mongoose.Types.ObjectId(TENANT_ID) }), updateOne: vi.fn().mockResolvedValue({ upsertedCount: 0 }), replaceOne: vi.fn() }
+    const facade = createExtensionRestoreFacade({ connection: { db: { collection: () => collection } } })
+    const document = mongoose.mongo.BSON.EJSON.serialize({ _id: new mongoose.Types.ObjectId(DOCUMENT_ID), tenantId: new mongoose.Types.ObjectId(TENANT_ID), title: 'Backup title' }, { relaxed: false })
+    await expect(facade.checkIdentity({ collection: 'contents', id: DOCUMENT_ID, tenantId: TENANT_ID })).resolves.toEqual({ exists: true, conflict: false })
+    await expect(facade.upsert({ collection: 'contents', id: DOCUMENT_ID, tenantId: TENANT_ID, document, onlyMissing: true })).resolves.toEqual({ upserted: 0, skipped: 1 })
+    expect(collection.replaceOne).not.toHaveBeenCalled()
+    expect(collection.updateOne).toHaveBeenCalledWith({ _id: new mongoose.Types.ObjectId(DOCUMENT_ID), tenantId: new mongoose.Types.ObjectId(TENANT_ID) }, { $setOnInsert: expect.objectContaining({ title: 'Backup title' }) }, { upsert: true })
+  })
+
   it('preserves form answers and status while rejecting identity metadata', async () => {
     const collection = { findOne: vi.fn().mockResolvedValue(null), replaceOne: vi.fn().mockResolvedValue({}) }
     const facade = createExtensionRestoreFacade({ connection: { db: { collection: () => collection } } })
