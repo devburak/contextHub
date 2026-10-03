@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
-import { authAPI } from '../../lib/api.js'
+import { apiClient, authAPI } from '../../lib/api.js'
 import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { safeReturnTo, signupPathFor } from '../../lib/returnTo.js'
@@ -36,6 +36,8 @@ function Countdown({ target, onExpired }) {
 }
 
 export default function Login() {
+  const [googleEnabled, setGoogleEnabled] = useState(false)
+  useEffect(() => { apiClient.get('/auth/google/config').then(({ data }) => setGoogleEnabled(data.enabled)).catch(() => {}) }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -201,6 +203,12 @@ export default function Login() {
             </div>
           )}
 
+          {new URLSearchParams(location.search).get('googleError') && (
+            <p role="alert" className="text-sm text-red-700">{new URLSearchParams(location.search).get('googleError') === 'GOOGLE_LINK_REQUIRED'
+              ? t('auth.google_link_required') : t('auth.google_failed')}</p>
+          )}
+          {googleEnabled && <a className="block w-full rounded-md border border-gray-300 bg-white px-4 py-3 text-center font-medium text-gray-900 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            href={`${apiClient.defaults.baseURL}/auth/google/start`}>{t('auth.google_continue')}</a>}
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
             <div>

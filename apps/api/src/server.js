@@ -111,7 +111,7 @@ async function buildServer(options = {}) {
   // the intended cap.
   const maxParamLength = Number(process.env.API_MAX_PARAM_LENGTH) || 240;
   const app = fastify({
-    logger: true,
+    logger: { serializers: { req(request) { return { method: request.method, url: String(request.url || '').split('?')[0], hostname: request.hostname, remoteAddress: request.ip }; } } },
     trustProxy: true,
     bodyLimit,
     maxParamLength,

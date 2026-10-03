@@ -8,6 +8,7 @@ const {
 
 async function authRoutes(fastify) {
   const authService = new AuthService(fastify);
+  await fastify.register(require('./googleAuth'));
   const authenticateInvitationSession = async (request, reply) => {
     try {
       const preview = await authService.getInvitationPreview(request.body?.token);

@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { apiClient } from '../../lib/api.js'
 import { userAPI } from '../../lib/userAPI.js'
 import { useApiError } from '../../lib/useApiError.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
@@ -19,6 +20,8 @@ export default function Profile() {
   const describeError = useApiError()
   const { user, updateUserProfile, roleMeta, permissions, logout, logoutAll, memberships } = useAuth()
   const location = useLocation()
+  const [googleEnabled, setGoogleEnabled] = useState(false)
+  useEffect(() => { apiClient.get('/auth/google/config').then(({ data }) => setGoogleEnabled(data.enabled)).catch(() => {}) }, [])
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deletionPreflight, setDeletionPreflight] = useState(null)
@@ -280,6 +283,7 @@ export default function Profile() {
 
     return (
       <div className="flex flex-wrap gap-2">
+
         {list.map((permission, index) => (
           <span
             key={`${permission}-${index}`}
@@ -294,6 +298,11 @@ export default function Profile() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
+      {googleEnabled && <div className="rounded-md border border-gray-200 bg-white p-4 mb-4">
+        <a className="text-blue-700 font-medium focus:underline" href={`${apiClient.defaults.baseURL}/auth/google/start?mode=link`}>{t('auth.google_link')}</a>
+        {new URLSearchParams(location.search).get('google') === 'linked' && <p role="status">{t('auth.google_linked')}</p>}
+        {new URLSearchParams(location.search).get('googleError') && <p role="alert" className="text-red-700">{t('auth.google_failed')}</p>}
+      </div>}
       <div className="max-w-4xl">
         <div className="border-b border-gray-200 pb-6">
           <h1 className="text-2xl font-semibold text-gray-900">{t('profile.title')}</h1>

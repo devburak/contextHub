@@ -208,7 +208,10 @@ function createExtensionApi(options) {
   if (manifest.capabilities.includes('tenant.sources.index')) {
     extension.indexing = options.indexing || createExtensionIndexingFacade();
   }
-  if (secretsApi) extension.secrets = secretsApi;
+  if (secretsApi) {
+    extension.secrets = secretsApi;
+    extension.googleOAuth = Object.freeze(require('../services/googleOAuth'));
+  }
   const restoreApi = createRestoreApi(restore, manifest);
   if (restoreApi) extension.restore = restoreApi;
   return Object.freeze(extension);

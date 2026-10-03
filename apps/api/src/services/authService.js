@@ -351,6 +351,11 @@ class AuthService {
       throw err;
     }
 
+    return this.completeLogin(user, tenantId, request);
+  }
+
+  async completeLogin(user, tenantId, request = null) {
+    if (user.status !== 'active') throw new Error('ACCOUNT_DISABLED');
     const memberships = await getActiveMembershipDetails(user._id);
     let activeMembership = null;
     if (tenantId) {

@@ -5,6 +5,7 @@ const { Schema } = mongoose;
 const userSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
   email: { type: String, required: true, unique: true, trim: true, lowercase: true },
+  googleSubject: { type: String },
   password: { type: String, required: true },
   firstName: { type: String },
   lastName: { type: String },
@@ -80,6 +81,8 @@ userSchema.methods.toJSON = function() {
   delete user.password;
   return user;
 };
+
+userSchema.index({ googleSubject: 1 }, { unique: true, partialFilterExpression: { googleSubject: { $type: 'string' } } });
 
 // Index
 userSchema.index({ email: 1 }, { unique: true });
