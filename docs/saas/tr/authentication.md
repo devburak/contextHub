@@ -26,6 +26,8 @@ Belgelenen `tenantId` query parametresi de kabul edilir. Normal public okumalara
 
 ContextHub Cloud admin; HttpOnly session cookie, CSRF koruması, tenant membership, rol ve permission kullanır. Müşteri entegrasyonları admin login akışını taklit etmemeli; otomasyon için API token kullanmalıdır.
 
+Admin kullanıcıları e-posta ve parola ile veya Google hesabıyla giriş yapar. İki yöntem de aynı oturumu açar; aynı tenant üyeliği, rol ve permission uygulanır. Bkz. [Google ile giriş](./google-sign-in.md).
+
 ## Tenant kuralları
 
 - Authenticated tenant context otoritedir.

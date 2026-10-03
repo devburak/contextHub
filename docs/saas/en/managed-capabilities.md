@@ -14,6 +14,7 @@ For the operational responsibility and trust comparison, start with [ContextHub 
 | Media storage and delivery operations | Adapter code may exist | Managed storage, variants, and delivery configuration |
 | Semantic Search | Extension contracts only | Plan-dependent managed commercial capability |
 | Private/commercial plugins | Not necessarily included | Enabled by entitlement and plan |
+| Tenant backup to Google Drive or S3-compatible storage, with restore | Not included | Plan-dependent managed commercial capability; see [Tenant backup and Google Drive](./tenant-backup.md) |
 | Monitoring, backups, upgrades, and support | Self-managed | Operated service responsibility according to plan |
 
 Repository visibility does not imply that private provider code, infrastructure configuration, secrets, commercial plugin packages, or an operated service is included.

@@ -32,7 +32,7 @@ kota ve varsa kullanıma dayalı koşullar imzalı teklif veya sözleşmede beli
 | Tenant kapsamlı içerik, collections, medya, menü, form, rol ve API sunumu | Dahil | Dahil | Dahil | Dahil |
 | Kullanıcı daveti | Yok | Paket limitine kadar | Paket limitine kadar | Sözleşme limiti |
 | Semantic Search ve benzer içerik yönetimi | — | Dahil | Dahil | Dahil veya sözleşmeye göre |
-| Yönetilen tenant yedekleme yeteneği | — | Dahil | Dahil | Dahil veya sözleşmeye göre |
+| Google Drive veya S3 uyumlu depolamaya [yönetilen tenant yedekleme](./tenant-backup.md) | — | Dahil | Dahil | Dahil veya sözleşmeye göre |
 | Öncelikli/ticari destek ve müzakere edilmiş hizmet seviyeleri | — | — | — | Sözleşmeye göre |
 
 Semantic Search tüm ücretli aboneliklerin entitlement'ıdır; ayrı bir site hakkı

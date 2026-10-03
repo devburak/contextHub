@@ -8,8 +8,8 @@
     "en": "Build secure, cache-aware applications with the managed ContextHub service at ctxhub.net.",
     "tr": "ctxhub.net üzerindeki yönetilen ContextHub servisiyle güvenli ve cache uyumlu uygulamalar geliştirin."
   },
-  "version": "2026.09.10.1",
-  "updatedAt": "2026-09-10",
+  "version": "2026.10.03.1",
+  "updatedAt": "2026-10-03",
   "defaultSlug": "overview",
   "defaultLocale": "en",
   "aiLocale": "en",
@@ -260,6 +260,16 @@
       "tags": ["menus", "forms", "navigation"]
     },
     {
+      "slug": "google-sign-in",
+      "files": { "en": "en/google-sign-in.md", "tr": "tr/google-sign-in.md" },
+      "title": { "en": "Sign in with Google", "tr": "Google ile giriş" },
+      "description": { "en": "Sign in to the ContextHub Cloud admin with a Google account, link or unlink it from Profile, and see what it does not replace.", "tr": "ContextHub Cloud admin'e Google hesabıyla giriş yapın, Profil'den bağlayın veya ayırın ve neyin yerini almadığını görün." },
+      "category": { "en": "Teams and governance", "tr": "Ekip ve yönetişim" },
+      "audience": { "en": ["owner", "editor", "security"], "tr": ["owner", "editör", "güvenlik"] },
+      "order": 68,
+      "tags": ["google", "sign in", "login", "sso", "oauth", "account linking"]
+    },
+    {
       "slug": "roles-permissions",
       "files": { "en": "en/roles-permissions.md", "tr": "tr/roles-permissions.md" },
       "title": { "en": "Roles and permissions", "tr": "Roller ve izinler" },
@@ -368,6 +378,16 @@
       "audience": { "en": ["product", "backend", "ai"], "tr": ["ürün", "backend", "ai"] },
       "order": 120,
       "tags": ["semantic search", "managed", "commercial"]
+    },
+    {
+      "slug": "tenant-backup",
+      "files": { "en": "en/tenant-backup.md", "tr": "tr/tenant-backup.md" },
+      "title": { "en": "Tenant backup and Google Drive", "tr": "Tenant yedekleme ve Google Drive" },
+      "description": { "en": "Back up a tenant's database and media to your own Google Drive or S3-compatible storage on a daily schedule, and restore it from the admin.", "tr": "Tenant veritabanını ve medyasını günlük zamanlamayla kendi Google Drive hesabınıza veya S3 uyumlu depolamanıza yedekleyin ve admin'den geri yükleyin." },
+      "category": { "en": "Managed capabilities", "tr": "Yönetilen yetenekler" },
+      "audience": { "en": ["owner", "platform", "security"], "tr": ["owner", "platform", "güvenlik"] },
+      "order": 122,
+      "tags": ["backup", "restore", "google drive", "s3", "r2", "disaster recovery", "export"]
     },
     {
       "slug": "managed-capabilities",

@@ -26,6 +26,8 @@ The documented `tenantId` query parameter is also accepted. Do not add a `ctx_..
 
 The ContextHub Cloud admin uses an HttpOnly session cookie, CSRF protection, tenant membership, roles, and permissions. Customer integrations should not imitate the admin login flow. Use an API token for automation.
 
+Admin users sign in with email and password or with a Google account. Both methods open the same session and apply the same tenant membership, roles, and permissions. See [Sign in with Google](./google-sign-in.md).
+
 ## Tenant rules
 
 - Authenticated tenant context is authoritative.

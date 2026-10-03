@@ -14,6 +14,7 @@ Operasyonel sorumluluk ve güven karşılaştırması için [ContextHub Cloud ve
 | Medya storage ve delivery operasyonları | Adapter kodu bulunabilir | Yönetilen storage, variant ve delivery yapılandırması |
 | Semantic Search | Yalnızca extension sözleşmeleri | Plana bağlı yönetilen ticari yetenek |
 | Private/ticari pluginler | Her zaman dahil değildir | Entitlement ve plana göre açılır |
+| Google Drive veya S3 uyumlu depolamaya tenant yedekleme ve geri yükleme | Dahil değildir | Plana bağlı yönetilen ticari yetenek; bkz. [Tenant yedekleme ve Google Drive](./tenant-backup.md) |
 | Monitoring, backup, upgrade ve support | Self-managed | Plana göre işletilen servis sorumluluğu |
 
 Repo görünürlüğü; private provider kodu, altyapı yapılandırması, secret, ticari plugin paketi veya işletilen servisin dahil olduğu anlamına gelmez.

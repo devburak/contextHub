@@ -31,7 +31,7 @@ calculated and disclosed during checkout.
 | Tenant-scoped content, collections, media, menus, forms, roles, and API delivery | Included | Included | Included | Included |
 | User invitations | Not available | Up to plan limit | Up to plan limit | Contract limit |
 | Semantic Search and related-content management | — | Included | Included | Included or contract-configured |
-| Managed tenant backup capability | — | Included | Included | Included or contract-configured |
+| [Managed tenant backup](./tenant-backup.md) to Google Drive or S3-compatible storage | — | Included | Included | Included or contract-configured |
 | Priority/commercial support and negotiated service levels | — | — | — | By contract |
 
 Semantic Search is an entitlement of every paid subscription. It does not create a
