@@ -38,6 +38,15 @@ describe('extension restore facade', () => {
     )
   })
 
+  it('preserves form answers and status while rejecting identity metadata', async () => {
+    const collection = { findOne: vi.fn().mockResolvedValue(null), replaceOne: vi.fn().mockResolvedValue({}) }
+    const facade = createExtensionRestoreFacade({ connection: { db: { collection: () => collection } } })
+    const document = mongoose.mongo.BSON.EJSON.serialize({ _id: new mongoose.Types.ObjectId(DOCUMENT_ID), tenantId: new mongoose.Types.ObjectId(TENANT_ID), status: 'processed', data: { userName: 'Answer' } }, { relaxed: false })
+    await facade.upsert({ collection: 'formresponses', id: DOCUMENT_ID, tenantId: TENANT_ID, document })
+    expect(collection.replaceOne).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: 'processed', data: { userName: 'Answer' } }), { upsert: true })
+    await expect(facade.upsert({ collection: 'formresponses', id: DOCUMENT_ID, tenantId: TENANT_ID, document: { ...document, createdBy: DOCUMENT_ID } })).rejects.toMatchObject({ code: 'EXTENSION_RESTORE_USER_REFERENCE_FORBIDDEN' })
+  })
+
   it('rejects identity collections and user references at the core boundary', async () => {
     const facade = createExtensionRestoreFacade({
       connection: { db: { collection: vi.fn() } },

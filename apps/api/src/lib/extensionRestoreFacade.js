@@ -12,6 +12,7 @@ const RESTORABLE_COLLECTIONS = Object.freeze([
   'entries',
   'entryrevisions',
   'formdefinitions',
+  'formresponses',
   'formversions',
   'galleries',
   'media',
@@ -119,7 +120,8 @@ function createExtensionRestoreFacade(options = {}) {
           'EXTENSION_RESTORE_DOCUMENT_IDENTITY_INVALID'
         );
       }
-      assertNoUserReferences(decoded);
+      // Validate metadata; form answers may legitimately have fields named userName.
+      assertNoUserReferences(name === 'formresponses' ? { ...decoded, data: undefined } : decoded);
       const existing = await database().collection(name).findOne(
         { _id: documentId },
         { projection: { tenantId: 1 } }
