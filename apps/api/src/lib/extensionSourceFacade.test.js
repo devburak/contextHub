@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   ExtensionSourceFacadeError,
@@ -6,6 +6,7 @@ import {
 } from './extensionSourceFacade'
 
 describe('extension source facade', () => {
+  afterEach(() => vi.restoreAllMocks())
   it('returns a tenant-scoped content snapshot with labels and field definitions', async () => {
     const loadContent = vi.fn().mockResolvedValue({
       _id: 'content-1',
@@ -133,6 +134,36 @@ describe('extension source facade', () => {
     })).resolves.toBeNull()
     await expect(sources.getContentSnapshot({ tenantId: 'tenant-1' }))
       .rejects.toBeInstanceOf(ExtensionSourceFacadeError)
+  })
+
+  it('exports ObjectId-scoped records when tenant context is a string', async () => {
+    const { createRequire } = await import('node:module')
+    const require = createRequire(import.meta.url)
+    const common = require('@contexthub/common')
+    const tenantContext = require('@contexthub/common/src/tenantContext')
+    const tenantId = '6aa93a1c598fe8af8f482717'
+    vi.spyOn(common.Tenant, 'findOne').mockReturnValue({ lean: async () => ({ _id: new common.mongoose.Types.ObjectId(tenantId), slug: 'tenant' }) })
+    for (const model of Object.values(common)) {
+      if (!model?.schema?.path('tenantId') || !model.find) continue
+      vi.spyOn(model, 'find').mockImplementation(() => {
+        let options = {}
+        const query = { setOptions(value) { options = value; return this }, lean() { return this }, cursor() {
+          return (async function* () {
+            const filter = options.tenantId || tenantContext.getTenantId()
+            if (model === common.CollectionEntry && filter instanceof common.mongoose.Types.ObjectId) {
+              yield { _id: new common.mongoose.Types.ObjectId(), tenantId: filter, collectionKey: 'menu' }
+            }
+          })()
+        } }
+        return query
+      })
+    }
+    await tenantContext.run({ tenantId }, async () => {
+      const records = []
+      for await (const record of createExtensionSourceFacade().streamTenantBackupRecords({ tenantId })) records.push(record)
+      expect(records.map(record => record.collection)).toEqual(['tenants', 'collectionentries'])
+      expect(records.every(record => record.tenantId === tenantId)).toBe(true)
+    })
   })
 
   it('forwards one explicit tenant identity to each privileged backup source', async () => {

@@ -139,7 +139,11 @@ async function* defaultStreamTenantBackupRecords({ tenantId }) {
   for (const modelName of TENANT_BACKUP_MODEL_NAMES) {
     const model = common[modelName]
     if (!model?.schema?.path('tenantId')) continue
-    const cursor = model.find({ tenantId }).lean().cursor()
+    // Cursor casting precedes tenant middleware. Supply the schema-typed tenant
+    // so middleware cannot replace an ObjectId filter with the context string.
+    const scopedTenantId = model.schema.path('tenantId').cast(tenantId)
+    const cursor = model.find({ tenantId: scopedTenantId })
+      .setOptions({ tenantId: scopedTenantId }).lean().cursor()
     for await (const document of cursor) {
       if (String(document.tenantId) !== tenantId) {
         throw new ExtensionSourceFacadeError(
