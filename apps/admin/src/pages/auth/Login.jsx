@@ -255,7 +255,7 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="text-sm">
                 <Link
                   to="/forgot-password"
@@ -264,6 +264,18 @@ export default function Login() {
                   {t('auth.forgot_password')}
                 </Link>
               </div>
+            <div className="text-right">
+              <span className="text-sm text-gray-600">
+                {t('auth.no_account')}{' '}
+                <Link
+                  to={signupPathFor(returnTo)}
+                  state={{ returnTo }}
+                  className="font-medium text-blue-600 hover:text-blue-500"
+                >
+                  {t('auth.sign_up')}
+                </Link>
+              </span>
+            </div>
             </div>
 
             <div>
@@ -294,19 +306,6 @@ export default function Login() {
 
             <GoogleSignInButton />
 
-            <div className="text-center">
-              <span className="text-sm text-gray-600">
-                {t('auth.no_account')}{' '}
-                <Link
-                  to={signupPathFor(returnTo)}
-                  state={{ returnTo }}
-                  className="font-medium text-blue-600 hover:text-blue-500"
-                >
-                  {t('auth.sign_up')}
-                </Link>
-              </span>
-            </div>
-            
             {emailNotVerified && (
               <div className="rounded-md bg-amber-50 border border-amber-200 p-4">
                 <div className="flex flex-col gap-3">
