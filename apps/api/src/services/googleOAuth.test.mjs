@@ -5,6 +5,25 @@ const crypto=require('node:crypto'), jwt=require('jsonwebtoken'), prefix='CTXHUB
 describe('Google OAuth security',()=>{
  afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();vi.unstubAllEnvs();});
  function configure(){for(const [key,value] of Object.entries({CLIENT_ID:'client',CLIENT_SECRET:'secret',REDIRECT_URI:'https://api.ctxhub.net/api/auth/google/callback'}))vi.stubEnv(prefix+'_'+key,value);}
+ it('uses current connect permissions for owners and rejects removed access',async()=>{
+  const {Tenant,Membership,Role}=require('@contexthub/common');
+  const blacklist=require('./tokenBlacklist');
+  vi.spyOn(blacklist,'isJtiRevoked').mockResolvedValue(false);
+  vi.spyOn(Tenant,'findById').mockReturnValue({select:async()=>({status:'active'})});
+  vi.spyOn(User,'findById').mockResolvedValue({_id:'user',status:'active',tokenVersion:0});
+  let role='owner',permissions=[];
+  vi.spyOn(Membership,'findOne').mockImplementation(async()=>({roleId:'role',role,getEffectivePermissions:()=>permissions}));
+  vi.spyOn(Role,'findOne').mockImplementation(async()=>({key:role}));
+  const flow={data:{tenantId:'tenant',userId:'user',tokenVersion:0,jti:'session'}};
+  expect(await google.validateBackupInitiator(flow)).toBe(flow.data);
+  role='viewer';
+  await expect(google.validateBackupInitiator(flow)).rejects.toThrow('GOOGLE_INITIATOR_REVOKED');
+  permissions=['tenantBackup.configure'];
+  expect(await google.validateBackupInitiator(flow)).toBe(flow.data);
+  await expect(google.validateBackupInitiator({data:{...flow.data,tokenVersion:1}})).rejects.toThrow('GOOGLE_INITIATOR_REVOKED');
+  vi.mocked(blacklist.isJtiRevoked).mockResolvedValue(true);
+  await expect(google.validateBackupInitiator(flow)).rejects.toThrow('GOOGLE_INITIATOR_REVOKED');
+ });
  it('requires browser binding and consumes purpose-bound state once',async()=>{
   configure();let record;const records=new Map();
   vi.spyOn(User.db,'collection').mockReturnValue({insertOne:async r=>{record=r;records.set(r._id,r)},findOneAndDelete:async q=>{

@@ -77,9 +77,8 @@ async function identity(idToken, prefix, nonce) {
 }
 module.exports={begin,consume,tokens,identity,config,flowCookie};
 async function validateBackupInitiator(flow) {
-  const { Membership, Tenant } = require('@contexthub/common');
+  const { Membership, Tenant, Role } = require('@contexthub/common');
   const tokenBlacklist = require('./tokenBlacklist');
-  const roleService = require('./roleService');
   if (flow.data.jti && await tokenBlacklist.isJtiRevoked(flow.data.jti)) throw new Error('GOOGLE_INITIATOR_REVOKED');
   const tenant = await Tenant.findById(flow.data.tenantId).select('status');
   if (!tenant || tenant.status !== 'active') throw new Error('GOOGLE_INITIATOR_REVOKED');
@@ -87,8 +86,13 @@ async function validateBackupInitiator(flow) {
   if (!user || user.status !== 'active' || user.mustChangePassword || user.tokenVersion !== flow.data.tokenVersion) throw new Error('GOOGLE_INITIATOR_REVOKED');
   const member=await Membership.findOne({userId:user._id,tenantId:flow.data.tenantId,status:'active'});
   if(!member)throw new Error('GOOGLE_INITIATOR_REVOKED');
-  const {permissions}=await roleService.ensureRoleReference(member,flow.data.tenantId);
-  if(!permissions.includes('tenantBackup.configure') && !permissions.includes('*'))throw new Error('GOOGLE_INITIATOR_REVOKED');
+  const role=member.roleId ? await Role.findOne({_id:member.roleId,$or:[{tenantId:flow.data.tenantId},{tenantId:null}]}) : null;
+  const permissions=member.getEffectivePermissions(role);
+  // Apply the same current membership authorization as the connect endpoint.
+  // Resolving the role here is read-only; a callback must not migrate memberships.
+  const { requirePermission } = require('../middleware/auth');
+  const rejected={code(){return this;},send(){throw new Error('GOOGLE_INITIATOR_REVOKED');}};
+  await requirePermission('tenantBackup.configure')({userRole:role?.key||member.role,userPermissions:permissions},rejected);
   return flow.data;
 }
 module.exports.validateBackupInitiator=validateBackupInitiator;
