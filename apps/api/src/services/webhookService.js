@@ -24,6 +24,7 @@ const webhookServiceDeps = {
 
 const { buildDeliveryRequest, encryptCredentials, normalizeIntegration, publicIntegration, readResponseSnippet } = require('./webhookDelivery');
 const { selectEventPayload } = require('../lib/webhooks');
+const { visibleWebhooks } = require('./webhookAccess');
 
 const EVENT_SET = new Set(DOMAIN_EVENT_TYPES);
 const DEFAULT_MAX_RETRY_ATTEMPTS = Number.isFinite(Number(process.env.WEBHOOK_MAX_RETRY_ATTEMPTS))
@@ -103,6 +104,7 @@ function formatWebhook(doc) {
     tenantId: doc.tenantId,
     url: !doc.provider || doc.provider === 'webhook' ? doc.url : '',
     provider: doc.provider || 'webhook',
+    scope: doc.scope || 'tenant',
     integration: doc.integration || {},
     payloadMode: doc.payloadMode || 'event',
     filters: doc.filters || {},
@@ -118,9 +120,9 @@ function formatWebhook(doc) {
   };
 }
 
-async function listWebhooks(tenantId) {
+async function listWebhooks(tenantId, actorId) {
   const normalizedTenantId = ensureTenantId(tenantId);
-  const docs = await Webhook.find({ tenantId: normalizedTenantId }).sort({ createdAt: -1 }).lean();
+  const docs = await Webhook.find({ tenantId: normalizedTenantId, ...visibleWebhooks(actorId) }).sort({ createdAt: -1 }).lean();
   return docs.map(formatWebhook);
 }
 
@@ -148,13 +150,17 @@ async function createWebhook(tenantId, payload = {}, options = {}) {
   const provider = payload.provider || 'webhook';
   if (!['webhook', 'slack', 'telegram', 'whatsapp'].includes(provider)) throw new Error('Invalid integration provider');
   if (provider === 'slack' && !options.slackOAuth) throw new Error('Connect Slack using OAuth');
+  const scope = payload.scope || 'tenant';
+  if (!['tenant', 'personal'].includes(scope)) throw new Error('Invalid notification scope');
+  if (scope === 'personal' && (!options.actorId || provider === 'webhook')) throw new Error('Personal notifications require an authenticated user and a chat provider');
   let config = null;
   if (provider !== 'webhook') config = normalizeIntegration(provider, payload.integration);
   const url = provider === 'webhook' ? validateWebhookUrl(payload.url)
     : `https://integrations.contexthub.invalid/${provider}/${crypto.randomUUID()}`;
   const secret = typeof payload.secret === 'string' && payload.secret.trim() ? payload.secret.trim() : generateSecret();
   const webhook = new Webhook({
-    tenantId: normalizedTenantId, url, provider,
+    tenantId: normalizedTenantId, url, provider, scope,
+    ...(scope === 'personal' ? { ownerUserId: String(options.actorId) } : {}),
     ...(config ? { configEncrypted: encryptCredentials(config, normalizedTenantId), integration: publicIntegration(provider, config) } : {}),
     events: normalizeEvents(payload.events),
     isActive: payload.isActive !== undefined ? Boolean(payload.isActive) : true,
@@ -268,6 +274,11 @@ function mapOutboxDoc(doc) {
   };
 }
 
+async function visibleWebhookIds(tenantId, actorId) {
+  const docs = await Webhook.find({ tenantId, ...visibleWebhooks(actorId) }).select('_id').lean();
+  return docs.map((doc) => doc._id);
+}
+
 async function getWebhookQueueStatus(tenantId, options = {}) {
   const normalizedTenantId = ensureTenantId(tenantId);
   const limit = Number.isFinite(options.limit) && options.limit > 0 ? options.limit : 20;
@@ -275,8 +286,10 @@ async function getWebhookQueueStatus(tenantId, options = {}) {
   const eventsCollection = db.collection('DomainEvents');
   const outboxCollection = db.collection('WebhookOutbox');
   const pendingFilter = { tenantId: normalizedTenantId, status: 'pending' };
-  const failedFilter = { tenantId: normalizedTenantId, status: 'failed' };
-  const deadFilter = { tenantId: normalizedTenantId, status: 'dead' };
+  const permitted = { tenantId: normalizedTenantId, webhookId: { $in: await visibleWebhookIds(normalizedTenantId, options.actorId) } };
+  const pendingJobsFilter = { ...permitted, status: 'pending' };
+  const failedFilter = { ...permitted, status: 'failed' };
+  const deadFilter = { ...permitted, status: 'dead' };
 
   const [
     eventCount,
@@ -289,11 +302,11 @@ async function getWebhookQueueStatus(tenantId, options = {}) {
     outboxDeadDocs
   ] = await Promise.all([
     eventsCollection.countDocuments(pendingFilter),
-    outboxCollection.countDocuments(pendingFilter),
+    outboxCollection.countDocuments(pendingJobsFilter),
     outboxCollection.countDocuments(failedFilter),
     outboxCollection.countDocuments(deadFilter),
     eventsCollection.find(pendingFilter).sort({ createdAt: 1 }).limit(limit).toArray(),
-    outboxCollection.find(pendingFilter).sort({ createdAt: 1 }).limit(limit).toArray(),
+    outboxCollection.find(pendingJobsFilter).sort({ createdAt: 1 }).limit(limit).toArray(),
     outboxCollection.find(failedFilter).sort({ updatedAt: -1 }).limit(limit).toArray(),
     outboxCollection.find(deadFilter).sort({ updatedAt: -1 }).limit(limit).toArray()
   ]);
@@ -431,19 +444,20 @@ async function sendTestWebhook(tenantId, webhookId, payloadOverride = null) {
   return { ok: true, status: response.status, responseBody };
 }
 
-async function getDeliveries(tenantId, { limit = 30, webhookId } = {}) {
+async function getDeliveries(tenantId, { limit = 30, webhookId, actorId } = {}) {
   const filter = { tenantId: ensureTenantId(tenantId) };
-  if (webhookId) filter.webhookId = new mongoose.Types.ObjectId(webhookId);
+  const ids = await visibleWebhookIds(filter.tenantId, actorId);
+  filter.webhookId = { $in: webhookId ? ids.filter((id) => String(id) === webhookId) : ids };
   const docs = await getDb().collection('WebhookOutbox').find(filter).sort({ updatedAt: -1, createdAt: -1 }).limit(Math.min(100, limit)).toArray();
   return { items: docs.map((doc) => ({ ...mapOutboxDoc(doc), attempts: doc.attempts || [] })) };
 }
 
-async function replayDelivery(tenantId, deliveryId) {
+async function replayDelivery(tenantId, deliveryId, actorId) {
   const normalizedTenantId = ensureTenantId(tenantId);
   const outbox = getDb().collection('WebhookOutbox');
   const job = await outbox.findOne({ _id: new mongoose.Types.ObjectId(deliveryId), tenantId: normalizedTenantId });
   if (!job) throw new Error('Delivery not found');
-  const hook = await Webhook.findOne({ _id: job.webhookId, tenantId: normalizedTenantId, isActive: true }).lean();
+  const hook = await Webhook.findOne({ _id: job.webhookId, tenantId: normalizedTenantId, isActive: true, ...visibleWebhooks(actorId) }).lean();
   if (!hook) throw new Error('Webhook not found or inactive');
   const result = await outbox.updateOne({ _id: job._id, tenantId: normalizedTenantId, status: { $in: ['done', 'failed', 'dead'] } }, {
     $set: { status: 'pending', retryCount: 0, nextRetryAt: null, lastError: null, updatedAt: new Date() }
@@ -463,17 +477,17 @@ function __setWebhookServiceDeps(overrides = {}) {
 /**
  * Tenant'ın tüm başarısız webhook işlerini yeniden kuyruğa al
  */
-async function bulkRetryAllFailed(tenantId) {
+async function bulkRetryAllFailed(tenantId, actorId) {
   const normalizedTenantId = ensureTenantId(tenantId);
-  return retryAllFailedJobs(normalizedTenantId);
+  return retryAllFailedJobs(normalizedTenantId, await visibleWebhookIds(normalizedTenantId, actorId));
 }
 
 /**
  * Tenant'ın tüm başarısız webhook işlerini sil
  */
-async function bulkDeleteAllFailed(tenantId) {
+async function bulkDeleteAllFailed(tenantId, actorId) {
   const normalizedTenantId = ensureTenantId(tenantId);
-  return deleteAllFailedJobs(normalizedTenantId);
+  return deleteAllFailedJobs(normalizedTenantId, await visibleWebhookIds(normalizedTenantId, actorId));
 }
 
 /**

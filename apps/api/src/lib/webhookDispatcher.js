@@ -9,7 +9,9 @@ const {
 const DEFAULT_BATCH_LIMIT = 50;
 const { buildDeliveryRequest, readResponseSnippet } = require('../services/webhookDelivery');
 const { notifyDisabledWebhooks, recordWebhookHealth } = require('../services/webhookHealth');
-const dispatcherDeps = { fetch, prepareSafeWebhookRequest, notifyDisabledWebhooks, recordWebhookHealth };
+const { canDeliverWebhook } = require('../services/webhookAccess');
+const { assertWebhookTenant } = require('./webhookTenant');
+const dispatcherDeps = { fetch, prepareSafeWebhookRequest, notifyDisabledWebhooks, recordWebhookHealth, canDeliverWebhook };
 const DEFAULT_MAX_RETRY_ATTEMPTS = Number.isFinite(Number(process.env.WEBHOOK_MAX_RETRY_ATTEMPTS))
   ? Number(process.env.WEBHOOK_MAX_RETRY_ATTEMPTS)
   : 5;
@@ -37,7 +39,7 @@ const ERROR_TYPES = {
  * @returns {string} ERROR_TYPES değerlerinden biri
  */
 function classifyError(statusCode, error) {
-  if (error?.code === 'WEBHOOK_URL_BLOCKED') {
+  if (['WEBHOOK_URL_BLOCKED', 'WEBHOOK_TENANT_MISMATCH', 'WEBHOOK_ACCESS_REVOKED'].includes(error?.code)) {
     return ERROR_TYPES.PERMANENT;
   }
   // Timeout hatası
@@ -221,6 +223,13 @@ async function dispatchWebhookOutboxBatch(options = {}) {
     let retryAfterMs = 0;
     let failure = null;
     try {
+      assertWebhookTenant(job.tenantId, webhook.tenantId);
+      assertWebhookTenant(job.tenantId, job.payload?.tenantId);
+      if (!await dispatcherDeps.canDeliverWebhook(webhook)) {
+        const error = new Error('Webhook recipient access revoked');
+        error.code = 'WEBHOOK_ACCESS_REVOKED';
+        throw error;
+      }
       request = buildDeliveryRequest(webhook, job.payload || {}, { signPayload });
       const signal = resolveAbortSignal(Math.min(60_000, options.timeoutMs || 15000));
       const prepared = await dispatcherDeps.prepareSafeWebhookRequest(request.url, { signal });
@@ -423,11 +432,12 @@ async function retryJobsByWebhookId(tenantId, webhookId) {
 /**
  * Tüm failed/dead işleri yeniden kuyruğa al (tenant bazlı bulk retry)
  */
-async function retryAllFailedJobs(tenantId) {
+async function retryAllFailedJobs(tenantId, webhookIds) {
   const { outbox } = resolveCollections();
 
   const query = {
     tenantId,
+    ...(webhookIds ? { webhookId: { $in: webhookIds } } : {}),
     status: { $in: ['failed', 'dead'] }
   };
 
@@ -450,11 +460,12 @@ async function retryAllFailedJobs(tenantId) {
 /**
  * Tüm failed/dead işleri sil (tenant bazlı bulk delete)
  */
-async function deleteAllFailedJobs(tenantId) {
+async function deleteAllFailedJobs(tenantId, webhookIds) {
   const { outbox } = resolveCollections();
 
   const query = {
     tenantId,
+    ...(webhookIds ? { webhookId: { $in: webhookIds } } : {}),
     status: { $in: ['failed', 'dead'] }
   };
 
@@ -490,6 +501,6 @@ module.exports = {
   calculateNextRetryAt,
   parseRetryAfter,
   __setDispatcherDeps(overrides = {}) {
-    Object.assign(dispatcherDeps, { fetch, prepareSafeWebhookRequest, notifyDisabledWebhooks, recordWebhookHealth }, overrides);
+    Object.assign(dispatcherDeps, { fetch, prepareSafeWebhookRequest, notifyDisabledWebhooks, recordWebhookHealth, canDeliverWebhook }, overrides);
   }
 };

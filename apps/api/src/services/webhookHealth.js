@@ -11,8 +11,8 @@ async function notifyDisabledWebhooks(webhooks, tenantId) {
     const lock = await webhooks.updateOne({ ...query, _id: hook._id }, { $set: { notificationAttemptAt: attemptedAt } });
     if (!lock.modifiedCount) continue;
     try {
-      const memberships = await Membership.find({ tenantId: hook.tenantId, role: 'owner', status: 'active' }).select('userId').lean();
-      const users = await User.find({ _id: { $in: memberships.map((item) => item.userId) } }).select('email').lean();
+      const memberships = await Membership.find({ tenantId: hook.tenantId, ...(hook.scope === 'personal' ? { userId: hook.ownerUserId || null } : { role: 'owner' }), status: 'active' }).select('userId').lean();
+      const users = await User.find({ _id: { $in: memberships.map((item) => item.userId) }, status: 'active' }).select('email').lean();
       const recipients = [...new Set(users.map((user) => user.email).filter(Boolean))];
       if (!recipients.length) throw new Error('No owner email available');
       await mailService.sendMail({

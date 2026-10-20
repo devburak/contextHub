@@ -51,7 +51,7 @@ const DOMAIN_EVENT_TYPES = Object.freeze([
  * @typedef {Object} DomainEvent
  * @property {string} id - Unique identifier (UUID v4 preferred)
  * @property {number} sequence - Global monotonically increasing delivery sequence
- * @property {string} tenantId - Tenant slug/id to enforce isolation
+ * @property {string} tenantId - Stable tenant ID to enforce isolation (never a slug alias)
  * @property {DomainEventType} type - Event type name
  * @property {string} occurredAt - ISO string representing when the event finished
  * @property {Record<string, any>} payload - Immutable data snapshot payload

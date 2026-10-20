@@ -44,3 +44,13 @@ Olayları, filtreleri veya aktiflik durumunu değiştirmek için aboneliği düz
 | Abonelik otomatik durdurulmuş | Günlüğü inceleyin, Slack erişimi/kanal sorununu çözün, aboneliği açıp ilgili teslimatı yeniden gönderin. |
 
 Başarılı teslimat Slack'in isteği kabul ettiği anlamına gelir; ContextHub kanal üyelerinin mesajı okuyup okumadığını izlemez. Hatalar ortak tekrar deneme politikasını kullanır. Sağlayıcı ayrıntıları için [Slack OAuth akışına](https://docs.slack.dev/authentication/installing-with-oauth/) bakın.
+
+## Ekip ve kişisel bildirim hedefleri
+
+Bir sohbet sağlayıcısı bağlarken **Ekip kanalı** veya **Kişisel bağlantı** seçin. İkisi de geçerli tenant için yönetim yetkisi gerektirir. Ekip bağlantılarını yetkili tenant yöneticileri yönetebilir; kişisel bağlantıyı ve teslimat geçmişini yalnız oluşturan kullanıcı görebilir. Görünürlük oluşturma sırasında belirlenir; değiştirmek için yeni bağlantı oluşturun. Mevcut abonelikler ekip bağlantısı olarak devam eder.
+
+Kişisel bağlantı, tenant içindeki seçili olayları alır; yalnızca o kullanıcının tetiklediği olaylarla sınırlı değildir. Gönderim işçisi her teslimat, tekrar deneme ve yeniden gönderme öncesinde sahibinin aktif hesabını, aktif tenant üyeliğini ve güncel yönetim yetkisini kontrol eder. Erişim kaldırıldığında gönderim durur. Kişisel bağlantının hata e-postası yalnız sahibine gider.
+
+Teslimat kayıtlı hedefe yapılır: Slack yetkilendirmesinde seçilen kanal, Telegram botuna tanımlanan sohbet kimliği veya WhatsApp alıcı numarası. Ortak bir tenant ya da platform alıcısına otomatik geçiş yapılmaz. Kişisel bağlantı dışarıdaki bir grubu özel hale getirmez; Slack/Telegram grup üyelerini ilgili platformun yöneticileri belirler. Bildirimleri açmadan önce özel kanal veya doğrudan sohbet seçin ve üyeleri kontrol edin. Telegram sohbet kimliği amaçlanan sohbeti göstermelidir; bot token'ıyla mesaj gönderebilmek tek başına o sohbetin sahipliğini kanıtlamaz. WhatsApp alıcısının bildirimlere izin vermesi gerekir.
+
+Olay, abonelik ve kuyruk gövdesinin sabit tenant kimlikleri eşleşmek zorundadır. Eksik veya uyumsuz kimlikler dışarıya istek atılmadan engellenir. Tenant slug'ları teslimat kapsamını genişletmez. Kendi sunucusunda eski slug tabanlı abonelik kullanan operatörler bunları etkinleştirmeden önce sabit tenant kimliğine taşımalıdır; şifreli sağlayıcı bilgileri yeni tenant kimliğiyle yeniden şifrelenmelidir. 24 karakterlik onaltılık kimlikleri slug olarak yorumlamayın.

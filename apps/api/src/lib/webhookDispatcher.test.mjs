@@ -16,11 +16,22 @@ beforeEach(() => {
   mongoose.connection.db = { collection: (name) => name === 'WebhookOutbox' ? outbox : webhooks };
   fetch = vi.fn().mockResolvedValue({ status: 200, ok: true, text: async () => 'ok' });
   health = vi.fn().mockResolvedValue();
-  __setDispatcherDeps({ fetch, prepareSafeWebhookRequest: async (url) => ({ url }), recordWebhookHealth: health, notifyDisabledWebhooks: vi.fn() });
+  __setDispatcherDeps({ canDeliverWebhook: vi.fn().mockResolvedValue(true), fetch, prepareSafeWebhookRequest: async (url) => ({ url }), recordWebhookHealth: health, notifyDisabledWebhooks: vi.fn() });
 });
 afterEach(() => { mongoose.connection.db = originalDb; __setDispatcherDeps(); vi.unstubAllEnvs(); });
 function completed() { return outbox.updateOne.mock.calls.at(-1); }
 describe('outbox reliability', () => {
+  it.each(['foreign', null, undefined])('quarantines a mismatched event tenant (%s) before any network request', async (tenantId) => {
+    job.payload.tenantId = tenantId;
+    expect(await dispatchWebhookOutboxBatch()).toMatchObject({ dead: 1 });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(completed()[1].$set).toMatchObject({ status: 'dead', errorType: 'permanent', nextRetryAt: null });
+  });
+  it('stops delivery after recipient access is revoked', async () => {
+    __setDispatcherDeps({ fetch, canDeliverWebhook: async () => false, notifyDisabledWebhooks: vi.fn(), recordWebhookHealth: health });
+    expect(await dispatchWebhookOutboxBatch()).toMatchObject({ dead: 1 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('requeues due retries, pins a tenant-specific lease and records delivery history', async () => {
     expect(await dispatchWebhookOutboxBatch({ tenantId: 'tenant' })).toMatchObject({ succeeded: 1 });
     expect(outbox.updateMany.mock.calls[0][0]).toMatchObject({ tenantId: 'tenant', status: 'failed' });

@@ -1,6 +1,7 @@
 const webhookService = require('../services/webhookService');
 const { tenantContext, authenticate: authenticateBase, requirePermission } = require('../middleware/auth');
-const { rbac } = require('@contexthub/common');
+const { rbac, Webhook, mongoose } = require('@contexthub/common');
+const { visibleWebhooks } = require('../services/webhookAccess');
 
 const { PERMISSIONS } = rbac;
 
@@ -11,6 +12,12 @@ async function authenticate(request, reply) {
   if (reply.sent) return;
   if (request.params?.tenantId && String(request.params.tenantId) !== String(request.tenantId)) {
     return reply.code(403).send({ error: 'Tenant mismatch' });
+  }
+  if (request.params?.id) {
+    const { id } = request.params;
+    if (!mongoose.isValidObjectId(id) || !await Webhook.exists({ _id: id, tenantId: request.tenantId, ...visibleWebhooks(request.user?._id) })) {
+      return reply.code(404).send({ error: 'Webhook not found' });
+    }
   }
 }
 
@@ -50,6 +57,7 @@ const webhookResponseSchema = {
     createdAt: { type: 'string', nullable: true },
     updatedAt: { type: 'string', nullable: true },
     hasSecret: { type: 'boolean' },
+    scope: { type: 'string', enum: ['tenant', 'personal'] },
     provider: { type: 'string' }, integration: { type: 'object', additionalProperties: true },
     ...subscriptionProperties,
     consecutiveFailures: { type: 'number' }, disabledAt: { type: 'string', nullable: true },
@@ -129,7 +137,7 @@ async function webhookRoutes(fastify) {
     }
   }, async function listWebhooksHandler(request) {
     const { tenantId } = request.params;
-    const webhooks = await webhookService.listWebhooks(tenantId);
+    const webhooks = await webhookService.listWebhooks(tenantId, request.user?._id);
     return {
       webhooks,
       availableEventTypes: webhookService.getDomainEventTypes()
@@ -198,14 +206,14 @@ async function webhookRoutes(fastify) {
   }, async function webhookQueueHandler(request) {
     const { tenantId } = request.params;
     const { limit } = request.query || {};
-    return webhookService.getWebhookQueueStatus(tenantId, { limit });
+    return webhookService.getWebhookQueueStatus(tenantId, { limit, actorId: request.user?._id });
   });
 
   const manageHooks = [authenticate, requirePermission(PERMISSIONS.TENANTS_MANAGE)];
   fastify.post('/admin/tenants/:tenantId/webhooks/slack/connect', {
     preHandler: manageHooks,
     schema: { body: { type: 'object', additionalProperties: false, properties: {
-      events: { type: 'array', items: { type: 'string' } }, ...subscriptionProperties
+      events: { type: 'array', items: { type: 'string' } }, scope: { type: 'string', enum: ['tenant', 'personal'] }, ...subscriptionProperties
     } } }
   }, async (request, reply) => {
     try { return await slackOAuth.beginSlackConnect(request.params.tenantId, request.user?._id, request.body || {}); }
@@ -224,12 +232,12 @@ async function webhookRoutes(fastify) {
     preHandler: manageHooks,
     schema: { querystring: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100 }, webhookId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } } },
       response: { 200: { type: 'object', properties: { items: { type: 'array', items: deliverySchema } } } } }
-  }, async (request) => webhookService.getDeliveries(request.params.tenantId, request.query));
+  }, async (request) => webhookService.getDeliveries(request.params.tenantId, { ...request.query, actorId: request.user?._id }));
   fastify.post('/admin/tenants/:tenantId/webhooks/deliveries/:deliveryId/replay', {
     preHandler: manageHooks,
     schema: { params: { type: 'object', properties: { tenantId: { type: 'string' }, deliveryId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } } } }
   }, async (request, reply) => {
-    try { return await webhookService.replayDelivery(request.params.tenantId, request.params.deliveryId); }
+    try { return await webhookService.replayDelivery(request.params.tenantId, request.params.deliveryId, request.user?._id); }
     catch (error) { return handleServiceError(reply, error); }
   });
 
@@ -251,6 +259,7 @@ async function webhookRoutes(fastify) {
           events: { type: 'array', items: { type: 'string' } },
           secret: { type: 'string', maxLength: 512 },
           provider: { type: 'string', enum: ['webhook', 'telegram', 'whatsapp'] },
+          scope: { type: 'string', enum: ['tenant', 'personal'] },
           integration: integrationSchema, ...subscriptionProperties
         },
         additionalProperties: false
@@ -268,7 +277,7 @@ async function webhookRoutes(fastify) {
   }, async function createWebhookHandler(request, reply) {
     const { tenantId } = request.params;
     try {
-      const result = await webhookService.createWebhook(tenantId, request.body || {});
+      const result = await webhookService.createWebhook(tenantId, request.body || {}, { actorId: request.user?._id });
       return reply.code(201).send(result);
     } catch (error) {
       return handleServiceError(reply, error);
@@ -485,7 +494,7 @@ async function webhookRoutes(fastify) {
   }, async function bulkRetryAllHandler(request, reply) {
     const { tenantId } = request.params;
     try {
-      const result = await webhookService.bulkRetryAllFailed(tenantId);
+      const result = await webhookService.bulkRetryAllFailed(tenantId, request.user?._id);
       return { ok: true, ...result };
     } catch (error) {
       return handleServiceError(reply, error);
@@ -516,7 +525,7 @@ async function webhookRoutes(fastify) {
   }, async function bulkDeleteAllHandler(request, reply) {
     const { tenantId } = request.params;
     try {
-      const result = await webhookService.bulkDeleteAllFailed(tenantId);
+      const result = await webhookService.bulkDeleteAllFailed(tenantId, request.user?._id);
       return { ok: true, ...result };
     } catch (error) {
       return handleServiceError(reply, error);

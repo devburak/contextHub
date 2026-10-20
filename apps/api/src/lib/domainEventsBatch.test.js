@@ -10,18 +10,20 @@ describe('buildTenantMatchValues', () => {
     expect(result).toEqual(['tenant_slug'])
   })
 
-  it('adds ObjectId and slug variants for hex ids', async () => {
+  it('matches ID representations without expanding to slug aliases', async () => {
     const value = '64d2f6f6a1c9a4b5c6d7e8f9'
     const lookup = vi.fn().mockResolvedValue('tenant-slug')
     const result = await buildTenantMatchValues(value, { findTenantSlug: lookup })
 
-    expect(lookup).toHaveBeenCalledWith(value)
-    expect(result).toEqual(expect.arrayContaining(['tenant-slug', value]))
+    expect(lookup).not.toHaveBeenCalled()
+    expect(result).toHaveLength(2)
+    expect(result).not.toContain('tenant-slug')
+    expect(result).toContain(value)
     expect(result.some((item) => typeof item !== 'string')).toBe(true)
   })
 
-  it('falls back to [null] when tenant id missing', async () => {
+  it('matches nothing when tenant id is missing', async () => {
     const result = await buildTenantMatchValues(null)
-    expect(result).toEqual([null])
+    expect(result).toEqual([])
   })
 })

@@ -46,8 +46,18 @@ describe('webhook channel setup', () => {
     const select = container.querySelector('#webhook-provider')
     await act(async () => { select.value = 'slack'; select.dispatchEvent(new Event('change', { bubbles: true })) })
     expect(container.querySelector('#webhook-url')).toBeNull()
+    expect([...container.querySelector('#webhook-scope').options].map((option) => option.value)).toEqual(['tenant', 'personal'])
     await act(async () => { container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
-    expect(tenantAPI.beginSlackConnect).toHaveBeenCalledWith('tenant-a', { events: ['*'], payloadMode: 'event', filters: { locales: [], environments: [], collectionKeys: [] } })
+    expect(tenantAPI.beginSlackConnect).toHaveBeenCalledWith('tenant-a', { scope: 'tenant', events: ['*'], payloadMode: 'event', filters: { locales: [], environments: [], collectionKeys: [] } })
+  })
+  it('sends the personal scope through Slack authorization', async () => {
+    tenantAPI.beginSlackConnect.mockRejectedValue(new Error('not configured'))
+    await render()
+    await act(async () => [...container.querySelectorAll('button')].find((item) => item.textContent === 'tenantWebhooks.create_title').click())
+    await act(async () => { const select = container.querySelector('#webhook-provider'); select.value = 'slack'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => { const select = container.querySelector('#webhook-scope'); select.value = 'personal'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(tenantAPI.beginSlackConnect).toHaveBeenCalledWith('tenant-a', expect.objectContaining({ scope: 'personal' }))
   })
   it('restores the initiating tenant before completing a Slack callback', async () => {
     state.tenant = 'tenant-b'

@@ -40,7 +40,7 @@ describe('Slack OAuth state', () => {
     await expect(completeSlackConnect('tenant-a', 'user-b', { state, code: 'code' })).rejects.toThrow('expired');
     expect(fetch).not.toHaveBeenCalled();
     await completeSlackConnect('tenant-a', 'user-a', { state, code: 'code' });
-    expect(createWebhook).toHaveBeenCalledWith('tenant-a', expect.objectContaining({ provider: 'slack', events: ['content.published'] }), { slackOAuth: true });
+    expect(createWebhook).toHaveBeenCalledWith('tenant-a', expect.objectContaining({ provider: 'slack', events: ['content.published'] }), { slackOAuth: true, actorId: 'user-a' });
     await expect(completeSlackConnect('tenant-a', 'user-a', { state, code: 'code' })).rejects.toThrow('expired');
     expect(fetch).toHaveBeenCalledOnce();
   });

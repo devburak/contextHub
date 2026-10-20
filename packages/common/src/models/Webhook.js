@@ -20,6 +20,8 @@ const webhookSchema = new Schema({
   isActive: { type: Boolean, default: true },
   events: { type: [String], default: ['*'] },
   provider: { type: String, enum: ['webhook', 'slack', 'telegram', 'whatsapp'], default: 'webhook' },
+  scope: { type: String, enum: ['tenant', 'personal'], default: 'tenant', immutable: true },
+  ownerUserId: { type: String, immutable: true },
   configEncrypted: { type: String },
   integration: { type: Schema.Types.Mixed },
   payloadMode: { type: String, enum: ['event', 'ids'], default: 'event' },
