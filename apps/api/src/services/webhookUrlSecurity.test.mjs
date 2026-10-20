@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
 
 const require = createRequire(import.meta.url);
+const { fetch } = require('undici');
 const {
   closeWebhookDispatcher,
   prepareSafeWebhookRequest,
@@ -66,5 +68,33 @@ describe('webhook URL security', () => {
     expect(prepared.url).toBe('https://hooks.example.com/events');
     expect(prepared.dispatcher).toBeTruthy();
     await closeWebhookDispatcher(prepared.dispatcher);
+  });
+
+  it('falls back to a pinned IPv4 address when the IPv6 connection fails', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS = 'true';
+    const server = createServer((_request, response) => response.end('delivered'));
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    let prepared;
+    let lookups = 0;
+    try {
+      prepared = await prepareSafeWebhookRequest(`http://hooks.example.test:${server.address().port}/events`, {
+        lookup: async () => {
+          lookups += 1;
+          return [{ address: '::1', family: 6 }, { address: '127.0.0.1', family: 4 }];
+        },
+      });
+      const response = await fetch(prepared.url, {
+        dispatcher: prepared.dispatcher, signal: AbortSignal.timeout(2000),
+      });
+      expect(await response.text()).toBe('delivered');
+      expect(lookups).toBe(1);
+    } finally {
+      await closeWebhookDispatcher(prepared?.dispatcher);
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

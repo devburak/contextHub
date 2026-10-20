@@ -303,6 +303,7 @@
   "tenantWebhooks.response_preview": "Yanıt (ilk 2048 bayt)",
   "tenantWebhooks.replay": "Yeniden gönder",
   "tenantWebhooks.slack_tenant_failed": "Slack bağlantısının başlatıldığı varlığa geçilemedi. Bu varlığa geçip sayfayı yenileyin.",
-  "tenantWebhooks.all_plans": "Ücretsiz ve ücretli tüm planlarda kendi Slack, Telegram veya WhatsApp Business hesabınızı bağlayabilirsiniz.",
+  "tenantWebhooks.provider_help_label": "Bildirim kanalları hakkında bilgi",
+  "tenantWebhooks.provider_help": "Bildirimler için Slack, Telegram veya WhatsApp Business kullanabilirsiniz.",
   "tenantWebhooks.setup_guide": "Adım adım bağlantı rehberini aç"
 }
