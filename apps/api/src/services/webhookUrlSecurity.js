@@ -151,8 +151,9 @@ async function prepareSafeWebhookRequest(value, options = {}) {
     throw securityError('Webhook hostname resolves to a private or reserved address');
   }
 
-  const pinned = normalizedRecords[0];
   const dispatcher = new Agent({
+    autoSelectFamily: true,
+    autoSelectFamilyAttemptTimeout: 250,
     connect: {
       lookup(requestedHostname, lookupOptions, callback) {
         if (requestedHostname.toLowerCase() !== hostname.toLowerCase()) {
@@ -160,9 +161,12 @@ async function prepareSafeWebhookRequest(value, options = {}) {
           return;
         }
         if (lookupOptions?.all) {
-          callback(null, [pinned]);
+          // Keep fallback within this validated DNS snapshot; never resolve again.
+          callback(null, normalizedRecords);
           return;
         }
+        const pinned = normalizedRecords.find((record) => !lookupOptions?.family
+          || record.family === Number(lookupOptions.family)) || normalizedRecords[0];
         callback(null, pinned.address, pinned.family);
       },
     },

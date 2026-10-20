@@ -303,6 +303,7 @@
   "tenantWebhooks.response_preview": "Response (first 2048 bytes)",
   "tenantWebhooks.replay": "Resend",
   "tenantWebhooks.slack_tenant_failed": "Could not switch to the tenant that started this Slack connection. Select it and reload the page.",
-  "tenantWebhooks.all_plans": "Connect your own Slack, Telegram or WhatsApp Business account on every plan, including Free.",
+  "tenantWebhooks.provider_help_label": "About notification channels",
+  "tenantWebhooks.provider_help": "You can use Slack, Telegram or WhatsApp Business for notifications.",
   "tenantWebhooks.setup_guide": "Open the step-by-step connection guide"
 }

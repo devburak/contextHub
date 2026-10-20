@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
+import { Popover } from '@headlessui/react'
+import { InformationCircleIcon } from '@heroicons/react/24/outline'
 import WebhookDeliveries from './WebhookDeliveries.jsx'
 import TenantTabs from '../../components/TenantTabs.jsx'
 import { tenantAPI } from '../../lib/tenantAPI.js'
@@ -122,7 +124,21 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
         </div>
         <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div>
-            <label htmlFor="webhook-provider" className="block text-sm font-medium text-gray-700">{t('tenantWebhooks.provider')}</label>
+            <div className="relative flex items-center gap-1.5">
+              <label htmlFor="webhook-provider" className="text-sm font-medium text-gray-700">{t('tenantWebhooks.provider')}</label>
+              <Popover className="static">
+                <Popover.Button
+                  type="button"
+                  aria-label={t('tenantWebhooks.provider_help_label')}
+                  className="flex rounded-full text-gray-400 hover:text-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                >
+                  <InformationCircleIcon className="h-4 w-4" aria-hidden="true" />
+                </Popover.Button>
+                <Popover.Panel className="absolute left-0 top-full z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-600 shadow-lg">
+                  {t('tenantWebhooks.provider_help')}
+                </Popover.Panel>
+              </Popover>
+            </div>
             <select id="webhook-provider" disabled={mode === 'edit'} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" {...register('provider')}>
               <option value="webhook">Webhook</option><option value="slack">Slack</option><option value="telegram">Telegram</option><option value="whatsapp">WhatsApp Business</option>
             </select>
@@ -499,7 +515,6 @@ export default function TenantWebhooks() {
       <TenantTabs active="webhooks" />
       <div>
         <h1 className="text-xl font-semibold text-gray-900">{t('tenantWebhooks.title')}</h1>
-        <p className="mt-2 text-sm font-medium text-blue-700">{t('tenantWebhooks.all_plans')}</p>
         <p className="mt-1 text-sm text-gray-600">
           <Trans
             i18nKey="tenantWebhooks.description"
