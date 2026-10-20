@@ -10,8 +10,12 @@ function hook(provider, config) {
   return { provider, tenantId: 'tenant-a', configEncrypted: encryptCredentials(config, 'tenant-a') };
 }
 describe('delivery authentication and adapters', () => {
+  it.each(['webhook', 'slack', 'telegram', 'whatsapp'])('rejects foreign tenant payloads before building a %s request', (provider) => {
+    expect(() => buildDeliveryRequest({ provider, tenantId: 'tenant-b' }, event)).toThrow('tenant mismatch');
+    expect(() => buildDeliveryRequest({ provider }, event)).toThrow('tenant mismatch');
+  });
   it('binds the timestamp and exact body while retaining the legacy signature', () => {
-    const delivery = buildDeliveryRequest({ url: 'https://example.com', secret: 'secret', _id: 'hook' }, event, { timestamp: 123 });
+    const delivery = buildDeliveryRequest({ tenantId: 'tenant-a', url: 'https://example.com', secret: 'secret', _id: 'hook' }, event, { timestamp: 123 });
     const hmac = (value) => crypto.createHmac('sha256', 'secret').update(value).digest('hex');
     expect(delivery.headers['X-CTXHUB-SIGNATURE']).toBe(hmac(delivery.body));
     expect(delivery.headers['X-CTXHUB-SIGNATURE-V2']).toBe(`v1=${hmac(`123.${delivery.body}`)}`);
@@ -48,6 +52,7 @@ describe('delivery authentication and adapters', () => {
     const delivery = buildDeliveryRequest(hook('whatsapp', config), event);
     expect(delivery.url).toBe('https://graph.facebook.com/v99.0/12345/messages');
     expect(delivery.headers.Authorization).toBe('Bearer private-token');
+    expect(JSON.parse(delivery.body).to).toBe(config.recipient);
     expect(JSON.parse(delivery.body).template.components[0].parameters.map((p) => p.text)).toEqual(['content.published', 'evt', 'tenant-a']);
     expect(publicIntegration('whatsapp', config)).not.toHaveProperty('accessToken');
   });

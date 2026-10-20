@@ -14,27 +14,27 @@ describe('isWebhookSubscribed', () => {
   };
 
   it('returns true when webhook listens to all events', () => {
-    const result = isWebhookSubscribed({ isActive: true, events: ['*'] }, event);
+    const result = isWebhookSubscribed({ tenantId: 'tenant_a', isActive: true, events: ['*'] }, event);
     expect(result).toBe(true);
   });
 
   it('returns true when webhook explicitly subscribes to the event type', () => {
-    const result = isWebhookSubscribed({ isActive: true, events: ['content.created'] }, event);
+    const result = isWebhookSubscribed({ tenantId: 'tenant_a', isActive: true, events: ['content.created'] }, event);
     expect(result).toBe(true);
   });
 
   it('returns false for inactive or misconfigured webhooks', () => {
-    expect(isWebhookSubscribed({ isActive: false, events: ['*'] }, event)).toBe(false);
-    expect(isWebhookSubscribed({ isActive: true, events: [] }, event)).toBe(false);
-    expect(isWebhookSubscribed({ isActive: true }, event)).toBe(false);
+    expect(isWebhookSubscribed({ tenantId: 'tenant_a', isActive: false, events: ['*'] }, event)).toBe(false);
+    expect(isWebhookSubscribed({ tenantId: 'tenant_a', isActive: true, events: [] }, event)).toBe(false);
+    expect(isWebhookSubscribed({ tenantId: 'tenant_a', isActive: true }, event)).toBe(false);
   });
 
   it('returns false if event type is not listed', () => {
-    const result = isWebhookSubscribed({ isActive: true, events: ['content.updated'] }, event);
+    const result = isWebhookSubscribed({ tenantId: 'tenant_a', isActive: true, events: ['content.updated'] }, event);
     expect(result).toBe(false);
   });
   it('combines locale, environment and collection filters even for wildcard subscriptions', () => {
-    const hook = { isActive: true, events: ['*'], filters: { locales: ['tr'], environments: ['production'], collectionKeys: ['news'] } };
+    const hook = { tenantId: 'tenant_a', isActive: true, events: ['*'], filters: { locales: ['tr'], environments: ['production'], collectionKeys: ['news'] } };
     const filtered = { ...event, type: 'collection.entry.updated', payload: { locale: 'tr', collectionKey: 'news' }, metadata: { environment: 'production' } };
     expect(isWebhookSubscribed(hook, filtered)).toBe(true);
     expect(isWebhookSubscribed(hook, { ...filtered, metadata: { environment: 'development' } })).toBe(false);
@@ -54,9 +54,9 @@ describe('buildWebhookOutboxJobs', () => {
 
   it('creates jobs for matching webhooks only', () => {
     const hooks = [
-      { _id: 'hook1', isActive: true, events: ['*'] },
-      { _id: 'hook2', isActive: true, events: ['content.updated'] },
-      { _id: 'hook3', isActive: false, events: ['content.created'] }
+      { _id: 'hook1', tenantId: 'tenant_a', isActive: true, events: ['*'] },
+      { _id: 'hook2', tenantId: 'tenant_a', isActive: true, events: ['content.updated'] },
+      { _id: 'hook3', tenantId: 'tenant_a', isActive: false, events: ['content.created'] }
     ];
 
     const jobs = buildWebhookOutboxJobs(baseEvent, hooks);
@@ -71,8 +71,18 @@ describe('buildWebhookOutboxJobs', () => {
     });
   });
 
+  it('never fans out to another tenant, even for wildcard hooks', () => {
+    const jobs = buildWebhookOutboxJobs(baseEvent, [
+      { _id: 'ours', tenantId: 'tenant_a', isActive: true, events: ['*'] },
+      { _id: 'foreign', tenantId: 'tenant_b', isActive: true, events: ['*'] },
+      { _id: 'unscoped', isActive: true, events: ['*'] }
+    ]);
+    expect(jobs.map((job) => job.webhookId)).toEqual(['ours']);
+    expect(buildWebhookOutboxJobs({ ...baseEvent, tenantId: null }, [{ _id: 'unscoped', isActive: true, events: ['*'] }])).toEqual([]);
+  });
+
   it('clones the payload to avoid accidental mutation', () => {
-    const hooks = [{ _id: 'hook1', isActive: true, events: ['*'] }];
+    const hooks = [{ _id: 'hook1', tenantId: 'tenant_a', isActive: true, events: ['*'] }];
     const event = { ...baseEvent, payload: { nested: { value: 1 } } };
 
     const jobs = buildWebhookOutboxJobs(event, hooks);
@@ -87,7 +97,7 @@ describe('buildWebhookOutboxJobs', () => {
   });
   it('removes form answers and personal data from identifiers-only deliveries', () => {
     const event = { ...baseEvent, type: 'form.submitted', payload: { formId: 'form', response: { responseId: 'response', userEmail: 'private@example.com', data: { private: true } } } };
-    const jobs = buildWebhookOutboxJobs(event, [{ _id: 'hook', isActive: true, events: ['*'], payloadMode: 'ids' }]);
+    const jobs = buildWebhookOutboxJobs(event, [{ _id: 'hook', tenantId: 'tenant_a', isActive: true, events: ['*'], payloadMode: 'ids' }]);
     expect(jobs[0].payload.payload).toEqual({ formId: 'form', responseId: 'response' });
     expect(JSON.stringify(jobs[0])).not.toContain('private');
     expect(jobs[0].dedupeKey).toBe('tenant_a:hook:evt_1');

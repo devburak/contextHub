@@ -1,4 +1,8 @@
 {
+  "tenantWebhooks.scope_label": "Connection visibility",
+  "tenantWebhooks.scope_tenant": "Team channel",
+  "tenantWebhooks.scope_personal": "Personal connection",
+  "tenantWebhooks.scope_hint": "Team connections are managed by tenant administrators. Personal connections are visible only to you and stop if your tenant membership or management permission is removed. Channel members can read notifications; choose a private destination when needed.",
   "tenant.accept_invite": "Accept Invitation",
   "tenant.accepting_invite": "Accepting...",
   "tenant.action_failed": "The operation could not be completed.",

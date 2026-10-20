@@ -62,3 +62,13 @@ Tests send a `webhook.test` event through the same approved template. Notificati
 | Subscription automatically stopped | Resolve the provider error, reactivate the subscription and resend the relevant job from history. |
 
 To change credentials or the destination, edit and re-enter all five fields, including the token. Leaving the token empty preserves the existing connection. Deleting the subscription stops ContextHub messages; revoke unused tokens separately in Meta. Shared [filters, retries and delivery operations](./webhooks.md) also apply.
+
+## Team and personal destinations
+
+When connecting a chat provider, choose **Team channel** or **Personal connection**. Both require the current tenant's management permission. Team connections can be managed by authorized tenant administrators; personal connections and their delivery history are visible only to their creator. Visibility is fixed when the connection is created; create a new connection to change it. Existing subscriptions remain team connections.
+
+A personal connection receives the selected events from its tenant; it does not mean only events triggered by that user. The worker checks the owner's active account, active tenant membership and current management permission before every send, including retries and resends. Revoked access stops delivery. Personal connection failure emails go only to its owner.
+
+Delivery uses the saved destination: the channel selected during Slack authorization, the Telegram bot's configured chat ID, or the configured WhatsApp recipient number. No tenant-wide or platform-wide fallback recipient is used. A personal connection does not make an external group private: Slack/Telegram group administrators control membership. Choose a private channel or a direct chat and verify its members before enabling notifications. Telegram chat IDs must identify the intended chat; permission to post with a bot token alone does not prove ownership of that chat. WhatsApp recipients must agree to receive notifications.
+
+Tenant events, subscriptions and outbox payloads must have matching stable tenant IDs. Missing or mismatched IDs are blocked before any external request. Tenant slugs do not expand delivery scope. Self-hosted operators with legacy slug-based subscriptions must migrate them to stable tenant IDs before enabling delivery; encrypted provider credentials require re-encryption with the new tenant ID. Do not interpret a 24-character hexadecimal identifier as a slug.

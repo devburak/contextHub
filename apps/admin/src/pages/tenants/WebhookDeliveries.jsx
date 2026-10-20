@@ -4,12 +4,12 @@ import { tenantAPI } from '../../lib/tenantAPI.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { useApiError } from '../../lib/useApiError.js'
 
-export default function WebhookDeliveries({ tenantId }) {
+export default function WebhookDeliveries({ tenantId, userId }) {
   const { t } = useTranslation()
   const toast = useToast()
   const describeError = useApiError()
   const client = useQueryClient()
-  const query = useQuery({ queryKey: ['webhook-deliveries', tenantId],
+  const query = useQuery({ queryKey: ['webhook-deliveries', tenantId, userId],
     queryFn: () => tenantAPI.getWebhookDeliveries(tenantId), enabled: Boolean(tenantId), refetchInterval: 10000 })
   const replay = useMutation({ mutationFn: (id) => tenantAPI.replayWebhookDelivery(tenantId, id),
     onSuccess: () => {

@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const { assertWebhookTenant } = require('../lib/webhookTenant');
 
 function credentialsKey() {
   const value = process.env.WEBHOOK_CREDENTIALS_KEY;
@@ -70,6 +71,7 @@ function publicIntegration(provider, config) {
 }
 
 function buildDeliveryRequest(webhook, event, { signPayload, timestamp = Math.floor(Date.now() / 1000) } = {}) {
+  assertWebhookTenant(webhook.tenantId, event.tenantId);
   const provider = webhook.provider || 'webhook';
   if (provider === 'webhook') {
     const body = JSON.stringify(event);

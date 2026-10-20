@@ -6,6 +6,7 @@ const auth = require('../middleware/auth');
 const service = require('../services/webhookService');
 const tenantId = '64b000000000000000000001';
 const { PERMISSIONS } = require('@contexthub/common').rbac;
+const { Webhook } = require('@contexthub/common');
 const realRequirePermission = auth.requirePermission;
 let app;
 beforeEach(async () => {
@@ -20,6 +21,14 @@ beforeEach(async () => {
 });
 afterEach(async () => { await app.close(); vi.restoreAllMocks(); delete require.cache[require.resolve('./webhooks')]; });
 describe('webhook HTTP tenant isolation and serialization', () => {
+  it.each([['PUT', ''], ['DELETE', ''], ['POST', '/test'], ['POST', '/rotate-secret'], ['POST', '/queue/retry'], ['DELETE', '/queue/failed']])('rejects operations on another user’s personal hook: %s %s', async (method, suffix) => {
+    const exists = vi.spyOn(Webhook, 'exists').mockResolvedValue(null);
+    const update = vi.spyOn(service, 'updateWebhook');
+    const response = await app.inject({ method, url: `/admin/tenants/${tenantId}/webhooks/64b000000000000000000003${suffix}`, ...(['PUT', 'POST'].includes(method) ? { payload: {} } : {}) });
+    expect(response.statusCode).toBe(404);
+    expect(exists.mock.calls[0][0]).toMatchObject({ tenantId, $or: [{ scope: { $ne: 'personal' } }, { scope: 'personal', ownerUserId: 'user' }] });
+    expect(update).not.toHaveBeenCalled();
+  });
   it('requires tenant management permission before exposing delivery body previews', async () => {
     const getDeliveries = vi.spyOn(service, 'getDeliveries').mockResolvedValue({ items: [] });
     const response = await app.inject({ url: `/admin/tenants/${tenantId}/webhooks/deliveries`, headers: { 'x-test-view-only': '1' } });

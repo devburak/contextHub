@@ -45,7 +45,7 @@ async function completeSlackConnect(tenantId, userId, { code, state }) {
   try { data = JSON.parse(await readResponseSnippet(response, 16384)); } catch { throw new Error('Slack authorization failed'); }
   if (!response.ok || !data.ok || !data.incoming_webhook?.url) throw new Error('Slack authorization failed');
   return deps.createWebhook(tenantId, { ...record.subscription, provider: 'slack',
-    integration: { webhookUrl: data.incoming_webhook.url, channel: data.incoming_webhook.channel } }, { slackOAuth: true });
+    integration: { webhookUrl: data.incoming_webhook.url, channel: data.incoming_webhook.channel } }, { slackOAuth: true, actorId: String(userId) });
 }
 
 module.exports = { beginSlackConnect, completeSlackConnect,

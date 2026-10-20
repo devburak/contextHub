@@ -1,4 +1,8 @@
 {
+  "tenantWebhooks.scope_label": "Bağlantı görünürlüğü",
+  "tenantWebhooks.scope_tenant": "Ekip kanalı",
+  "tenantWebhooks.scope_personal": "Kişisel bağlantı",
+  "tenantWebhooks.scope_hint": "Ekip bağlantılarını tenant yöneticileri yönetir. Kişisel bağlantıları yalnız siz görebilirsiniz; tenant üyeliğiniz veya yönetim yetkiniz kaldırılırsa gönderimler durur. Kanal üyeleri bildirimleri okuyabilir; gerektiğinde özel bir hedef seçin.",
   "tenant.accept_invite": "Daveti Kabul Et",
   "tenant.accepting_invite": "Kabul ediliyor...",
   "tenant.action_failed": "İşlem tamamlanamadı.",

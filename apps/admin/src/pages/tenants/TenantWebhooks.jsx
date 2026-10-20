@@ -14,6 +14,7 @@ import { useToast } from '../../contexts/ToastContext.jsx'
 const DEFAULT_VALUES = {
   url: '',
   provider: 'webhook',
+  scope: 'tenant',
   payloadMode: 'event',
   locales: '', environments: '', collectionKeys: '',
   integration: {},
@@ -143,6 +144,14 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
               <option value="webhook">Webhook</option><option value="slack">Slack</option><option value="telegram">Telegram</option><option value="whatsapp">WhatsApp Business</option>
             </select>
           </div>
+          {provider !== 'webhook' && <div>
+            <label htmlFor="webhook-scope" className="block text-sm font-medium text-gray-700">{t('tenantWebhooks.scope_label')}</label>
+            <select id="webhook-scope" disabled={mode === 'edit'} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" {...register('scope')}>
+              <option value="tenant">{t('tenantWebhooks.scope_tenant')}</option>
+              <option value="personal">{t('tenantWebhooks.scope_personal')}</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500">{t('tenantWebhooks.scope_hint')}</p>
+          </div>}
           {provider === 'webhook' && <div>
             <label htmlFor="webhook-url" className="block text-sm font-medium text-gray-700">{t('tenantWebhooks.url_label')}</label>
             <input id="webhook-url" type="url" className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="https://example.com/webhook" {...register('url', { required: provider === 'webhook' })} />
@@ -248,7 +257,8 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
 }
 
 export default function TenantWebhooks() {
-  const { activeMembership, selectTenant } = useAuth()
+  const { activeMembership, selectTenant, user } = useAuth()
+  const userId = user?._id || user?.id
   const tenantId = activeMembership?.tenantId
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -288,14 +298,14 @@ export default function TenantWebhooks() {
   }, [tenantId, queryClient, toast, t, describeError, selectTenant])
 
   const webhooksQuery = useQuery({
-    queryKey: ['tenant-webhooks', tenantId],
+    queryKey: ['tenant-webhooks', tenantId, userId],
     queryFn: () => tenantAPI.getWebhooks(tenantId),
     enabled: Boolean(tenantId),
     refetchInterval: 10000
   })
 
   const queueQuery = useQuery({
-    queryKey: ['tenant-webhook-queue', tenantId],
+    queryKey: ['tenant-webhook-queue', tenantId, userId],
     queryFn: () => tenantAPI.getWebhookQueue(tenantId, { limit: 20 }),
     enabled: Boolean(tenantId),
     refetchInterval: 10000
@@ -400,6 +410,7 @@ export default function TenantWebhooks() {
     }
     if (values.provider === 'webhook') payload.url = values.url
     if (modalState.mode === 'create') {
+      payload.scope = values.provider === 'webhook' ? 'tenant' : values.scope
       payload.provider = values.provider
       if (values.provider === 'webhook') payload.secret = values.secret
     }
@@ -410,7 +421,7 @@ export default function TenantWebhooks() {
     if (values.provider === 'slack' && modalState.mode === 'create') {
       setConnectingSlack(true)
       try {
-        const { authorizeUrl } = await tenantAPI.beginSlackConnect(tenantId, { events: payload.events, filters: payload.filters, payloadMode: payload.payloadMode })
+        const { authorizeUrl } = await tenantAPI.beginSlackConnect(tenantId, { events: payload.events, filters: payload.filters, payloadMode: payload.payloadMode, scope: payload.scope })
         const state = new URL(authorizeUrl).searchParams.get('state')
         window.sessionStorage.setItem(`ctxhub-slack-oauth:${state}`, tenantId)
         window.location.assign(authorizeUrl)
@@ -762,6 +773,7 @@ export default function TenantWebhooks() {
               {webhooks.map((webhook) => (
                 <tr key={webhook.id}>
                   <td className="px-4 py-3 text-sm text-gray-900">{webhook.provider === 'webhook' ? webhook.url : `${webhook.provider}: ${webhook.integration?.channel || webhook.integration?.chatId || webhook.integration?.recipient || ''}`}
+                    {webhook.provider !== 'webhook' && <p className="mt-1 text-xs text-gray-500">{t(webhook.scope === 'personal' ? 'tenantWebhooks.scope_personal' : 'tenantWebhooks.scope_tenant')}</p>}
                     {webhook.disabledAt && <p className="mt-1 text-xs text-red-600">{t('tenantWebhooks.auto_disabled')}</p>}
                   </td>
                   <td className="px-4 py-3 text-sm">
@@ -815,7 +827,7 @@ export default function TenantWebhooks() {
         )}
       </div>
 
-      <WebhookDeliveries tenantId={tenantId} />
+      <WebhookDeliveries tenantId={tenantId} userId={userId} />
 
       <WebhookFormModal
         isOpen={modalState.open}

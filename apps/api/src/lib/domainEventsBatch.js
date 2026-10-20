@@ -11,7 +11,7 @@ const STALE_PROCESSING_MS = (() => {
 })();
 
 const ObjectId = mongoose.Types.ObjectId;
-const tenantSlugCache = new Map();
+const { tenantKey } = require('./webhookTenant');
 
 function now() {
   return new Date();
@@ -29,77 +29,15 @@ function resolveCollections() {
   const db = ensureDbConnection();
   return {
     events: db.collection('DomainEvents'),
-  webhooks: db.collection('webhooks'),
-    outbox: db.collection('WebhookOutbox'),
-    tenants: db.collection('tenants')
+    webhooks: db.collection('webhooks'),
+    outbox: db.collection('WebhookOutbox')
   };
 }
 
-function normalizeTenantIdValue(value) {
-  if (!value) {
-    return null;
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value.toString === 'function') {
-    const resolved = value.toString();
-    if (resolved && resolved !== '[object Object]') {
-      return resolved;
-    }
-  }
-  return null;
-}
-
-async function lookupTenantSlug(tenantIdString, tenantsCollection) {
-  if (!tenantIdString || !tenantsCollection) {
-    return null;
-  }
-
-  if (tenantSlugCache.has(tenantIdString)) {
-    return tenantSlugCache.get(tenantIdString);
-  }
-
-  let doc = null;
-
-  if (ObjectId.isValid(tenantIdString)) {
-    doc = await tenantsCollection.findOne(
-      { _id: new ObjectId(tenantIdString) },
-      { projection: { slug: 1 } }
-    );
-  }
-
-  if (!doc) {
-    doc = await tenantsCollection.findOne(
-      { slug: tenantIdString },
-      { projection: { slug: 1 } }
-    );
-  }
-
-  const slug = doc?.slug || null;
-  tenantSlugCache.set(tenantIdString, slug);
-  return slug;
-}
-
-async function buildTenantMatchValues(tenantId, options = {}) {
-  const normalized = normalizeTenantIdValue(tenantId);
-  if (normalized === null) {
-    return [null];
-  }
-
-  const values = new Set([normalized]);
-
-  if (typeof normalized === 'string' && ObjectId.isValid(normalized)) {
-    values.add(new ObjectId(normalized));
-    const slug = typeof options.findTenantSlug === 'function'
-      ? await options.findTenantSlug(normalized)
-      : null;
-    if (slug) {
-      values.add(slug);
-    }
-  }
-
-  return Array.from(values);
+async function buildTenantMatchValues(tenantId) {
+  const normalized = tenantKey(tenantId);
+  if (normalized === null) return [];
+  return ObjectId.isValid(normalized) ? [normalized, new ObjectId(normalized)] : [normalized];
 }
 
 /**
@@ -113,7 +51,7 @@ async function processDomainEventsBatch(options = {}) {
   const limit = Number.isFinite(options.limit) && options.limit > 0 ? options.limit : DEFAULT_BATCH_LIMIT;
   const tenantId = options.tenantId || null;
 
-  const { events, webhooks, outbox, tenants } = resolveCollections();
+  const { events, webhooks, outbox } = resolveCollections();
 
   const staleProcessingBefore = new Date(Date.now() - STALE_PROCESSING_MS);
   const query = {
@@ -172,9 +110,7 @@ async function processDomainEventsBatch(options = {}) {
         });
       }
 
-      const tenantMatchValues = await buildTenantMatchValues(event.tenantId, {
-        findTenantSlug: (id) => lookupTenantSlug(id, tenants)
-      });
+      const tenantMatchValues = await buildTenantMatchValues(event.tenantId);
       const hookQuery = {
         tenantId: { $in: tenantMatchValues },
         isActive: true
@@ -257,7 +193,6 @@ module.exports = {
   DEFAULT_BATCH_LIMIT,
   processDomainEventsBatch,
   __testables: {
-    buildTenantMatchValues,
-    normalizeTenantIdValue
+    buildTenantMatchValues
   }
 };

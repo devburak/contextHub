@@ -31,4 +31,15 @@ describe('webhook circuit breaker and owner alerts', () => {
     expect(webhooks.updateOne.mock.calls.at(-1)[1].$set).toMatchObject({ notificationPending: false, notificationSentAt: expect.any(Date) });
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: 'owner@example.com' }), 'tenant');
   });
+  it('addresses personal connection failure emails only to its active owner', async () => {
+    const hook = { _id: 'hook', tenantId: 'tenant', scope: 'personal', ownerUserId: 'personal-owner' };
+    const webhooks = { find: () => ({ limit: () => ({ toArray: async () => [hook] }) }), updateOne: vi.fn().mockResolvedValue({ modifiedCount: 1 }) };
+    const memberships = vi.spyOn(Membership, 'find').mockReturnValue({ select: () => ({ lean: async () => [{ userId: 'personal-owner' }] }) });
+    const users = vi.spyOn(User, 'find').mockReturnValue({ select: () => ({ lean: async () => [{ email: 'personal@example.com' }] }) });
+    const send = vi.spyOn(mailService, 'sendMail').mockResolvedValue({});
+    await notifyDisabledWebhooks(webhooks, 'tenant');
+    expect(memberships).toHaveBeenCalledWith({ tenantId: 'tenant', userId: 'personal-owner', status: 'active' });
+    expect(users).toHaveBeenCalledWith({ _id: { $in: ['personal-owner'] }, status: 'active' });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: 'personal@example.com' }), 'tenant');
+  });
 });

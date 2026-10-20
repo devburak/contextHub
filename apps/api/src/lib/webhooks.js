@@ -10,8 +10,10 @@
  * @param {DomainEvent} event
  * @returns {boolean}
  */
+const { sameWebhookTenant, tenantKey } = require('./webhookTenant');
+
 function isWebhookSubscribed(hook, event) {
-  if (!hook || !hook.isActive) {
+  if (!hook || !hook.isActive || !sameWebhookTenant(hook.tenantId, event?.tenantId)) {
     return false;
   }
 
@@ -31,11 +33,11 @@ function isWebhookSubscribed(hook, event) {
 }
 
 function selectEventPayload(event, mode) {
-  if (mode !== 'ids') return cloneEventPayload(event);
+  if (mode !== 'ids') return { ...cloneEventPayload(event), tenantId: tenantKey(event.tenantId) };
   const identifiers = Object.fromEntries(Object.entries(event.payload || {})
     .filter(([key]) => /^(?:id|.*Id|slug|key|collectionKey)$/.test(key)));
   if (event.payload?.response?.responseId) identifiers.responseId = event.payload.response.responseId;
-  return { id: event.id, tenantId: event.tenantId, type: event.type, occurredAt: event.occurredAt, payload: identifiers };
+  return { id: event.id, tenantId: tenantKey(event.tenantId), type: event.type, occurredAt: event.occurredAt, payload: identifiers };
 }
 
 function cloneEventPayload(event) {
@@ -62,10 +64,10 @@ function buildWebhookOutboxJobs(event, webhooks = []) {
   return webhooks
     .filter((hook) => isWebhookSubscribed(hook, event))
     .map((hook) => ({
-      tenantId: hook.tenantId || event.tenantId,
+      tenantId: hook.tenantId,
       webhookId: hook._id,
       eventId: event.id,
-      dedupeKey: `${hook.tenantId || event.tenantId}:${hook._id}:${event.id}`,
+      dedupeKey: `${hook.tenantId}:${hook._id}:${event.id}`,
       type: event.type,
       payload: selectEventPayload(event, hook.payloadMode),
       status: 'pending',
