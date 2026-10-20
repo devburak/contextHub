@@ -61,6 +61,23 @@ export const tenantAPI = {
     return data
   },
 
+  beginSlackConnect: async (tenantId, payload) => {
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks/slack/connect`, payload)
+    return data
+  },
+  completeSlackConnect: async (tenantId, payload) => {
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks/slack/complete`, payload)
+    return data
+  },
+  getWebhookDeliveries: async (tenantId) => {
+    const { data } = await apiClient.get(`/admin/tenants/${tenantId}/webhooks/deliveries`)
+    return data
+  },
+  replayWebhookDelivery: async (tenantId, deliveryId) => {
+    const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks/deliveries/${deliveryId}/replay`)
+    return data
+  },
+
   createWebhook: async (tenantId, payload) => {
     if (!tenantId) throw new Error('tenantId gerekli')
     const { data } = await apiClient.post(`/admin/tenants/${tenantId}/webhooks`, payload)

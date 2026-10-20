@@ -1,6 +1,11 @@
 // Additive indexes required by the API before it starts serving requests.
 // These are also used by the models so deployment and schema definitions agree.
 module.exports = {
+  WebhookOutbox: [
+    { dedupeKey: 1 },
+    { tenantId: 1, updatedAt: -1, createdAt: -1 },
+    { status: 1, updatedAt: 1 },
+  ],
   BillingPlanChange: [
     { tenantId: 1 },
     { tokenHash: 1 },

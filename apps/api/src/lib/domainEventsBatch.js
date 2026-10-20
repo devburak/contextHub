@@ -214,7 +214,11 @@ async function processDomainEventsBatch(options = {}) {
         continue;
       }
 
-      await outbox.insertMany(jobs);
+      // Reprocessing an event after a crash must not create duplicate deliveries.
+      await outbox.bulkWrite(jobs.map((job) => ({ updateOne: {
+        filter: { tenantId: job.tenantId, webhookId: job.webhookId, eventId: job.eventId },
+        update: { $setOnInsert: job }, upsert: true
+      } })), { ordered: false });
       queued += jobs.length;
       await events.updateOne(
         { _id: event._id },

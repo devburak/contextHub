@@ -1,8 +1,43 @@
 const webhookService = require('../services/webhookService');
-const { tenantContext, authenticate, requirePermission } = require('../middleware/auth');
+const { tenantContext, authenticate: authenticateBase, requirePermission } = require('../middleware/auth');
 const { rbac } = require('@contexthub/common');
 
 const { PERMISSIONS } = rbac;
+
+const slackOAuth = require('../services/webhookSlackOAuth');
+
+async function authenticate(request, reply) {
+  await authenticateBase(request, reply);
+  if (reply.sent) return;
+  if (request.params?.tenantId && String(request.params.tenantId) !== String(request.tenantId)) {
+    return reply.code(403).send({ error: 'Tenant mismatch' });
+  }
+}
+
+const filtersSchema = {
+  type: 'object', additionalProperties: false,
+  properties: Object.fromEntries(['locales', 'environments', 'collectionKeys'].map((key) => [key, {
+    type: 'array', maxItems: 50, items: { type: 'string', minLength: 1, maxLength: 100 }
+  }]))
+};
+const subscriptionProperties = {
+  payloadMode: { type: 'string', enum: ['event', 'ids'] }, filters: filtersSchema
+};
+const integrationSchema = {
+  type: 'object', additionalProperties: false,
+  properties: Object.fromEntries(['botToken', 'chatId', 'accessToken', 'phoneNumberId', 'recipient', 'templateName', 'language'].map((key) => [key, { type: 'string', maxLength: 4096 }]))
+};
+const deliverySchema = {
+  type: 'object', properties: {
+    id: { type: 'string', nullable: true }, webhookId: { type: 'string', nullable: true },
+    eventId: { type: 'string', nullable: true }, type: { type: 'string' }, status: { type: 'string' },
+    createdAt: { type: 'string', nullable: true }, updatedAt: { type: 'string', nullable: true },
+    lastError: { type: 'string', nullable: true }, errorType: { type: 'string', nullable: true },
+    lastHttpStatus: { type: 'number', nullable: true }, lastDurationMs: { type: 'number', nullable: true },
+    nextRetryAt: { type: 'string', nullable: true }, retryCount: { type: 'number' },
+    attempts: { type: 'array', items: { type: 'object', additionalProperties: true } }
+  }
+};
 
 const webhookResponseSchema = {
   type: 'object',
@@ -14,7 +49,11 @@ const webhookResponseSchema = {
     events: { type: 'array', items: { type: 'string' } },
     createdAt: { type: 'string', nullable: true },
     updatedAt: { type: 'string', nullable: true },
-    hasSecret: { type: 'boolean' }
+    hasSecret: { type: 'boolean' },
+    provider: { type: 'string' }, integration: { type: 'object', additionalProperties: true },
+    ...subscriptionProperties,
+    consecutiveFailures: { type: 'number' }, disabledAt: { type: 'string', nullable: true },
+    notificationPending: { type: 'boolean' }, notificationSentAt: { type: 'string', nullable: true }
   }
 };
 
@@ -146,38 +185,10 @@ async function webhookRoutes(fastify) {
               properties: {
                 totalPending: { type: 'number' },
                 totalFailed: { type: 'number' },
-                pendingItems: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      id: { type: 'string', nullable: true },
-                      eventId: { type: 'string', nullable: true },
-                      type: { type: 'string' },
-                      status: { type: 'string' },
-                      createdAt: { type: 'string', nullable: true },
-                      updatedAt: { type: 'string', nullable: true },
-                      lastError: { type: 'string', nullable: true },
-                      retryCount: { type: 'number' }
-                    }
-                  }
-                },
-                failedItems: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      id: { type: 'string', nullable: true },
-                      eventId: { type: 'string', nullable: true },
-                      type: { type: 'string' },
-                      status: { type: 'string' },
-                      createdAt: { type: 'string', nullable: true },
-                      updatedAt: { type: 'string', nullable: true },
-                      lastError: { type: 'string', nullable: true },
-                      retryCount: { type: 'number' }
-                    }
-                  }
-                }
+                totalDead: { type: 'number' },
+                pendingItems: { type: 'array', items: deliverySchema },
+                failedItems: { type: 'array', items: deliverySchema },
+                deadItems: { type: 'array', items: deliverySchema }
               }
             }
           }
@@ -188,6 +199,38 @@ async function webhookRoutes(fastify) {
     const { tenantId } = request.params;
     const { limit } = request.query || {};
     return webhookService.getWebhookQueueStatus(tenantId, { limit });
+  });
+
+  const manageHooks = [authenticate, requirePermission(PERMISSIONS.TENANTS_MANAGE)];
+  fastify.post('/admin/tenants/:tenantId/webhooks/slack/connect', {
+    preHandler: manageHooks,
+    schema: { body: { type: 'object', additionalProperties: false, properties: {
+      events: { type: 'array', items: { type: 'string' } }, ...subscriptionProperties
+    } } }
+  }, async (request, reply) => {
+    try { return await slackOAuth.beginSlackConnect(request.params.tenantId, request.user?._id, request.body || {}); }
+    catch (error) { return handleServiceError(reply, error); }
+  });
+  fastify.post('/admin/tenants/:tenantId/webhooks/slack/complete', {
+    preHandler: manageHooks,
+    schema: { body: { type: 'object', required: ['code', 'state'], additionalProperties: false, properties: {
+      code: { type: 'string', maxLength: 4096 }, state: { type: 'string', minLength: 64, maxLength: 64 }
+    } } }
+  }, async (request, reply) => {
+    try { return await slackOAuth.completeSlackConnect(request.params.tenantId, request.user?._id, request.body); }
+    catch (error) { return handleServiceError(reply, error); }
+  });
+  fastify.get('/admin/tenants/:tenantId/webhooks/deliveries', {
+    preHandler: manageHooks,
+    schema: { querystring: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100 }, webhookId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } } },
+      response: { 200: { type: 'object', properties: { items: { type: 'array', items: deliverySchema } } } } }
+  }, async (request) => webhookService.getDeliveries(request.params.tenantId, request.query));
+  fastify.post('/admin/tenants/:tenantId/webhooks/deliveries/:deliveryId/replay', {
+    preHandler: manageHooks,
+    schema: { params: { type: 'object', properties: { tenantId: { type: 'string' }, deliveryId: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } } } }
+  }, async (request, reply) => {
+    try { return await webhookService.replayDelivery(request.params.tenantId, request.params.deliveryId); }
+    catch (error) { return handleServiceError(reply, error); }
   });
 
   fastify.post('/admin/tenants/:tenantId/webhooks', {
@@ -206,9 +249,11 @@ async function webhookRoutes(fastify) {
           url: { type: 'string' },
           isActive: { type: 'boolean' },
           events: { type: 'array', items: { type: 'string' } },
-          secret: { type: 'string' }
+          secret: { type: 'string', maxLength: 512 },
+          provider: { type: 'string', enum: ['webhook', 'telegram', 'whatsapp'] },
+          integration: integrationSchema, ...subscriptionProperties
         },
-        required: ['url']
+        additionalProperties: false
       },
       response: {
         201: {
@@ -246,7 +291,8 @@ async function webhookRoutes(fastify) {
         properties: {
           url: { type: 'string' },
           isActive: { type: 'boolean' },
-          events: { type: 'array', items: { type: 'string' } }
+          events: { type: 'array', items: { type: 'string' } },
+          integration: integrationSchema, ...subscriptionProperties
         },
         additionalProperties: false
       },

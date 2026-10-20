@@ -59,10 +59,15 @@ function isBlockedAddress(address, family = net.isIP(address)) {
   if (!family) return true;
 
   if (family === 6) {
-    const mapped = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-    if (mapped) {
-      return isBlockedAddress(mapped[1], 4);
-    }
+    // Limit IPv6 to global unicast; reject mapped/NAT64/6to4 and special ranges.
+    const global = new net.BlockList();
+    global.addSubnet('2000::', 3, 'ipv6');
+    if (!global.check(address, 'ipv6')) return true;
+    const special = new net.BlockList();
+    special.addSubnet('2001::', 23, 'ipv6');
+    special.addSubnet('2002::', 16, 'ipv6');
+    special.addSubnet('3fff::', 20, 'ipv6');
+    if (special.check(address, 'ipv6')) return true;
   }
 
   return blockedAddresses.check(address, family === 6 ? 'ipv6' : 'ipv4');
@@ -90,7 +95,7 @@ function validateWebhookUrl(value) {
     throw securityError('Webhook URL must not include credentials');
   }
 
-  const hostname = unwrapHostname(parsed.hostname).toLowerCase();
+  const hostname = unwrapHostname(parsed.hostname).toLowerCase().replace(/\.$/, '');
   if (!hostname) {
     throw new Error('Webhook URL is invalid');
   }
@@ -119,9 +124,17 @@ async function prepareSafeWebhookRequest(value, options = {}) {
   const hostname = unwrapHostname(parsed.hostname);
   const lookup = options.lookup || dns.lookup;
   const literalFamily = net.isIP(hostname);
+  options.signal?.throwIfAborted();
+  let timer;
   const records = literalFamily
     ? [{ address: hostname, family: literalFamily }]
-    : await lookup(hostname, { all: true, verbatim: true });
+    : await Promise.race([
+      lookup(hostname, { all: true, verbatim: true }),
+      new Promise((resolve, reject) => {
+        timer = setTimeout(() => reject(Object.assign(new Error('DNS timeout'), { name: 'TimeoutError' })), 5000);
+      })
+    ]).finally(() => clearTimeout(timer));
+  options.signal?.throwIfAborted();
 
   if (!Array.isArray(records) || records.length === 0) {
     throw securityError('Webhook hostname did not resolve');

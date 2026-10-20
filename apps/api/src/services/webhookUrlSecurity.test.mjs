@@ -37,6 +37,9 @@ describe('webhook URL security', () => {
     'file:///etc/passwd',
     'https://user:password@hooks.example.com/events',
     'https://localhost/events',
+    'https://localhost./events',
+    'https://[64:ff9b::a00:1]/events',
+    'https://[2002:0a00:0001::1]/events',
     'https://127.0.0.1/events',
     'https://[::7f00:1]/events',
     'https://[::ffff:7f00:1]/events',
@@ -47,6 +50,11 @@ describe('webhook URL security', () => {
   it('rejects hostnames that resolve to private addresses', async () => {
     await expect(prepareSafeWebhookRequest('https://hooks.example.com/events', {
       lookup: async () => [{ address: '10.10.0.5', family: 4 }],
+    })).rejects.toMatchObject({ code: 'WEBHOOK_URL_BLOCKED' });
+  });
+  it('rejects a mixed public/private DNS answer', async () => {
+    await expect(prepareSafeWebhookRequest('https://hooks.example.com/events', {
+      lookup: async () => [{ address: '93.184.216.34', family: 4 }, { address: '127.0.0.1', family: 4 }]
     })).rejects.toMatchObject({ code: 'WEBHOOK_URL_BLOCKED' });
   });
 

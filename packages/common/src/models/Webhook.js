@@ -19,6 +19,20 @@ const webhookSchema = new Schema({
   secret: { type: String, required: true },
   isActive: { type: Boolean, default: true },
   events: { type: [String], default: ['*'] },
+  provider: { type: String, enum: ['webhook', 'slack', 'telegram', 'whatsapp'], default: 'webhook' },
+  configEncrypted: { type: String },
+  integration: { type: Schema.Types.Mixed },
+  payloadMode: { type: String, enum: ['event', 'ids'], default: 'event' },
+  filters: {
+    locales: { type: [String], default: [] },
+    environments: { type: [String], default: [] },
+    collectionKeys: { type: [String], default: [] }
+  },
+  consecutiveFailures: { type: Number, default: 0 },
+  disabledAt: { type: Date, default: null },
+  notificationPending: { type: Boolean, default: false },
+  notificationAttemptAt: { type: Date, default: null },
+  notificationSentAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date }
 });

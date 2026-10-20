@@ -8,8 +8,8 @@
     "en": "Build secure, cache-aware applications with the managed ContextHub service at ctxhub.net.",
     "tr": "ctxhub.net üzerindeki yönetilen ContextHub servisiyle güvenli ve cache uyumlu uygulamalar geliştirin."
   },
-  "version": "2026.10.03.1",
-  "updatedAt": "2026-10-03",
+  "version": "2026.10.20.1",
+  "updatedAt": "2026-10-20",
   "defaultSlug": "overview",
   "defaultLocale": "en",
   "aiLocale": "en",
@@ -358,6 +358,46 @@
       "audience": { "en": ["backend", "platform", "product"], "tr": ["backend", "platform", "ürün"] },
       "order": 110,
       "tags": ["quota", "usage", "rate limit", "429", "billing"]
+    },
+    {
+      "slug": "slack-notifications",
+      "files": {"en": "en/slack-notifications.md", "tr": "tr/slack-notifications.md"},
+      "title": {"en": "Slack notifications", "tr": "Slack bildirimleri"},
+      "description": {"en": "Connect your own Slack workspace, choose a channel, test event delivery and troubleshoot OAuth.", "tr": "Kendi Slack çalışma alanınızı bağlayın, kanal seçin, olay teslimatını test edip OAuth sorunlarını çözün."},
+      "category": {"en": "Integrations", "tr": "Entegrasyonlar"},
+      "audience": {"en": ["owner", "admin"], "tr": ["owner", "admin"]},
+      "order": 106,
+      "tags": ["slack", "notifications", "oauth", "all plans"]
+    },
+    {
+      "slug": "telegram-notifications",
+      "files": {"en": "en/telegram-notifications.md", "tr": "tr/telegram-notifications.md"},
+      "title": {"en": "Telegram notifications", "tr": "Telegram bildirimleri"},
+      "description": {"en": "Create your own bot, find a chat ID and connect Telegram event notifications.", "tr": "Kendi botunuzu oluşturun, sohbet kimliğini bulup Telegram olay bildirimlerini bağlayın."},
+      "category": {"en": "Integrations", "tr": "Entegrasyonlar"},
+      "audience": {"en": ["owner", "admin"], "tr": ["owner", "admin"]},
+      "order": 107,
+      "tags": ["telegram", "botfather", "chat id", "notifications", "all plans"]
+    },
+    {
+      "slug": "whatsapp-notifications",
+      "files": {"en": "en/whatsapp-notifications.md", "tr": "tr/whatsapp-notifications.md"},
+      "title": {"en": "WhatsApp notifications", "tr": "WhatsApp bildirimleri"},
+      "description": {"en": "Connect your own WhatsApp Business sender with an approved three-parameter message template.", "tr": "Kendi WhatsApp Business göndericinizi onaylı üç parametreli mesaj şablonuyla bağlayın."},
+      "category": {"en": "Integrations", "tr": "Entegrasyonlar"},
+      "audience": {"en": ["owner", "admin"], "tr": ["owner", "admin"]},
+      "order": 108,
+      "tags": ["whatsapp", "business", "template", "notifications", "all plans"]
+    },
+    {
+      "slug": "notification-provider-setup",
+      "files": {"en": "en/notification-provider-setup.md", "tr": "tr/notification-provider-setup.md"},
+      "title": {"en": "Notification provider setup", "tr": "Bildirim sağlayıcılarının kurulumu"},
+      "description": {"en": "Operator setup for Slack OAuth, credential encryption, existing SMTP and customer-owned channels.", "tr": "Slack OAuth, kimlik bilgisi şifrelemesi, mevcut SMTP ve müşteriye ait kanallar için yönetici kurulumu."},
+      "category": {"en": "Integrations", "tr": "Entegrasyonlar"},
+      "audience": {"en": ["owner", "platform"], "tr": ["owner", "platform"]},
+      "order": 109,
+      "tags": ["slack", "telegram", "whatsapp", "encryption", "smtp", "operator"]
     },
     {
       "slug": "edge-gateway",

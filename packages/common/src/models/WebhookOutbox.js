@@ -26,6 +26,7 @@ const webhookOutboxSchema = new Schema(
     tenantId: { type: String, required: true, index: true },
     webhookId: { type: Schema.Types.ObjectId, ref: 'Webhook', required: true },
     eventId: { type: String, required: true },
+    dedupeKey: { type: String },
     type: { type: String, required: true },
     payload: { type: Schema.Types.Mixed, required: true },
     status: {
@@ -42,6 +43,8 @@ const webhookOutboxSchema = new Schema(
     },
     lastHttpStatus: { type: Number, default: null },
     lastDurationMs: { type: Number, default: null },
+    leaseToken: { type: String, default: null },
+    attempts: { type: [Schema.Types.Mixed], default: [] },
     nextRetryAt: { type: Date, default: null },
     lifecyclePausedAt: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
@@ -58,6 +61,10 @@ webhookOutboxSchema.pre('save', function setUpdatedAt(next) {
 });
 
 webhookOutboxSchema.index({ status: 1, createdAt: 1 });
+webhookOutboxSchema.index({ tenantId: 1, updatedAt: -1, createdAt: -1 });
+webhookOutboxSchema.index({ status: 1, updatedAt: 1 });
+// Partial index can be added without deleting historic duplicate deliveries.
+webhookOutboxSchema.index({ dedupeKey: 1 }, { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string' } } });
 webhookOutboxSchema.index({ webhookId: 1, status: 1 });
 webhookOutboxSchema.index({ status: 1, nextRetryAt: 1 }); // Retry zamanına göre sorgulama için
 webhookOutboxSchema.index({ tenantId: 1, status: 1, nextRetryAt: 1 }); // Tenant bazlı retry sorgulama
