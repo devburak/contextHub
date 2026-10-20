@@ -1,4 +1,6 @@
 const { dispatchWebhookOutboxBatch } = require('./webhookDispatcher');
+const { processDomainEventsBatch } = require('./domainEventsBatch');
+const deps = { dispatchWebhookOutboxBatch, processDomainEventsBatch };
 
 const DEFAULT_INTERVAL_MS = 5000;
 let timer = null;
@@ -10,7 +12,8 @@ async function runBatch() {
   }
   isRunning = true;
   try {
-    const result = await dispatchWebhookOutboxBatch();
+    await deps.processDomainEventsBatch({ limit: Number(process.env.DOMAIN_EVENT_BATCH_LIMIT) || 100 });
+    const result = await deps.dispatchWebhookOutboxBatch({ limit: Number(process.env.WEBHOOK_DISPATCH_LIMIT) || 50 });
     if (result.processed) {
       console.log('[webhookScheduler] dispatched batch', result);
     }
@@ -50,5 +53,8 @@ function stop() {
 
 module.exports = {
   start,
-  stop
+  stop,
+  __setSchedulerDeps(overrides = {}) {
+    Object.assign(deps, { dispatchWebhookOutboxBatch, processDomainEventsBatch }, overrides);
+  }
 };

@@ -33,6 +33,13 @@ describe('isWebhookSubscribed', () => {
     const result = isWebhookSubscribed({ isActive: true, events: ['content.updated'] }, event);
     expect(result).toBe(false);
   });
+  it('combines locale, environment and collection filters even for wildcard subscriptions', () => {
+    const hook = { isActive: true, events: ['*'], filters: { locales: ['tr'], environments: ['production'], collectionKeys: ['news'] } };
+    const filtered = { ...event, type: 'collection.entry.updated', payload: { locale: 'tr', collectionKey: 'news' }, metadata: { environment: 'production' } };
+    expect(isWebhookSubscribed(hook, filtered)).toBe(true);
+    expect(isWebhookSubscribed(hook, { ...filtered, metadata: { environment: 'development' } })).toBe(false);
+    expect(isWebhookSubscribed(hook, { ...filtered, payload: {} })).toBe(false);
+  });
 });
 
 describe('buildWebhookOutboxJobs', () => {
@@ -77,5 +84,12 @@ describe('buildWebhookOutboxJobs', () => {
     // mutate original event and ensure job payload stays intact
     event.payload.nested.value = 99;
     expect(jobs[0].payload.payload.nested.value).toBe(1);
+  });
+  it('removes form answers and personal data from identifiers-only deliveries', () => {
+    const event = { ...baseEvent, type: 'form.submitted', payload: { formId: 'form', response: { responseId: 'response', userEmail: 'private@example.com', data: { private: true } } } };
+    const jobs = buildWebhookOutboxJobs(event, [{ _id: 'hook', isActive: true, events: ['*'], payloadMode: 'ids' }]);
+    expect(jobs[0].payload.payload).toEqual({ formId: 'form', responseId: 'response' });
+    expect(JSON.stringify(jobs[0])).not.toContain('private');
+    expect(jobs[0].dedupeKey).toBe('tenant_a:hook:evt_1');
   });
 });

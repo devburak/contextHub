@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
+import WebhookDeliveries from './WebhookDeliveries.jsx'
 import TenantTabs from '../../components/TenantTabs.jsx'
 import { tenantAPI } from '../../lib/tenantAPI.js'
 import { useApiError } from '../../lib/useApiError.js'
@@ -10,6 +11,10 @@ import { useToast } from '../../contexts/ToastContext.jsx'
 
 const DEFAULT_VALUES = {
   url: '',
+  provider: 'webhook',
+  payloadMode: 'event',
+  locales: '', environments: '', collectionKeys: '',
+  integration: {},
   isActive: true,
   events: ['*'],
   secret: ''
@@ -60,7 +65,10 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
         ...DEFAULT_VALUES,
         ...initialData,
         events: initialData?.events && initialData.events.length ? initialData.events : ['*'],
-        secret: initialData?.secret || ''
+        secret: '',
+        locales: initialData?.filters?.locales?.join(', ') || '',
+        environments: initialData?.filters?.environments?.join(', ') || '',
+        collectionKeys: initialData?.filters?.collectionKeys?.join(', ') || ''
       })
     }
   }, [isOpen, initialData, reset])
@@ -74,6 +82,7 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
     }
   }, [isOpen])
 
+  const provider = watch('provider') || 'webhook'
   const selectedEventsRaw = watch('events')
   const selectedEvents = Array.isArray(selectedEventsRaw) ? selectedEventsRaw : ['*']
   const listensAll = selectedEvents.includes('*')
@@ -113,13 +122,41 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
         </div>
         <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div>
-            <label className="block text-sm font-medium text-gray-700">{t('tenantWebhooks.url_label')}</label>
-            <input
-              type="url"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="https://example.com/webhook"
-              {...register('url', { required: true })}
-            />
+            <label htmlFor="webhook-provider" className="block text-sm font-medium text-gray-700">{t('tenantWebhooks.provider')}</label>
+            <select id="webhook-provider" disabled={mode === 'edit'} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" {...register('provider')}>
+              <option value="webhook">Webhook</option><option value="slack">Slack</option><option value="telegram">Telegram</option><option value="whatsapp">WhatsApp Business</option>
+            </select>
+          </div>
+          {provider === 'webhook' && <div>
+            <label htmlFor="webhook-url" className="block text-sm font-medium text-gray-700">{t('tenantWebhooks.url_label')}</label>
+            <input id="webhook-url" type="url" className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="https://example.com/webhook" {...register('url', { required: provider === 'webhook' })} />
+          </div>}
+          {provider !== 'webhook' && <a
+            href={`https://ctxhub.net/docs/${provider}-notifications`}
+            target="_blank" rel="noreferrer"
+            className="inline-block text-sm font-medium text-blue-600 hover:underline"
+          >{t('tenantWebhooks.setup_guide')}</a>}
+          {provider === 'slack' && <p className="text-sm text-gray-600">{t('tenantWebhooks.slack_hint')}</p>}
+          {['telegram', 'whatsapp'].includes(provider) && <div className="space-y-3 rounded-md bg-gray-50 p-4">
+            <p className="text-sm text-gray-600">{t(`tenantWebhooks.${provider}_hint`)}</p>
+            {mode === 'edit' && <p className="text-xs text-gray-500">{t('tenantWebhooks.credentials_edit_hint')}</p>}
+            {(provider === 'telegram' ? ['botToken', 'chatId'] : ['accessToken', 'phoneNumberId', 'recipient', 'templateName', 'language']).map((key) => <div key={key}>
+              <label htmlFor={`integration-${key}`} className="block text-sm font-medium text-gray-700">{t(`tenantWebhooks.field_${key}`)}</label>
+              <input id={`integration-${key}`} type={['botToken', 'accessToken'].includes(key) ? 'password' : 'text'} autoComplete="off" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" {...register(`integration.${key}`, { required: mode === 'create' && ['telegram', 'whatsapp'].includes(provider) })} />
+            </div>)}
+          </div>}
+          {provider === 'webhook' && <div>
+            <label htmlFor="webhook-payload" className="block text-sm font-medium text-gray-700">{t('tenantWebhooks.payload_mode')}</label>
+            <select id="webhook-payload" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" {...register('payloadMode')}>
+              <option value="event">{t('tenantWebhooks.payload_event')}</option><option value="ids">{t('tenantWebhooks.payload_ids')}</option>
+            </select>
+          </div>}
+          <div className="grid gap-3 sm:grid-cols-3">
+            {['locales', 'environments', 'collectionKeys'].map((key) => <div key={key}>
+              <label htmlFor={`filter-${key}`} className="block text-sm font-medium text-gray-700">{t(`tenantWebhooks.filter_${key}`)}</label>
+              <input id={`filter-${key}`} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" {...register(key)} />
+            </div>)}
+            <p className="text-xs text-gray-500 sm:col-span-3">{t('tenantWebhooks.filters_hint')}</p>
           </div>
 
           <div>
@@ -160,7 +197,7 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
             )}
           </div>
 
-          {mode === 'create' && (
+          {mode === 'create' && provider === 'webhook' && (
             <div>
               <label className="block text-sm font-medium text-gray-700">{t('tenantWebhooks.secret_optional_label')}</label>
               <input
@@ -182,10 +219,10 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !isEventSelectionValid}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
             >
-              {isSubmitting ? t('common.saving') : t('common.save')}
+              {isSubmitting ? t('common.saving') : provider === 'slack' && mode === 'create' ? t('tenantWebhooks.connect_slack') : t('common.save')}
             </button>
           </div>
         </form>
@@ -195,7 +232,7 @@ function WebhookFormModal({ isOpen, mode, initialData, availableEventTypes, onCl
 }
 
 export default function TenantWebhooks() {
-  const { activeMembership } = useAuth()
+  const { activeMembership, selectTenant } = useAuth()
   const tenantId = activeMembership?.tenantId
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -204,17 +241,48 @@ export default function TenantWebhooks() {
 
   const [modalState, setModalState] = useState({ open: false, mode: 'create', webhook: null })
   const [secretPreview, setSecretPreview] = useState(null)
+  const [connectingSlack, setConnectingSlack] = useState(false)
+  const oauthHandled = useRef(false)
+
+  useEffect(() => {
+    if (!tenantId || oauthHandled.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('state') || (!params.has('code') && !params.has('error'))) return
+    oauthHandled.current = true
+    const code = params.get('code')
+    const state = params.get('state')
+    const denied = params.has('error')
+    for (const key of ['code', 'state', 'error']) params.delete(key)
+    const clearCallback = () => window.history.replaceState(null, '', window.location.pathname + (params.size ? `?${params}` : ''))
+    if (denied) { clearCallback(); toast.error(t('tenantWebhooks.slack_denied')); return }
+    const originatingTenant = window.sessionStorage.getItem(`ctxhub-slack-oauth:${state}`) || tenantId
+    setConnectingSlack(true)
+    const complete = async () => {
+      if (originatingTenant !== tenantId && !(await selectTenant(originatingTenant))) {
+        throw new Error(t('tenantWebhooks.slack_tenant_failed'))
+      }
+      clearCallback()
+      window.sessionStorage.removeItem(`ctxhub-slack-oauth:${state}`)
+      await tenantAPI.completeSlackConnect(originatingTenant, { code, state })
+      toast.success(t('tenantWebhooks.created'))
+      queryClient.invalidateQueries({ queryKey: ['tenant-webhooks', originatingTenant] })
+    }
+    complete().catch((error) => toast.error(describeError(error, 'tenantWebhooks.create_failed')))
+      .finally(() => setConnectingSlack(false))
+  }, [tenantId, queryClient, toast, t, describeError, selectTenant])
 
   const webhooksQuery = useQuery({
     queryKey: ['tenant-webhooks', tenantId],
     queryFn: () => tenantAPI.getWebhooks(tenantId),
-    enabled: Boolean(tenantId)
+    enabled: Boolean(tenantId),
+    refetchInterval: 10000
   })
 
   const queueQuery = useQuery({
     queryKey: ['tenant-webhook-queue', tenantId],
     queryFn: () => tenantAPI.getWebhookQueue(tenantId, { limit: 20 }),
-    enabled: Boolean(tenantId)
+    enabled: Boolean(tenantId),
+    refetchInterval: 10000
   })
 
   const availableEventTypes = useMemo(() => webhooksQuery.data?.availableEventTypes || [], [webhooksQuery.data])
@@ -239,7 +307,7 @@ export default function TenantWebhooks() {
 
   const createMutation = useMutation({
     mutationFn: (payload) => tenantAPI.createWebhook(tenantId, payload),
-    onSuccess: ({ webhook, secret }) => {
+    onSuccess: ({ secret }) => {
       toast.success(t('tenantWebhooks.created'))
       setSecretPreview(secret)
       queryClient.invalidateQueries({ queryKey: ['tenant-webhooks', tenantId] })
@@ -299,7 +367,8 @@ export default function TenantWebhooks() {
     }
   }
 
-  const handleSubmit = (values) => {
+  const handleSubmit = async (values) => {
+    values.provider = modalState.webhook?.provider || values.provider || 'webhook'
     const eventsArray = Array.isArray(values.events) ? values.events : ['*']
     const normalizedEvents = eventsArray.includes('*') ? ['*'] : eventsArray.filter(Boolean)
 
@@ -309,10 +378,31 @@ export default function TenantWebhooks() {
     }
 
     const payload = {
-      url: values.url,
-      isActive: values.isActive,
-      events: normalizedEvents,
-      secret: values.secret
+      isActive: values.isActive, events: normalizedEvents,
+      payloadMode: values.payloadMode,
+      filters: Object.fromEntries(['locales', 'environments', 'collectionKeys'].map((key) => [key, (values[key] || '').split(',').map((value) => value.trim()).filter(Boolean)]))
+    }
+    if (values.provider === 'webhook') payload.url = values.url
+    if (modalState.mode === 'create') {
+      payload.provider = values.provider
+      if (values.provider === 'webhook') payload.secret = values.secret
+    }
+    if (['telegram', 'whatsapp'].includes(values.provider)) {
+      const tokenKey = values.provider === 'telegram' ? 'botToken' : 'accessToken'
+      if (modalState.mode === 'create' || values.integration?.[tokenKey]) payload.integration = values.integration
+    }
+    if (values.provider === 'slack' && modalState.mode === 'create') {
+      setConnectingSlack(true)
+      try {
+        const { authorizeUrl } = await tenantAPI.beginSlackConnect(tenantId, { events: payload.events, filters: payload.filters, payloadMode: payload.payloadMode })
+        const state = new URL(authorizeUrl).searchParams.get('state')
+        window.sessionStorage.setItem(`ctxhub-slack-oauth:${state}`, tenantId)
+        window.location.assign(authorizeUrl)
+      } catch (error) {
+        toast.error(describeError(error, 'tenantWebhooks.create_failed'))
+        setConnectingSlack(false)
+      }
+      return
     }
 
     if (modalState.mode === 'edit' && modalState.webhook) {
@@ -349,9 +439,11 @@ export default function TenantWebhooks() {
     mutationFn: ({ id }) => tenantAPI.sendTestWebhook(tenantId, id),
     onSuccess: () => {
       toast.success(t('tenantWebhooks.test_sent'))
+      queryClient.invalidateQueries({ queryKey: ['webhook-deliveries', tenantId] })
     },
     onError: (error) => {
       toast.error(describeError(error, 'tenantWebhooks.test_failed'))
+      queryClient.invalidateQueries({ queryKey: ['webhook-deliveries', tenantId] })
     }
   })
 
@@ -400,13 +492,14 @@ export default function TenantWebhooks() {
     }
   }
 
-  const isTestingWebhook = (webhookId) => testMutation.isPending && testMutation.variables?.id === webhookId
+  const isTestingWebhook = (webhookId) => testMutation.isLoading && testMutation.variables?.id === webhookId
 
   return (
     <div className="space-y-6">
       <TenantTabs active="webhooks" />
       <div>
         <h1 className="text-xl font-semibold text-gray-900">{t('tenantWebhooks.title')}</h1>
+        <p className="mt-2 text-sm font-medium text-blue-700">{t('tenantWebhooks.all_plans')}</p>
         <p className="mt-1 text-sm text-gray-600">
           <Trans
             i18nKey="tenantWebhooks.description"
@@ -432,28 +525,28 @@ export default function TenantWebhooks() {
             <button
               type="button"
               onClick={handleManualTrigger}
-              disabled={triggerMutation.isPending}
+              disabled={triggerMutation.isLoading}
               className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
             >
-              {triggerMutation.isPending ? t('tenantWebhooks.running') : t('tenantWebhooks.run_pending')}
+              {triggerMutation.isLoading ? t('tenantWebhooks.running') : t('tenantWebhooks.run_pending')}
             </button>
             {((queueData?.outbox?.totalFailed ?? 0) > 0 || (queueData?.outbox?.totalDead ?? 0) > 0) && (
               <>
                 <button
                   type="button"
                   onClick={handleBulkRetryAll}
-                  disabled={bulkRetryAllMutation.isPending}
+                  disabled={bulkRetryAllMutation.isLoading}
                   className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
                 >
-                  {bulkRetryAllMutation.isPending ? t('tenantWebhooks.processing') : t('tenantWebhooks.retry_all')}
+                  {bulkRetryAllMutation.isLoading ? t('tenantWebhooks.processing') : t('tenantWebhooks.retry_all')}
                 </button>
                 <button
                   type="button"
                   onClick={handleBulkDeleteAll}
-                  disabled={bulkDeleteAllMutation.isPending}
+                  disabled={bulkDeleteAllMutation.isLoading}
                   className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-60"
                 >
-                  {bulkDeleteAllMutation.isPending ? t('common.deleting') : t('tenantWebhooks.delete_failed_jobs')}
+                  {bulkDeleteAllMutation.isLoading ? t('common.deleting') : t('tenantWebhooks.delete_failed_jobs')}
                 </button>
               </>
             )}
@@ -653,7 +746,9 @@ export default function TenantWebhooks() {
             <tbody className="divide-y divide-gray-200 bg-white">
               {webhooks.map((webhook) => (
                 <tr key={webhook.id}>
-                  <td className="px-4 py-3 text-sm text-gray-900">{webhook.url}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">{webhook.provider === 'webhook' ? webhook.url : `${webhook.provider}: ${webhook.integration?.channel || webhook.integration?.chatId || webhook.integration?.recipient || ''}`}
+                    {webhook.disabledAt && <p className="mt-1 text-xs text-red-600">{t('tenantWebhooks.auto_disabled')}</p>}
+                  </td>
                   <td className="px-4 py-3 text-sm">
                     {webhook.isActive ? (
                       <span className="inline-flex rounded-full bg-green-100 px-2 text-xs font-semibold text-green-800">{t('status.active')}</span>
@@ -681,13 +776,13 @@ export default function TenantWebhooks() {
                       >
                         {isTestingWebhook(webhook.id) ? t('tenantWebhooks.testing') : t('tenantWebhooks.send_test')}
                       </button>
-                      <button
+                      {webhook.provider === 'webhook' && <button
                         type="button"
                         onClick={() => handleRotateSecret(webhook)}
                         className="rounded-md border border-amber-300 px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50"
                       >
                         {t('tenantWebhooks.rotate_secret')}
-                      </button>
+                      </button>}
                       <button
                         type="button"
                         onClick={() => handleDelete(webhook)}
@@ -705,6 +800,8 @@ export default function TenantWebhooks() {
         )}
       </div>
 
+      <WebhookDeliveries tenantId={tenantId} />
+
       <WebhookFormModal
         isOpen={modalState.open}
         mode={modalState.mode}
@@ -712,7 +809,7 @@ export default function TenantWebhooks() {
         onClose={closeModal}
         onSubmit={handleSubmit}
         availableEventTypes={availableEventTypes}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
+        isSubmitting={createMutation.isLoading || updateMutation.isLoading || connectingSlack}
       />
       <SecretPreview secret={secretPreview} onClose={() => setSecretPreview(null)} />
     </div>

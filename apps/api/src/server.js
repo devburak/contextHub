@@ -506,6 +506,11 @@ async function start() {
 
 
   const app = await buildServer();
+  const webhookScheduler = require('./lib/webhookScheduler');
+  if (!['0', 'false', 'off'].includes(String(process.env.WEBHOOK_SCHEDULER_ENABLED || '').toLowerCase())) {
+    webhookScheduler.start();
+    app.addHook('onClose', async () => webhookScheduler.stop());
+  }
   const port = process.env.PORT || 3000;
   const host = process.env.HOST || '0.0.0.0';
   try {

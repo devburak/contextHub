@@ -15,13 +15,16 @@ describe('sendTestWebhook', () => {
   let findOneSpy
   let mockFetch
   let mockSignPayload
+  let mockRecordTestDelivery
   let mockPrepareSafeWebhookRequest
 
   beforeEach(() => {
     mockFetch = vi.fn()
     mockSignPayload = vi.fn(() => 'mock-signature')
     mockPrepareSafeWebhookRequest = vi.fn(async (url) => ({ url }))
+    mockRecordTestDelivery = vi.fn().mockResolvedValue({})
     setWebhookDeps({
+      recordTestDelivery: mockRecordTestDelivery,
       fetch: mockFetch,
       signPayload: mockSignPayload,
       prepareSafeWebhookRequest: mockPrepareSafeWebhookRequest
@@ -51,7 +54,7 @@ describe('sendTestWebhook', () => {
     const result = await sendTestWebhook('tenant_1', 'hook123')
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
-    expect(mockPrepareSafeWebhookRequest).toHaveBeenCalledWith('https://example.com/webhook')
+    expect(mockPrepareSafeWebhookRequest).toHaveBeenCalledWith('https://example.com/webhook', expect.objectContaining({ signal: expect.any(AbortSignal) }))
     const [url, options] = mockFetch.mock.calls[0]
     expect(url).toBe('https://example.com/webhook')
     expect(options.headers['X-CTXHUB-EVENT']).toBe('webhook.test')
@@ -74,8 +77,11 @@ describe('sendTestWebhook', () => {
     expect(parsedBody.payload).toHaveProperty('message')
 
     expect(mockSignPayload).toHaveBeenCalledWith('topsecret', options.body)
+    expect(options.headers['X-CTXHUB-TIMESTAMP']).toMatch(/^\d+$/)
+    expect(mockSignPayload).toHaveBeenCalledWith('topsecret', `${options.headers['X-CTXHUB-TIMESTAMP']}.${options.body}`)
     expect(result).toEqual({ ok: true, status: 200, responseBody: 'OK' })
     expect(okTextMock).toHaveBeenCalledTimes(1)
+    expect(mockRecordTestDelivery).toHaveBeenCalledWith(expect.objectContaining({ status: 'done', type: 'webhook.test', lastHttpStatus: 200 }))
   })
 
   it('throws when the webhook responds with an error', async () => {
@@ -86,5 +92,6 @@ describe('sendTestWebhook', () => {
       'Test webhook failed with HTTP 500'
     )
     expect(failTextMock).toHaveBeenCalledTimes(1)
+    expect(mockRecordTestDelivery).toHaveBeenCalledWith(expect.objectContaining({ status: 'dead', lastHttpStatus: 500, nextRetryAt: null }))
   })
 })

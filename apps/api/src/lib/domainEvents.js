@@ -76,7 +76,7 @@ async function recordDomainEvent(
     type,
     occurredAt: now.toISOString(),
     payload: payload && typeof payload === 'object' ? { ...payload } : {},
-    metadata: metadata && Object.keys(metadata).length ? { ...metadata } : null,
+    metadata: { ...metadata, environment: process.env.APP_ENV || process.env.NODE_ENV || 'development' },
     status: 'pending',
     retryCount: 0,
     lastError: null,

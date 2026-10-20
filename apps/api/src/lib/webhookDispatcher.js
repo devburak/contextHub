@@ -7,7 +7,9 @@ const {
 } = require('../services/webhookUrlSecurity');
 
 const DEFAULT_BATCH_LIMIT = 50;
-const MAX_LOG_BODY_LENGTH = 500;
+const { buildDeliveryRequest, readResponseSnippet } = require('../services/webhookDelivery');
+const { notifyDisabledWebhooks, recordWebhookHealth } = require('../services/webhookHealth');
+const dispatcherDeps = { fetch, prepareSafeWebhookRequest, notifyDisabledWebhooks, recordWebhookHealth };
 const DEFAULT_MAX_RETRY_ATTEMPTS = Number.isFinite(Number(process.env.WEBHOOK_MAX_RETRY_ATTEMPTS))
   ? Number(process.env.WEBHOOK_MAX_RETRY_ATTEMPTS)
   : 5;
@@ -39,7 +41,7 @@ function classifyError(statusCode, error) {
     return ERROR_TYPES.PERMANENT;
   }
   // Timeout hatası
-  if (error?.name === 'TimeoutError' || error?.code === 'UND_ERR_CONNECT_TIMEOUT' || error?.message?.includes('timeout')) {
+  if (error?.name === 'AbortError' || error?.name === 'TimeoutError' || error?.code === 'UND_ERR_CONNECT_TIMEOUT' || error?.message?.includes('timeout')) {
     return ERROR_TYPES.TIMEOUT;
   }
 
@@ -94,7 +96,7 @@ function calculateBackoff(retryCount, baseBackoffMs = DEFAULT_BASE_BACKOFF_MS, m
   // Jitter ekle (%0-25 arası rastgele)
   const jitter = cappedDelay * Math.random() * 0.25;
 
-  return Math.floor(cappedDelay + jitter);
+  return Math.floor(Math.min(maxBackoffMs, cappedDelay + jitter));
 }
 
 /**
@@ -172,20 +174,11 @@ function resolveAbortSignal(timeoutMs = 15000) {
   return undefined;
 }
 
-async function readResponseSnippet(response) {
-  if (!response || typeof response.text !== 'function') {
-    return null;
-  }
-  try {
-    const text = await response.text();
-    if (!text) return null;
-    if (text.length <= MAX_LOG_BODY_LENGTH) {
-      return text;
-    }
-    return `${text.slice(0, MAX_LOG_BODY_LENGTH)}…`;
-  } catch (error) {
-    return null;
-  }
+function parseRetryAfter(value, now = Date.now()) {
+  if (!value) return 0;
+  const seconds = Number(value);
+  const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - now;
+  return Number.isFinite(delay) ? Math.min(24 * 3600_000, Math.max(0, delay)) : 0;
 }
 
 async function dispatchWebhookOutboxBatch(options = {}) {
@@ -195,230 +188,95 @@ async function dispatchWebhookOutboxBatch(options = {}) {
   const baseBackoffMs = resolveBaseBackoffMs(options.baseBackoffMs);
   const maxBackoffMs = resolveMaxBackoffMs(options.maxBackoffMs);
   const { outbox, webhooks } = resolveCollections();
-
-  const query = { status: 'pending' };
-  if (tenantId) {
-    query.tenantId = tenantId;
-  }
-
-  const jobs = await outbox
-    .find(query)
-    .sort({ createdAt: 1 })
-    .limit(limit)
-    .toArray();
-
-  if (!jobs.length) {
-    return { processed: 0, succeeded: 0, failed: 0, skipped: 0, dead: 0 };
-  }
-
-  let succeeded = 0;
-  let failed = 0;
-  let skipped = 0;
-  let dead = 0;
-
+  // Every entry point (scheduler, CLI, cron, manual trigger) processes due retries.
+  await retryFailedWebhookJobs({ tenantId, maxAttempts });
+  try { await dispatcherDeps.notifyDisabledWebhooks(webhooks, tenantId); }
+  catch { console.error('[webhookDispatcher] Health notification scan failed'); }
+  const staleBefore = new Date(Date.now() - 120_000);
+  const query = { $or: [
+    { status: 'pending' },
+    { status: 'processing', updatedAt: { $lt: staleBefore } }
+  ] };
+  if (tenantId) query.tenantId = tenantId;
+  const jobs = await outbox.find(query).sort({ createdAt: 1 }).limit(limit).toArray();
+  const result = { processed: jobs.length, succeeded: 0, failed: 0, skipped: 0, dead: 0 };
   for (const job of jobs) {
+    const leaseToken = crypto.randomUUID();
     const lock = await outbox.updateOne(
-      { _id: job._id, status: 'pending' },
-      { $set: { status: 'processing', updatedAt: new Date(), lastError: null } }
+      { _id: job._id, tenantId: job.tenantId, status: job.status, updatedAt: job.updatedAt ?? null },
+      { $set: { status: 'processing', leaseToken, updatedAt: new Date() } }
     );
-
-    if (!lock.matchedCount || !lock.modifiedCount) {
-      skipped += 1;
+    if (!lock.modifiedCount) { result.skipped++; continue; }
+    const owned = { _id: job._id, tenantId: job.tenantId, status: 'processing', leaseToken };
+    const webhook = await webhooks.findOne({ _id: job.webhookId, tenantId: job.tenantId });
+    if (!webhook || !webhook.isActive) {
+      result.skipped++;
+      await outbox.updateOne(owned, { $set: { status: 'dead', leaseToken: null, updatedAt: new Date(), lastError: 'Webhook not found or inactive', nextRetryAt: null } });
       continue;
     }
-
-    const webhook = await webhooks.findOne({ _id: job.webhookId, tenantId: job.tenantId, isActive: true });
-    if (!webhook) {
-      skipped += 1;
-      await outbox.updateOne(
-        { _id: job._id },
-        {
-          $set: {
-            status: 'done',
-            updatedAt: new Date(),
-            lastError: 'Webhook not found or inactive'
+    const startedAt = new Date();
+    let responseStatus = null;
+    let responseBody = null;
+    let request = null;
+    let retryAfterMs = 0;
+    let failure = null;
+    try {
+      request = buildDeliveryRequest(webhook, job.payload || {}, { signPayload });
+      const signal = resolveAbortSignal(Math.min(60_000, options.timeoutMs || 15000));
+      const prepared = await dispatcherDeps.prepareSafeWebhookRequest(request.url, { signal });
+      try {
+        const response = await dispatcherDeps.fetch(prepared.url, {
+          method: 'POST', headers: request.headers, body: request.body,
+          redirect: 'error', dispatcher: prepared.dispatcher, signal
+        });
+        responseStatus = response.status;
+        retryAfterMs = parseRetryAfter(response.headers?.get?.('retry-after'));
+        const snippet = await readResponseSnippet(response, webhook.provider === 'telegram' ? 16384 : 2048);
+        // Providers can echo credentials in their error messages. Never persist them.
+        if (!webhook.provider || webhook.provider === 'webhook') responseBody = snippet;
+        if (webhook.provider === 'telegram') {
+          let data;
+          try { data = JSON.parse(snippet); } catch { throw new Error('Invalid provider response'); }
+          if (!data.ok) {
+            responseStatus = Number(data.error_code) || responseStatus;
+            retryAfterMs = Math.max(retryAfterMs, parseRetryAfter(String(data.parameters?.retry_after || 0)));
+            throw new Error(`Provider HTTP ${responseStatus}`);
           }
         }
-      );
-      continue;
-    }
-
-    const body = JSON.stringify(job.payload || {});
-    const signature = signPayload(webhook.secret, body);
-
-    const context = {
-      tenantId: job.tenantId,
-      webhookId: job.webhookId?.toString?.() || job.webhookId,
-      eventId: job.eventId
-    };
-
-    let responseStatus = null;
-    let responseBodySnippet = null;
-    let durationMs = null;
-
-    try {
-      const startTime = typeof performance !== 'undefined' && performance.now
-        ? performance.now()
-        : Date.now();
-
-      const prepared = await prepareSafeWebhookRequest(webhook.url);
-      let response;
-      try {
-        response = await fetch(prepared.url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CTXHUB-SIGNATURE': signature,
-            'X-CTXHUB-EVENT': job.type
-          },
-          body,
-          redirect: 'error',
-          dispatcher: prepared.dispatcher,
-          signal: resolveAbortSignal(options.timeoutMs || 15000)
-        });
-
-        responseStatus = response.status;
-        const endTime = typeof performance !== 'undefined' && performance.now
-          ? performance.now()
-          : Date.now();
-        durationMs = Math.round(endTime - startTime);
-
-        responseBodySnippet = await readResponseSnippet(response);
+        if (!response.ok) throw new Error(`HTTP ${responseStatus}`);
       } finally {
         await closeWebhookDispatcher(prepared.dispatcher);
       }
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      succeeded += 1;
-      console.info('[webhookDispatcher] Webhook delivered', {
-        ...context,
-        status: responseStatus,
-        durationMs,
-        responseBody: responseBodySnippet
-      });
-      await outbox.updateOne(
-        { _id: job._id },
-        {
-          $set: {
-            status: 'done',
-            updatedAt: new Date(),
-            lastError: null,
-            errorType: null,
-            lastHttpStatus: responseStatus,
-            lastDurationMs: durationMs,
-            nextRetryAt: null
-          }
-        }
-      );
-    } catch (error) {
-      const nextRetryCount = (job.retryCount || 0) + 1;
-      const errorType = classifyError(responseStatus, error);
-
-      // Kalıcı hata ise direkt dead olarak işaretle
-      if (errorType === ERROR_TYPES.PERMANENT) {
-        dead += 1;
-        const failureMessage = `Kalıcı hata (${responseStatus || 'unknown'}): ${error?.message || 'Unknown error'}. Retry yapılmayacak.`;
-        console.error('[webhookDispatcher] Webhook delivery permanently failed', {
-          ...context,
-          status: responseStatus,
-          responseBody: responseBodySnippet,
-          error: error?.message || error,
-          errorType,
-          retryCount: nextRetryCount
-        });
-        await outbox.updateOne(
-          { _id: job._id },
-          {
-            $set: {
-              status: 'dead',
-              updatedAt: new Date(),
-              lastError: failureMessage,
-              errorType,
-              lastHttpStatus: responseStatus,
-              lastDurationMs: durationMs,
-              nextRetryAt: null
-            },
-            $inc: { retryCount: 1 }
-          }
-        );
-        continue;
-      }
-
-      // Geçici hata - retry limit kontrolü
-      const reachedMax = nextRetryCount >= maxAttempts;
-
-      if (reachedMax) {
-        dead += 1;
-        const failureMessage = `Max retry aşıldı (${maxAttempts}). Son hata: ${error?.message || 'Unknown error'}`;
-        console.error('[webhookDispatcher] Webhook delivery failed - max retries reached', {
-          ...context,
-          status: responseStatus,
-          responseBody: responseBodySnippet,
-          error: error?.message || error,
-          errorType,
-          retryCount: nextRetryCount,
-          maxAttempts
-        });
-        await outbox.updateOne(
-          { _id: job._id },
-          {
-            $set: {
-              status: 'dead',
-              updatedAt: new Date(),
-              lastError: failureMessage,
-              errorType,
-              lastHttpStatus: responseStatus,
-              lastDurationMs: durationMs,
-              nextRetryAt: null
-            },
-            $inc: { retryCount: 1 }
-          }
-        );
-      } else {
-        failed += 1;
-        const nextRetryAt = calculateNextRetryAt(nextRetryCount, errorType, baseBackoffMs, maxBackoffMs);
-        const failureMessage = error?.message || 'Unknown error';
-
-        console.error('[webhookDispatcher] Webhook delivery failed - will retry', {
-          ...context,
-          status: responseStatus,
-          responseBody: responseBodySnippet,
-          error: error?.message || error,
-          errorType,
-          retryCount: nextRetryCount,
-          maxAttempts,
-          nextRetryAt: nextRetryAt.toISOString()
-        });
-
-        await outbox.updateOne(
-          { _id: job._id },
-          {
-            $set: {
-              status: 'failed',
-              updatedAt: new Date(),
-              lastError: failureMessage,
-              errorType,
-              lastHttpStatus: responseStatus,
-              lastDurationMs: durationMs,
-              nextRetryAt
-            },
-            $inc: { retryCount: 1 }
-          }
-        );
-      }
-    }
+    } catch (error) { failure = error; }
+    const errorType = failure ? classifyError(responseStatus, failure) : null;
+    const retryCount = (job.retryCount || 0) + (failure ? 1 : 0);
+    const dead = failure && (errorType === ERROR_TYPES.PERMANENT || retryCount >= maxAttempts);
+    const status = !failure ? 'done' : dead ? 'dead' : 'failed';
+    const delay = Math.max(retryAfterMs, calculateBackoff(retryCount, baseBackoffMs, maxBackoffMs, errorType));
+    const lastError = failure ? (webhook.provider && webhook.provider !== 'webhook'
+      ? `Integration delivery failed (${responseStatus || errorType})`
+      : (failure.message || 'Delivery failed').slice(0, 500)) : null;
+    const durationMs = Date.now() - startedAt.getTime();
+    const attempt = {
+      at: startedAt, status: responseStatus, durationMs, error: lastError,
+      requestBody: (!webhook.provider || webhook.provider === 'webhook') ? request?.body?.slice(0, 4096) : null,
+      responseBody, timestamp: request?.headers?.['X-CTXHUB-TIMESTAMP'] || null
+    };
+    const saved = await outbox.updateOne(owned, {
+      $set: { status, leaseToken: null, updatedAt: new Date(), lastError, errorType,
+        lastHttpStatus: responseStatus, lastDurationMs: durationMs,
+        nextRetryAt: status === 'failed' ? new Date(Date.now() + delay) : null },
+      $inc: { retryCount: failure ? 1 : 0 },
+      $push: { attempts: { $each: [attempt], $slice: -20 } }
+    });
+    if (!saved.modifiedCount) { result.skipped++; continue; }
+    result[!failure ? 'succeeded' : dead ? 'dead' : 'failed']++;
+    try {
+      const threshold = Number(process.env.WEBHOOK_DISABLE_AFTER_FAILURES) || 10;
+      await dispatcherDeps.recordWebhookHealth(webhooks, webhook, !failure, Math.max(1, threshold));
+    } catch { console.error('[webhookDispatcher] Health update failed', { webhookId: String(webhook._id) }); }
   }
-
-  return {
-    processed: jobs.length,
-    succeeded,
-    failed,
-    skipped,
-    dead
-  };
+  return result;
 }
 
 /**
@@ -629,5 +487,9 @@ module.exports = {
   // Utility functions (exported for testing)
   classifyError,
   calculateBackoff,
-  calculateNextRetryAt
+  calculateNextRetryAt,
+  parseRetryAfter,
+  __setDispatcherDeps(overrides = {}) {
+    Object.assign(dispatcherDeps, { fetch, prepareSafeWebhookRequest, notifyDisabledWebhooks, recordWebhookHealth }, overrides);
+  }
 };
