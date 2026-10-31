@@ -1,7 +1,7 @@
-import { initTracker, getTracker, PlacementTracker } from './tracking';
-import frequencyManager from './FrequencyManager';
-import { usePlacement } from './hooks/usePlacement';
-import { PlacementHost } from './components/PlacementHost';
+import { initTracker, getTracker, PlacementTracker } from './tracking.js';
+import frequencyManager from './FrequencyManager.js';
+import { usePlacement } from './hooks/usePlacement.js';
+import { PlacementHost } from './components/PlacementHost.jsx';
 
 export { initTracker, getTracker, PlacementTracker };
 export { frequencyManager };

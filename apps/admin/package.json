@@ -1,6 +1,6 @@
 {
   "name": "@contexthub/admin",
-  "version": "0.1.49",
+  "version": "0.1.50",
   "private": true,
   "description": "React administration interface for contextHub",
   "type": "module",
@@ -35,7 +35,7 @@
     "@lexical/react": "^0.15.0",
     "@lexical/rich-text": "^0.15.0",
     "@tanstack/react-query": "^4.44.0",
-    "axios": "^1.18.1",
+    "axios": "^1.21.0",
     "clsx": "^2.1.1",
     "i18next": "^25.10.10",
     "lexical": "^0.15.0",
@@ -45,13 +45,13 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.80.0",
     "react-i18next": "^16.6.6",
-    "react-router-dom": "^6.30.4",
+    "react-router-dom": "^7.18.5",
     "tailwindcss": "^3.4.19"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.5.2",
-    "postcss": "^8.5.16",
-    "vite": "^4.5.14"
+    "postcss": "^8.5.32",
+    "vite": "^6.4.4"
   }
 }

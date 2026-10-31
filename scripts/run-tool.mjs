@@ -22,7 +22,13 @@ if (!existsSync(binPath)) {
   process.exit(1);
 }
 
-const result = spawnSync(binPath, toolArgs, {
+// Each Turbo task runs a separate Vitest process. Sharing Vitest 5's default
+// workspace cache lets one process clear files another process is still writing.
+const args = tool === "vitest" && !toolArgs.some((arg) => arg.startsWith("--fsModuleCachePath"))
+  ? [...toolArgs, "--fsModuleCachePath", resolve(process.cwd(), "node_modules/.vitest-cache")]
+  : toolArgs;
+
+const result = spawnSync(binPath, args, {
   stdio: "inherit",
   cwd: process.cwd(),
   env: process.env,

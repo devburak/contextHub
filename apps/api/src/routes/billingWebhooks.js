@@ -11,7 +11,19 @@ async function billingWebhookRoutes(fastify) {
   fastify.addHook('preParsing', async (request, reply, payload) => {
     if (!request.url.includes('/billing/webhooks/paddle')) return payload;
     const chunks = [];
-    for await (const chunk of payload) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const bodyLimit = request.routeOptions.bodyLimit ?? fastify.initialConfig.bodyLimit;
+    let length = 0;
+    for await (const chunk of payload) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      length += buffer.length;
+      if (length > bodyLimit) {
+        const error = new Error('Request body is too large');
+        error.statusCode = 413;
+        error.code = 'FST_ERR_CTP_BODY_TOO_LARGE';
+        throw error;
+      }
+      chunks.push(buffer);
+    }
     request.rawBillingBody = Buffer.concat(chunks);
     return Readable.from(request.rawBillingBody);
   });
@@ -69,11 +81,11 @@ async function billingWebhookRoutes(fastify) {
       redirectUrl.searchParams.set('checkout', result.planChange
         ? (result.pending ? 'plan_change_pending' : 'plan_change_success')
         : result.reviewCheckout ? 'review_success' : 'success');
-      return reply.redirect(303, redirectUrl.toString());
+      return reply.redirect(redirectUrl.toString(), 303);
     } catch (error) {
       request.log.warn({ err: error }, 'iyzico checkout callback failed');
       redirectUrl.searchParams.set('checkout', 'failed');
-      return reply.redirect(303, redirectUrl.toString());
+      return reply.redirect(redirectUrl.toString(), 303);
     }
   });
 
@@ -81,7 +93,7 @@ async function billingWebhookRoutes(fastify) {
     const adminUrl = billingAdminUrl();
     const redirectUrl = new URL('/billing', adminUrl);
     redirectUrl.searchParams.set('payment_method', 'updated');
-    return reply.redirect(303, redirectUrl.toString());
+    return reply.redirect(redirectUrl.toString(), 303);
   };
   fastify.post('/billing/callbacks/iyzico/card-update', cardUpdateCallback);
   fastify.get('/billing/callbacks/iyzico/card-update', cardUpdateCallback);

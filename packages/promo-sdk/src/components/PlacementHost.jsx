@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { usePlacement } from '../hooks/usePlacement';
-import { getTracker } from '../tracking';
+import { usePlacement } from '../hooks/usePlacement.js';
+import { getTracker } from '../tracking.js';
 
 /**
  * PlacementHost Component

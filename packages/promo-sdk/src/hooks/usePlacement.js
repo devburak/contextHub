@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import frequencyManager from '../FrequencyManager';
-import { getTracker } from '../tracking';
+import frequencyManager from '../FrequencyManager.js';
+import { getTracker } from '../tracking.js';
 
 /**
  * React Hook for Placement System
