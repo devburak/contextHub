@@ -1,4 +1,5 @@
 const userService = require('../services/userService');
+const { PASSWORD_MIN_LENGTH } = require('../lib/passwordPolicy');
 const roleService = require('../services/roleService');
 const AuthService = require('../services/authService');
 const { 
@@ -492,7 +493,7 @@ async function userRoutes(fastify) {
         type: 'object',
         properties: {
           currentPassword: { type: 'string', minLength: 1 },
-          newPassword: { type: 'string', minLength: 6 }
+          newPassword: { type: 'string', minLength: PASSWORD_MIN_LENGTH }
         },
         required: ['currentPassword', 'newPassword']
       }

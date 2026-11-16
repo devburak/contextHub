@@ -8,6 +8,7 @@ import GoogleSignInButton from '../../components/GoogleSignInButton.jsx';
 import { authAPI } from '../../lib/api';
 import { useApiError } from '../../lib/useApiError.js';
 import { loginPathFor, safeReturnTo } from '../../lib/returnTo.js';
+import { PASSWORD_MIN_LENGTH } from '../../lib/passwordPolicy.js';
 
 function SignUp() {
   const navigate = useNavigate();
@@ -64,8 +65,8 @@ function SignUp() {
 
     if (!formData.password) {
       newErrors.password = t('validation.required_named', { field: t('signup.password') });
-    } else if (formData.password.length < 6) {
-      newErrors.password = t('validation.min_length', { count: 6 });
+    } else if (formData.password.length < PASSWORD_MIN_LENGTH) {
+      newErrors.password = t('validation.min_length', { count: PASSWORD_MIN_LENGTH });
     }
 
     if (!formData.confirmPassword) {

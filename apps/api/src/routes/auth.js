@@ -5,6 +5,43 @@ const {
   setSessionCookie,
   clearSessionCookie,
 } = require('../services/sessionSecurity');
+const authEmailThrottle = require('../services/authEmailThrottle');
+const { PASSWORD_MIN_LENGTH } = require('../lib/passwordPolicy');
+
+const HOUR_MS = 60 * 60 * 1000;
+
+function positiveIntegerEnv(name, fallback) {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  return parsed > 0 ? parsed : fallback;
+}
+
+// The same body is returned whether or not the address belongs to an account,
+// and whether or not that account still needs the e-mail.
+const FORGOT_PASSWORD_MESSAGE = 'Password reset email sent successfully';
+const RESEND_VERIFICATION_MESSAGE =
+  'Eğer bu e-posta adresi kayıtlıysa ve henüz doğrulanmadıysa, doğrulama bağlantısı gönderilecektir';
+
+function sendEmailThrottled(reply, throttle) {
+  return reply
+    .code(429)
+    .header('Retry-After', throttle.retryAfterSeconds)
+    .send({
+      statusCode: 429,
+      error: 'RateLimitExceeded',
+      message: 'Too many requests. Please retry later.',
+      retryAfter: throttle.retryAfterSeconds,
+    });
+}
+
+// Account lookup, token storage and SMTP delivery run after the response is
+// sent, so response time cannot be used to tell existing accounts apart.
+function runAfterResponse(request, label, task) {
+  Promise.resolve()
+    .then(task)
+    .catch((error) => {
+      request.log?.error({ err: error }, `${label} failed after the response was sent`);
+    });
+}
 
 async function authRoutes(fastify) {
   const authService = new AuthService(fastify);
@@ -33,6 +70,21 @@ async function authRoutes(fastify) {
   const loginRateLimitWindowMs = configuredLoginRateLimitWindowMs > 0
     ? configuredLoginRateLimitWindowMs
     : 60 * 1000;
+
+  // Per-IP limits for the unauthenticated account endpoints. Like the login
+  // limit they are counted in the shared Redis store, one counter per route.
+  const registerRateLimit = {
+    max: positiveIntegerEnv('AUTH_REGISTER_RATE_LIMIT_MAX', 10),
+    timeWindow: HOUR_MS,
+  };
+  const emailRequestRateLimit = {
+    max: positiveIntegerEnv('AUTH_EMAIL_REQUEST_RATE_LIMIT_MAX', 20),
+    timeWindow: HOUR_MS,
+  };
+  const tokenSubmitRateLimit = {
+    max: positiveIntegerEnv('AUTH_TOKEN_SUBMIT_RATE_LIMIT_MAX', 10),
+    timeWindow: 60 * 1000,
+  };
 
   // POST /auth/login - Giriş yap
   fastify.post('/auth/login', {
@@ -201,6 +253,7 @@ async function authRoutes(fastify) {
   // POST /auth/register - Kullanıcı kaydı. Tenant yalnız doğrulanmış oturumdan
   // POST /tenants ile oluşturulur; kayıt isteği tenant provision edemez.
   fastify.post('/auth/register', {
+    config: { rateLimit: registerRateLimit },
     schema: {
       description: 'Register a new user without tenant provisioning',
       summary: 'User registration',
@@ -210,7 +263,7 @@ async function authRoutes(fastify) {
         additionalProperties: false,
         properties: {
           email: { type: 'string', format: 'email', description: 'User email address' },
-          password: { type: 'string', minLength: 6, description: 'Password (minimum 6 characters)' },
+          password: { type: 'string', minLength: PASSWORD_MIN_LENGTH, description: `Password (minimum ${PASSWORD_MIN_LENGTH} characters)` },
           firstName: { type: 'string', minLength: 1, description: 'User first name' },
           lastName: { type: 'string', minLength: 1, description: 'User last name' }
         },
@@ -353,7 +406,7 @@ async function authRoutes(fastify) {
         additionalProperties: false,
         properties: {
           token: { type: 'string', minLength: 10 },
-          password: { type: 'string', minLength: 6 },
+          password: { type: 'string', minLength: PASSWORD_MIN_LENGTH },
           firstName: { type: 'string', minLength: 1 },
           lastName: { type: 'string', minLength: 1 }
         },
@@ -627,6 +680,7 @@ async function authRoutes(fastify) {
 
   // POST /auth/forgot-password - Şifre sıfırlama talebi
   fastify.post('/auth/forgot-password', {
+    config: { rateLimit: emailRequestRateLimit },
     schema: {
       description: 'Request a password reset email',
       summary: 'Forgot password',
@@ -648,24 +702,21 @@ async function authRoutes(fastify) {
       }
     }
   }, async function(request, reply) {
-    try {
-      const { email } = request.body;
-      await authService.forgotPassword(email, request);
-      
-      return reply.send({ 
-        message: 'Password reset email sent successfully' 
-      });
-    } catch (error) {
-      // Güvenlik için her zaman başarılı mesajı dön
-      // (E-posta var mı yok mu belli olmasın)
-      return reply.send({ 
-        message: 'Password reset email sent successfully' 
-      });
+    const { email } = request.body;
+    const throttle = await authEmailThrottle.consume('password-reset', email);
+    if (!throttle.allowed) {
+      return sendEmailThrottled(reply, throttle);
     }
+
+    // Güvenlik için her zaman aynı mesaj, aynı sürede döner
+    // (E-posta var mı yok mu belli olmasın)
+    runAfterResponse(request, 'Password reset request', () => authService.forgotPassword(email, request));
+    return reply.send({ message: FORGOT_PASSWORD_MESSAGE });
   });
 
   // POST /auth/reset-password - Şifre sıfırlama
   fastify.post('/auth/reset-password', {
+    config: { rateLimit: tokenSubmitRateLimit },
     schema: {
       description: 'Reset password using token from email',
       summary: 'Reset password',
@@ -673,8 +724,8 @@ async function authRoutes(fastify) {
       body: {
         type: 'object',
         properties: {
-          token: { type: 'string', minLength: 1 },
-          password: { type: 'string', minLength: 6 }
+          token: { type: 'string', minLength: 1, maxLength: 256 },
+          password: { type: 'string', minLength: PASSWORD_MIN_LENGTH }
         },
         required: ['token', 'password']
       },
@@ -705,11 +756,12 @@ async function authRoutes(fastify) {
 
   // POST /auth/verify-email - E-posta doğrulama
   fastify.post('/auth/verify-email', {
+    config: { rateLimit: tokenSubmitRateLimit },
     schema: {
       body: {
         type: 'object',
         properties: {
-          token: { type: 'string', minLength: 1 }
+          token: { type: 'string', minLength: 1, maxLength: 256 }
         },
         required: ['token']
       },
@@ -745,6 +797,7 @@ async function authRoutes(fastify) {
 
   // POST /auth/resend-verification - Doğrulama e-postasını yeniden gönder
   fastify.post('/auth/resend-verification', {
+    config: { rateLimit: emailRequestRateLimit },
     schema: {
       body: {
         type: 'object',
@@ -770,15 +823,15 @@ async function authRoutes(fastify) {
       }
     }
   }, async function(request, reply) {
-    try {
-      const result = await authService.resendVerificationEmail(request.body.email, request);
-      return reply.send(result);
-    } catch (error) {
-      return reply.code(400).send({
-        error: 'ResendVerificationFailed',
-        message: error.message
-      });
+    const { email } = request.body;
+    const throttle = await authEmailThrottle.consume('verification', email);
+    if (!throttle.allowed) {
+      return sendEmailThrottled(reply, throttle);
     }
+
+    // Kayıtlı olmayan, doğrulanmış ve doğrulanmamış adresler aynı yanıtı alır.
+    runAfterResponse(request, 'Verification resend', () => authService.resendVerificationEmail(email, request));
+    return reply.send({ message: RESEND_VERIFICATION_MESSAGE });
   });
 }
 
