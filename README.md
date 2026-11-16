@@ -27,7 +27,7 @@ for every client, brand or project.
 
 ## Start in five minutes
 
-You need Node.js 24.22.2 or newer, pnpm 10.13.1 and a running MongoDB instance.
+You need Node.js 24.22.3 or newer, pnpm 10.34.9 and a running MongoDB instance.
 Redis is recommended for shared rate-limit and usage state, but local development
 fails open when it is unavailable.
 
@@ -111,10 +111,13 @@ Tooling that every package uses (ESLint, Prettier, Vitest, etc.) now lives only 
 
 Prerequisites:
 
-* Node.js 24.22.2 or newer, below Node.js 25.
-* [pnpm](https://pnpm.io/) 10.13.1. pnpm is required to manage workspaces.
+* Node.js 24.22.3 or newer, below Node.js 25.
+* [pnpm](https://pnpm.io/) 10.34.9. pnpm is required to manage workspaces.
 * MongoDB for persistent application data.
 * Redis is recommended for shared rate-limit and usage state.
+
+With NVM, run `nvm install` and `nvm use` in this directory to select the
+version in `.nvmrc`. Check `node --version` and `pnpm --version` before installing.
 
 To bootstrap the repository:
 
