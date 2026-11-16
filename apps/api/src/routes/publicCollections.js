@@ -12,6 +12,7 @@ const {
   getCollectionType
 } = require('../services/collectionTypeService');
 const { extractTrustedClientIp } = require('../services/clientIp');
+const RedisRateLimitStore = require('../services/redisRateLimitStore');
 const {
   entryListQuerySchema,
   collectionQuerySchema
@@ -21,7 +22,6 @@ const DEFAULT_CACHE_TTL_MS = 60 * 1000;
 const cacheStore = new Map();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 60;
-const rateLimitBuckets = new Map();
 
 const dataLabelsSchema = {
   type: 'object',
@@ -154,29 +154,30 @@ function setCache(key, value, ttl = DEFAULT_CACHE_TTL_MS) {
   });
 }
 
-function enforceRateLimit(tenantId, identifier = 'anonymous') {
+async function enforceRateLimit(store, tenantId, identifier = 'anonymous') {
   const key = `${tenantId}:${identifier}`;
-  const now = Date.now();
-  const bucket = rateLimitBuckets.get(key);
-
-  if (!bucket || bucket.resetAt < now) {
-    rateLimitBuckets.set(key, {
-      count: 1,
-      resetAt: now + RATE_LIMIT_WINDOW_MS
+  let bucket;
+  try {
+    bucket = await new Promise((resolve, reject) => {
+      store.incr(key, (error, result) => error ? reject(error) : resolve(result), RATE_LIMIT_MAX, -1);
     });
-    return;
+  } catch (cause) {
+    // A process-local fallback would multiply the limit by the worker count.
+    const error = new Error('Public query rate limiter unavailable', { cause });
+    error.code = 'RateLimitUnavailable';
+    error.statusCode = 503;
+    error.retryAfter = 5;
+    throw error;
   }
 
-  if (bucket.count >= RATE_LIMIT_MAX) {
-    const retryAfter = Math.max(0, Math.ceil((bucket.resetAt - now) / 1000));
+  if (bucket.current > RATE_LIMIT_MAX) {
+    const retryAfter = Math.max(1, Math.ceil(bucket.ttl / 1000));
     const error = new Error('Rate limit exceeded');
     error.code = 'RateLimitExceeded';
     error.statusCode = 429;
     error.retryAfter = retryAfter;
     throw error;
   }
-
-  bucket.count += 1;
 }
 
 function serialiseId(value) {
@@ -215,6 +216,11 @@ function sanitiseEntry(entry) {
 }
 
 async function publicCollectionRoutes(fastify) {
+  const queryRateLimitStore = new RedisRateLimitStore(
+    { timeWindow: RATE_LIMIT_WINDOW_MS },
+    undefined,
+    'rate-limit:public-query:'
+  );
   fastify.addHook('preHandler', tenantContext);
   fastify.addHook('preHandler', checkRequestLimit);
 
@@ -358,13 +364,18 @@ async function publicCollectionRoutes(fastify) {
     }
   }, async (request, reply) => {
     try {
-      enforceRateLimit(request.tenantId, extractTrustedClientIp(request));
+      await enforceRateLimit(queryRateLimitStore, request.tenantId, extractTrustedClientIp(request));
     } catch (error) {
-      request.log.warn({ err: error }, 'Public query rate limit exceeded');
+      request.log.warn({ err: error }, 'Public query rate limit rejected request');
       return reply
         .code(error.statusCode || 429)
         .header('Retry-After', error.retryAfter || 60)
-        .send({ error: 'RateLimitExceeded', message: 'Çok fazla istek. Lütfen daha sonra tekrar deneyin.' });
+        .send({
+          error: error.code,
+          message: error.statusCode === 503
+            ? 'Sorgu servisi geçici olarak kullanılamıyor. Lütfen daha sonra tekrar deneyin.'
+            : 'Çok fazla istek. Lütfen daha sonra tekrar deneyin.'
+        });
     }
 
     const validation = collectionQuerySchema.safeParse(request.body);

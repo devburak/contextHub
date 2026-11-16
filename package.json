@@ -2,7 +2,7 @@
   "name": "contexthub",
   "version": "0.1.50",
   "private": true,
-  "packageManager": "pnpm@10.13.1",
+  "packageManager": "pnpm@10.34.9",
   "description": "Multi‑tenant headless CMS and content services platform.",
   "license": "MIT",
   "scripts": {
@@ -50,7 +50,7 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=24.22.2 <25"
+    "node": ">=24.22.3 <25"
   },
   "devDependencies": {
     "dotenv": "^16.6.1",
@@ -70,7 +70,8 @@
     "overrides": {
       "vue@<3.5.42": "3.5.44",
       "source-map-js@<1.2.2": "1.2.2",
-      "@fastify/static>glob": "14.0.3"
+      "@fastify/static>glob": "14.0.3",
+      "minimatch@>=10 <11.0.8": "11.0.8"
     }
   }
 }

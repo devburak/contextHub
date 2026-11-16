@@ -31,7 +31,7 @@ function warnUnavailable(error) {
   // Do not log the limiter key: it may contain a client IP address.
   // eslint-disable-next-line no-console
   console.warn(
-    `[RateLimit] Shared Redis store unavailable; limiter is temporarily fail-open: ${error.message}`
+    `[RateLimit] Shared Redis rate-limit store unavailable: ${error.message}`
   );
 }
 
