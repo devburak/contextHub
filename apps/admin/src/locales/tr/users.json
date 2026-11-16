@@ -37,7 +37,7 @@
   "user.not_found_or_forbidden": "Kullanıcı bulunamadı veya bu kullanıcıyı görme yetkiniz yok.",
   "user.owner_detach_notice": "Sahip rolündeki kullanıcılar varlık ilişkisini yalnızca kendi profillerinden kaldırabilir.",
   "user.password": "Şifre",
-  "user.password_hint": "En az 6 karakter olmalıdır",
+  "user.password_hint": "En az 8 karakter olmalıdır",
   "user.readonly_fields_notice": "Kullanıcı bilgilerini yalnızca kullanıcının kendisi değiştirebilir.",
   "user.role": "Rol",
   "user.roles_load_error": "Roller yüklenemedi. Lütfen sayfayı yenileyin.",

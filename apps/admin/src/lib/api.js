@@ -71,7 +71,8 @@ apiClient.interceptors.response.use(
     const requestUrl = String(error.config?.url || '')
     const isSessionTransitionRequest = requestUrl.startsWith('/auth/switch-tenant')
     const requestRevision = Number(error.config?.__sessionRevision)
-    if (shouldInvalidateSession({
+    const isPendingMfaRequest = /^\/auth\/mfa\/(challenge|verify|email|cancel)$/.test(requestUrl)
+    if (!isPendingMfaRequest && shouldInvalidateSession({
       status: error.response?.status,
       errorCode: error.response?.data?.error,
       requestRevision,
@@ -88,6 +89,24 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+async function mfaSessionChange(path, payload) {
+  sessionTransitionDepth += 1
+  try { return await apiClient.post(`/auth/mfa/settings/${path}`, payload) }
+  finally { sessionTransitionDepth = Math.max(0, sessionTransitionDepth - 1) }
+}
+export const mfaAPI = {
+  challenge: () => apiClient.post('/auth/mfa/challenge', {}),
+  verify: (method, code) => apiClient.post('/auth/mfa/verify', { method, code }),
+  sendCode: () => apiClient.post('/auth/mfa/email', {}),
+  cancel: () => apiClient.post('/auth/mfa/cancel', {}),
+  settings: () => apiClient.get('/auth/mfa/settings'),
+  enroll: (method, currentPassword) => apiClient.post('/auth/mfa/settings/enroll', { method, currentPassword }),
+  confirm: (payload) => mfaSessionChange('confirm', payload),
+  resendEnrollment: (challengeToken) => apiClient.post('/auth/mfa/settings/email', { challengeToken }),
+  change: (action, currentPassword) => mfaSessionChange(action, { currentPassword }),
+  snooze: () => apiClient.post('/auth/mfa/settings/reminder', {}),
+}
 
 // Auth API
 export const authAPI = {

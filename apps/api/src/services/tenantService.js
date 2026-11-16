@@ -213,20 +213,18 @@ class TenantService {
       .sort({ createdAt: -1 });
 
     const visibleMemberships = memberships.filter((membership) => Boolean(membership.tenantId));
-    return Promise.all(visibleMemberships.map(async (membership) => {
+    if (!visibleMemberships.length) return [];
+    const resolvedRoles = await roleService.resolveMembershipRoles(visibleMemberships);
+    const ownerCounts = await Membership.aggregate([
+        { $match: { tenantId: { $in: visibleMemberships.map((item) => item.tenantId._id) }, role: 'owner', status: 'active' } },
+        { $group: { _id: '$tenantId', count: { $sum: 1 } } },
+      ]);
+    const ownersByTenant = new Map(ownerCounts.map((item) => [String(item._id), item.count]));
+    return Promise.all(visibleMemberships.map(async (membership, index) => {
       const tenantDoc = membership.tenantId;
       const tenantId = tenantDoc?._id?.toString() || membership.tenantId?.toString();
-      const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
-        membership,
-        tenantId
-      );
-
-      // Bu tenant'taki toplam owner sayısını hesapla
-      const ownerCount = await Membership.countDocuments({
-        tenantId: membership.tenantId,
-        role: 'owner',
-        status: 'active'
-      });
+      const { role: roleDoc, permissions } = resolvedRoles[index];
+      const ownerCount = ownersByTenant.get(tenantId) || 0;
 
       return {
         id: membership._id.toString(),

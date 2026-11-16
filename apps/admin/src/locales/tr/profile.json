@@ -50,7 +50,7 @@
   "profile.memberships": "Üyelikler",
   "profile.multiple_owners_notice": "Bu varlığın {{count}} sahibi var. Sahipliğinizi bırakabilirsiniz.",
   "profile.new_password": "Yeni şifre",
-  "profile.new_password_placeholder": "En az 6 karakter",
+  "profile.new_password_placeholder": "En az 8 karakter",
   "profile.new_password_required": "Lütfen yeni şifrenizi girin.",
   "profile.no_memberships": "Henüz bir varlık üyeliğiniz yok.",
   "profile.no_permissions": "Bu role atanmış yetki yok.",

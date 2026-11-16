@@ -1,6 +1,6 @@
 {
   "name": "@contexthub/api",
-  "version": "0.1.50",
+  "version": "0.1.56",
   "private": true,
   "description": "Fastify back‑end service for contextHub",
   "main": "src/server.js",
@@ -47,6 +47,7 @@
     "jsonwebtoken": "^9.0.3",
     "marked": "^16.4.2",
     "nodemailer": "^10.3.1",
+    "otpauth": "9.6.0",
     "redis": "^5.12.1",
     "semver": "7.8.5",
     "sharp": "^0.35.5",

@@ -9,11 +9,13 @@ import { useApiError } from '../../lib/useApiError.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { PERMISSION_LABELS } from '../../constants/permissionLabels.js'
+import MfaSettings from '../../components/MfaSettings.jsx'
 import DeleteAccountModal from '../../components/DeleteAccountModal.jsx'
 import LanguageSwitcher from '../../components/LanguageSwitcher.jsx'
 import GoogleIcon from '../../components/GoogleIcon.jsx'
 import { Dialog } from '@headlessui/react'
 import { InformationCircleIcon } from '@heroicons/react/24/outline'
+import { PASSWORD_MIN_LENGTH } from '../../lib/passwordPolicy.js'
 
 export default function Profile() {
   const toast = useToast()
@@ -261,8 +263,8 @@ export default function Profile() {
       toast.error(t('profile.new_password_required'))
       return
     }
-    if (newPassword.length < 6) {
-      toast.error(t('validation.min_length', { count: 6 }))
+    if (newPassword.length < PASSWORD_MIN_LENGTH) {
+      toast.error(t('validation.min_length', { count: PASSWORD_MIN_LENGTH }))
       return
     }
     if (newPassword !== confirmPassword) {
@@ -466,6 +468,8 @@ export default function Profile() {
                 </button>
               </div>
             </div>
+
+            <MfaSettings />
 
             {/* Varlık Üyeliklerim - Şifre Değiştir altına taşındı */}
             <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">

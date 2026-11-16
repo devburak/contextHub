@@ -6,6 +6,7 @@ import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { authAPI } from '../../lib/api.js'
 import { useApiError } from '../../lib/useApiError.js'
 import Footer from '../../components/Footer.jsx'
+import { PASSWORD_MIN_LENGTH } from '../../lib/passwordPolicy.js'
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams()
@@ -38,8 +39,8 @@ export default function ResetPassword() {
     setError('')
 
     // Validasyon
-    if (password.length < 6) {
-      setError(t('validation.min_length', { count: 6 }))
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setError(t('validation.min_length', { count: PASSWORD_MIN_LENGTH }))
       return
     }
 
@@ -144,7 +145,7 @@ export default function ResetPassword() {
                   type="password"
                   autoComplete="new-password"
                   required
-                  minLength={6}
+                  minLength={PASSWORD_MIN_LENGTH}
                   className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                   placeholder={t('reset.password_placeholder')}
                   value={password}

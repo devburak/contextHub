@@ -194,9 +194,9 @@ describe('API server', () => {
     expect(body.csrfToken).toBe('mock-csrf-token');
     expect(body).toHaveProperty('user');
     expect(body.user.email).toBe(TEST_LOGIN_EMAIL);
-    expect(res.headers['set-cookie']).toContain('ctx_session=mock-token');
-    expect(res.headers['set-cookie']).toContain('HttpOnly');
-    expect(res.headers['set-cookie']).toContain('SameSite=Strict');
+    expect([res.headers['set-cookie']].flat().join('; ')).toContain('ctx_session=mock-token');
+    expect([res.headers['set-cookie']].flat().join('; ')).toContain('HttpOnly');
+    expect([res.headers['set-cookie']].flat().join('; ')).toContain('SameSite=Strict');
   });
 
   it('throttles repeated login requests independently from the global API limit', async () => {

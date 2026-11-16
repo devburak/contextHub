@@ -19,6 +19,7 @@ const SubscriptionPlan = require('./SubscriptionPlan');
 const ApiUsage = require('./ApiUsage');
 const Domain = require('./Domain');
 const User = require('./User');
+const AuthMfaChallenge = require('./AuthMfaChallenge');
 const Membership = require('./Membership');
 const ContentType = require('./ContentType');
 const Entry = require('./Entry');
@@ -76,6 +77,7 @@ module.exports = {
   ApiUsage,
   Domain,
   User,
+  AuthMfaChallenge,
   Membership,
   ContentType,
   Entry,

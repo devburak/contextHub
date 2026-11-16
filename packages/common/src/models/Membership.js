@@ -114,6 +114,7 @@ membershipSchema.pre('findOneAndUpdate', function(next) {
 });
 
 // Index
+membershipSchema.index({ userId: 1, status: 1 });
 membershipSchema.index({ tenantId: 1, userId: 1 }, { unique: true });
 membershipSchema.index({ inviteTokenHash: 1 }, { sparse: true });
 

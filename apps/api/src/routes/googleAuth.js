@@ -72,7 +72,13 @@ module.exports = async function googleAuth(app) {
           isEmailVerified:true,emailVerifiedAt:new Date()});
       }
       if(user.status!=='active' || user.mustChangePassword)throw new Error('ACCOUNT_DISABLED');
-      const result=await service.completeLogin(user,null,request);
+      const result=await service.completeLogin(user,null,request,{primaryAuth:'google'});
+      const { sendPendingLogin, clearMfaCookie } = require('../services/mfaCookie');
+      if(result.mfaRequired) {
+        sendPendingLogin(reply,result,{redirect:`${admin}/auth/login?mfa=1`});
+        return reply;
+      }
+      clearMfaCookie(reply);
       setSessionCookie(reply,result.token);
       return reply.redirect(`${admin}/`);
     } catch(error) {

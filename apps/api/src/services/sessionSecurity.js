@@ -140,6 +140,8 @@ function issueSessionToken(fastify, {
   roleId = null,
   permissions = [],
   authAt = Math.floor(Date.now() / 1000),
+  primaryAuth,
+  mfaAt,
 }) {
   const csrfToken = crypto.randomBytes(32).toString('base64url');
   const jti = crypto.randomBytes(16).toString('hex');
@@ -154,6 +156,8 @@ function issueSessionToken(fastify, {
     jti,
     csrf: csrfToken,
     authAt,
+    ...(primaryAuth ? { primaryAuth } : {}),
+    ...(Number.isFinite(mfaAt) ? { mfaAt } : {}),
   }, { expiresIn: TOKEN_TTL });
 
   return { token, csrfToken, jti };
@@ -161,6 +165,8 @@ function issueSessionToken(fastify, {
 
 module.exports = {
   TOKEN_TTL,
+  parseCookies,
+  serializeCookie,
   getSessionCookieName,
   getSessionToken,
   setSessionCookie,

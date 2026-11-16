@@ -37,11 +37,11 @@ describe('TenantService entitlement summaries', () => {
       sort: vi.fn().mockResolvedValue([membership]),
     };
     vi.spyOn(Membership, 'find').mockReturnValue(query);
-    vi.spyOn(Membership, 'countDocuments').mockResolvedValue(1);
-    vi.spyOn(roleService, 'ensureRoleReference').mockResolvedValue({
+    vi.spyOn(Membership, 'aggregate').mockResolvedValue([{ _id: 'tenant-1', count: 1 }]);
+    vi.spyOn(roleService, 'resolveMembershipRoles').mockResolvedValue([{
       role: { _id: 'role-owner', key: 'owner', name: 'Owner' },
       permissions: ['semanticSearch.query'],
-    });
+    }]);
     vi.spyOn(roleService, 'formatRole').mockReturnValue({ id: 'role-owner', key: 'owner' });
 
     const memberships = await tenantService.listUserTenants('user-1');

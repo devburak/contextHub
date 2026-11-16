@@ -100,6 +100,9 @@ async function buildServer(options = {}) {
   // Validate production cookie configuration during startup instead of failing
   // on the first login request.
   getSessionCookieName();
+  if (process.env.AUTH_MFA_ENABLED === 'true' && !require('./services/mfaCrypto').isConfigured()) {
+    throw new Error('AUTH_MFA_ENABLED requires a valid AUTH_MFA_CREDENTIALS_KEY');
+  }
 
   // Some non-security logging still uses Fastify's proxy-aware request.ip. Security
   // controls use extractTrustedClientIp so a forged left-most X-Forwarded-For value

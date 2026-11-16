@@ -6,6 +6,7 @@ import { Link, matchPath, useLocation, useNavigate, Navigate, Outlet } from 'rea
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import Footer from './Footer.jsx'
+import { MfaReminder } from './MfaSettings.jsx'
 import { PERMISSIONS } from '../constants/permissions.js'
 import { adminPluginNavigation } from '../plugins/registry.jsx'
 
@@ -555,6 +556,7 @@ export default function Layout() {
               'px-4 sm:px-6 lg:px-8',
               isContentEditorRoute && 'lg:h-full lg:min-h-0'
             )}>
+              <MfaReminder />
               {paymentPending && !['/faturalandirma', '/billing', '/varliklar', '/varliklar/yeni', '/profil'].includes(location.pathname)
                 ? <Navigate to="/faturalandirma" replace /> : <Outlet />}
             </div>
