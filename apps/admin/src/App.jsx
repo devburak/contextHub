@@ -362,6 +362,7 @@ function App() {
           ) : !user ? (
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/auth/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
