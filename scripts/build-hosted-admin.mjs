@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as dotenv from 'dotenv';
 
+import { resolveAdminApiUrl } from './lib/admin-api-url.mjs';
+
 import { resolveHostedAdminBuild } from './lib/hosted-admin-build.mjs';
 
 const coreRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -18,6 +20,7 @@ const childEnv = {
   CTXHUB_ADMIN_PLUGIN_SOURCE: JSON.stringify(hosted.sources),
   CTXHUB_ADMIN_PLUGIN_NAMES: hosted.plugins.join(','),
   VITE_CTXHUB_HOSTED: 'true',
+  VITE_API_URL: resolveAdminApiUrl(process.env.VITE_API_URL),
 };
 
 process.stdout.write(`Hosted Admin plugins: ${hosted.plugins.join(', ')}\n`);
