@@ -3,6 +3,9 @@ import { initReactI18next } from 'react-i18next'
 
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, detectInitialLocale, persistLocale } from './lib/localePreference.js'
 
+import trMfa from './locales/tr/mfa.json'
+import enMfa from './locales/en/mfa.json'
+
 import trCommon from './locales/tr/common.json'
 import trNav from './locales/tr/nav.json'
 import trAuth from './locales/tr/auth.json'
@@ -53,8 +56,8 @@ function bundle(...parts) {
 }
 
 const resources = {
-  tr: bundle(trCommon, trNav, trAuth, trUsers, trProfile, trErrors, trValidation, trContent, trMedia, trCollections, trForms, trMenus, trPlacements, trTenants, trDashboard, trComponents, trBilling),
-  en: bundle(enCommon, enNav, enAuth, enUsers, enProfile, enErrors, enValidation, enContent, enMedia, enCollections, enForms, enMenus, enPlacements, enTenants, enDashboard, enComponents, enBilling),
+  tr: bundle(trMfa, trCommon, trNav, trAuth, trUsers, trProfile, trErrors, trValidation, trContent, trMedia, trCollections, trForms, trMenus, trPlacements, trTenants, trDashboard, trComponents, trBilling),
+  en: bundle(enMfa, enCommon, enNav, enAuth, enUsers, enProfile, enErrors, enValidation, enContent, enMedia, enCollections, enForms, enMenus, enPlacements, enTenants, enDashboard, enComponents, enBilling),
 }
 
 const initialLocale = detectInitialLocale()

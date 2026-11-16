@@ -9,6 +9,7 @@ import { useApiError } from '../../lib/useApiError.js'
 import { useToast } from '../../contexts/ToastContext.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { PERMISSION_LABELS } from '../../constants/permissionLabels.js'
+import MfaSettings from '../../components/MfaSettings.jsx'
 import DeleteAccountModal from '../../components/DeleteAccountModal.jsx'
 import LanguageSwitcher from '../../components/LanguageSwitcher.jsx'
 import GoogleIcon from '../../components/GoogleIcon.jsx'
@@ -467,6 +468,8 @@ export default function Profile() {
                 </button>
               </div>
             </div>
+
+            <MfaSettings />
 
             {/* Varlık Üyeliklerim - Şifre Değiştir altına taşındı */}
             <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">

@@ -135,3 +135,30 @@ describe('unauthenticated account endpoints', () => {
     expect(work).toHaveBeenCalledTimes(authEmailThrottle.MAX_PER_WINDOW);
   });
 });
+
+describe('registration account enumeration', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it('returns identical 202 bodies for new, existing and failed background registrations', async () => {
+    vi.spyOn(authEmailThrottle, 'consume').mockResolvedValue({ allowed: true });
+    const register = vi.spyOn(AuthService.prototype, 'register');
+    const routes = await registerRoutes();
+    const results = [];
+    for (const outcome of [() => Promise.resolve({ user: { id: 'new-user' } }), () => Promise.reject(new Error('Email already exists')), () => Promise.reject(new Error('database unavailable'))]) {
+      register.mockImplementationOnce(outcome);
+      const response = reply();
+      await routes.get('POST /auth/register').handler(request({ email: 'person@example.test' }), response);
+      await new Promise((resolve) => setImmediate(resolve));
+      results.push(response.body);
+      expect(response.status).toBe(202);
+      expect(response.body).not.toHaveProperty('user');
+    }
+    expect(new Set(results.map(JSON.stringify)).size).toBe(1);
+  });
+  it('returns before background registration finishes', async () => {
+    vi.spyOn(authEmailThrottle, 'consume').mockResolvedValue({ allowed: true });
+    vi.spyOn(AuthService.prototype, 'register').mockImplementation(never);
+    const routes = await registerRoutes(); const response = reply();
+    await routes.get('POST /auth/register').handler(request({ email: 'person@example.test' }), response);
+    expect(response.status).toBe(202);
+  });
+});

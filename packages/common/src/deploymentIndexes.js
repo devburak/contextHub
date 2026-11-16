@@ -1,6 +1,9 @@
 // Additive indexes required by the API before it starts serving requests.
 // These are also used by the models so deployment and schema definitions agree.
 module.exports = {
+  ApiToken: [{ hash: 1 }],
+  Membership: [{ userId: 1, status: 1 }],
+  AuthMfaChallenge: [{ expiresAt: 1 }],
   WebhookOutbox: [
     { dedupeKey: 1 },
     { tenantId: 1, updatedAt: -1, createdAt: -1 },

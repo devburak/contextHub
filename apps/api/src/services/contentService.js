@@ -1321,65 +1321,26 @@ async function getArchiveStatistics({ tenantId, status = 'published' } = {}) {
     throw new Error('tenantId is required')
   }
 
-  try {
-    // Build the query - same as listContents
-    const query = { tenantId }
-    const statusClause = buildStatusFilter(status)
-    if (statusClause) {
-      query.status = statusClause
-    }
-
-
-
-    // Fetch all matching contents with publishedAt
-    const contents = await Content.find(query)
-      .select('publishedAt')
-      .lean()
-      .exec()
-
-
-
-    if (contents.length === 0) {
-      return { total: 0, archives: [] }
-    }
-
-    // Group by year and month using JavaScript
-    const archiveMap = new Map()
-
-    contents.forEach(doc => {
-      if (!doc.publishedAt) return
-
-      const date = new Date(doc.publishedAt)
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0') // getMonth is 0-indexed
-
-      const key = `${year}-${month}`
-      if (!archiveMap.has(key)) {
-        archiveMap.set(key, { year, month, count: 0 })
-      }
-
-      const item = archiveMap.get(key)
-      item.count += 1
-    })
-
-    // Convert map to array and sort
-    const archives = Array.from(archiveMap.values())
-      .sort((a, b) => {
-        const yearDiff = b.year - a.year
-        if (yearDiff !== 0) return yearDiff
-        return parseInt(b.month) - parseInt(a.month)
-      })
-
-    const result = {
-      total: contents.length,
-      archives
-    }
-
-    return result
-  } catch (error) {
-    console.error('[Archive] Error:', error)
-    throw error
-  }
+  // Aggregation does not apply Mongoose's query casting. Keep tenant isolation explicit.
+  const query = { tenantId: new ObjectId(String(tenantId)) }
+  const statusClause = buildStatusFilter(status)
+  if (statusClause) query.status = statusClause
+  // Match the previous Date#getFullYear/getMonth server-local timezone semantics.
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const [result] = await Content.aggregate([
+    { $match: query },
+    { $facet: {
+      total: [{ $count: 'count' }],
+      archives: [
+        { $project: { date: { $convert: { input: '$publishedAt', to: 'date', onError: null, onNull: null } } } },
+        { $match: { date: { $ne: null } } },
+        { $group: { _id: { year: { $year: { date: '$date', timezone } }, month: { $month: { date: '$date', timezone } } }, count: { $sum: 1 } } },
+        { $sort: { '_id.year': -1, '_id.month': -1 } },
+      ],
+    } },
+  ])
+  return { total: result?.total[0]?.count || 0,
+    archives: (result?.archives || []).map(({ _id, count }) => ({ year: _id.year, month: String(_id.month).padStart(2, '0'), count })) }
 }
 
 async function publishDueScheduledContent(options = {}) {

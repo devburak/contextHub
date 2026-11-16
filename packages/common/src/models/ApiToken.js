@@ -29,6 +29,7 @@ const apiTokenSchema = new Schema({
 });
 
 // Index
+apiTokenSchema.index({ hash: 1 }, { unique: true });
 apiTokenSchema.index({ tenantId: 1, hash: 1 });
 apiTokenSchema.index({ tenantId: 1, scopes: 1 });
 apiTokenSchema.index({ tenantId: 1, permissions: 1 });

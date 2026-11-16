@@ -3,6 +3,9 @@ import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
+import MfaChallenge from '../../components/MfaChallenge.jsx'
+import { mfaError } from '../../lib/mfaError.js'
+import { mfaAPI } from '../../lib/api.js'
 import { authAPI } from '../../lib/api.js'
 import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
@@ -37,6 +40,8 @@ function Countdown({ target, onExpired }) {
 }
 
 export default function Login() {
+  const [mfaChallenge, setMfaChallenge] = useState(null)
+  const [mfaResumeError, setMfaResumeError] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -98,14 +103,7 @@ export default function Login() {
     return () => clearTimeout(timeout)
   }, [lockUntil])
 
-  const loginMutation = useMutation({
-    mutationFn: () => authAPI.login(email, password),
-    onSuccess: (response) => {
-      setLockUntil(null)
-      setLockReason('')
-      sessionStorage.removeItem('login_lock_until')
-      sessionStorage.removeItem('login_lock_reason')
-      const data = response.data
+  function finishLogin(data) {
       login(data)
 
       if (data.user?.mustChangePassword) {
@@ -123,6 +121,32 @@ export default function Login() {
       } else {
         navigate('/')
       }
+  }
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('mfa') !== '1') return
+    let active = true
+    mfaAPI.challenge().then(({ data }) => { if (active) setMfaChallenge(data) })
+      .catch((error) => { if (active) setMfaResumeError(mfaError(error, t)) })
+    return () => { active = false }
+  }, [location.search, t])
+
+  const loginMutation = useMutation({
+    mutationFn: () => authAPI.login(email, password),
+    onSuccess: (response) => {
+      setLockUntil(null)
+      setLockReason('')
+      sessionStorage.removeItem('login_lock_until')
+      sessionStorage.removeItem('login_lock_reason')
+      const data = response.data
+      if (data.mfaRequired) {
+        setMfaChallenge(data)
+        setPassword('')
+        const params = new URLSearchParams(location.search)
+        params.set('mfa', '1')
+        navigate(`${location.pathname}?${params}`, { replace: true, state: location.state })
+        return
+      }
+      finishLogin(data)
     },
     onError: (error) => {
       const errorCode = error.response?.data?.error
@@ -177,6 +201,8 @@ export default function Login() {
     loginMutation.mutate()
   }
 
+  if (mfaChallenge) return <div className="min-h-screen flex flex-col bg-gray-50"><div className="flex-1 flex items-center justify-center px-4 py-12"><div className="w-full max-w-md rounded-lg bg-white p-6 shadow-sm"><MfaChallenge challenge={mfaChallenge} onSuccess={finishLogin} onCancel={() => { setMfaChallenge(null); setMfaResumeError(''); const params = new URLSearchParams(location.search); params.delete('mfa'); navigate(`${location.pathname}?${params}`, { replace: true, state: location.state }) }} /></div></div><Footer /></div>
+
   return (
     <div className="min-h-screen flex flex-col">
       <div className="flex-1 flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -187,6 +213,7 @@ export default function Login() {
             </h2>
           </div>
 
+          {mfaResumeError && <p role="alert" className="text-sm text-red-700">{mfaResumeError}</p>}
           {successMessage && (
             <div className="rounded-md bg-green-50 p-4">
               <div className="flex">

@@ -46,6 +46,8 @@ function runAfterResponse(request, label, task) {
 async function authRoutes(fastify) {
   const authService = new AuthService(fastify);
   await fastify.register(require('./googleAuth'));
+  await fastify.register(require('./mfa'));
+  const { sendPendingLogin, clearMfaCookie } = require('../services/mfaCookie');
   const authenticateInvitationSession = async (request, reply) => {
     try {
       const preview = await authService.getInvitationPreview(request.body?.token);
@@ -108,6 +110,17 @@ async function authRoutes(fastify) {
         required: ['email', 'password']
       },
       response: {
+        202: {
+          type: 'object',
+          properties: {
+            mfaRequired: { type: 'boolean' },
+            methods: { type: 'array', items: { type: 'string', enum: ['totp', 'email'] } },
+            recoveryAvailable: { type: 'boolean' },
+            maskedEmail: { type: 'string' },
+            expiresAt: { type: 'string', format: 'date-time' },
+            retryAfterSeconds: { type: 'integer' },
+          },
+        },
         200: {
           type: 'object',
           properties: {
@@ -220,6 +233,8 @@ async function authRoutes(fastify) {
       const { email, password, tenantId: tenantFromBody } = request.body;
       const tenantId = tenantFromBody || request.query.tenantId;
       const result = await authService.login(email, password, tenantId, request);
+      if (result.mfaRequired) return sendPendingLogin(reply, result);
+      clearMfaCookie(reply);
       const { token, ...response } = result;
       setSessionCookie(reply, token);
       return reply.send(response);
@@ -269,43 +284,18 @@ async function authRoutes(fastify) {
         },
         required: ['email', 'password', 'firstName', 'lastName']
       },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            user: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                email: { type: 'string' },
-                firstName: { type: 'string' },
-                lastName: { type: 'string' }
-              }
-            },
-            tenant: {
-              type: 'object',
-              nullable: true,
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                slug: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
     }
   }, async function(request, reply) {
-    try {
-      const result = await authService.register(request.body, request);
-      
-      return reply.code(201).send(result);
-    } catch (error) {
-      if (error.message.includes('already exists')) {
-        return reply.code(409).send({ error: 'Conflict', message: error.message });
+    const quota = await authEmailThrottle.consume('registration', request.body.email);
+    if (!quota.allowed) return sendEmailThrottled(reply, quota);
+    reply.code(202).send({ message: 'If this address can be registered, a verification email will be sent. Otherwise, sign in or reset your password.' });
+    runAfterResponse(request, 'Registration', async () => {
+      try { await authService.register(request.body, request); }
+      catch (error) {
+        if (error.code !== 11000 && !error.message.includes('already exists')) throw error;
       }
-      return reply.code(400).send({ error: 'Registration failed', message: error.message });
-    }
+    });
+    return reply;
   });
 
   // POST /auth/refresh - Token yenile

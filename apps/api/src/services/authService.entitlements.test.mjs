@@ -46,10 +46,10 @@ describe('AuthService entitlement memberships', () => {
         status: 'active',
       }),
     });
-    vi.spyOn(roleService, 'ensureRoleReference').mockResolvedValue({
+    vi.spyOn(roleService, 'resolveMembershipRoles').mockResolvedValue([{
       role: { _id: 'role-owner', key: 'owner', name: 'Owner' },
       permissions: ['semanticSearch.query'],
-    });
+    }]);
     vi.spyOn(roleService, 'formatRole').mockReturnValue({ id: 'role-owner', key: 'owner' });
 
     const state = await new AuthService({}).getSessionState('user-1', { tenantId: 'tenant-1' });

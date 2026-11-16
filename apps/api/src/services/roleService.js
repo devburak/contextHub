@@ -324,6 +324,34 @@ class RoleService {
     return { success: true };
   }
 
+  async resolveMembershipRoles(memberships) {
+    if (!memberships.length) return [];
+    const tenantIdOf = (membership) => membership.tenantId?._id || membership.tenantId;
+    const roleIds = memberships.map((item) => item.roleId).filter(Boolean);
+    const keys = [...new Set(memberships.map((item) => this.normalizeKey(item.role)).filter(Boolean))];
+    const tenantIds = memberships.map(tenantIdOf).filter(Boolean);
+    const roles = await Role.find({ $or: [
+      { _id: { $in: roleIds } },
+      { tenantId: { $in: [...tenantIds, null] }, key: { $in: keys } },
+    ] });
+    const byId = new Map(roles.map((role) => [String(role._id), role]));
+    const byKey = new Map(roles.map((role) => [`${role.tenantId || ''}:${role.key}`, role]));
+    return Promise.all(memberships.map(async (membership) => {
+      const tenantId = tenantIdOf(membership);
+      const key = this.normalizeKey(membership.role);
+      const role = byId.get(String(membership.roleId))
+        || byKey.get(`${tenantId}:${key}`) || byKey.get(`:${key}`);
+      // Preserve legacy role repair and default-role provisioning for exceptional records.
+      if (!role) return this.ensureRoleReference(membership, tenantId);
+      if (!membership.roleId || String(membership.roleId) !== String(role._id)) {
+        membership.roleId = role._id;
+        membership.role = role.key;
+        await membership.save();
+      }
+      return { role, permissions: membership.getEffectivePermissions(role) };
+    }));
+  }
+
   async ensureRoleReference(membership, tenantId) {
     if (!membership) {
       return { role: null, permissions: [] };

@@ -9,6 +9,7 @@ const { mailService } = require('./mailService');
 const { hostedOperationsNotificationService } = require('./hostedOperationsNotificationService');
 const loginRateLimiter = require('./loginRateLimiter');
 const tokenBlacklist = require('./tokenBlacklist');
+const mfaService = require('./mfaService');
 const { issueSessionToken } = require('./sessionSecurity');
 const { hashIdentifier, logSecurityEvent } = require('./auditService');
 const { extractTrustedClientIp } = require('./clientIp');
@@ -61,14 +62,13 @@ async function getActiveMembershipDetails(userId) {
     populate: { path: 'currentPlan' }
   });
 
+  const visibleMemberships = memberships.filter((membershipDoc) => Boolean(membershipDoc.tenantId));
+  const resolvedRoles = await roleService.resolveMembershipRoles(visibleMemberships);
   return Promise.all(
-    memberships.filter((membershipDoc) => Boolean(membershipDoc.tenantId)).map(async (membershipDoc) => {
+    visibleMemberships.map(async (membershipDoc, index) => {
       const tenant = membershipDoc.tenantId;
       const tenantId = tenant?._id?.toString() || membershipDoc.tenantId?.toString();
-      const { role: roleDoc, permissions } = await roleService.ensureRoleReference(
-        membershipDoc,
-        tenantId
-      );
+      const { role: roleDoc, permissions } = resolvedRoles[index];
       const roleMeta = roleService.formatRole(roleDoc);
       const plan = tenant
         ? await tenantSubscriptionService.getPlanPayloadForTenant(tenant)
@@ -373,8 +373,12 @@ class AuthService {
     return this.completeLogin(user, tenantId, request);
   }
 
-  async completeLogin(user, tenantId, request = null) {
+  async completeLogin(user, tenantId, request = null, options = {}) {
     if (user.status !== 'active') throw new Error('ACCOUNT_DISABLED');
+    if (mfaService.methods(user).length && !options.mfaVerified) {
+      const challenge = await mfaService.loginChallenge(user, tenantId, options.primaryAuth || 'password');
+      return { mfaRequired: true, challengeToken: challenge.token, ...challenge.public };
+    }
     const memberships = await getActiveMembershipDetails(user._id);
     let activeMembership = null;
     if (tenantId) {
@@ -392,6 +396,9 @@ class AuthService {
       role: activeMembership?.role || null,
       roleId: activeMembership?.roleMeta?.id || null,
       permissions: activeMembership?.permissions || [],
+      primaryAuth: options.primaryAuth || 'password',
+      ...(options.authAt ? { authAt: options.authAt } : {}),
+      ...(options.mfaAt ? { mfaAt: options.mfaAt } : {}),
     });
 
     user.lastLoginAt = new Date();
@@ -587,6 +594,8 @@ class AuthService {
       roleId,
       permissions,
       authAt: sessionStart,
+      primaryAuth: decoded.primaryAuth,
+      mfaAt: decoded.mfaAt,
     });
 
     const remainingTtl = (decoded.exp ?? nowInSeconds()) - nowInSeconds();
@@ -736,6 +745,8 @@ class AuthService {
       roleId: activeMembership.roleMeta?.id || null,
       permissions: activeMembership.permissions,
       authAt: decoded?.authAt ?? decoded?.iat ?? nowInSeconds(),
+      primaryAuth: decoded?.primaryAuth,
+      mfaAt: decoded?.mfaAt,
     });
 
     const remainingTtl = (decoded?.exp ?? nowInSeconds()) - nowInSeconds();

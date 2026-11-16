@@ -35,6 +35,14 @@ const userSchema = new Schema({
   // tarayıcı diline göre karar verir (bkz. apps/admin/src/lib/localePreference.js).
   language: { type: String, enum: ['tr', 'en', null], default: null },
   tokenVersion: { type: Number, default: 0 },
+  mfa: {
+    methods: { type: [{ type: String, enum: ['totp', 'email'] }], default: [] },
+    totpSecret: { type: String, select: false },
+    totpLastStep: { type: Number, default: -1, select: false },
+    recoveryCodeHashes: { type: [String], default: undefined, select: false },
+    enrolledAt: { type: Date },
+    reminderAfter: { type: Date },
+  },
   deletionRequestedAt: { type: Date, default: null },
   deletedAt: { type: Date, default: null, index: true },
   deletionRequestId: { type: String, default: null, trim: true },
@@ -80,6 +88,11 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 userSchema.methods.toJSON = function() {
   const user = this.toObject();
   delete user.password;
+  if (user.mfa) {
+    delete user.mfa.totpSecret;
+    delete user.mfa.totpLastStep;
+    delete user.mfa.recoveryCodeHashes;
+  }
   return user;
 };
 
