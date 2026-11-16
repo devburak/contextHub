@@ -15,6 +15,8 @@ dotenv.config({ path: join(coreRoot, '.env') });
 const hosted = resolveHostedAdminBuild({ coreRoot, env: process.env });
 const childEnv = {
   ...process.env,
+  // A local .env may set development; hosted artifacts must use production React.
+  NODE_ENV: 'production',
   CTXHUB_REQUIRE_ADMIN_PLUGINS: 'true',
   CTXHUB_ADMIN_PLUGIN_ENTRY: hosted.entry,
   CTXHUB_ADMIN_PLUGIN_SOURCE: JSON.stringify(hosted.sources),

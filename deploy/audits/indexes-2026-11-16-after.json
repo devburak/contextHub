@@ -1,0 +1,33 @@
+{
+  "generatedAt": "2026-11-16T19:47:47.335Z",
+  "readOnly": true,
+  "summary": {
+    "collections": 56,
+    "present": 217,
+    "missing": 0,
+    "incompatible": 1,
+    "duplicateDeclarations": 6,
+    "extraActual": 0
+  },
+  "usageUnavailableCollections": 56,
+  "incompatible": [
+    {
+      "model": "BillingCheckoutSession",
+      "collection": "billingcheckoutsessions",
+      "index": {
+        "key": {
+          "expiresAt": 1
+        },
+        "options": {
+          "expireAfterSeconds": 0,
+          "background": true
+        },
+        "enforcedOnStartup": false,
+        "status": "incompatible-options",
+        "actualNames": [
+          "expiresAt_1"
+        ]
+      }
+    }
+  ]
+}

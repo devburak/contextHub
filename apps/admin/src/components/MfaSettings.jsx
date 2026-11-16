@@ -41,9 +41,9 @@ export default function MfaSettings() {
     queryClient.invalidateQueries({ queryKey: ['mfa-settings'] })
   }
   const remaining = Math.max(0, Math.ceil((retryAt - now) / 1000))
-  return <section id="two-factor" className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm space-y-4" aria-labelledby="mfa-settings-title">
-    <h2 id="mfa-settings-title" className="font-semibold text-gray-900">{t('mfa.title')}</h2>
-    <p className="text-sm text-gray-600">{t('mfa.optional_help')}</p>
+  return <section id="two-factor" className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm space-y-4" aria-labelledby="mfa-settings-title">
+    <h2 id="mfa-settings-title" className="font-semibold text-amber-900">{t('mfa.title')}</h2>
+    <p className="text-sm text-amber-900">{t('mfa.optional_help')}</p>
     {settings.isLoading && <p>{t('mfa.loading')}</p>}
     {settings.isError && <p role="alert">{t('mfa.error.default')} <button onClick={() => settings.refetch()}>{t('mfa.retry')}</button></p>}
     {status && <>

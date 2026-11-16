@@ -469,8 +469,6 @@ export default function Profile() {
               </div>
             </div>
 
-            <MfaSettings />
-
             {/* Varlık Üyeliklerim - Şifre Değiştir altına taşındı */}
             <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
@@ -534,6 +532,7 @@ export default function Profile() {
           </div>
 
           <div className="space-y-6">
+            <MfaSettings />
             <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
                 <h2 className="text-sm font-medium text-gray-700">{t('profile.active_role')}</h2>
