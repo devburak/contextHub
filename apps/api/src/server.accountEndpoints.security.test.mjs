@@ -90,7 +90,7 @@ describe('account endpoints through the running API', () => {
       _id: 'user-1', email: 'person@example.com', firstName: 'Per', lastName: 'Son', tokenVersion: 0,
       save: vi.fn().mockResolvedValue(undefined),
     };
-    vi.spyOn(User, 'findOne').mockImplementation(async (query) => (query.resetPasswordToken === tokenHash ? user : null));
+    vi.spyOn(User, 'findOne').mockImplementation(async (query) => (query.resetPasswordToken?.$eq === tokenHash ? user : null));
     const notify = vi.spyOn(mailService, 'sendPasswordChangeEmail').mockResolvedValue(true);
 
     const tooShort = await post(app, '/api/auth/reset-password', { token, password: '1234567' });

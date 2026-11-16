@@ -65,7 +65,7 @@ describe('AuthService reset and verification tokens', () => {
     await service.resetPassword(validToken, 'new-long-password');
 
     expect(findOne).toHaveBeenCalledTimes(1);
-    expect(findOne.mock.calls[0][0]).toMatchObject({ resetPasswordToken: sha256(validToken) });
+    expect(findOne.mock.calls[0][0]).toMatchObject({ resetPasswordToken: { $eq: sha256(validToken), $type: 'string' } });
     expect(findOne.mock.calls[0][0].resetPasswordExpiresAt.$gt).toBeInstanceOf(Date);
     expect(find).not.toHaveBeenCalled();
     expect(compare).not.toHaveBeenCalled();
@@ -135,7 +135,7 @@ describe('AuthService reset and verification tokens', () => {
     const result = await service.verifyEmail(validToken);
 
     expect(result).toMatchObject({ verified: true });
-    expect(findOne.mock.calls[0][0]).toMatchObject({ emailVerificationToken: sha256(validToken) });
+    expect(findOne.mock.calls[0][0]).toMatchObject({ emailVerificationToken: { $eq: sha256(validToken), $type: 'string' } });
     expect(find).not.toHaveBeenCalled();
     expect(compare).not.toHaveBeenCalled();
     expect(user.isEmailVerified).toBe(true);

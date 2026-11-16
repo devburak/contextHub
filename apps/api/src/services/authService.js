@@ -1222,7 +1222,7 @@ class AuthService {
     // reddedilir; geçerli biçimdekiler tek bir indeksli sorguyla aranır.
     const user = isOpaqueToken(token)
       ? await User.findOne({
-          resetPasswordToken: hashOpaqueToken(token),
+          resetPasswordToken: { $eq: hashOpaqueToken(token), $type: 'string' },
           resetPasswordExpiresAt: { $gt: new Date() }
         })
       : null;
@@ -1277,7 +1277,7 @@ class AuthService {
     // Token ile kullanıcıyı bul (password reset ile aynı mantık)
     const user = isOpaqueToken(token)
       ? await User.findOne({
-          emailVerificationToken: hashOpaqueToken(token),
+          emailVerificationToken: { $eq: hashOpaqueToken(token), $type: 'string' },
           emailVerificationTokenExpiresAt: { $gt: new Date() }
         })
       : null;
