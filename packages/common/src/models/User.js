@@ -95,6 +95,17 @@ userSchema.index(
   }
 );
 
+// Reset and verification tokens are looked up by the SHA-256 hash stored here.
+// Partial so the many users without an outstanding token are not indexed.
+userSchema.index(
+  { resetPasswordToken: 1 },
+  { partialFilterExpression: { resetPasswordToken: { $type: 'string' } } }
+);
+userSchema.index(
+  { emailVerificationToken: 1 },
+  { partialFilterExpression: { emailVerificationToken: { $type: 'string' } } }
+);
+
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;

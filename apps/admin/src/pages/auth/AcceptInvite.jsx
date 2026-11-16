@@ -14,6 +14,7 @@ import { authAPI } from '../../lib/api.js'
 import { useApiError } from '../../lib/useApiError.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import Footer from '../../components/Footer.jsx'
+import { PASSWORD_MIN_LENGTH } from '../../lib/passwordPolicy.js'
 
 export default function AcceptInvite() {
   const [searchParams] = useSearchParams()
@@ -112,8 +113,8 @@ export default function AcceptInvite() {
         return
       }
 
-      if (password.length < 6) {
-        setFormError(t('validation.min_length', { count: 6 }))
+      if (password.length < PASSWORD_MIN_LENGTH) {
+        setFormError(t('validation.min_length', { count: PASSWORD_MIN_LENGTH }))
         return
       }
 
@@ -321,7 +322,7 @@ export default function AcceptInvite() {
                             id="password"
                             name="password"
                             type="password"
-                            minLength={6}
+                            minLength={PASSWORD_MIN_LENGTH}
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
                             className="mt-1 block w-full rounded-md border border-amber-200 px-3 py-2 text-sm shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"
@@ -337,7 +338,7 @@ export default function AcceptInvite() {
                             id="confirmPassword"
                             name="confirmPassword"
                             type="password"
-                            minLength={6}
+                            minLength={PASSWORD_MIN_LENGTH}
                             value={confirmPassword}
                             onChange={(event) => setConfirmPassword(event.target.value)}
                             className="mt-1 block w-full rounded-md border border-amber-200 px-3 py-2 text-sm shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"

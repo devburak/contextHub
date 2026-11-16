@@ -31,6 +31,25 @@ function nowInSeconds() {
 // whether an account exists (account-enumeration defense).
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('contexthub-nonexistent-account-placeholder', 12);
 
+// Password reset and e-mail verification tokens are 256-bit random values, so a
+// fast hash is sufficient at rest and lets the token be found with one indexed
+// equality query. They were previously stored with bcrypt, which forced a
+// compare against every outstanding token on each request.
+const OPAQUE_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
+
+function hashOpaqueToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function createOpaqueToken() {
+  const token = crypto.randomBytes(32).toString('hex');
+  return { token, tokenHash: hashOpaqueToken(token) };
+}
+
+function isOpaqueToken(token) {
+  return typeof token === 'string' && OPAQUE_TOKEN_PATTERN.test(token);
+}
+
 async function getActiveMembershipDetails(userId) {
   const memberships = await Membership.find({
     userId,
@@ -434,8 +453,7 @@ class AuthService {
     }
 
     // E-posta doğrulama token'ı oluştur (6 saat geçerli)
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationTokenHash = await bcrypt.hash(verificationToken, 10);
+    const { token: verificationToken, tokenHash: verificationTokenHash } = createOpaqueToken();
     const verificationTokenExpiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6 saat
 
     // Kullanıcı oluştur (tenant olmadan da olabilir)
@@ -1166,8 +1184,7 @@ class AuthService {
     }
 
     // Reset token oluştur
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenHash = await bcrypt.hash(resetToken, 10);
+    const { token: resetToken, tokenHash: resetTokenHash } = createOpaqueToken();
     const resetTokenExpiresAt = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 saat
 
     // Kullanıcıya token'ı kaydet
@@ -1201,20 +1218,14 @@ class AuthService {
   }
 
   async resetPassword(token, newPassword, request = null) {
-    // Token ile kullanıcıyı bul
-    const users = await User.find({
-      resetPasswordToken: { $exists: true },
-      resetPasswordExpiresAt: { $gt: new Date() }
-    });
-
-    let user = null;
-    for (const u of users) {
-      const isValid = await bcrypt.compare(token, u.resetPasswordToken);
-      if (isValid) {
-        user = u;
-        break;
-      }
-    }
+    // Token ile kullanıcıyı bul. Biçimi tutmayan değerler veritabanına gitmeden
+    // reddedilir; geçerli biçimdekiler tek bir indeksli sorguyla aranır.
+    const user = isOpaqueToken(token)
+      ? await User.findOne({
+          resetPasswordToken: hashOpaqueToken(token),
+          resetPasswordExpiresAt: { $gt: new Date() }
+        })
+      : null;
 
     if (!user) {
       throw new Error('Geçersiz veya süresi dolmuş şifre sıfırlama bağlantısı');
@@ -1237,6 +1248,17 @@ class AuthService {
       request
     });
 
+    // Hesap sahibi, şifresinin değiştiğini kendi başlatmadığı bir sıfırlamada da öğrenmeli.
+    try {
+      await mailService.sendPasswordChangeEmail(user.email, user.name || user.firstName, {
+        ipAddress: extractTrustedClientIp(request),
+        userAgent: request?.headers?.['user-agent'],
+        timestamp: new Date()
+      });
+    } catch (emailError) {
+      console.error('[AuthService] Password reset notification could not be sent:', emailError.message);
+    }
+
     console.log(`Password reset successfully for user ${user.email}`);
     return { message: 'Password reset successfully' };
   }
@@ -1252,20 +1274,13 @@ class AuthService {
       throw new Error('Doğrulama token\'ı gereklidir');
     }
 
-    // Token ile kullanıcıyı bul (password reset benzeri mantık)
-    const users = await User.find({
-      emailVerificationToken: { $exists: true, $ne: null },
-      emailVerificationTokenExpiresAt: { $gt: new Date() }
-    });
-
-    let user = null;
-    for (const u of users) {
-      const isValid = await bcrypt.compare(token, u.emailVerificationToken);
-      if (isValid) {
-        user = u;
-        break;
-      }
-    }
+    // Token ile kullanıcıyı bul (password reset ile aynı mantık)
+    const user = isOpaqueToken(token)
+      ? await User.findOne({
+          emailVerificationToken: hashOpaqueToken(token),
+          emailVerificationTokenExpiresAt: { $gt: new Date() }
+        })
+      : null;
 
     if (!user) {
       await logSecurityEvent({
@@ -1273,7 +1288,7 @@ class AuthService {
         description: 'Geçersiz veya süresi dolmuş token ile e-posta doğrulama denemesi',
         metadata: {
           reason: 'invalid_or_expired_token',
-          tokenFingerprint: crypto.createHash('sha256').update(token).digest('hex').slice(0, 16),
+          tokenFingerprint: hashOpaqueToken(String(token)).slice(0, 16),
         },
         request,
       });
@@ -1348,8 +1363,7 @@ class AuthService {
     }
 
     // Yeni token oluştur (6 saat geçerli)
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationTokenHash = await bcrypt.hash(verificationToken, 10);
+    const { token: verificationToken, tokenHash: verificationTokenHash } = createOpaqueToken();
     const verificationTokenExpiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
 
     user.emailVerificationToken = verificationTokenHash;

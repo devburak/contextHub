@@ -37,7 +37,7 @@
   "user.not_found_or_forbidden": "The user was not found, or you do not have permission to view them.",
   "user.owner_detach_notice": "Users with the owner role can only remove their tenant link from their own profile.",
   "user.password": "Password",
-  "user.password_hint": "Must be at least 6 characters long",
+  "user.password_hint": "Must be at least 8 characters long",
   "user.readonly_fields_notice": "Only the user themselves can change these account details.",
   "user.role": "Role",
   "user.roles_load_error": "Roles could not be loaded. Please refresh the page.",

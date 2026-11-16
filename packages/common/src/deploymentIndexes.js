@@ -27,4 +27,8 @@ module.exports = {
   Media: [
     { tenantId: 1, updatedAt: -1 },
   ],
+  User: [
+    { resetPasswordToken: 1 },
+    { emailVerificationToken: 1 },
+  ],
 };
