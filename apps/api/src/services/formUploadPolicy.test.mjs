@@ -100,6 +100,18 @@ describe('form upload declaration', () => {
   });
 });
 
+describe('form file retention', () => {
+  it('defaults to 180 days and stays within 30 to 730 days', () => {
+    const days = (value) => policy.resolveRetentionDays({ settings: { fileRetentionDays: value } });
+    expect(policy.resolveRetentionDays({})).toBe(180);
+    expect(days(undefined)).toBe(180);
+    expect(days(0)).toBe(180);
+    expect(days(90)).toBe(90);
+    expect(days(1)).toBe(30);
+    expect(days(100000)).toBe(730);
+  });
+});
+
 describe('form upload content detection', () => {
   const samples = {
     jpeg: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]),

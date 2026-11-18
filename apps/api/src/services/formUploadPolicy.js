@@ -11,6 +11,12 @@ const PLATFORM_MAX_FILE_BYTES = 20 * MB;
 const PLATFORM_MAX_FILES_PER_FIELD = 5;
 const DEFAULT_MAX_FILES_PER_FIELD = 1;
 
+// How long a submitted file is kept before it is deleted automatically. There
+// is deliberately no "keep forever" option.
+const DEFAULT_RETENTION_DAYS = 180;
+const MIN_RETENTION_DAYS = 30;
+const MAX_RETENTION_DAYS = 730;
+
 // extension -> canonical MIME type, category, and the content kinds accepted for it
 const ALLOWED_TYPES = Object.freeze({
   jpg: { mime: 'image/jpeg', category: 'image', kinds: ['jpeg'] },
@@ -152,6 +158,12 @@ function validateDeclaration({ field, filename, size }) {
     filename: sanitizeFilename(filename),
     policy
   };
+}
+
+function resolveRetentionDays(form) {
+  const days = Number(form?.settings?.fileRetentionDays);
+  if (!Number.isFinite(days) || days <= 0) return DEFAULT_RETENTION_DAYS;
+  return Math.min(Math.max(Math.round(days), MIN_RETENTION_DAYS), MAX_RETENTION_DAYS);
 }
 
 function startsWith(buffer, bytes, offset = 0) {
@@ -303,11 +315,15 @@ module.exports = {
   PLATFORM_MAX_FILE_BYTES,
   PLATFORM_MAX_FILES_PER_FIELD,
   DEFAULT_MAX_FILES_PER_FIELD,
+  DEFAULT_RETENTION_DAYS,
+  MIN_RETENTION_DAYS,
+  MAX_RETENTION_DAYS,
   FormUploadPolicyError,
   getExtension,
   sanitizeFilename,
   resolveAllowedExtensions,
   resolveFieldPolicy,
+  resolveRetentionDays,
   validateDeclaration,
   detectContentKind,
   verifyContent

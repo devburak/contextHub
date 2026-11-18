@@ -212,6 +212,12 @@ const formSettingsSchema = z.object({
   enableFileUpload: z.boolean().default(false),
   maxFileSize: z.number().positive('Maksimum dosya boyutu pozitif bir sayı olmalıdır').optional(),
   allowedFileTypes: z.array(z.string()).optional(),
+  fileRetentionDays: z
+    .number()
+    .int('Dosya saklama süresi tam gün olmalıdır')
+    .min(30, 'Dosya saklama süresi en az 30 gün olmalıdır')
+    .max(730, 'Dosya saklama süresi en fazla 730 gün olabilir')
+    .optional(),
   enableNotifications: z.boolean().optional(),
   notificationEmails: z.array(z.string().email('Geçersiz e-posta adresi')).optional(),
   emailNotifications: emailNotificationsSchema,

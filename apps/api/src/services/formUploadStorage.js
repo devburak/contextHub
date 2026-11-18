@@ -115,7 +115,13 @@ async function readObject({ key, maxBytes }) {
 }
 
 async function deleteObject(key) {
-  await getClient().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
+  try {
+    await getClient().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
+  } catch (error) {
+    // Already gone is the outcome we want.
+    if (error?.$metadata?.httpStatusCode === 404 || error?.name === 'NoSuchKey') return;
+    throw error;
+  }
 }
 
 function contentDisposition(filename) {

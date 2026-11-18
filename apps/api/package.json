@@ -26,6 +26,7 @@
     "db:backfill-domain-event-sequences": "node scripts/backfill-domain-event-sequences.js",
     "cron:consumers": "node scripts/consumer-cron.js",
     "cron:tenant-purge": "node src/scripts/purgeDeletedTenants.js",
+    "cron:form-uploads": "node src/scripts/cleanupFormUploads.js",
     "db:migrate-tenant-provisioning": "node src/scripts/dropLegacySelfServiceTenantIndex.js",
     "db:seed-plans": "node src/scripts/seedSubscriptionPlans.js",
     "db:seed-flags": "node src/scripts/seedFeatureFlags.js",

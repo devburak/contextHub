@@ -301,6 +301,8 @@ describe('attachUploads', () => {
     await service.attachUploads({ tenantId, responseId: 'r1', uploads });
     expect(updateMany.mock.calls[0][0]).toEqual({ _id: { $in: ['u1', 'u2'] }, tenantId, status: 'completed', responseId: null });
     expect(updateMany.mock.calls[0][1].$set).toMatchObject({ status: 'attached', responseId: 'r1' });
+    const { attachedAt, retainUntil } = updateMany.mock.calls[0][1].$set;
+    expect(retainUntil.getTime() - attachedAt.getTime()).toBe(180 * 24 * 60 * 60 * 1000);
 
     updateMany.mockResolvedValueOnce({ modifiedCount: 1 }).mockResolvedValueOnce({ modifiedCount: 1 });
     await expect(service.attachUploads({ tenantId, responseId: 'r2', uploads }))
@@ -325,5 +327,98 @@ describe('getDownloadLink', () => {
     findOne.mockResolvedValue(null);
     await expect(service.getDownloadLink({ tenantId, formId: form._id, responseId: 'r1', uploadId: 'other' }))
       .rejects.toMatchObject({ code: 'UploadNotFound', statusCode: 404 });
+  });
+});
+
+describe('removing stored objects', () => {
+  const lean = (value) => ({ select: () => ({ limit: () => ({ lean: async () => value }) }) });
+  const uploads = [
+    { _id: 'u1', uploadId: 'up-1', tenantId, formId: form._id, key: 'k1' },
+    { _id: 'u2', uploadId: 'up-2', tenantId, formId: form._id, key: 'k2' }
+  ];
+
+  it('confirms a deletion only when the object is really gone', async () => {
+    storage.deleteObject.mockResolvedValueOnce().mockRejectedValueOnce(new Error('r2 down'));
+    const result = await service.purgeObjects(uploads);
+
+    expect(result).toEqual({ removed: 1, failed: 1 });
+    expect(FormUpload.updateOne).toHaveBeenCalledTimes(1);
+    expect(FormUpload.updateOne.mock.calls[0][0]).toEqual({ _id: 'u1' });
+    expect(FormUpload.updateOne.mock.calls[0][1].$set.deletedAt).toBeInstanceOf(Date);
+  });
+
+  it('leaves everything for a later retry when the private bucket is not configured', async () => {
+    storage.isConfigured.mockReturnValue(false);
+    await expect(service.purgeObjects(uploads)).resolves.toEqual({ removed: 0, failed: 2 });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('marks uploads before deleting their objects', async () => {
+    vi.spyOn(FormUpload, 'find').mockReturnValueOnce(lean(uploads));
+    const updateMany = vi.spyOn(FormUpload, 'updateMany').mockResolvedValue({ modifiedCount: 2 });
+
+    const summary = await service.deleteResponseUploads({ tenantId, responseId: 'r1' });
+
+    expect(FormUpload.find).toHaveBeenCalledWith({ tenantId, responseId: 'r1', status: 'attached' });
+    expect(updateMany.mock.calls[0]).toEqual([
+      { _id: { $in: ['u1', 'u2'] } },
+      { $set: { status: 'deleted', deleteReason: 'response-deleted' } }
+    ]);
+    expect(updateMany.mock.invocationCallOrder[0]).toBeLessThan(storage.deleteObject.mock.invocationCallOrder[0]);
+    expect(summary).toMatchObject({ matched: 2, removed: 2, failed: 0 });
+    expect(summary.items.map((item) => item.uploadId)).toEqual(['up-1', 'up-2']);
+  });
+
+  it('removes every active file of a deleted form', async () => {
+    const find = vi.spyOn(FormUpload, 'find').mockReturnValueOnce(lean([]));
+    await service.deleteFormUploads({ tenantId, formId: form._id });
+    expect(find).toHaveBeenCalledWith({ tenantId, formId: form._id, status: { $in: ['pending', 'completed', 'attached'] } });
+  });
+});
+
+describe('purgeTenantUploads', () => {
+  const lean = (value) => ({ select: () => ({ limit: () => ({ lean: async () => value }) }) });
+
+  it('deletes the objects and then the records', async () => {
+    vi.spyOn(FormUpload, 'find')
+      .mockReturnValueOnce(lean([{ _id: 'u1', tenantId, key: 'k1' }]))
+      .mockReturnValueOnce(lean([]));
+    const deleteMany = vi.spyOn(FormUpload, 'deleteMany').mockResolvedValue({ deletedCount: 4 });
+
+    await expect(service.purgeTenantUploads({ tenantId })).resolves.toEqual({ deleted: 4, objectsDeleted: 1 });
+    expect(FormUpload.find.mock.calls[0][0]).toEqual({ tenantId, deletedAt: null, status: { $ne: 'promoted' } });
+    expect(storage.deleteObject).toHaveBeenCalledWith('k1');
+    expect(deleteMany).toHaveBeenCalledWith({ tenantId });
+  });
+
+  it('keeps the records when an object could not be removed, so the purge is retried', async () => {
+    vi.spyOn(FormUpload, 'find').mockReturnValueOnce(lean([{ _id: 'u1', tenantId, key: 'k1' }]));
+    const deleteMany = vi.spyOn(FormUpload, 'deleteMany');
+    storage.deleteObject.mockRejectedValue(new Error('r2 down'));
+
+    await expect(service.purgeTenantUploads({ tenantId })).rejects.toThrow(/could not be removed/);
+    expect(deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('retention and file state', () => {
+  it('recomputes the deletion date of received files from their submission date', async () => {
+    const updateMany = vi.spyOn(FormUpload, 'updateMany').mockResolvedValue({ modifiedCount: 3 });
+    await expect(service.applyRetentionChange({ tenantId, formId: form._id, retentionDays: 30 }))
+      .resolves.toEqual({ updated: 3 });
+    expect(updateMany.mock.calls[0]).toEqual([
+      { tenantId, formId: form._id, status: 'attached' },
+      [{ $set: { retainUntil: { $add: ['$attachedAt', 30 * 24 * 60 * 60 * 1000] } } }]
+    ]);
+  });
+
+  it('reports the state of each file on a response', async () => {
+    vi.spyOn(FormUpload, 'find').mockReturnValue({ select: () => ({ lean: async () => [
+      { uploadId: 'up-1', status: 'attached', scanStatus: 'not_scanned', retainUntil: new Date(5) },
+      { uploadId: 'up-2', status: 'expired', scanStatus: 'not_scanned', deleteReason: 'retention' }
+    ] }) });
+    const states = await service.getResponseFileStates({ tenantId, responseId: 'r1' });
+    expect(states.get('up-1')).toMatchObject({ status: 'attached', deleteReason: null, mediaId: null });
+    expect(states.get('up-2')).toMatchObject({ status: 'expired', deleteReason: 'retention', retainUntil: null });
   });
 });

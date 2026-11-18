@@ -97,7 +97,9 @@ const formSettingsSchema = new Schema({
   webhookUrl: { type: String },
   requireAuth: { type: Boolean, default: false }, // require authenticated users
   collectGeo: { type: Boolean, default: false }, // collect geo-location
-  collectDevice: { type: Boolean, default: true } // collect device info
+  collectDevice: { type: Boolean, default: true }, // collect device info
+  // Days a submitted file is kept before automatic deletion (KVKK/GDPR)
+  fileRetentionDays: { type: Number, default: 180, min: 30, max: 730 }
 }, { _id: false });
 
 const formDefinitionSchema = new Schema({

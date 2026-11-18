@@ -403,6 +403,8 @@ async function purgeTenant(tenantId, now = new Date()) {
 
   const mediaService = require('./mediaService');
   const media = await mediaService.purgeTenantMedia({ tenantId });
+  // Files submitted through forms live in the private bucket.
+  const formUploads = await require('./formUploadService').purgeTenantUploads({ tenantId });
   const deleted = {};
   const tenantIdString = tenant._id.toString();
   for (const model of PURGE_MODELS) {
@@ -425,9 +427,9 @@ async function purgeTenant(tenantId, now = new Date()) {
     tenant: tenant._id,
     action: 'tenant.purge',
     description: 'Tenant-scoped operational data physically purged',
-    metadata: { deleted, media },
+    metadata: { deleted, media, formUploads },
   });
-  return { status: 'purged', purgedAt: tenant.purgedAt, deleted, media };
+  return { status: 'purged', purgedAt: tenant.purgedAt, deleted, media, formUploads };
 }
 
 async function reconcileDeletedTenantControls() {

@@ -19,6 +19,12 @@ const limitCheckerService = require('./limitCheckerService');
 // uploads, so a single Turnstile pass cannot be turned into unlimited writes.
 const MAX_UPLOAD_ATTEMPTS_PER_SESSION = 40;
 
+const REMOVE_BATCH_SIZE = 200;
+const REMOVE_MAX_BATCHES = 50;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Statuses in which a file is still in use and counts toward the quota.
+const ACTIVE_STATUSES = ['pending', 'completed', 'attached'];
+
 class FormUploadError extends Error {
   constructor(code, message, statusCode = 400, details = undefined) {
     super(message);
@@ -65,12 +71,67 @@ async function clearStorageCache(tenantId) {
   }
 }
 
-async function deleteObjectQuietly(key) {
-  try {
-    await storage.deleteObject(key);
-  } catch (error) {
-    console.error('[FormUpload] Failed to delete object:', error.message);
+/**
+ * Remove the stored objects of uploads that have already left the active
+ * states. `deletedAt` is written only when the object is confirmed gone, so a
+ * failed delete is picked up again by the cleanup job instead of being lost.
+ */
+async function purgeObjects(uploads) {
+  const result = { removed: 0, failed: 0 };
+  if (!uploads.length) return result;
+  if (!storage.isConfigured()) {
+    result.failed = uploads.length;
+    return result;
   }
+
+  const tenants = new Set();
+  for (const upload of uploads) {
+    try {
+      await storage.deleteObject(upload.key);
+      await FormUpload.updateOne({ _id: upload._id }, { $set: { deletedAt: new Date() } });
+      result.removed += 1;
+      tenants.add(String(upload.tenantId));
+    } catch (error) {
+      result.failed += 1;
+      console.error('[FormUpload] Failed to delete object:', error.message);
+    }
+  }
+  for (const tenantId of tenants) {
+    await clearStorageCache(tenantId);
+  }
+  return result;
+}
+
+/**
+ * Move every upload matching `filter` to a terminal status and remove its
+ * object. Works in batches; the filter must stop matching once the status changes.
+ */
+async function removeUploads(filter, { status = 'deleted', reason, maxBatches = REMOVE_MAX_BATCHES } = {}) {
+  const summary = { matched: 0, removed: 0, failed: 0, items: [] };
+  for (let batch = 0; batch < maxBatches; batch += 1) {
+    const uploads = await FormUpload.find(filter)
+      .select('_id uploadId tenantId formId key')
+      .limit(REMOVE_BATCH_SIZE)
+      .lean();
+    if (!uploads.length) break;
+
+    await FormUpload.updateMany(
+      { _id: { $in: uploads.map((upload) => upload._id) } },
+      { $set: { status, deleteReason: reason } }
+    );
+    const purged = await purgeObjects(uploads);
+
+    summary.matched += uploads.length;
+    summary.removed += purged.removed;
+    summary.failed += purged.failed;
+    uploads.forEach((upload) => summary.items.push({
+      tenantId: String(upload.tenantId),
+      formId: String(upload.formId),
+      uploadId: upload.uploadId
+    }));
+    if (uploads.length < REMOVE_BATCH_SIZE) break;
+  }
+  return summary;
 }
 
 /**
@@ -237,11 +298,11 @@ async function findSessionUpload({ tenantId, form, sessionToken, uploadId }) {
 }
 
 async function rejectUpload(upload, reason) {
-  await deleteObjectQuietly(upload.key);
   await FormUpload.updateOne(
     { _id: upload._id, status: 'pending' },
-    { $set: { status: 'rejected', rejectReason: reason, deletedAt: new Date(), deleteReason: 'rejected' } }
+    { $set: { status: 'rejected', rejectReason: reason, deleteReason: 'rejected' } }
   );
+  await purgeObjects([upload]);
   await clearStorageCache(upload.tenantId);
 }
 
@@ -307,12 +368,12 @@ async function discardUpload({ tenantId, form, sessionToken, uploadId }) {
 
   const result = await FormUpload.updateOne(
     { _id: upload._id, status: { $in: ['pending', 'completed'] }, responseId: null },
-    { $set: { status: 'deleted', deletedAt: new Date(), deleteReason: 'discarded' } }
+    { $set: { status: 'deleted', deleteReason: 'discarded' } }
   );
   if (result.modifiedCount === 0) {
     throw new FormUploadError('UploadNotAvailable', 'This upload can no longer be removed', 409);
   }
-  await deleteObjectQuietly(upload.key);
+  await purgeObjects([upload]);
   await clearStorageCache(tenantId);
   return { uploadId: upload.uploadId, status: 'deleted' };
 }
@@ -406,11 +467,19 @@ async function resolveSubmissionFiles({ tenantId, form, data, sessionToken }) {
  * Claim verified uploads for a response. Each upload can be claimed once; if
  * any is already taken the whole claim is undone.
  */
-async function attachUploads({ tenantId, responseId, uploads }) {
+async function attachUploads({ tenantId, responseId, uploads, retentionDays = policy.DEFAULT_RETENTION_DAYS }) {
   if (!uploads.length) return;
+  const now = new Date();
   const result = await FormUpload.updateMany(
     { _id: { $in: uploads.map((upload) => upload._id) }, tenantId, status: 'completed', responseId: null },
-    { $set: { status: 'attached', responseId, attachedAt: new Date() } }
+    {
+      $set: {
+        status: 'attached',
+        responseId,
+        attachedAt: now,
+        retainUntil: new Date(now.getTime() + retentionDays * DAY_MS)
+      }
+    }
   );
   if (result.modifiedCount !== uploads.length) {
     await releaseUploads({ tenantId, responseId });
@@ -421,8 +490,79 @@ async function attachUploads({ tenantId, responseId, uploads }) {
 async function releaseUploads({ tenantId, responseId }) {
   await FormUpload.updateMany(
     { tenantId, responseId, status: 'attached' },
-    { $set: { status: 'completed', responseId: null }, $unset: { attachedAt: '' } }
+    { $set: { status: 'completed', responseId: null }, $unset: { attachedAt: '', retainUntil: '' } }
   );
+}
+
+/**
+ * A response was permanently deleted: its files go with it. Files already
+ * moved to the media library are media now and are left alone.
+ */
+async function deleteResponseUploads({ tenantId, responseId }) {
+  return removeUploads({ tenantId, responseId, status: 'attached' }, { reason: 'response-deleted' });
+}
+
+/**
+ * A form was permanently deleted, together with all of its responses.
+ */
+async function deleteFormUploads({ tenantId, formId }) {
+  return removeUploads({ tenantId, formId, status: { $in: ACTIVE_STATUSES } }, { reason: 'form-deleted' });
+}
+
+/**
+ * Tenant purge: remove every stored object, then the records. Throws when an
+ * object could not be removed so the purge is retried rather than leaving
+ * files behind with no record pointing at them.
+ */
+async function purgeTenantUploads({ tenantId }) {
+  const remaining = { tenantId, deletedAt: null, status: { $ne: 'promoted' } };
+  let objectsDeleted = 0;
+
+  for (let batch = 0; batch < REMOVE_MAX_BATCHES; batch += 1) {
+    const uploads = await FormUpload.find(remaining).select('_id tenantId key').limit(REMOVE_BATCH_SIZE).lean();
+    if (!uploads.length) break;
+    const purged = await purgeObjects(uploads);
+    objectsDeleted += purged.removed;
+    if (purged.failed > 0) {
+      throw new Error(`Form uploads of tenant ${tenantId} could not be removed from storage (${purged.failed} failed)`);
+    }
+  }
+  if (await FormUpload.countDocuments(remaining) > 0) {
+    throw new Error(`Form uploads of tenant ${tenantId} are not fully removed from storage yet`);
+  }
+
+  const result = await FormUpload.deleteMany({ tenantId });
+  await clearStorageCache(tenantId);
+  return { deleted: result.deletedCount || 0, objectsDeleted };
+}
+
+/**
+ * The form's retention period changed: files already received follow the new
+ * period, counted from the day each one was submitted.
+ */
+async function applyRetentionChange({ tenantId, formId, retentionDays }) {
+  const result = await FormUpload.updateMany(
+    { tenantId, formId, status: 'attached' },
+    [{ $set: { retainUntil: { $add: ['$attachedAt', retentionDays * DAY_MS] } } }]
+  );
+  return { updated: result.modifiedCount || 0 };
+}
+
+/**
+ * Current state of the files on a response, keyed by uploadId, so the admin
+ * side can show whether a file is still available.
+ */
+async function getResponseFileStates({ tenantId, responseId }) {
+  const uploads = await FormUpload.find({ tenantId, responseId })
+    .select('uploadId status scanStatus retainUntil deleteReason mediaId')
+    .lean();
+  return new Map(uploads.map((upload) => [upload.uploadId, {
+    status: upload.status,
+    scanStatus: upload.scanStatus,
+    retainUntil: upload.retainUntil || null,
+    deleteReason: upload.deleteReason || null,
+    mediaId: upload.mediaId ? String(upload.mediaId) : null
+  }]));
 }
 
 /**
@@ -472,5 +612,12 @@ module.exports = {
   resolveSubmissionFiles,
   attachUploads,
   releaseUploads,
+  purgeObjects,
+  removeUploads,
+  deleteResponseUploads,
+  deleteFormUploads,
+  purgeTenantUploads,
+  applyRetentionChange,
+  getResponseFileStates,
   getDownloadLink
 };

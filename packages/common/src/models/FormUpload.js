@@ -43,9 +43,14 @@ const formUploadSchema = new Schema({
   promotedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   promotedAt: { type: Date },
 
+  // Attached files are deleted automatically once this date passes.
   retainUntil: { type: Date },
-  deletedAt: { type: Date },
+  // Why the upload left the active states: discarded, rejected, abandoned,
+  // retention, response-deleted, form-deleted.
   deleteReason: { type: String },
+  // Set only once the stored object is confirmed gone. A terminal upload
+  // without it still has an object to remove; the cleanup job retries those.
+  deletedAt: { type: Date },
 
   ipHash: { type: String },
   // Presigned link expiry; pending uploads past this point are abandoned.
@@ -62,6 +67,9 @@ formUploadSchema.index({ tenantId: 1, responseId: 1 });
 formUploadSchema.index({ tenantId: 1, sessionId: 1, fieldId: 1 });
 formUploadSchema.index({ tenantId: 1, status: 1 });
 formUploadSchema.index({ status: 1, expiresAt: 1 });
+formUploadSchema.index({ status: 1, completedAt: 1 });
+formUploadSchema.index({ status: 1, retainUntil: 1 });
+formUploadSchema.index({ status: 1, deletedAt: 1 });
 
 formUploadSchema.statics.UPLOAD_STATUSES = UPLOAD_STATUSES;
 formUploadSchema.statics.SCAN_STATUSES = SCAN_STATUSES;

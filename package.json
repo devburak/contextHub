@@ -43,6 +43,7 @@
     "cron:webhooks": "node apps/api/scripts/webhook-cron.js",
     "cron:consumers": "node apps/api/scripts/consumer-cron.js",
     "cron:tenant-purge": "node apps/api/src/scripts/purgeDeletedTenants.js",
+    "cron:form-uploads": "node apps/api/src/scripts/cleanupFormUploads.js",
     "db:migrate-tenant-provisioning": "node apps/api/src/scripts/dropLegacySelfServiceTenantIndex.js"
   },
   "workspaces": [

@@ -73,7 +73,7 @@ describe('submitResponse with file fields', () => {
       tenantId, form, data: { fullName: 'Ada', cv: { uploadId: 'up-1' } }, sessionToken: 'session-token'
     });
     expect(formUploadService.attachUploads).toHaveBeenCalledWith({
-      tenantId, responseId: response._id, uploads: [{ _id: 'u1', fieldName: 'cv' }]
+      tenantId, responseId: response._id, uploads: [{ _id: 'u1', fieldName: 'cv' }], retentionDays: 180
     });
     expect(formUploadService.attachUploads.mock.invocationCallOrder[0])
       .toBeLessThan(FormResponse.prototype.save.mock.invocationCallOrder[0]);
@@ -109,8 +109,114 @@ describe('submitResponse with file fields', () => {
     expect(FormDefinition.updateOne).not.toHaveBeenCalled();
   });
 
+  it('uses the retention period configured on the form', async () => {
+    FormDefinition.findOne.mockResolvedValueOnce({ ...form, settings: { fileRetentionDays: 30 } });
+    await submit();
+    expect(formUploadService.attachUploads.mock.calls[0][0].retentionDays).toBe(30);
+  });
+
   it('still requires a required file field', async () => {
     await expect(submit({ data: { fullName: 'Ada' } })).rejects.toThrow('Field "cv" is required');
     expect(formUploadService.resolveSubmissionFiles).not.toHaveBeenCalled();
+  });
+});
+
+describe('files follow the lifecycle of their response and form', () => {
+  const responseId = '64b0000000000000000000a1';
+
+  it('removes the files when a response is permanently deleted, before the record goes', async () => {
+    vi.spyOn(FormResponse, 'findOne').mockResolvedValue({ _id: responseId });
+    const deleteOne = vi.spyOn(FormResponse, 'deleteOne').mockResolvedValue({ deletedCount: 1 });
+    const removeFiles = vi.spyOn(formUploadService, 'deleteResponseUploads').mockResolvedValue({ matched: 1, removed: 1, failed: 0 });
+
+    await formService.hardDeleteResponse({ tenantId, formId, responseId });
+
+    expect(removeFiles).toHaveBeenCalledWith({ tenantId, responseId });
+    expect(removeFiles.mock.invocationCallOrder[0]).toBeLessThan(deleteOne.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps the files when a response is only moved to the trash', async () => {
+    const save = vi.fn(async () => {});
+    vi.spyOn(FormResponse, 'findOne').mockResolvedValue({ _id: responseId, status: 'pending', save });
+    const removeFiles = vi.spyOn(formUploadService, 'deleteResponseUploads');
+
+    const trashed = await formService.deleteResponse({ tenantId, formId, responseId });
+
+    expect(trashed.status).toBe('deleted');
+    expect(save).toHaveBeenCalled();
+    expect(removeFiles).not.toHaveBeenCalled();
+  });
+
+  it('removes every file of a form that is permanently deleted', async () => {
+    const { FormVersion } = require('@contexthub/common');
+    vi.spyOn(FormVersion, 'deleteMany').mockResolvedValue({});
+    const deleteResponses = vi.spyOn(FormResponse, 'deleteMany').mockResolvedValue({});
+    vi.spyOn(FormDefinition, 'deleteOne').mockResolvedValue({});
+    const removeFiles = vi.spyOn(formUploadService, 'deleteFormUploads').mockResolvedValue({});
+
+    await formService.hardDelete({ tenantId, formId });
+
+    expect(removeFiles).toHaveBeenCalledWith({ tenantId, formId });
+    expect(removeFiles.mock.invocationCallOrder[0]).toBeLessThan(deleteResponses.mock.invocationCallOrder[0]);
+  });
+
+  it('shows on the response whether each file is still available', async () => {
+    const populate = { populate: () => populate, then: (resolve) => resolve({
+      _id: responseId,
+      toObject: () => ({ _id: responseId, data: {}, files: [
+        { fieldId: 'cv-id', uploadId: 'up-1', filename: 'cv.pdf' },
+        { fieldId: 'cv-id', uploadId: 'gone', filename: 'old.pdf' },
+        { fieldId: 'legacy', filename: 'legacy.png' }
+      ] })
+    }) };
+    vi.spyOn(FormResponse, 'findOne').mockReturnValue(populate);
+    vi.spyOn(formUploadService, 'getResponseFileStates').mockResolvedValue(new Map([
+      ['up-1', { status: 'expired', scanStatus: 'not_scanned', deleteReason: 'retention' }]
+    ]));
+
+    const response = await formService.getResponseById({ tenantId, formId, responseId });
+
+    expect(response.files[0]).toMatchObject({ uploadId: 'up-1', status: 'expired', deleteReason: 'retention' });
+    expect(response.files[1]).toMatchObject({ uploadId: 'gone', status: 'deleted' });
+    expect(response.files[2]).toEqual({ fieldId: 'legacy', filename: 'legacy.png' });
+  });
+});
+
+describe('changing the retention period of a form', () => {
+  const formDoc = (settings) => ({
+    _id: formId,
+    version: 3,
+    status: 'draft',
+    title: { tr: 'Başvuru' },
+    fields: [],
+    settings,
+    markModified: () => {},
+    save: vi.fn(async () => {})
+  });
+
+  beforeEach(() => {
+    const { FormVersion } = require('@contexthub/common');
+    vi.spyOn(FormDefinition, 'findById').mockResolvedValue({ version: 3 });
+    vi.spyOn(FormVersion, 'findOne').mockResolvedValue({ _id: 'version-1' });
+    vi.spyOn(formUploadService, 'applyRetentionChange').mockResolvedValue({ updated: 2 });
+  });
+
+  it('applies the new period to files already received', async () => {
+    const doc = formDoc({ fileRetentionDays: 180 });
+    FormDefinition.findOne.mockResolvedValue(doc);
+
+    await formService.update({ tenantId, formId, data: { settings: { fileRetentionDays: 30 } }, userId: 'user-1' });
+
+    expect(doc.settings.fileRetentionDays).toBe(30);
+    expect(formUploadService.applyRetentionChange).toHaveBeenCalledWith({ tenantId, formId, retentionDays: 30 });
+    expect(doc.save.mock.invocationCallOrder[0])
+      .toBeLessThan(formUploadService.applyRetentionChange.mock.invocationCallOrder[0]);
+  });
+
+  it('leaves existing files alone when the period did not change', async () => {
+    FormDefinition.findOne.mockResolvedValue(formDoc({ fileRetentionDays: 180 }));
+    await formService.update({ tenantId, formId, data: { settings: { redirectUrl: 'https://example.com' } }, userId: 'user-1' });
+    await formService.update({ tenantId, formId, data: { settings: { fileRetentionDays: 180 } }, userId: 'user-1' });
+    expect(formUploadService.applyRetentionChange).not.toHaveBeenCalled();
   });
 });

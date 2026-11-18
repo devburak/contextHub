@@ -6,6 +6,8 @@ const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 const { mailService } = require('./mailService');
 const tenantSettingsService = require('./tenantSettingsService');
 const formUploadService = require('./formUploadService');
+const fileScanService = require('./fileScanService');
+const { resolveRetentionDays } = require('./formUploadPolicy');
 
 // Turkish character mapping for slug generation
 const TURKISH_CHAR_MAP = {
@@ -668,6 +670,7 @@ async function update({ tenantId, formId, data, userId }) {
   }
   
   // Update settings
+  const previousRetentionDays = resolveRetentionDays(form);
   if (settings !== undefined) {
     const normalizedSettings = applyEmailNotificationCompatibility(
       normalizeFormSettings(settings || {})
@@ -736,6 +739,12 @@ async function update({ tenantId, formId, data, userId }) {
   form.updatedBy = userId;
   form.lastVersionId = version._id;
   await form.save();
+
+  // A changed retention period also applies to files already received.
+  const retentionDays = resolveRetentionDays(form);
+  if (retentionDays !== previousRetentionDays) {
+    await formUploadService.applyRetentionChange({ tenantId, formId: form._id, retentionDays });
+  }
 
   await recordFormEvent({
     tenantId,
@@ -940,6 +949,10 @@ async function hardDelete({ tenantId, formId }) {
     throw new Error('Form not found');
   }
   
+  // Files submitted to this form are removed from the private bucket first, so
+  // no object is left behind without a response pointing at it.
+  await formUploadService.deleteFormUploads({ tenantId, formId: form._id });
+
   // Delete all versions
   await FormVersion.deleteMany({ formId });
   
@@ -1130,7 +1143,8 @@ async function submitResponse({ tenantId, formId, data, metadata = {}, uploadSes
   await formUploadService.attachUploads({
     tenantId,
     responseId: response._id,
-    uploads: submissionFiles.uploads
+    uploads: submissionFiles.uploads,
+    retentionDays: resolveRetentionDays(form)
   });
   try {
     await response.save();
@@ -1138,6 +1152,9 @@ async function submitResponse({ tenantId, formId, data, metadata = {}, uploadSes
     await formUploadService.releaseUploads({ tenantId, responseId: response._id });
     throw error;
   }
+
+  // No-op until the external scanning service is connected.
+  fileScanService.requestScan(submissionFiles.uploads).catch(() => {});
 
   // Update form submission count
   await FormDefinition.updateOne(
@@ -1382,6 +1399,15 @@ async function getResponseById({ tenantId, formId, responseId }) {
   // This is important for Mixed type fields
   const response = responseDoc.toObject();
 
+  // Tell the admin side whether each submitted file is still available
+  // (retention may have removed it) and what its scan state is.
+  if (Array.isArray(response.files) && response.files.some((file) => file.uploadId)) {
+    const states = await formUploadService.getResponseFileStates({ tenantId, responseId: responseDoc._id });
+    response.files = response.files.map((file) => (
+      file.uploadId ? { ...file, ...(states.get(file.uploadId) || { status: 'deleted' }) } : file
+    ));
+  }
+
   // Create field mapping for enriching response data
   const fieldMap = {};
   form.fields.forEach(field => {
@@ -1440,6 +1466,10 @@ async function hardDeleteResponse({ tenantId, formId, responseId }) {
   if (!response) {
     throw new Error('Response not found');
   }
+
+  // Permanent deletion takes the submitted files with it. (Moving a response
+  // to the trash keeps them, so it can be restored intact.)
+  await formUploadService.deleteResponseUploads({ tenantId, responseId: response._id });
 
   // Permanently delete from database
   await FormResponse.deleteOne({ _id: responseId });
