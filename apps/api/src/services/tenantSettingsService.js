@@ -40,6 +40,10 @@ const DEFAULT_SETTINGS = Object.freeze({
     allowLocalhost: true,
     allowedOrigins: []
   },
+  turnstile: {
+    siteKey: '',
+    hasSecretKey: false
+  },
   features: {},
   metadata: {}
 });
@@ -54,7 +58,7 @@ function normalizeAllowedOrigins(value) {
 class TenantSettingsService {
   async getSettings(tenantId) {
     const doc = await TenantSettings.findOne({ tenantId })
-      .select('+smtp.password +webhook.secret')
+      .select('+smtp.password +webhook.secret +turnstile.secretKey')
       .lean();
 
     return this.#serialize(tenantId, doc);
@@ -92,9 +96,29 @@ class TenantSettingsService {
     };
   }
 
+  /**
+   * Turnstile keys for server-side verification. Returns null when the tenant
+   * has not configured a secret key.
+   */
+  async getTurnstileCredentials(tenantId) {
+    const doc = await TenantSettings.findOne({ tenantId })
+      .select('+turnstile.secretKey')
+      .lean();
+
+    const stored = doc?.turnstile?.secretKey;
+    if (!stored) {
+      return null;
+    }
+
+    return {
+      siteKey: doc.turnstile.siteKey || '',
+      secretKey: isEncrypted(stored) ? decryptSecret(stored) : stored
+    };
+  }
+
   async upsertSettings(tenantId, payload = {}) {
     const doc = await TenantSettings.findOne({ tenantId })
-      .select('+smtp.password +webhook.secret');
+      .select('+smtp.password +webhook.secret +turnstile.secretKey');
 
     const target = doc || new TenantSettings({ tenantId });
 
@@ -203,6 +227,17 @@ class TenantSettingsService {
       }
     }
 
+    if (payload.turnstile) {
+      target.turnstile = target.turnstile || {};
+      if (payload.turnstile.siteKey !== undefined) {
+        target.turnstile.siteKey = this.#emptyToUndefined(payload.turnstile.siteKey);
+      }
+      if (payload.turnstile.secretKey !== undefined) {
+        const value = this.#emptyToUndefined(payload.turnstile.secretKey);
+        target.turnstile.secretKey = value === undefined ? undefined : encryptSecret(value);
+      }
+    }
+
     if (payload.features !== undefined) {
       target.features = new Map();
       if (payload.features && typeof payload.features === 'object') {
@@ -302,6 +337,14 @@ class TenantSettingsService {
         publicReadEnabled: doc.edgeGateway.publicReadEnabled ?? base.edgeGateway.publicReadEnabled,
         allowLocalhost: doc.edgeGateway.allowLocalhost ?? base.edgeGateway.allowLocalhost,
         allowedOrigins: normalizeAllowedOrigins(doc.edgeGateway.allowedOrigins)
+      };
+    }
+
+    if (doc.turnstile) {
+      result.turnstile = {
+        ...base.turnstile,
+        siteKey: doc.turnstile.siteKey ?? base.turnstile.siteKey,
+        hasSecretKey: Boolean(doc.turnstile.secretKey)
       };
     }
 

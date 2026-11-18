@@ -5,6 +5,7 @@ const Tenant = require('@contexthub/common/src/models/Tenant');
 require('@contexthub/common/src/models/SubscriptionPlan'); // Pre-load for populate
 const Membership = require('@contexthub/common/src/models/Membership');
 const Media = require('@contexthub/common/src/models/Media');
+const FormUpload = require('@contexthub/common/src/models/FormUpload');
 
 /**
  * Limit Checker Service
@@ -167,6 +168,28 @@ class LimitCheckerService {
         ]);
         
         currentUsage = mediaAgg.length > 0 ? mediaAgg[0].totalSize : 0;
+
+        // Files submitted through forms live in the private bucket and count
+        // toward the same quota. Pending uploads reserve their declared size
+        // until their presigned link expires.
+        const formUploadAgg = await FormUpload.aggregate([
+          {
+            $match: {
+              tenantId: tenant._id,
+              $or: [
+                { status: { $in: ['completed', 'attached'] } },
+                { status: 'pending', expiresAt: { $gt: new Date() } },
+              ],
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalSize: { $sum: { $ifNull: ['$size', '$declaredSize'] } },
+            },
+          },
+        ]);
+        currentUsage += formUploadAgg.length > 0 ? formUploadAgg[0].totalSize : 0;
         
         // Cache for 1 hour
         if (localRedisClient.isEnabled()) {

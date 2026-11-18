@@ -341,6 +341,7 @@ async function buildServer(options = {}) {
   await app.register(require('./routes/roles'), { prefix: '/api' });
   await app.register(require('./routes/publicCollections'), { prefix: '/api' });
   await app.register(require('./routes/publicForms'), { prefix: '/api' });
+  await app.register(require('./routes/publicFormUploads'), { prefix: '/api' });
   await app.register(require('./routes/dashboard'), { prefix: '/api' });
   await app.register(require('./routes/apiUsageSync'), { prefix: '/api' });
   await app.register(require('./routes/subscriptionPlans'), { prefix: '/api' });

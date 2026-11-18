@@ -41,6 +41,12 @@ const edgeGatewaySchema = new Schema({
   allowedOrigins: [{ type: String, trim: true }]
 }, { _id: false, minimize: false });
 
+// Cloudflare Turnstile widget owned by the tenant; guards public form uploads.
+const turnstileSchema = new Schema({
+  siteKey: { type: String, trim: true },
+  secretKey: { type: String, select: false }
+}, { _id: false, minimize: false });
+
 const tenantSettingsSchema = new Schema({
   tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, unique: true, index: true },
   smtp: { type: smtpSchema, default: () => ({}) },
@@ -48,6 +54,7 @@ const tenantSettingsSchema = new Schema({
   branding: { type: brandingSchema, default: () => ({}) },
   limits: { type: limitsSchema, default: () => ({}) },
   edgeGateway: { type: edgeGatewaySchema, default: () => ({}) },
+  turnstile: { type: turnstileSchema, default: () => ({}) },
   features: { type: Map, of: Boolean, default: () => ({}) },
   metadata: { type: Map, of: Schema.Types.Mixed, default: () => ({}) }
 }, {

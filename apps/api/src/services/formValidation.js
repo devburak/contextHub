@@ -61,6 +61,7 @@ const fieldValidationSchema = z.object({
   }, 'Geçersiz regex deseni').optional(),
   fileTypes: z.array(z.string()).optional(),
   maxFileSize: z.number().optional(),
+  maxFiles: z.number().int().min(1).max(5).optional(),
   customMessage: i18nTextSchema.optional(),
   errorMessage: i18nTextSchema.optional()
 }).optional();

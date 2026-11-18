@@ -5,6 +5,8 @@ const {
   requireAdmin
 } = require('../middleware/auth');
 const formService = require('../services/formService');
+const formUploadService = require('../services/formUploadService');
+const { logSecurityEvent } = require('../services/auditService');
 const {
   createFormSchema,
   updateFormSchema,
@@ -828,6 +830,62 @@ async function formRoutes(fastify) {
         error: 'ResponseGetFailed',
         message: error.message
       });
+    }
+  });
+
+  /**
+   * GET /api/forms/:id/responses/:responseId/files/:uploadId/download
+   * Short-lived download link for a file attached to a response
+   */
+  fastify.get('/forms/:id/responses/:responseId/files/:uploadId/download', {
+    preHandler: [authenticate, requireEditor],
+    schema: {
+      tags: ['forms'],
+      description: 'Get a download link (valid for 60 seconds) for a file submitted with a form response. The link is never stored and every request is recorded in the activity log.',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Form ID' },
+          responseId: { type: 'string', description: 'Response ID' },
+          uploadId: { type: 'string', description: 'Upload ID of the file' }
+        },
+        required: ['id', 'responseId', 'uploadId']
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const file = await formUploadService.getDownloadLink({
+        tenantId: request.tenantId,
+        formId: request.params.id,
+        responseId: request.params.responseId,
+        uploadId: request.params.uploadId
+      });
+
+      await logSecurityEvent({
+        action: 'form.file.download',
+        description: 'Form response file download link issued',
+        userId: request.user?._id || request.user?.id || null,
+        tenantId: request.tenantId,
+        metadata: {
+          formId: request.params.id,
+          responseId: request.params.responseId,
+          uploadId: file.uploadId,
+          filename: file.filename
+        },
+        request
+      });
+
+      return reply.header('Cache-Control', 'no-store').send({ file });
+    } catch (error) {
+      if (error.name === 'FormUploadError') {
+        return reply.code(error.statusCode).send({ error: error.code, message: error.message });
+      }
+      if (error.name === 'CastError') {
+        return reply.code(404).send({ error: 'UploadNotFound', message: 'File not found' });
+      }
+      request.log.error({ err: error }, 'Failed to create form file download link');
+      return reply.code(500).send({ error: 'FileDownloadFailed', message: 'Failed to create download link' });
     }
   });
 

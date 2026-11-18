@@ -4,6 +4,8 @@ const { Schema } = mongoose;
 // File attachment schema
 const fileAttachmentSchema = new Schema({
   fieldId: { type: String, required: true },
+  // Private form upload (FormUpload.uploadId). Such files have no stored URL.
+  uploadId: { type: String },
   mediaId: { type: Schema.Types.ObjectId, ref: 'Media' },
   filename: { type: String },
   size: { type: Number },

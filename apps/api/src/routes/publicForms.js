@@ -594,8 +594,12 @@ async function publicFormRoutes(fastify) {
         properties: {
           data: {
             type: 'object',
-            description: 'Form field data as key-value pairs (field names should match form definition)',
+            description: 'Form field data as key-value pairs (field names should match form definition). File fields take { uploadId } or an array of them.',
             additionalProperties: true
+          },
+          uploadSession: {
+            type: 'string',
+            description: 'Upload session token; required when the submission references uploaded files'
           }
         }
       },
@@ -667,7 +671,7 @@ async function publicFormRoutes(fastify) {
       const clientId = generateClientId(ip, userAgent, acceptLanguage);
 
       // Extract form data from request body
-      const { data } = request.body;
+      const { data, uploadSession } = request.body;
 
       if (!data || typeof data !== 'object') {
         return reply.code(400).send({
@@ -783,7 +787,8 @@ async function publicFormRoutes(fastify) {
         tenantId: request.tenantId,
         formId: request.params.formId,
         data,
-        metadata
+        metadata,
+        uploadSession: uploadSession || request.headers['x-upload-session']
       });
 
       // Set client cooldown after successful submission (use form-specific cooldown if configured)
@@ -798,6 +803,13 @@ async function publicFormRoutes(fastify) {
         responseId: response._id
       });
     } catch (error) {
+      if (error.name === 'FormUploadError' || error.name === 'FormUploadSessionError') {
+        return reply.code(error.statusCode || 400).send({
+          error: error.code,
+          message: error.message
+        });
+      }
+
       request.log.error({ err: error }, 'Failed to submit form response');
 
       if (error.message.includes('not found') || error.message.includes('not published')) {
@@ -832,3 +844,4 @@ async function publicFormRoutes(fastify) {
 }
 
 module.exports = publicFormRoutes;
+module.exports.validateApiKey = validateApiKey;

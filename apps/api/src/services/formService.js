@@ -5,6 +5,7 @@ const { emitDomainEvent } = require('../lib/domainEvents');
 const { triggerWebhooksForTenant } = require('../lib/webhookTrigger');
 const { mailService } = require('./mailService');
 const tenantSettingsService = require('./tenantSettingsService');
+const formUploadService = require('./formUploadService');
 
 // Turkish character mapping for slug generation
 const TURKISH_CHAR_MAP = {
@@ -64,6 +65,10 @@ function formatFieldValue(value) {
     return value.map(item => formatFieldValue(item)).filter(Boolean).join(', ');
   }
   if (typeof value === 'object') {
+    // Uploaded files are listed by name; links are never put in emails.
+    if (typeof value.uploadId === 'string' && value.filename) {
+      return value.filename;
+    }
     try {
       return JSON.stringify(value);
     } catch (error) {
@@ -1046,7 +1051,7 @@ async function duplicate({ tenantId, formId, userId, newTitle }) {
 /**
  * Submit a form response (public endpoint)
  */
-async function submitResponse({ tenantId, formId, data, metadata = {} }) {
+async function submitResponse({ tenantId, formId, data, metadata = {}, uploadSession }) {
   // Get form to validate it exists and is published
   const form = await FormDefinition.findOne({
     _id: formId,
@@ -1085,6 +1090,16 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
 
   await assertUniqueSubmission({ tenantId, form, data });
 
+  // File fields carry references to uploads in the private bucket. Only uploads
+  // whose content was verified, from this visitor's upload session, are accepted.
+  const submissionFiles = await formUploadService.resolveSubmissionFiles({
+    tenantId,
+    form,
+    data,
+    sessionToken: uploadSession
+  });
+  data = submissionFiles.data;
+
   // Hash IP for privacy
   const crypto = require('crypto');
   const ipRaw = metadata.ip;
@@ -1096,6 +1111,7 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
     formId,
     formVersion: form.version,
     data,
+    files: submissionFiles.files,
     source: metadata.source || 'web',
     locale: metadata.locale || 'en',
     userAgent: metadata.userAgent,
@@ -1110,7 +1126,18 @@ async function submitResponse({ tenantId, formId, data, metadata = {} }) {
     status: 'pending'
   });
 
-  await response.save();
+  // Claim the uploads before saving so one file can never end up on two responses.
+  await formUploadService.attachUploads({
+    tenantId,
+    responseId: response._id,
+    uploads: submissionFiles.uploads
+  });
+  try {
+    await response.save();
+  } catch (error) {
+    await formUploadService.releaseUploads({ tenantId, responseId: response._id });
+    throw error;
+  }
 
   // Update form submission count
   await FormDefinition.updateOne(

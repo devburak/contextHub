@@ -1,0 +1,329 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+const { FormUpload, Tenant } = require('@contexthub/common');
+const storage = require('./formUploadStorage');
+const sessions = require('./formUploadSession');
+const entitlement = require('./formUploadEntitlement');
+const turnstileService = require('./turnstileService');
+const tenantSettingsService = require('./tenantSettingsService');
+const limitCheckerService = require('./limitCheckerService');
+const service = require('./formUploadService');
+
+const tenantId = '64b000000000000000000001';
+const form = {
+  _id: '64b0000000000000000000f1',
+  fields: [
+    { id: 'name-id', name: 'fullName', type: 'text' },
+    { id: 'cv-id', name: 'cv', type: 'file', required: true, validation: { fileTypes: ['.pdf'], maxFiles: 2 } }
+  ]
+};
+const PDF = Buffer.from('%PDF-1.7\nbody', 'latin1');
+let token;
+let sessionId;
+
+beforeEach(() => {
+  process.env.FORM_UPLOAD_SESSION_SECRET = 'test-session-secret';
+  const session = sessions.createSession({ tenantId, formId: form._id });
+  token = session.token;
+  sessionId = session.sessionId;
+
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(storage, 'isConfigured').mockReturnValue(true);
+  vi.spyOn(storage, 'getBucket').mockReturnValue('private-bucket');
+  vi.spyOn(storage, 'presignUpload').mockResolvedValue({ url: 'https://r2.example/put', expiresAt: new Date(Date.now() + 300000) });
+  vi.spyOn(storage, 'deleteObject').mockResolvedValue();
+  vi.spyOn(entitlement, 'isAllowed').mockResolvedValue(true);
+  vi.spyOn(limitCheckerService, 'checkStorageLimit').mockResolvedValue({ allowed: true });
+  vi.spyOn(limitCheckerService, 'clearStorageUsageCache').mockResolvedValue(true);
+  vi.spyOn(Tenant, 'findById').mockReturnValue({ select: () => ({ lean: async () => ({ slug: 'acme' }) }) });
+  vi.spyOn(FormUpload, 'countDocuments').mockResolvedValue(0);
+  vi.spyOn(FormUpload, 'create').mockImplementation(async (doc) => doc);
+  vi.spyOn(FormUpload, 'updateOne').mockResolvedValue({ modifiedCount: 1 });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  delete process.env.FORM_UPLOAD_SESSION_SECRET;
+});
+
+describe('createSession', () => {
+  beforeEach(() => {
+    vi.spyOn(tenantSettingsService, 'getTurnstileCredentials').mockResolvedValue({ siteKey: 'site', secretKey: 'secret' });
+    vi.spyOn(turnstileService, 'verifyToken').mockResolvedValue({ success: true, errorCodes: [] });
+  });
+
+  it('issues a session after Turnstile passes and describes the file fields', async () => {
+    const result = await service.createSession({ tenantId, form, turnstileToken: 'tok', ip: '203.0.113.9' });
+    expect(turnstileService.verifyToken).toHaveBeenCalledWith({ secretKey: 'secret', token: 'tok', remoteIp: '203.0.113.9' });
+    expect(sessions.verifySession({ token: result.uploadSession, tenantId, formId: form._id }).sessionId).toBeTruthy();
+    expect(result.fields).toEqual([{ name: 'cv', maxBytes: 20 * 1024 * 1024, maxFiles: 2, allowedExtensions: ['pdf'] }]);
+  });
+
+  it('is unavailable without a private bucket', async () => {
+    storage.isConfigured.mockReturnValue(false);
+    await expect(service.createSession({ tenantId, form, turnstileToken: 'tok' }))
+      .rejects.toMatchObject({ code: 'FormUploadsUnavailable', statusCode: 503 });
+    expect(turnstileService.verifyToken).not.toHaveBeenCalled();
+  });
+
+  it('is refused when the plan does not include the feature', async () => {
+    entitlement.isAllowed.mockResolvedValue(false);
+    await expect(service.createSession({ tenantId, form, turnstileToken: 'tok' }))
+      .rejects.toMatchObject({ code: 'FeatureNotAvailable', statusCode: 403 });
+  });
+
+  it('requires Turnstile to be configured and to pass', async () => {
+    tenantSettingsService.getTurnstileCredentials.mockResolvedValueOnce(null);
+    await expect(service.createSession({ tenantId, form, turnstileToken: 'tok' }))
+      .rejects.toMatchObject({ code: 'TurnstileNotConfigured', statusCode: 409 });
+
+    turnstileService.verifyToken.mockResolvedValueOnce({ success: false, errorCodes: ['invalid-input-response'] });
+    await expect(service.createSession({ tenantId, form, turnstileToken: 'bad' }))
+      .rejects.toMatchObject({ code: 'TurnstileFailed', statusCode: 403 });
+
+    turnstileService.verifyToken.mockResolvedValueOnce({ success: false, errorCodes: [], unavailable: true });
+    await expect(service.createSession({ tenantId, form, turnstileToken: 'tok' }))
+      .rejects.toMatchObject({ code: 'TurnstileUnavailable', statusCode: 503 });
+  });
+
+  it('rejects forms without a file field', async () => {
+    await expect(service.createSession({ tenantId, form: { ...form, fields: [form.fields[0]] }, turnstileToken: 'tok' }))
+      .rejects.toMatchObject({ code: 'FormHasNoFileField' });
+  });
+});
+
+describe('presignUpload', () => {
+  const args = (overrides = {}) => ({
+    tenantId, form, sessionToken: token, fieldName: 'cv', filename: 'cv.pdf', size: 1234, ip: '203.0.113.9', ...overrides
+  });
+
+  it('creates a pending upload under the tenant prefix in the private bucket', async () => {
+    const result = await service.presignUpload(args());
+    const created = FormUpload.create.mock.calls[0][0];
+
+    expect(created).toMatchObject({
+      tenantId, formId: form._id, fieldId: 'cv-id', sessionId, bucket: 'private-bucket',
+      originalName: 'cv.pdf', mimeType: 'application/pdf', declaredSize: 1234, status: 'pending'
+    });
+    expect(created.key).toMatch(new RegExp(`^acme/forms/${form._id}/\\d{4}/\\d{2}/${created.uploadId}\\.pdf$`));
+    expect(created.ipHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(storage.presignUpload).toHaveBeenCalledWith({ key: created.key, contentType: 'application/pdf', contentLength: 1234 });
+    expect(result).toMatchObject({
+      uploadId: created.uploadId, uploadUrl: 'https://r2.example/put', method: 'PUT',
+      headers: { 'Content-Type': 'application/pdf' }
+    });
+    expect(limitCheckerService.clearStorageUsageCache).toHaveBeenCalledWith(tenantId);
+  });
+
+  it('requires a session for this form', async () => {
+    await expect(service.presignUpload(args({ sessionToken: undefined })))
+      .rejects.toMatchObject({ code: 'UploadSessionRequired', statusCode: 401 });
+    const other = sessions.createSession({ tenantId, formId: '64b0000000000000000000f2' }).token;
+    await expect(service.presignUpload(args({ sessionToken: other })))
+      .rejects.toMatchObject({ code: 'UploadSessionInvalid' });
+    expect(FormUpload.create).not.toHaveBeenCalled();
+  });
+
+  it('enforces the field policy before anything is stored', async () => {
+    await expect(service.presignUpload(args({ filename: 'cv.docx' }))).rejects.toMatchObject({ code: 'FileTypeNotAllowed' });
+    await expect(service.presignUpload(args({ size: 21 * 1024 * 1024 }))).rejects.toMatchObject({ code: 'FileTooLarge' });
+    await expect(service.presignUpload(args({ fieldName: 'fullName' }))).rejects.toMatchObject({ code: 'FileFieldNotFound' });
+    expect(storage.presignUpload).not.toHaveBeenCalled();
+  });
+
+  it('limits files per field and attempts per session', async () => {
+    FormUpload.countDocuments.mockResolvedValueOnce(3).mockResolvedValueOnce(2);
+    await expect(service.presignUpload(args())).rejects.toMatchObject({ code: 'TooManyFiles' });
+
+    FormUpload.countDocuments.mockResolvedValueOnce(service.MAX_UPLOAD_ATTEMPTS_PER_SESSION).mockResolvedValueOnce(0);
+    await expect(service.presignUpload(args())).rejects.toMatchObject({ code: 'TooManyUploads', statusCode: 429 });
+  });
+
+  it('stops at the storage quota', async () => {
+    limitCheckerService.checkStorageLimit.mockResolvedValue({ allowed: false });
+    await expect(service.presignUpload(args())).rejects.toMatchObject({ code: 'StorageLimitExceeded', statusCode: 409 });
+    expect(limitCheckerService.checkStorageLimit).toHaveBeenCalledWith(tenantId, 1234);
+    expect(FormUpload.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('completeUpload', () => {
+  const pending = () => ({
+    _id: 'u1', uploadId: 'up-1', tenantId, fieldId: 'cv-id', key: 'acme/forms/f/2026/11/up-1.pdf',
+    originalName: 'cv.pdf', extension: 'pdf', mimeType: 'application/pdf', declaredSize: PDF.length, status: 'pending'
+  });
+
+  beforeEach(() => {
+    vi.spyOn(FormUpload, 'findOne').mockImplementation(async () => pending());
+    vi.spyOn(FormUpload, 'findOneAndUpdate').mockImplementation(async (_filter, update) => ({ ...pending(), ...update.$set }));
+    vi.spyOn(storage, 'readObject').mockResolvedValue({ tooLarge: false, size: PDF.length, buffer: PDF });
+  });
+
+  it('looks the upload up within the caller session only', async () => {
+    await service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' });
+    expect(FormUpload.findOne).toHaveBeenCalledWith({ uploadId: 'up-1', tenantId, formId: form._id, sessionId });
+  });
+
+  it('marks verified content as completed with its real size and hash', async () => {
+    const result = await service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' });
+    const [filter, update] = FormUpload.findOneAndUpdate.mock.calls[0];
+    expect(filter).toEqual({ _id: 'u1', status: 'pending' });
+    expect(update.$set).toMatchObject({ status: 'completed', size: PDF.length });
+    expect(update.$set.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(result).toEqual({ uploadId: 'up-1', filename: 'cv.pdf', size: PDF.length, mimeType: 'application/pdf', status: 'completed' });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('deletes and rejects a file whose content does not match its type', async () => {
+    storage.readObject.mockResolvedValue({ tooLarge: false, size: 4, buffer: Buffer.from([0x4d, 0x5a, 0x90, 0x00]) });
+    await expect(service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' }))
+      .rejects.toMatchObject({ code: 'FileContentMismatch', statusCode: 422 });
+    expect(storage.deleteObject).toHaveBeenCalledWith('acme/forms/f/2026/11/up-1.pdf');
+    expect(FormUpload.updateOne.mock.calls[0][1].$set).toMatchObject({ status: 'rejected', rejectReason: 'content-mismatch:executable' });
+    expect(FormUpload.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('deletes and rejects oversized or empty objects', async () => {
+    storage.readObject.mockResolvedValueOnce({ tooLarge: true, size: 99999999, buffer: null });
+    await expect(service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' }))
+      .rejects.toMatchObject({ code: 'FileTooLarge' });
+    storage.readObject.mockResolvedValueOnce({ tooLarge: false, size: 0, buffer: Buffer.alloc(0) });
+    await expect(service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' }))
+      .rejects.toMatchObject({ code: 'FileEmpty' });
+    expect(storage.deleteObject).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports a missing object without rejecting the upload', async () => {
+    storage.readObject.mockResolvedValue(null);
+    await expect(service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' }))
+      .rejects.toMatchObject({ code: 'UploadNotReceived', statusCode: 409 });
+    expect(FormUpload.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent for completed uploads and refuses finished ones', async () => {
+    FormUpload.findOne.mockResolvedValueOnce({ ...pending(), status: 'completed', size: 5 });
+    await expect(service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' }))
+      .resolves.toMatchObject({ status: 'completed', size: 5 });
+    expect(storage.readObject).not.toHaveBeenCalled();
+
+    FormUpload.findOne.mockResolvedValueOnce({ ...pending(), status: 'attached' });
+    await expect(service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' }))
+      .rejects.toMatchObject({ code: 'UploadNotAvailable' });
+
+    FormUpload.findOne.mockResolvedValueOnce(null);
+    await expect(service.completeUpload({ tenantId, form, sessionToken: token, uploadId: 'nope' }))
+      .rejects.toMatchObject({ code: 'UploadNotFound', statusCode: 404 });
+  });
+});
+
+describe('discardUpload', () => {
+  it('removes the object and marks the upload deleted', async () => {
+    vi.spyOn(FormUpload, 'findOne').mockResolvedValue({ _id: 'u1', uploadId: 'up-1', key: 'k', status: 'completed' });
+    await expect(service.discardUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' }))
+      .resolves.toEqual({ uploadId: 'up-1', status: 'deleted' });
+    expect(FormUpload.updateOne.mock.calls[0][0]).toMatchObject({ _id: 'u1', responseId: null });
+    expect(storage.deleteObject).toHaveBeenCalledWith('k');
+  });
+
+  it('does not touch a file that already belongs to a response', async () => {
+    vi.spyOn(FormUpload, 'findOne').mockResolvedValue({ _id: 'u1', uploadId: 'up-1', key: 'k', status: 'attached' });
+    await expect(service.discardUpload({ tenantId, form, sessionToken: token, uploadId: 'up-1' }))
+      .rejects.toMatchObject({ code: 'UploadNotAvailable' });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveSubmissionFiles', () => {
+  const completed = (uploadId) => ({
+    _id: `id-${uploadId}`, uploadId, fieldName: 'cv', originalName: `${uploadId}.pdf`, size: 10, mimeType: 'application/pdf'
+  });
+
+  it('leaves forms without file fields untouched', async () => {
+    const data = { fullName: 'A' };
+    const result = await service.resolveSubmissionFiles({ tenantId, form: { ...form, fields: [form.fields[0]] }, data });
+    expect(result).toEqual({ data, uploads: [], files: [] });
+  });
+
+  it('replaces upload references with verified file metadata, in the submitted order', async () => {
+    vi.spyOn(FormUpload, 'find').mockResolvedValue([completed('b'), completed('a')]);
+    const result = await service.resolveSubmissionFiles({
+      tenantId, form, sessionToken: token, data: { fullName: 'A', cv: [{ uploadId: 'a' }, 'b'] }
+    });
+
+    expect(FormUpload.find).toHaveBeenCalledWith({
+      tenantId, formId: form._id, fieldId: 'cv-id', sessionId,
+      uploadId: { $in: ['a', 'b'] }, status: 'completed', responseId: null
+    });
+    expect(result.data).toEqual({
+      fullName: 'A',
+      cv: [
+        { uploadId: 'a', filename: 'a.pdf', size: 10, mimeType: 'application/pdf' },
+        { uploadId: 'b', filename: 'b.pdf', size: 10, mimeType: 'application/pdf' }
+      ]
+    });
+    expect(result.files.map((file) => [file.fieldId, file.uploadId])).toEqual([['cv-id', 'a'], ['cv-id', 'b']]);
+    expect(result.uploads).toHaveLength(2);
+  });
+
+  it('fails validation when a required file is missing or a reference is unknown', async () => {
+    await expect(service.resolveSubmissionFiles({ tenantId, form, sessionToken: token, data: { cv: [] } }))
+      .rejects.toMatchObject({ code: 'ValidationFailed', details: [{ field: 'cv', message: 'Field "cv" is required' }] });
+
+    vi.spyOn(FormUpload, 'find').mockResolvedValue([completed('a')]);
+    await expect(service.resolveSubmissionFiles({ tenantId, form, sessionToken: token, data: { cv: ['a', 'ghost'] } }))
+      .rejects.toMatchObject({ code: 'ValidationFailed' });
+  });
+
+  it('rejects client-supplied file metadata, duplicates and too many files', async () => {
+    const find = vi.spyOn(FormUpload, 'find').mockResolvedValue([]);
+    await expect(service.resolveSubmissionFiles({
+      tenantId, form, sessionToken: token, data: { cv: { mediaId: 'x', filename: 'x.pdf', url: 'https://evil.example/x' } }
+    })).rejects.toMatchObject({ code: 'ValidationFailed' });
+    await expect(service.resolveSubmissionFiles({ tenantId, form, sessionToken: token, data: { cv: ['a', 'a'] } }))
+      .rejects.toMatchObject({ code: 'ValidationFailed' });
+    await expect(service.resolveSubmissionFiles({ tenantId, form, sessionToken: token, data: { cv: ['a', 'b', 'c'] } }))
+      .rejects.toMatchObject({ code: 'ValidationFailed' });
+    expect(find).not.toHaveBeenCalled();
+  });
+
+  it('needs the upload session when files are referenced', async () => {
+    await expect(service.resolveSubmissionFiles({ tenantId, form, data: { cv: ['a'] } }))
+      .rejects.toMatchObject({ code: 'UploadSessionRequired' });
+  });
+});
+
+describe('attachUploads', () => {
+  it('claims each upload once and undoes a partial claim', async () => {
+    const uploads = [{ _id: 'u1', fieldName: 'cv' }, { _id: 'u2', fieldName: 'cv' }];
+    const updateMany = vi.spyOn(FormUpload, 'updateMany').mockResolvedValueOnce({ modifiedCount: 2 });
+    await service.attachUploads({ tenantId, responseId: 'r1', uploads });
+    expect(updateMany.mock.calls[0][0]).toEqual({ _id: { $in: ['u1', 'u2'] }, tenantId, status: 'completed', responseId: null });
+    expect(updateMany.mock.calls[0][1].$set).toMatchObject({ status: 'attached', responseId: 'r1' });
+
+    updateMany.mockResolvedValueOnce({ modifiedCount: 1 }).mockResolvedValueOnce({ modifiedCount: 1 });
+    await expect(service.attachUploads({ tenantId, responseId: 'r2', uploads }))
+      .rejects.toMatchObject({ code: 'ValidationFailed' });
+    expect(updateMany.mock.calls[2][0]).toEqual({ tenantId, responseId: 'r2', status: 'attached' });
+    expect(updateMany.mock.calls[2][1].$set).toEqual({ status: 'completed', responseId: null });
+  });
+});
+
+describe('getDownloadLink', () => {
+  it('only serves files attached to that response of that tenant', async () => {
+    const findOne = vi.spyOn(FormUpload, 'findOne').mockResolvedValue({
+      uploadId: 'up-1', key: 'k', originalName: 'cv.pdf', size: 10, mimeType: 'application/pdf', scanStatus: 'not_scanned'
+    });
+    vi.spyOn(storage, 'presignDownload').mockResolvedValue({ url: 'https://r2.example/get', expiresAt: new Date() });
+
+    const file = await service.getDownloadLink({ tenantId, formId: form._id, responseId: 'r1', uploadId: 'up-1' });
+    expect(findOne).toHaveBeenCalledWith({ uploadId: 'up-1', tenantId, formId: form._id, responseId: 'r1', status: 'attached' });
+    expect(storage.presignDownload).toHaveBeenCalledWith({ key: 'k', filename: 'cv.pdf', contentType: 'application/pdf' });
+    expect(file).toMatchObject({ url: 'https://r2.example/get', filename: 'cv.pdf', scanStatus: 'not_scanned' });
+
+    findOne.mockResolvedValue(null);
+    await expect(service.getDownloadLink({ tenantId, formId: form._id, responseId: 'r1', uploadId: 'other' }))
+      .rejects.toMatchObject({ code: 'UploadNotFound', statusCode: 404 });
+  });
+});

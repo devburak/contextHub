@@ -27,6 +27,7 @@ const fieldValidationSchema = new Schema({
   pattern: { type: String }, // regex pattern
   fileTypes: [{ type: String }], // allowed file MIME types
   maxFileSize: { type: Number }, // in MB
+  maxFiles: { type: Number }, // files accepted by one file field
   customMessage: { type: Schema.Types.Mixed } // i18n error messages
 }, { _id: false });
 

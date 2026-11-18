@@ -56,6 +56,7 @@ const activityLogSchema = new Schema({
       'content.create',
       'content.update',
       'content.delete',
+      'form.file.download',
       'other'
     ],
     index: true

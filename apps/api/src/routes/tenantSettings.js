@@ -74,6 +74,14 @@ async function tenantSettingsRoutes(fastify) {
         },
         additionalProperties: false
       },
+      turnstile: {
+        type: 'object',
+        properties: {
+          siteKey: { type: 'string' },
+          hasSecretKey: { type: 'boolean' }
+        },
+        additionalProperties: false
+      },
       features: {
         type: 'object',
         additionalProperties: { type: 'boolean' }
@@ -147,6 +155,14 @@ async function tenantSettingsRoutes(fastify) {
             type: 'array',
             items: { type: 'string' }
           }
+        },
+        additionalProperties: false
+      },
+      turnstile: {
+        type: 'object',
+        properties: {
+          siteKey: { type: 'string', nullable: true },
+          secretKey: { type: 'string', nullable: true }
         },
         additionalProperties: false
       },

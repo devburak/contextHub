@@ -33,6 +33,7 @@ const Category = require('./Category');
 const FormDefinition = require('./FormDefinition');
 const FormResponse = require('./FormResponse');
 const FormVersion = require('./FormVersion');
+const FormUpload = require('./FormUpload');
 const Event = require('./Event');
 const DailyAgg = require('./DailyAgg');
 const ApiToken = require('./ApiToken');
@@ -91,6 +92,7 @@ module.exports = {
   FormDefinition,
   FormResponse,
   FormVersion,
+  FormUpload,
   Event,
   DailyAgg,
   ApiToken,
