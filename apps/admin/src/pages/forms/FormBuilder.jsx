@@ -15,12 +15,13 @@ import FieldPalette from '../../components/forms/FieldPalette';
 import FormCanvas from '../../components/forms/FormCanvas';
 import FieldInspector from '../../components/forms/FieldInspector';
 import FormSettings from '../../components/forms/FormSettings';
+import FileUploadReadinessNotice from '../../components/forms/FileUploadReadinessNotice';
 
 export default function FormBuilder() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { tenant } = useAuth();
+  const { activeTenantId } = useAuth();
   const [activeTab, setActiveTab] = useState('build'); // build, settings, preview
   const [mobileBuildPanel, setMobileBuildPanel] = useState('canvas'); // palette, canvas, inspector
   const [selectedFieldId, setSelectedFieldId] = useState(null);
@@ -514,6 +515,11 @@ export default function FormBuilder() {
             </div>
           </div>
         )}
+
+        <FileUploadReadinessNotice
+          hasFileField={formData.fields.some((field) => field.type === 'file' && !field.disabled)}
+          tenantId={activeTenantId}
+        />
 
         {/* Tabs */}
         <div className="mt-4 overflow-x-auto border-b border-gray-200">

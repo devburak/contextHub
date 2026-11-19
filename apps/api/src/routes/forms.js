@@ -834,6 +834,85 @@ async function formRoutes(fastify) {
   });
 
   /**
+   * GET /api/forms/uploads/status
+   * Whether this tenant can receive files through forms, and the limits
+   */
+  fastify.get('/forms/uploads/status', {
+    preHandler: [authenticate],
+    schema: {
+      tags: ['forms'],
+      description: 'Report whether form file uploads are available for this tenant (private bucket, plan, Turnstile) and the limits that apply.',
+      security: [{ bearerAuth: [] }]
+    }
+  }, async (request, reply) => {
+    try {
+      const status = await formUploadService.getCapabilities({ tenantId: request.tenantId });
+      return reply.send({ status });
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to read form upload status');
+      return reply.code(500).send({ error: 'FormUploadStatusFailed', message: 'Failed to read upload status' });
+    }
+  });
+
+  /**
+   * POST /api/forms/:id/responses/:responseId/files/:uploadId/promote
+   * Move a submitted file to the public media library
+   */
+  fastify.post('/forms/:id/responses/:responseId/files/:uploadId/promote', {
+    preHandler: [authenticate, requireAdmin],
+    schema: {
+      tags: ['forms'],
+      description: 'Move a file submitted with a form response to the public media library. The file becomes publicly accessible; the media item is created under the requesting user.',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Form ID' },
+          responseId: { type: 'string', description: 'Response ID' },
+          uploadId: { type: 'string', description: 'Upload ID of the file' }
+        },
+        required: ['id', 'responseId', 'uploadId']
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const result = await formUploadService.promoteUpload({
+        tenantId: request.tenantId,
+        formId: request.params.id,
+        responseId: request.params.responseId,
+        uploadId: request.params.uploadId,
+        userId: request.user?._id || request.user?.id || null
+      });
+
+      await logSecurityEvent({
+        action: 'form.file.promote',
+        description: 'Form response file moved to the public media library',
+        userId: request.user?._id || request.user?.id || null,
+        tenantId: request.tenantId,
+        metadata: {
+          formId: request.params.id,
+          responseId: request.params.responseId,
+          uploadId: result.uploadId,
+          mediaId: result.mediaId,
+          filename: result.filename
+        },
+        request
+      });
+
+      return reply.send({ media: result });
+    } catch (error) {
+      if (error.name === 'FormUploadError') {
+        return reply.code(error.statusCode).send({ error: error.code, message: error.message, details: error.details });
+      }
+      if (error.name === 'CastError') {
+        return reply.code(404).send({ error: 'UploadNotFound', message: 'File not found' });
+      }
+      request.log.error({ err: error }, 'Failed to move form file to media');
+      return reply.code(500).send({ error: 'FilePromoteFailed', message: 'Failed to move the file to the media library' });
+    }
+  });
+
+  /**
    * GET /api/forms/:id/responses/:responseId/files/:uploadId/download
    * Short-lived download link for a file attached to a response
    */

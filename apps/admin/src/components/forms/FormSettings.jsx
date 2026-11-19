@@ -1,6 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Switch } from '@headlessui/react';
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import {
+  RETENTION_DEFAULT_DAYS,
+  RETENTION_MAX_DAYS,
+  RETENTION_MIN_DAYS,
+  clampRetentionDays,
+} from './formFileUtils';
 
 export default function FormSettings({ settings, formInfo, formFields = [], selectedLanguage = 'tr', onSettingsUpdate, onFormInfoUpdate }) {
   const [activeSection, setActiveSection] = useState('general');
@@ -92,20 +98,18 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
     handleSettingChange('emailNotifications.recipients', recipients);
   };
 
-  const addFileType = () => {
-    const fileTypes = [...(settings.allowedFileTypes || []), ''];
-    onSettingsUpdate({ allowedFileTypes: fileTypes });
-  };
+  const savedRetention = settings.fileRetentionDays ?? RETENTION_DEFAULT_DAYS;
+  const [retentionInput, setRetentionInput] = useState(String(savedRetention));
+  useEffect(() => {
+    setRetentionInput(String(savedRetention));
+  }, [savedRetention]);
 
-  const removeFileType = (index) => {
-    const fileTypes = settings.allowedFileTypes.filter((_, i) => i !== index);
-    onSettingsUpdate({ allowedFileTypes: fileTypes });
-  };
-
-  const updateFileType = (index, value) => {
-    const fileTypes = [...settings.allowedFileTypes];
-    fileTypes[index] = value;
-    onSettingsUpdate({ allowedFileTypes: fileTypes });
+  const commitRetention = () => {
+    const days = clampRetentionDays(retentionInput);
+    setRetentionInput(String(days));
+    if (days !== savedRetention) {
+      handleSettingChange('fileRetentionDays', days);
+    }
   };
 
   return (
@@ -379,88 +383,34 @@ export default function FormSettings({ settings, formInfo, formFields = [], sele
           </div>
         </div>
 
-        {/* File Upload Settings */}
+        {/* Submitted files */}
         <div className="bg-white shadow rounded-lg">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">Dosya Yükleme Ayarları</h3>
+            <h3 className="text-lg font-medium text-gray-900">Gönderilen Dosyalar</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Dosya türü, boyut ve adet sınırları her dosya alanının kendi ayarlarındadır.
+            </p>
           </div>
-          <div className="px-6 py-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-sm font-medium text-gray-900">
-                  Dosya Yükleme Etkin
-                </label>
-                <p className="text-sm text-gray-500">
-                  Formda dosya yükleme alanlarına izin ver
-                </p>
-              </div>
-              <Switch
-                checked={settings.enableFileUpload || false}
-                onChange={(checked) => handleSettingChange('enableFileUpload', checked)}
-                className={`${
-                  settings.enableFileUpload ? 'bg-indigo-600' : 'bg-gray-200'
-                } relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2`}
-              >
-                <span
-                  className={`${
-                    settings.enableFileUpload ? 'translate-x-6' : 'translate-x-1'
-                  } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                />
-              </Switch>
-            </div>
-
-            {settings.enableFileUpload && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Maksimum Dosya Boyutu (MB)
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.maxFileSize || 10}
-                    onChange={(e) => handleSettingChange('maxFileSize', parseInt(e.target.value))}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">
-                      İzin Verilen Dosya Türleri
-                    </label>
-                    <button
-                      onClick={addFileType}
-                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
-                    >
-                      <PlusIcon className="h-3 w-3 mr-1" />
-                      Ekle
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {(settings.allowedFileTypes || []).map((type, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={type}
-                          onChange={(e) => updateFileType(index, e.target.value)}
-                          placeholder=".pdf, .jpg, image/*"
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
-                        />
-                        <button
-                          onClick={() => removeFileType(index)}
-                          className="text-red-400 hover:text-red-600"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Boş bırakılırsa tüm dosya türlerine izin verilir
-                  </p>
-                </div>
-              </>
-            )}
+          <div className="px-6 py-4 space-y-2">
+            <label htmlFor="fileRetentionDays" className="block text-sm font-medium text-gray-700">
+              Saklama Süresi (gün)
+            </label>
+            <input
+              id="fileRetentionDays"
+              type="number"
+              min={RETENTION_MIN_DAYS}
+              max={RETENTION_MAX_DAYS}
+              step="1"
+              value={retentionInput}
+              onChange={(e) => setRetentionInput(e.target.value)}
+              onBlur={commitRetention}
+              className="block w-40 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            />
+            <p className="text-xs text-gray-500">
+              Bu formla gönderilen dosyalar bu süre sonunda otomatik olarak silinir ({RETENTION_MIN_DAYS}–{RETENTION_MAX_DAYS} gün,
+              varsayılan {RETENTION_DEFAULT_DAYS}). Süreyi değiştirmek daha önce alınmış dosyalara da uygulanır; süre gönderim
+              tarihinden itibaren sayılır.
+            </p>
           </div>
         </div>
 

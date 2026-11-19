@@ -309,5 +309,18 @@
   "tenantWebhooks.slack_tenant_failed": "Could not switch to the tenant that started this Slack connection. Select it and reload the page.",
   "tenantWebhooks.provider_help_label": "About notification channels",
   "tenantWebhooks.provider_help": "You can use Slack, Telegram or WhatsApp Business for notifications.",
-  "tenantWebhooks.setup_guide": "Open the step-by-step connection guide"
+  "tenantWebhooks.setup_guide": "Open the step-by-step connection guide",
+  "tenantSettings.turnstile_title": "Turnstile for form files",
+  "tenantSettings.turnstile_desc": "Forms that accept files require a Cloudflare Turnstile check before an upload starts. Create your own Turnstile widget and enter its keys here; the secret key is stored encrypted.",
+  "tenantSettings.turnstile_site_key_label": "Site key",
+  "tenantSettings.turnstile_site_key_hint": "The public key used by the Turnstile widget on your website.",
+  "tenantSettings.turnstile_secret_label": "Secret key",
+  "tenantSettings.turnstile_secret_placeholder": "Enter the secret key",
+  "tenantSettings.turnstile_secret_add": "Add secret key",
+  "tenantSettings.turnstile_secret_change": "Change secret key",
+  "tenantSettings.turnstile_secret_clear": "Remove secret key",
+  "tenantSettings.turnstile_secret_empty": "No secret key set; forms cannot accept files.",
+  "tenantSettings.turnstile_secret_kept": "The current secret key is kept until you save a new one.",
+  "tenantSettings.turnstile_secret_will_clear": "The secret key will be removed when you save, and forms will stop accepting files.",
+  "tenantSettings.turnstile_secret_will_save": "The new secret key will be saved."
 }

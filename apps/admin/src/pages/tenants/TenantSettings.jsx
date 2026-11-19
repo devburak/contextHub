@@ -54,6 +54,11 @@ const EMPTY_STATE = {
     allowedOrigins: [],
     allowedOriginsText: ''
   },
+  turnstile: {
+    siteKey: '',
+    hasSecretKey: false,
+    secretKey: ''
+  },
   features: {},
   metadata: {}
 }
@@ -196,6 +201,12 @@ const mergeWithDefaults = (settings) => {
       allowedOrigins: settings.edgeGateway?.allowedOrigins || EMPTY_STATE.edgeGateway.allowedOrigins,
       allowedOriginsText: normalizeOriginsText(settings.edgeGateway?.allowedOrigins)
     },
+    turnstile: {
+      ...EMPTY_STATE.turnstile,
+      siteKey: settings.turnstile?.siteKey ?? EMPTY_STATE.turnstile.siteKey,
+      hasSecretKey: Boolean(settings.turnstile?.hasSecretKey),
+      secretKey: ''
+    },
     features: { ...(settings.features || {}) },
     metadata: settings.metadata || {}
   }
@@ -247,6 +258,9 @@ const buildPayload = (state, secretFlags, secretEditState, metadataText) => {
       allowLocalhost: Boolean(state.edgeGateway.allowLocalhost),
       allowedOrigins: parseOriginsText(state.edgeGateway.allowedOriginsText)
     },
+    turnstile: {
+      siteKey: state.turnstile.siteKey?.trim() ?? ''
+    },
     features: Object.fromEntries(
       Object.entries(state.features || {}).map(([key, value]) => [key, Boolean(value)])
     ),
@@ -263,6 +277,12 @@ const buildPayload = (state, secretFlags, secretEditState, metadataText) => {
     payload.webhook.secret = null
   } else if (state.webhook.secret) {
     payload.webhook.secret = state.webhook.secret
+  }
+
+  if (secretFlags.turnstileSecret) {
+    payload.turnstile.secretKey = null
+  } else if (secretEditState.turnstileSecret && state.turnstile.secretKey?.trim()) {
+    payload.turnstile.secretKey = state.turnstile.secretKey.trim()
   }
 
   return payload
@@ -706,6 +726,30 @@ export default function TenantSettings() {
     }))
   }
 
+  const setTurnstileSecret = (secretKey, extra = {}) => {
+    setFormState((prev) => ({
+      ...prev,
+      turnstile: { ...prev.turnstile, secretKey, ...extra }
+    }))
+  }
+
+  const startTurnstileSecretEdit = () => {
+    setSecretFlags((prev) => ({ ...prev, turnstileSecret: false }))
+    setSecretEditState((prev) => ({ ...prev, turnstileSecret: true }))
+    setTurnstileSecret('')
+  }
+
+  const cancelTurnstileSecretEdit = () => {
+    setSecretEditState((prev) => ({ ...prev, turnstileSecret: false }))
+    setTurnstileSecret('')
+  }
+
+  const resetTurnstileSecret = () => {
+    setSecretFlags((prev) => ({ ...prev, turnstileSecret: true }))
+    setSecretEditState((prev) => ({ ...prev, turnstileSecret: false }))
+    setTurnstileSecret('', { hasSecretKey: false })
+  }
+
   const handleSubmit = (event) => {
     event.preventDefault()
     if (!activeTenantId) {
@@ -1069,6 +1113,74 @@ export default function TenantSettings() {
                       className="font-medium text-blue-600 hover:text-blue-500"
                     >
                       {t('tenantSettings.smtp_password_clear')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">{t('tenantSettings.turnstile_title')}</h2>
+            <p className="text-sm text-gray-500">{t('tenantSettings.turnstile_desc')}</p>
+          </div>
+          <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
+            <div>
+              <label htmlFor="turnstile-site-key" className="block text-sm font-medium text-gray-700">
+                {t('tenantSettings.turnstile_site_key_label')}
+              </label>
+              <input
+                id="turnstile-site-key"
+                type="text"
+                autoComplete="off"
+                value={formState.turnstile.siteKey}
+                onChange={handleInputChange('turnstile', 'siteKey')}
+                placeholder="0x4AAAAAAA..."
+                className={`${FIELD_INPUT_WITH_MARGIN_CLASS} font-mono`}
+              />
+              <p className="mt-1 text-xs text-gray-500">{t('tenantSettings.turnstile_site_key_hint')}</p>
+            </div>
+            <div>
+              <label htmlFor="turnstile-secret-key" className="block text-sm font-medium text-gray-700">
+                {t('tenantSettings.turnstile_secret_label')}
+              </label>
+              <input
+                id="turnstile-secret-key"
+                name="turnstile-secret-key"
+                type="password"
+                autoComplete="new-password"
+                readOnly={!secretEditState.turnstileSecret}
+                disabled={!secretEditState.turnstileSecret}
+                value={formState.turnstile.secretKey}
+                onChange={(event) => setTurnstileSecret(event.target.value)}
+                placeholder={formState.turnstile.hasSecretKey ? '••••••' : t('tenantSettings.turnstile_secret_placeholder')}
+                className={`${FIELD_INPUT_WITH_MARGIN_CLASS} disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400`}
+              />
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                <span>
+                  {secretFlags.turnstileSecret
+                    ? t('tenantSettings.turnstile_secret_will_clear')
+                    : secretEditState.turnstileSecret
+                      ? t('tenantSettings.turnstile_secret_will_save')
+                      : formState.turnstile.hasSecretKey
+                        ? t('tenantSettings.turnstile_secret_kept')
+                        : t('tenantSettings.turnstile_secret_empty')}
+                </span>
+                <div className="flex items-center gap-3">
+                  {secretEditState.turnstileSecret ? (
+                    <button type="button" onClick={cancelTurnstileSecretEdit} className="font-medium text-gray-600 hover:text-gray-500">
+                      {t('common.cancel')}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={startTurnstileSecretEdit} className="font-medium text-blue-600 hover:text-blue-500">
+                      {formState.turnstile.hasSecretKey ? t('tenantSettings.turnstile_secret_change') : t('tenantSettings.turnstile_secret_add')}
+                    </button>
+                  )}
+                  {(formState.turnstile.hasSecretKey || secretEditState.turnstileSecret || secretFlags.turnstileSecret) && (
+                    <button type="button" onClick={resetTurnstileSecret} className="font-medium text-blue-600 hover:text-blue-500">
+                      {t('tenantSettings.turnstile_secret_clear')}
                     </button>
                   )}
                 </div>

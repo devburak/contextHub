@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   getForm,
@@ -20,6 +20,7 @@ import {
   FunnelIcon,
   NoSymbolIcon,
   CalendarIcon,
+  PaperClipIcon,
 } from '@heroicons/react/24/outline';
 import {
   CheckCircleIcon,
@@ -28,11 +29,15 @@ import {
   XCircleIcon
 } from '@heroicons/react/20/solid';
 import ResponseDetailModal from '../../components/forms/ResponseDetailModal';
+import { formatPreviewValue } from '../../components/forms/formFileUtils';
 
 export default function FormResponses() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated, activeTenantId } = useAuth();
+  const { isAuthenticated, activeTenantId, role } = useAuth();
+  const queryClient = useQueryClient();
+  // Moving a file to the public media library is limited to admins and owners (the API enforces it too).
+  const canPublishFiles = role === 'admin' || role === 'owner';
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [selectedResponseId, setSelectedResponseId] = useState(null);
@@ -377,9 +382,15 @@ export default function FormResponses() {
                         <div className="max-w-xs truncate">
                           {Object.entries(response.data).slice(0, 2).map(([key, value]) => (
                             <div key={key} className="truncate">
-                              <span className="font-medium">{key}:</span> {String(value)}
+                              <span className="font-medium">{key}:</span> {formatPreviewValue(value)}
                             </div>
                           ))}
+                          {response.files?.length > 0 && (
+                            <div className="mt-1 inline-flex items-center gap-1 text-xs text-gray-500" title="Bu yanıtta dosya var">
+                              <PaperClipIcon className="h-3.5 w-3.5" />
+                              {response.files.length} dosya
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -506,6 +517,9 @@ export default function FormResponses() {
         <ResponseDetailModal
           response={responseDetail}
           form={formFromResponses || form} // Önce liste endpoint'inden gelen form'u kullan
+          formId={id}
+          canPublishFiles={canPublishFiles}
+          onFilesChanged={() => queryClient.invalidateQueries(['formResponse'])}
           isLoading={isResponseLoading}
           onClose={() => setSelectedResponseId(null)}
           onDelete={(responseId) => {

@@ -18,8 +18,21 @@ import {
   XCircleIcon
 } from '@heroicons/react/20/solid';
 import clsx from 'clsx';
+import ResponseFiles from './ResponseFiles';
+import { formatPreviewValue, getFileRecords } from './formFileUtils';
 
-export default function ResponseDetailModal({ response, form, isLoading, onClose, onDelete, onHardDelete, onStatusChange }) {
+export default function ResponseDetailModal({
+  response,
+  form,
+  formId,
+  canPublishFiles = false,
+  isLoading,
+  onClose,
+  onDelete,
+  onHardDelete,
+  onStatusChange,
+  onFilesChanged,
+}) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   if (isLoading || !response) {
     return (
@@ -135,8 +148,30 @@ export default function ResponseDetailModal({ response, form, isLoading, onClose
     return fieldName;
   };
 
+  // Current state of each submitted file (available, expired, moved to media...)
+  const fileStates = Object.fromEntries(
+    (response.files || [])
+      .filter((file) => file.uploadId)
+      .map((file) => [file.uploadId, file])
+  );
+
   const renderFieldValue = (fieldName, value) => {
     const fieldInfo = getFieldInfo(fieldName);
+
+    const fileRecords = getFileRecords(value);
+    if (fieldInfo?.type === 'file' || fileRecords.length > 0) {
+      if (!fileRecords.length) return formatPreviewValue(value) || '-';
+      return (
+        <ResponseFiles
+          files={fileRecords}
+          fileStates={fileStates}
+          formId={formId || response.formId}
+          responseId={response._id}
+          canPublish={canPublishFiles}
+          onChanged={onFilesChanged}
+        />
+      );
+    }
 
     // Handle arrays (checkbox, multi-select)
     if (Array.isArray(value)) {
@@ -153,7 +188,7 @@ export default function ResponseDetailModal({ response, form, isLoading, onClose
         });
         return labels.join(', ');
       }
-      return value.join(', ');
+      return formatPreviewValue(value);
     }
 
     // Handle select/radio with options
@@ -178,8 +213,8 @@ export default function ResponseDetailModal({ response, form, isLoading, onClose
       return '-';
     }
 
-    // Default: string representation
-    return String(value);
+    // Default: string representation (objects are never shown as "[object Object]")
+    return formatPreviewValue(value);
   };
 
   const getFieldTypeLabel = (fieldName) => {
@@ -443,7 +478,8 @@ export default function ResponseDetailModal({ response, form, isLoading, onClose
                             : null;
 
                           const isRequired = fieldInfo?.required || field.required;
-                          const isFilled = value !== undefined && value !== null && value !== '';
+                          const isFilled = value !== undefined && value !== null && value !== ''
+                            && !(Array.isArray(value) && value.length === 0);
 
                           return (
                             <div

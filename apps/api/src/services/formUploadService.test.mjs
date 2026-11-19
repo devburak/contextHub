@@ -386,7 +386,7 @@ describe('purgeTenantUploads', () => {
     const deleteMany = vi.spyOn(FormUpload, 'deleteMany').mockResolvedValue({ deletedCount: 4 });
 
     await expect(service.purgeTenantUploads({ tenantId })).resolves.toEqual({ deleted: 4, objectsDeleted: 1 });
-    expect(FormUpload.find.mock.calls[0][0]).toEqual({ tenantId, deletedAt: null, status: { $ne: 'promoted' } });
+    expect(FormUpload.find.mock.calls[0][0]).toEqual({ tenantId, deletedAt: null });
     expect(storage.deleteObject).toHaveBeenCalledWith('k1');
     expect(deleteMany).toHaveBeenCalledWith({ tenantId });
   });
@@ -420,5 +420,124 @@ describe('retention and file state', () => {
     const states = await service.getResponseFileStates({ tenantId, responseId: 'r1' });
     expect(states.get('up-1')).toMatchObject({ status: 'attached', deleteReason: null, mediaId: null });
     expect(states.get('up-2')).toMatchObject({ status: 'expired', deleteReason: 'retention', retainUntil: null });
+  });
+});
+
+describe('getCapabilities', () => {
+  beforeEach(() => {
+    vi.spyOn(tenantSettingsService, 'getTurnstileCredentials').mockResolvedValue({ siteKey: 's', secretKey: 'x' });
+  });
+
+  it('is ready only when bucket, plan and Turnstile are all in place', async () => {
+    const ready = await service.getCapabilities({ tenantId });
+    expect(ready).toMatchObject({ ready: true, configured: true, planAllowed: true, turnstileConfigured: true });
+    expect(ready.limits).toEqual({ maxFileBytes: 20 * 1024 * 1024, maxFilesPerField: 5 });
+    expect(ready.retention).toEqual({ defaultDays: 180, minDays: 30, maxDays: 730 });
+    expect(ready.allowedTypes.find((type) => type.extension === 'pdf'))
+      .toEqual({ extension: 'pdf', mimeType: 'application/pdf', category: 'document', promotableWithoutScan: true });
+    expect(ready.allowedTypes.map((type) => type.extension)).not.toContain('svg');
+
+    tenantSettingsService.getTurnstileCredentials.mockResolvedValueOnce(null);
+    await expect(service.getCapabilities({ tenantId })).resolves.toMatchObject({ ready: false, turnstileConfigured: false });
+    entitlement.isAllowed.mockResolvedValueOnce(false);
+    await expect(service.getCapabilities({ tenantId })).resolves.toMatchObject({ ready: false, planAllowed: false });
+    storage.isConfigured.mockReturnValue(false);
+    await expect(service.getCapabilities({ tenantId })).resolves.toMatchObject({ ready: false, configured: false });
+  });
+});
+
+describe('promoteUpload', () => {
+  const mediaService = { importBuffer: vi.fn() };
+  const attached = (overrides = {}) => ({
+    _id: 'u1', uploadId: 'up-1', tenantId, key: 'acme/forms/f/2026/11/up-1.pdf', originalName: 'Broşür.pdf',
+    extension: 'pdf', mimeType: 'application/pdf', status: 'attached', scanStatus: 'not_scanned', ...overrides
+  });
+  const args = { tenantId, formId: form._id, responseId: 'r1', uploadId: 'up-1', userId: 'admin-1' };
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+
+  beforeEach(() => {
+    const mediaPath = require.resolve('./mediaService');
+    require.cache[mediaPath] = { id: mediaPath, filename: mediaPath, loaded: true, exports: mediaService };
+    mediaService.importBuffer.mockReset().mockResolvedValue({ _id: 'media-1', url: 'https://cdn.example/acme/x.pdf' });
+    vi.spyOn(FormUpload, 'findOne').mockResolvedValue(attached());
+    vi.spyOn(FormUpload, 'findOneAndUpdate').mockImplementation(async (_f, update) => ({ ...attached(), ...update.$set }));
+    vi.spyOn(storage, 'readObject').mockResolvedValue({ tooLarge: false, size: PDF.length, buffer: PDF });
+  });
+
+  afterEach(() => {
+    delete require.cache[require.resolve('./mediaService')];
+  });
+
+  it('creates the media item under the admin, then removes the private copy', async () => {
+    const result = await service.promoteUpload(args);
+
+    expect(FormUpload.findOne).toHaveBeenCalledWith({ uploadId: 'up-1', tenantId, formId: form._id, responseId: 'r1', status: 'attached' });
+    const [claimFilter, claim] = FormUpload.findOneAndUpdate.mock.calls[0];
+    expect(claimFilter).toEqual({ _id: 'u1', status: 'attached' });
+    expect(claim.$set).toMatchObject({ status: 'promoted', promotedBy: 'admin-1' });
+    expect(FormUpload.findOneAndUpdate.mock.invocationCallOrder[0]).toBeLessThan(mediaService.importBuffer.mock.invocationCallOrder[0]);
+
+    expect(mediaService.importBuffer).toHaveBeenCalledWith({
+      tenantId, userId: 'admin-1', buffer: PDF, originalName: 'Broşür.pdf', contentType: 'application/pdf', tags: ['form-upload']
+    });
+    expect(FormUpload.updateOne).toHaveBeenCalledWith({ _id: 'u1' }, { $set: { mediaId: 'media-1' } });
+    expect(storage.deleteObject).toHaveBeenCalledWith('acme/forms/f/2026/11/up-1.pdf');
+    expect(result).toEqual({ uploadId: 'up-1', filename: 'Broşür.pdf', mediaId: 'media-1', url: 'https://cdn.example/acme/x.pdf' });
+  });
+
+  it('accepts images without a scan', async () => {
+    FormUpload.findOne.mockResolvedValue(attached({ extension: 'png', mimeType: 'image/png', key: 'k.png' }));
+    storage.readObject.mockResolvedValue({ tooLarge: false, size: PNG.length, buffer: PNG });
+    await expect(service.promoteUpload(args)).resolves.toMatchObject({ mediaId: 'media-1' });
+  });
+
+  it('keeps Office documents until they are scanned, and refuses infected files', async () => {
+    FormUpload.findOne.mockResolvedValueOnce(attached({ extension: 'docx' }));
+    await expect(service.promoteUpload(args)).rejects.toMatchObject({ code: 'PromotionRequiresScan', statusCode: 409 });
+    FormUpload.findOne.mockResolvedValueOnce(attached({ scanStatus: 'infected' }));
+    await expect(service.promoteUpload(args)).rejects.toMatchObject({ code: 'FileInfected' });
+    expect(storage.readObject).not.toHaveBeenCalled();
+    expect(mediaService.importBuffer).not.toHaveBeenCalled();
+  });
+
+  it('lets a scanned Office document through', async () => {
+    const docx = Buffer.from('ignored');
+    FormUpload.findOne.mockResolvedValue(attached({ extension: 'docx', scanStatus: 'clean' }));
+    storage.readObject.mockResolvedValue({ tooLarge: false, size: docx.length, buffer: docx });
+    // Content verification still applies to scanned files.
+    await expect(service.promoteUpload(args)).rejects.toMatchObject({ code: 'FileContentMismatch' });
+  });
+
+  it('refuses a PDF with active content and leaves the file in place', async () => {
+    const evil = Buffer.from('%PDF-1.7\n<< /OpenAction << /S /JavaScript /JS (x) >> >>', 'latin1');
+    storage.readObject.mockResolvedValue({ tooLarge: false, size: evil.length, buffer: evil });
+
+    await expect(service.promoteUpload(args)).rejects.toMatchObject({
+      code: 'PdfActiveContent', statusCode: 422, details: { markers: ['JavaScript', 'JS'] }
+    });
+    expect(FormUpload.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('rolls back and keeps the private copy when the media library rejects the file', async () => {
+    mediaService.importBuffer.mockRejectedValue(Object.assign(new Error('Storage limit reached'), { code: 'StorageLimitExceeded' }));
+
+    await expect(service.promoteUpload(args)).rejects.toMatchObject({ code: 'StorageLimitExceeded', statusCode: 409 });
+    expect(FormUpload.updateOne).toHaveBeenCalledWith(
+      { _id: 'u1', status: 'promoted', mediaId: null },
+      { $set: { status: 'attached' }, $unset: { promotedBy: '', promotedAt: '' } }
+    );
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('moves a file only once', async () => {
+    FormUpload.findOneAndUpdate.mockResolvedValue(null);
+    await expect(service.promoteUpload(args)).rejects.toMatchObject({ code: 'UploadNotAvailable' });
+    expect(mediaService.importBuffer).not.toHaveBeenCalled();
+  });
+
+  it('reports files that are not attached to this response', async () => {
+    FormUpload.findOne.mockResolvedValue(null);
+    await expect(service.promoteUpload(args)).rejects.toMatchObject({ code: 'UploadNotFound', statusCode: 404 });
   });
 });

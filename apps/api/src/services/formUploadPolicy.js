@@ -166,6 +166,39 @@ function resolveRetentionDays(form) {
   return Math.min(Math.max(Math.round(days), MIN_RETENTION_DAYS), MAX_RETENTION_DAYS);
 }
 
+// Until the external scanner is connected, only these may be moved to the
+// public media library. PDF is allowed as a deliberate, accepted risk because
+// it is the most common document type; Office files wait for scanning.
+const PROMOTABLE_WITHOUT_SCAN_CATEGORIES = Object.freeze(['image', 'video', 'audio']);
+const PROMOTABLE_WITHOUT_SCAN_EXTENSIONS = Object.freeze(['pdf']);
+
+function isPromotableWithoutScan(extension) {
+  const type = ALLOWED_TYPES[extension];
+  if (!type) return false;
+  return PROMOTABLE_WITHOUT_SCAN_CATEGORIES.includes(type.category)
+    || PROMOTABLE_WITHOUT_SCAN_EXTENSIONS.includes(extension);
+}
+
+// PDF features that run code, open other programs or carry other files.
+const PDF_ACTIVE_CONTENT_MARKERS = Object.freeze([
+  { name: 'JavaScript', pattern: /\/JavaScript\b/ },
+  { name: 'JS', pattern: /\/JS(?![A-Za-z0-9])/ },
+  { name: 'Launch', pattern: /\/Launch\b/ },
+  { name: 'EmbeddedFile', pattern: /\/EmbeddedFiles?\b/ },
+  { name: 'RichMedia', pattern: /\/RichMedia\b/ },
+  { name: 'XFA', pattern: /\/XFA\b/ }
+]);
+
+/**
+ * Look for active content in a PDF. This is a cheap pre-check, not a scanner:
+ * markers inside compressed object streams are not seen.
+ */
+function findPdfActiveContent(buffer) {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) return [];
+  const text = buffer.toString('latin1');
+  return PDF_ACTIVE_CONTENT_MARKERS.filter((marker) => marker.pattern.test(text)).map((marker) => marker.name);
+}
+
 function startsWith(buffer, bytes, offset = 0) {
   if (buffer.length < offset + bytes.length) return false;
   for (let i = 0; i < bytes.length; i += 1) {
@@ -324,6 +357,8 @@ module.exports = {
   resolveAllowedExtensions,
   resolveFieldPolicy,
   resolveRetentionDays,
+  isPromotableWithoutScan,
+  findPdfActiveContent,
   validateDeclaration,
   detectContentKind,
   verifyContent

@@ -21,7 +21,15 @@ const TERMINAL_STATUSES = ['deleted', 'expired', 'rejected'];
 const MAX_LOGGED_UPLOAD_IDS = 50;
 
 async function retryFailedDeletions() {
-  const uploads = await FormUpload.find({ status: { $in: TERMINAL_STATUSES }, deletedAt: null })
+  const uploads = await FormUpload.find({
+    deletedAt: null,
+    $or: [
+      { status: { $in: TERMINAL_STATUSES } },
+      // A promoted upload keeps its private copy until the media item exists;
+      // without mediaId the move may still be running or may be rolled back.
+      { status: 'promoted', mediaId: { $ne: null } }
+    ]
+  })
     .select('_id tenantId key')
     .limit(RETRY_BATCH_SIZE)
     .lean();

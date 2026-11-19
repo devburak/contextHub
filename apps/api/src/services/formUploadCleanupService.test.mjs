@@ -42,7 +42,13 @@ describe('form upload cleanup', () => {
 
     const result = await cleanup.runCleanup({ now });
 
-    expect(FormUpload.find).toHaveBeenCalledWith({ status: { $in: ['deleted', 'expired', 'rejected'] }, deletedAt: null });
+    expect(FormUpload.find).toHaveBeenCalledWith({
+      deletedAt: null,
+      $or: [
+        { status: { $in: ['deleted', 'expired', 'rejected'] } },
+        { status: 'promoted', mediaId: { $ne: null } }
+      ]
+    });
     expect(formUploadService.purgeObjects).toHaveBeenCalledWith(stuck);
     expect(result.retried).toEqual({ removed: 1, failed: 0 });
   });

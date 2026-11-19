@@ -515,7 +515,9 @@ async function deleteFormUploads({ tenantId, formId }) {
  * files behind with no record pointing at them.
  */
 async function purgeTenantUploads({ tenantId }) {
-  const remaining = { tenantId, deletedAt: null, status: { $ne: 'promoted' } };
+  // Every object still in the private bucket, including the private copy of
+  // promoted files; the media copies are removed by the media purge.
+  const remaining = { tenantId, deletedAt: null };
   let objectsDeleted = 0;
 
   for (let batch = 0; batch < REMOVE_MAX_BATCHES; batch += 1) {
@@ -599,6 +601,128 @@ async function getDownloadLink({ tenantId, formId, responseId, uploadId }) {
   };
 }
 
+/**
+ * What the admin side needs to know before offering file fields: whether this
+ * server and this tenant can take files, and the limits that apply.
+ */
+async function getCapabilities({ tenantId }) {
+  const configured = storage.isConfigured();
+  const [planAllowed, turnstile] = await Promise.all([
+    entitlement.isAllowed(tenantId),
+    tenantSettingsService.getTurnstileCredentials(tenantId).catch(() => null)
+  ]);
+  const turnstileConfigured = Boolean(turnstile?.secretKey);
+
+  return {
+    ready: configured && planAllowed && turnstileConfigured,
+    configured,
+    planAllowed,
+    turnstileConfigured,
+    limits: {
+      maxFileBytes: policy.PLATFORM_MAX_FILE_BYTES,
+      maxFilesPerField: policy.PLATFORM_MAX_FILES_PER_FIELD
+    },
+    retention: {
+      defaultDays: policy.DEFAULT_RETENTION_DAYS,
+      minDays: policy.MIN_RETENTION_DAYS,
+      maxDays: policy.MAX_RETENTION_DAYS
+    },
+    allowedTypes: policy.ALLOWED_EXTENSIONS.map((extension) => ({
+      extension,
+      mimeType: policy.ALLOWED_TYPES[extension].mime,
+      category: policy.ALLOWED_TYPES[extension].category,
+      promotableWithoutScan: policy.isPromotableWithoutScan(extension)
+    }))
+  };
+}
+
+/**
+ * Move a submitted file to the public media library. The media item is created
+ * on behalf of the person moving it, and the private copy is removed.
+ */
+async function promoteUpload({ tenantId, formId, responseId, uploadId, userId }) {
+  if (!storage.isConfigured()) {
+    throw new FormUploadError('FormUploadsUnavailable', 'File uploads are not configured on this server', 503);
+  }
+
+  const upload = await FormUpload.findOne({
+    uploadId: String(uploadId || ''),
+    tenantId,
+    formId,
+    responseId,
+    status: 'attached'
+  });
+  if (!upload) {
+    throw new FormUploadError('UploadNotFound', 'File not found', 404);
+  }
+  if (upload.scanStatus === 'infected') {
+    throw new FormUploadError('FileInfected', 'This file was flagged by the scanner and cannot be published', 409);
+  }
+  const scanned = upload.scanStatus === 'clean';
+  if (!scanned && !policy.isPromotableWithoutScan(upload.extension)) {
+    throw new FormUploadError('PromotionRequiresScan', 'This file type can be published only after it has been scanned', 409);
+  }
+
+  const object = await storage.readObject({ key: upload.key, maxBytes: policy.PLATFORM_MAX_FILE_BYTES });
+  if (!object || object.tooLarge || !object.buffer) {
+    throw new FormUploadError('UploadNotAvailable', 'The stored file could not be read', 409);
+  }
+  if (!policy.verifyContent({ buffer: object.buffer, extension: upload.extension }).ok) {
+    throw new FormUploadError('FileContentMismatch', 'The file content does not match its type', 422);
+  }
+  if (upload.extension === 'pdf' && !scanned) {
+    const markers = policy.findPdfActiveContent(object.buffer);
+    if (markers.length) {
+      throw new FormUploadError('PdfActiveContent', 'This PDF contains active content and cannot be published before it is scanned', 422, { markers });
+    }
+  }
+
+  // Claim first, so the file is moved once and is not counted twice toward the quota.
+  const claimed = await FormUpload.findOneAndUpdate(
+    { _id: upload._id, status: 'attached' },
+    { $set: { status: 'promoted', promotedBy: userId || null, promotedAt: new Date() } },
+    { new: true }
+  );
+  if (!claimed) {
+    throw new FormUploadError('UploadNotAvailable', 'This file is no longer available', 409);
+  }
+
+  let media;
+  try {
+    // Loaded lazily: the media service requires the public bucket configuration.
+    const mediaService = require('./mediaService');
+    media = await mediaService.importBuffer({
+      tenantId,
+      userId,
+      buffer: object.buffer,
+      originalName: upload.originalName,
+      contentType: upload.mimeType,
+      tags: ['form-upload']
+    });
+  } catch (error) {
+    await FormUpload.updateOne(
+      { _id: upload._id, status: 'promoted', mediaId: null },
+      { $set: { status: 'attached' }, $unset: { promotedBy: '', promotedAt: '' } }
+    );
+    await clearStorageCache(tenantId);
+    if (error?.code === 'StorageLimitExceeded') {
+      throw new FormUploadError('StorageLimitExceeded', 'Storage limit reached', 409);
+    }
+    throw error;
+  }
+
+  await FormUpload.updateOne({ _id: upload._id }, { $set: { mediaId: media._id } });
+  // If this fails the cleanup job removes the private copy later.
+  await purgeObjects([upload]);
+
+  return {
+    uploadId: upload.uploadId,
+    filename: upload.originalName,
+    mediaId: String(media._id),
+    url: media.url || null
+  };
+}
+
 module.exports = {
   MAX_UPLOAD_ATTEMPTS_PER_SESSION,
   FormUploadError,
@@ -619,5 +743,7 @@ module.exports = {
   purgeTenantUploads,
   applyRetentionChange,
   getResponseFileStates,
+  getCapabilities,
+  promoteUpload,
   getDownloadLink
 };

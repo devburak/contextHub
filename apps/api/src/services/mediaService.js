@@ -901,6 +901,48 @@ async function completeUpload({
   return document.toObject()
 }
 
+/**
+ * Store a file the server already holds (for example a form upload moved to the
+ * media library) and register it like a regular upload.
+ */
+async function importBuffer({ tenantId, userId, buffer, originalName, contentType, tags, description }) {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) {
+    throw new Error('buffer is required')
+  }
+  const tenant = await Tenant.findById(tenantId).select('slug').lean()
+  if (!tenant?.slug) {
+    throw new Error('Tenant not found')
+  }
+
+  const { fileName } = createUniqueFileName(originalName)
+  const { folder } = buildFolderParts()
+  const key = `${tenant.slug}/${folder}/${fileName}`
+
+  await s3Client.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentLength: buffer.length,
+    ContentType: contentType || inferMimeTypeFromFileName(fileName),
+  }))
+
+  try {
+    return await completeUpload({
+      tenantId,
+      userId,
+      key,
+      originalName,
+      providedMimeType: contentType,
+      providedSize: buffer.length,
+      tags,
+      description,
+    })
+  } catch (error) {
+    await deleteObjectsFromStorage([key]).catch(() => {})
+    throw error
+  }
+}
+
 async function registerExistingMedia({
   tenantId,
   userId,
@@ -1446,6 +1488,7 @@ async function deleteTenantRestoreFile({ tenantId, key }) {
 module.exports = {
   generatePresignedUpload,
   completeUpload,
+  importBuffer,
   registerExistingMedia,
   createExternalMedia,
   listMedia,

@@ -146,6 +146,34 @@ export async function updateFormResponseStatus({ formId, responseId, status }) {
 }
 
 /**
+ * Whether this tenant can receive files through forms, and the limits that apply
+ */
+export async function getFormUploadStatus() {
+  const response = await apiClient.get(`${BASE}/uploads/status`);
+  return response.data.status;
+}
+
+/**
+ * Short-lived (60 s) download link for a file submitted with a response
+ */
+export async function getResponseFileDownload({ formId, responseId, uploadId }) {
+  const response = await apiClient.get(
+    `${BASE}/${formId}/responses/${responseId}/files/${encodeURIComponent(uploadId)}/download`
+  );
+  return response.data.file;
+}
+
+/**
+ * Move a submitted file to the public media library (admins and owners only)
+ */
+export async function promoteResponseFile({ formId, responseId, uploadId }) {
+  const response = await apiClient.post(
+    `${BASE}/${formId}/responses/${responseId}/files/${encodeURIComponent(uploadId)}/promote`
+  );
+  return response.data.media;
+}
+
+/**
  * Forms API object with all methods
  */
 export const formsApi = {
@@ -166,4 +194,7 @@ export const formsApi = {
   markResponseAsSpam: (formId, responseId) => markResponseAsSpam({ formId, responseId }),
   permanentlyDeleteFormResponse: (formId, responseId) => permanentlyDeleteFormResponse({ formId, responseId }),
   updateFormResponseStatus: (formId, responseId, status) => updateFormResponseStatus({ formId, responseId, status }),
+  getFormUploadStatus: () => getFormUploadStatus(),
+  getResponseFileDownload: (formId, responseId, uploadId) => getResponseFileDownload({ formId, responseId, uploadId }),
+  promoteResponseFile: (formId, responseId, uploadId) => promoteResponseFile({ formId, responseId, uploadId }),
 };

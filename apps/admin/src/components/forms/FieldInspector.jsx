@@ -1,6 +1,15 @@
 import { useState, Fragment } from 'react';
 import { XMarkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Switch } from '@headlessui/react';
+import {
+  FILE_TYPE_GROUPS,
+  MAX_FILE_SIZE_MB,
+  MAX_FILES_PER_FIELD,
+  clampOptionalInt,
+  getSelectedExtensions,
+  isGroupSelected,
+  toggleFileTypeGroup,
+} from './formFileUtils';
 
 export default function FieldInspector({ field, selectedLanguage = 'tr', onFieldUpdate, onClose }) {
   const [activeTab, setActiveTab] = useState('basic'); // basic, validation, advanced
@@ -266,6 +275,72 @@ export default function FieldInspector({ field, selectedLanguage = 'tr', onField
 
         {activeTab === 'validation' && (
           <>
+            {field.type === 'file' && (
+              <div className="space-y-4">
+                <div>
+                  <span className="block text-xs font-medium text-gray-700 mb-1">İzin Verilen Dosya Türleri</span>
+                  <div className="space-y-1.5">
+                    {FILE_TYPE_GROUPS.map((group) => (
+                      <label key={group.key} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={isGroupSelected(field.validation?.fileTypes, group)}
+                          onChange={(e) => handleChange(
+                            'validation.fileTypes',
+                            toggleFileTypeGroup(field.validation?.fileTypes, group, e.target.checked)
+                          )}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        {group.label}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {getSelectedExtensions(field.validation?.fileTypes).length === 0
+                      ? 'Hiçbiri seçilmezse listedeki tüm türler kabul edilir.'
+                      : `Kabul edilenler: ${getSelectedExtensions(field.validation?.fileTypes).join(', ')}`}
+                    {' '}HTML, SVG, ZIP, RAR ve çalıştırılabilir dosyalar hiçbir zaman kabul edilmez.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="file-max-size" className="block text-xs font-medium text-gray-700 mb-1">
+                      Maks. Boyut (MB)
+                    </label>
+                    <input
+                      id="file-max-size"
+                      type="number"
+                      min="1"
+                      max={MAX_FILE_SIZE_MB}
+                      placeholder={String(MAX_FILE_SIZE_MB)}
+                      value={field.validation?.maxFileSize ?? ''}
+                      onChange={(e) => handleChange('validation.maxFileSize', clampOptionalInt(e.target.value, 1, MAX_FILE_SIZE_MB))}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="file-max-count" className="block text-xs font-medium text-gray-700 mb-1">
+                      Dosya Adedi
+                    </label>
+                    <input
+                      id="file-max-count"
+                      type="number"
+                      min="1"
+                      max={MAX_FILES_PER_FIELD}
+                      placeholder="1"
+                      value={field.validation?.maxFiles ?? ''}
+                      onChange={(e) => handleChange('validation.maxFiles', clampOptionalInt(e.target.value, 1, MAX_FILES_PER_FIELD))}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Dosya başına en fazla {MAX_FILE_SIZE_MB} MB, alan başına en fazla {MAX_FILES_PER_FIELD} dosya.
+                </p>
+              </div>
+            )}
+
             {/* Min Length */}
             {['text', 'textarea', 'email', 'phone'].includes(field.type) && (
               <div>

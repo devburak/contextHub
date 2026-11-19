@@ -58,6 +58,7 @@ const activityLogSchema = new Schema({
       'content.delete',
       'form.file.download',
       'form.file.retention_delete',
+      'form.file.promote',
       'other'
     ],
     index: true

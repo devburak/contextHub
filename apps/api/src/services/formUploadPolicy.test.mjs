@@ -170,3 +170,25 @@ describe('form upload content detection', () => {
     expect(policy.verifyContent({ buffer: windows1254, extension: 'csv' }).ok).toBe(true);
   });
 });
+
+describe('publishing to the media library before scanning', () => {
+  it('allows images, video, audio and PDF, but not Office or text files', () => {
+    for (const ext of ['jpg', 'png', 'heic', 'mp4', 'mov', 'mp3', 'wav', 'pdf']) {
+      expect(policy.isPromotableWithoutScan(ext)).toBe(true);
+    }
+    for (const ext of ['docx', 'xlsx', 'pptx', 'doc', 'odt', 'rtf', 'txt', 'csv', 'zip', 'exe']) {
+      expect(policy.isPromotableWithoutScan(ext)).toBe(false);
+    }
+  });
+
+  it('finds active content markers in a PDF', () => {
+    const pdf = (body) => Buffer.from(`%PDF-1.7\n${body}\n%%EOF`, 'latin1');
+    expect(policy.findPdfActiveContent(pdf('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj'))).toEqual([]);
+    expect(policy.findPdfActiveContent(pdf('<< /S /JavaScript /JS (app.alert(1)) >>'))).toEqual(['JavaScript', 'JS']);
+    expect(policy.findPdfActiveContent(pdf('<< /S /Launch /F (cmd.exe) >>'))).toEqual(['Launch']);
+    expect(policy.findPdfActiveContent(pdf('<< /Names << /EmbeddedFiles 5 0 R >> >>'))).toEqual(['EmbeddedFile']);
+    expect(policy.findPdfActiveContent(pdf('<< /AcroForm << /XFA 9 0 R >> >>'))).toEqual(['XFA']);
+    // Names that merely start with the same letters are not markers.
+    expect(policy.findPdfActiveContent(pdf('<< /JSONData 1 /Launcher 2 >>'))).toEqual([]);
+  });
+});
